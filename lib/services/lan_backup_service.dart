@@ -174,13 +174,17 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     Future<bool> Function()? wifiConnected,
     Future<PackageInfo> Function()? packageInfoLoader,
     Future<void> Function(Duration)? retryDelay,
+    Future<void> Function(String kind, Map<String, Object?> extra)? logEvent,
   }) : _channel = channel ?? _defaultChannel,
        _httpClient = httpClient ?? HttpClient(),
        // Keep the public injection name readable while the stored callback remains private.
        // ignore: prefer_initializing_formals
        _wifiConnected = wifiConnected,
        _packageInfoLoader = packageInfoLoader ?? PackageInfo.fromPlatform,
-       _retryDelay = retryDelay ?? Future<void>.delayed;
+       _retryDelay = retryDelay ?? Future<void>.delayed,
+       // Keep the public injection name readable while the stored callback remains private.
+       // ignore: prefer_initializing_formals
+       _logEvent = logEvent;
 
   static const MethodChannel _defaultChannel = MethodChannel(
     'app.packingproof.mobile/lan_backup',
@@ -191,6 +195,8 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   final Future<bool> Function()? _wifiConnected;
   final Future<PackageInfo> Function() _packageInfoLoader;
   final Future<void> Function(Duration) _retryDelay;
+  final Future<void> Function(String kind, Map<String, Object?> extra)?
+  _logEvent;
   Timer? _pollTimer;
   Timer? _heartbeatTimer;
   Future<void>? _refreshFuture;
@@ -764,6 +770,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   @override
   Future<void> setAutoEnabled(bool enabled) async {
     _snapshot = _snapshot.copyWith(autoEnabled: enabled);
+    _log('backup_auto_toggle', <String, Object?>{'enabled': enabled});
     notifyListeners();
   }
 
@@ -806,6 +813,12 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       'forceRestart': forceRestart,
     });
     await refresh();
+    _log('backup_enqueue', <String, Object?>{
+      'filePath': filePath,
+      'sessionCount': sessions.length,
+      'startUpload': startUpload,
+      'forceRestart': forceRestart,
+    });
   }
 
   @override
@@ -832,12 +845,14 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   Future<void> retry(String jobId) async {
     await _channel.invokeMethod<void>('retry', <String, Object>{'id': jobId});
     await refresh();
+    _log('backup_retry', <String, Object?>{'jobId': jobId});
   }
 
   @override
   Future<void> cancel(String jobId) async {
     await _channel.invokeMethod<void>('cancel', <String, Object>{'id': jobId});
     await refresh();
+    _log('backup_cancel', <String, Object?>{'jobId': jobId});
   }
 
   @override
@@ -1403,6 +1418,13 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     }
     _httpClient.close(force: true);
     super.dispose();
+  }
+
+  void _log(String kind, Map<String, Object?> extra) {
+    final Future<void> Function(String kind, Map<String, Object?> extra)?
+    logEvent = _logEvent;
+    if (logEvent == null) return;
+    unawaited(logEvent(kind, extra));
   }
 }
 

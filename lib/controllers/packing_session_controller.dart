@@ -74,16 +74,24 @@ class PackingSessionController extends ChangeNotifier {
     LanBackupSink? lanBackupService,
     VideoWatermarkSink? videoWatermarkService,
     OrderInfoReceiverSink? orderInfoReceiver,
+    DiagnosticsLogService? runtimeLog,
   }) : _repository = repository ?? SessionRepository(),
        _speechService = speechService ?? SpeechPromptService(),
        _maxVolumeService = maxVolumeService ?? MaxVolumeService(),
-       _lanBackupService = lanBackupService ?? LanBackupService(),
        _videoWatermarkService =
            videoWatermarkService ?? VideoWatermarkService(),
        _orderInfoReceiver = orderInfoReceiver ?? OrderInfoReceiverService(),
        _barcodeScanner = BarcodeScanner(
          formats: const <BarcodeFormat>[BarcodeFormat.all],
-       );
+       ) {
+    _runtimeLog = runtimeLog ?? DiagnosticsLogService();
+    _lanBackupService =
+        lanBackupService ??
+        LanBackupService(
+          logEvent: (String kind, Map<String, Object?> extra) =>
+              _runtimeLog.log(kind: kind, extra: extra),
+        );
+  }
 
   static const Duration analysisInterval = Duration(milliseconds: 200);
   static const Duration transitionSettleDelay = Duration(milliseconds: 120);
@@ -94,7 +102,7 @@ class PackingSessionController extends ChangeNotifier {
   final SessionRepository _repository;
   final SpeechPromptSink _speechService;
   final MaxVolumeSink _maxVolumeService;
-  final LanBackupSink _lanBackupService;
+  late final LanBackupSink _lanBackupService;
   final VideoWatermarkSink _videoWatermarkService;
   final OrderInfoReceiverSink _orderInfoReceiver;
   final BarcodeScanner _barcodeScanner;
@@ -104,7 +112,7 @@ class PackingSessionController extends ChangeNotifier {
       InitialRecordingPromptPolicy();
   final CameraDiagnosticsService _cameraDiagnostics =
       CameraDiagnosticsService();
-  final DiagnosticsLogService _runtimeLog = DiagnosticsLogService();
+  late final DiagnosticsLogService _runtimeLog;
   Future<void> _cameraInitializeTail = Future<void>.value();
   bool _appStartLogged = false;
 
@@ -322,7 +330,7 @@ class PackingSessionController extends ChangeNotifier {
       }
       await _pruneDeletedBackupSessions(notify: false);
       if (_lanBackupService.snapshot.autoEnabled) {
-        unawaited(_backupAllRepositorySessions());
+        unawaited(_backupAllRepositorySessions('app_start'));
       } else {
         unawaited(_registerRepositorySessionsForRetention());
       }
@@ -893,7 +901,7 @@ class PackingSessionController extends ChangeNotifier {
     await _lanBackupService.setAutoEnabled(enabled);
     await _repository.saveLanBackupAutoEnabled(enabled);
     if (enabled) {
-      await _backupAllRepositorySessions();
+      await _backupAllRepositorySessions('auto_toggle_enabled');
     }
   }
 
@@ -952,7 +960,7 @@ class PackingSessionController extends ChangeNotifier {
 
   void clearHistoryScanResult() => _historyScanResult = null;
 
-  Future<void> backupAllSessions() => _backupAllRepositorySessions();
+  Future<void> backupAllSessions() => _backupAllRepositorySessions('manual');
 
   Future<LocalRecordingPage> loadLocalRecordings({
     required int page,
@@ -972,7 +980,7 @@ class PackingSessionController extends ChangeNotifier {
   Future<void> retryBackupConnection() async {
     final bool connected = await _lanBackupService.retryConnection();
     if (connected && _lanBackupService.snapshot.autoEnabled) {
-      await _backupAllRepositorySessions();
+      await _backupAllRepositorySessions('connection_restored');
     }
   }
 
@@ -1921,7 +1929,7 @@ class PackingSessionController extends ChangeNotifier {
       _pairingMessage = null;
       notifyListeners();
     });
-    await _backupAllRepositorySessions();
+    await _backupAllRepositorySessions('pairing_completed');
     notifyListeners();
   }
 
@@ -1956,8 +1964,19 @@ class PackingSessionController extends ChangeNotifier {
   ) async {
     try {
       await _lanBackupService.enqueueFinalizedFile(filePath, sessions);
-    } on Object {
+    } on Object catch (error) {
       // A saved local recording must never fail because its backup is offline.
+      unawaited(
+        _runtimeLog.log(
+          kind: 'backup_enqueue_failed',
+          extra: <String, Object?>{
+            'filePath': filePath,
+            'sessionCount': sessions.length,
+            'autoEnabled': _lanBackupService.snapshot.autoEnabled,
+            'error': error.toString(),
+          },
+        ),
+      );
     }
   }
 
@@ -2002,8 +2021,15 @@ class PackingSessionController extends ChangeNotifier {
     _sessions = (await _repository.querySessions(page: 1, pageSize: 50)).data;
   }
 
-  Future<void> _backupAllRepositorySessions() =>
-      _forEachRepositoryBackupBatch(_lanBackupService.backupAll);
+  Future<void> _backupAllRepositorySessions(String reason) async {
+    unawaited(
+      _runtimeLog.log(
+        kind: 'backup_all',
+        extra: <String, Object?>{'reason': reason},
+      ),
+    );
+    await _forEachRepositoryBackupBatch(_lanBackupService.backupAll);
+  }
 
   Future<void> _registerRepositorySessionsForRetention() =>
       _forEachRepositoryBackupBatch(_registerSessionsForRetention);

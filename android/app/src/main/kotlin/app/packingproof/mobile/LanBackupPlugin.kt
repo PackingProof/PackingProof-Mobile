@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
+import android.util.Log
 import androidx.lifecycle.Observer
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -30,6 +31,7 @@ internal class LanBackupPlugin(
     companion object {
         private const val CHANNEL = "app.packingproof.mobile/lan_backup"
         private const val WORK_PREFIX = "lan-backup-"
+        private const val TAG = "PackingProofBackup"
         private const val INVALID_RSSI = -127
     }
 
@@ -144,6 +146,13 @@ internal class LanBackupPlugin(
                     if (startUpload) {
                         schedule(job.getString("id"), replace = forceRestart)
                     }
+                    Log.i(
+                        TAG,
+                        "Enqueue path=${job.optString("filePath")} " +
+                            "sessions=${sessions.length()} " +
+                            "startUpload=$startUpload forceRestart=$forceRestart " +
+                            "state=${job.optString("state")}",
+                    )
                     result.success(null)
                 }
                 "setRetentionPolicies" -> {
@@ -178,6 +187,7 @@ internal class LanBackupPlugin(
                         true
                     } ?: error("找不到备份任务")
                     schedule(id, replace = true)
+                    Log.i(TAG, "Retry id=$id")
                     result.success(null)
                 }
                 "cancel" -> {
@@ -188,6 +198,7 @@ internal class LanBackupPlugin(
                             .put("state", "paused")
                         true
                     }
+                    Log.i(TAG, "Cancel id=$id")
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -231,13 +242,22 @@ internal class LanBackupPlugin(
 
     private fun schedulePending() {
         if (store.connection() == null || credentials.load().isNullOrBlank()) return
-        store.jobs()
+        val pending = store.jobs()
             .filter { it.optString("state") in setOf("pending", "paused", "uploading") }
+        Log.i(TAG, "SchedulePending jobs=${pending.size}")
+        pending
             .forEach { schedule(it.getString("id"), replace = false) }
     }
 
     private fun schedule(id: String, replace: Boolean) {
-        if (store.connection() == null || credentials.load().isNullOrBlank()) return
+        if (store.connection() == null) {
+            Log.w(TAG, "Upload schedule skipped job=$id reason=no_connection")
+            return
+        }
+        if (credentials.load().isNullOrBlank()) {
+            Log.w(TAG, "Upload schedule skipped job=$id reason=no_credential")
+            return
+        }
         val request = OneTimeWorkRequestBuilder<LanBackupWorker>()
             .setInputData(workDataOf("jobId" to id))
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.SECONDS)
@@ -246,6 +266,7 @@ internal class LanBackupPlugin(
             )
             .addTag("lan-backup")
             .build()
+        Log.i(TAG, "Upload scheduled job=$id replace=$replace")
         WorkManager.getInstance(context).enqueueUniqueWork(
             WORK_PREFIX + id,
             if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,

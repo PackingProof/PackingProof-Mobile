@@ -111,6 +111,7 @@ internal class LanBackupWorker(
             RandomAccessFile(file, "r").use { input ->
                 while (offset < file.length()) {
                     if (isStopped) {
+                        Log.i(TAG, "Backup paused by stop id=${id.take(8)}")
                         clearBackupNotification(job)
                         return pause(
                             job,
@@ -300,6 +301,11 @@ internal class LanBackupWorker(
             true
         }
         clearBackupNotification(job)
+        Log.i(
+            TAG,
+            "Backup completed id=${job.getString("id").take(8)} " +
+                "bytes=$total records=${recordIds.length()}",
+        )
         if (current != null) {
             LanBackupCleanupScheduler.reschedule(applicationContext, store, current)
         }

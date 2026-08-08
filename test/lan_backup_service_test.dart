@@ -338,6 +338,59 @@ void main() {
     expect(arguments['forceRestart'], isTrue);
   });
 
+  test('自动备份关闭时入队仍留下决策日志', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-log-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final File video = File('${root.path}/video.mp4');
+    await video.writeAsBytes(<int>[1, 2, 3]);
+    final MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/lan_backup_log_test_${root.path.hashCode}',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async => null);
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    final List<({String kind, Map<String, Object?> extra})> events =
+        <({String kind, Map<String, Object?> extra})>[];
+    final LanBackupService service = LanBackupService(
+      channel: channel,
+      logEvent: (String kind, Map<String, Object?> extra) async {
+        events.add((kind: kind, extra: extra));
+      },
+    );
+    addTearDown(service.dispose);
+    await service.setAutoEnabled(false);
+    final DateTime startedAt = DateTime.utc(2026, 7, 25, 10);
+    await service.enqueueFinalizedFile(video.path, <RecordingSession>[
+      RecordingSession(
+        id: 'session-log',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <BarcodeMarker>[],
+      ),
+    ]);
+
+    final List<Map<String, Object?>> enqueueLogs = events
+        .where((event) => event.kind == 'backup_enqueue')
+        .map((event) => event.extra)
+        .toList();
+    expect(enqueueLogs, isNotEmpty);
+    expect(enqueueLogs.last['startUpload'], isFalse);
+    expect(enqueueLogs.last['forceRestart'], isFalse);
+    expect(enqueueLogs.last['sessionCount'], 1);
+    final List<Map<String, Object?>> toggleLogs = events
+        .where((event) => event.kind == 'backup_auto_toggle')
+        .map((event) => event.extra)
+        .toList();
+    expect(toggleLogs, isNotEmpty);
+    expect(toggleLogs.last['enabled'], isFalse);
+  });
+
   test('空录像不会创建无法完成的备份任务', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing-proof-empty-backup-',
