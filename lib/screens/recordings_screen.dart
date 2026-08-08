@@ -1300,7 +1300,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         children: <Widget>[
           if (!historyMode) ...<Widget>[
             _SettingsCard(
-              key: const Key('recording-settings-card'),
+              key: const Key('work-settings-card'),
               children: <Widget>[
                 _WorkModeSettings(workMode: _workMode, onChanged: _setWorkMode),
                 if (widget.onMinimumBarcodeLengthChanged != null) ...<Widget>[
@@ -1314,7 +1314,12 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                     onChanged: _setMinimumBarcodeLength,
                   ),
                 ],
-                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _SettingsCard(
+              key: const Key('recording-settings-card'),
+              children: <Widget>[
                 _RetentionSettings(
                   unbackedRetention: _unbackedRetention,
                   backedRetention: _backedRetention,
@@ -1926,13 +1931,19 @@ class _RetentionSettings extends StatelessWidget {
   final ValueChanged<BackedRetentionPolicy> onBackedRetentionChanged;
 
   static const String _retentionDescription =
-      '保留时间仅在空间充足时生效。剩余不足 2GB 时会提前清理已完成电脑校验的录像，'
-      '不会自动删除未备份录像。建议保持电脑备份连接或缩短保留时间';
+      '保留策略：\n'
+      '· 未备份录像超过“未备份保留”天数后会被清理；选“不清除”则一直保留。\n'
+      '· 已备份录像超过“备份后保留”天数后会被清理；选“不清除”则一直保留。\n'
+      '· 已备份录像清理前会向电脑确认，电脑离线时暂时保留。\n'
+      '空间不足时：\n'
+      '· 优先清理最老的、已完成电脑校验的备份录像；\n'
+      '· 不会为腾出空间删除未备份录像。\n'
+      '正在上传或等待备份的录像会延后清理。';
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -1947,7 +1958,10 @@ class _RetentionSettings extends StatelessWidget {
                 key: const Key('retention-info-button'),
                 tooltip: '录像清理说明',
                 visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.info_outline_rounded),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                iconSize: 20,
+                icon: const Icon(Icons.help_outline_rounded),
                 onPressed: () => _showRetentionInfo(context),
               ),
             ],
@@ -3187,14 +3201,16 @@ class _OrderReceiverSettings extends StatelessWidget {
                         label: const Text('复制地址'),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: onRetry,
-                        icon: const Icon(Icons.refresh_rounded, size: 18),
-                        label: const Text('重试'),
+                    if (!ready && onRetry != null) ...<Widget>[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: onRetry,
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('重试'),
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ],

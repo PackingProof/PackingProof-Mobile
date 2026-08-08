@@ -181,7 +181,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('录像清理说明'), findsOneWidget);
-    expect(find.textContaining('不会自动删除未备份录像'), findsOneWidget);
+    expect(find.textContaining('未备份录像超过'), findsOneWidget);
+    expect(find.textContaining('最老的'), findsOneWidget);
   });
 
   testWidgets('面单条码最短长度可调整', (WidgetTester tester) async {
@@ -212,15 +213,20 @@ void main() {
       ),
     );
 
-    final Finder recordingCard = find.byKey(
-      const Key('recording-settings-card'),
-    );
+    final Finder workCard = find.byKey(const Key('work-settings-card'));
     expect(
       find.descendant(
-        of: recordingCard,
+        of: workCard,
         matching: find.byKey(const Key('minimum-barcode-length-settings')),
       ),
       findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: workCard,
+        matching: find.byKey(const Key('video-codec-settings')),
+      ),
+      findsNothing,
     );
     expect(find.byKey(const Key('minimum-barcode-length-card')), findsNothing);
     expect(
@@ -239,6 +245,39 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(changedLength, 12);
+  });
+
+  testWidgets('订单接收重试按钮仅在未启动时显示', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    Widget build({required bool running}) => MaterialApp(
+      home: RecordingsScreen(
+        mode: RecordingsScreenMode.settings,
+        sessions: const [],
+        workMode: WorkMode.continuousScan,
+        speechEnabled: true,
+        maxVolumeEnabled: true,
+        orderReceiverSnapshot: OrderInfoReceiverSnapshot(
+          running: running,
+          url: running ? 'http://192.168.1.10:5280' : '',
+        ),
+        onRetryOrderReceiver: () async {},
+        onWorkModeChanged: (_) async {},
+        onSpeechEnabledChanged: (_) async {},
+        onMaxVolumeEnabledChanged: (_) async {},
+        onSpeechPreview: () async {},
+        onSessionUpdated: (_) async {},
+        onDeleteSessions: (_) async {},
+      ),
+    );
+
+    await tester.pumpWidget(build(running: false));
+    expect(find.text('重试'), findsOneWidget);
+
+    await tester.pumpWidget(build(running: true));
+    expect(find.text('重试'), findsNothing);
   });
 
   testWidgets('设置按录像、语音、接收分组为独立卡片', (WidgetTester tester) async {
@@ -264,19 +303,25 @@ void main() {
       ),
     );
 
+    final Finder workCard = find.byKey(const Key('work-settings-card'));
     final Finder recordingCard = find.byKey(
       const Key('recording-settings-card'),
     );
     final Finder voiceCard = find.byKey(const Key('voice-settings-card'));
+    expect(workCard, findsOneWidget);
     expect(recordingCard, findsOneWidget);
     expect(voiceCard, findsOneWidget);
 
     expect(
       find.descendant(
-        of: recordingCard,
+        of: workCard,
         matching: find.byKey(const Key('work-mode-settings')),
       ),
       findsOneWidget,
+    );
+    expect(
+      find.descendant(of: workCard, matching: find.text('录像清理')),
+      findsNothing,
     );
     expect(
       find.descendant(of: recordingCard, matching: find.text('录像清理')),

@@ -289,7 +289,7 @@ class _AboutScreenState extends State<AboutScreen> {
                   ),
                   const SizedBox(height: 8),
                   _LinkRow(
-                    icon: Icons.new_releases_outlined,
+                    icon: Icons.system_update_alt_rounded,
                     title: '检查更新',
                     subtitle: packingProofReleasesUrl,
                     onTap: () => unawaited(_open(packingProofReleasesUrl)),

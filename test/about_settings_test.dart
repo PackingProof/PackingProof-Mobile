@@ -38,6 +38,7 @@ void main() {
     expect(find.text('版本 0.3.1+9002'), findsNothing);
     expect(find.text('源码仓库'), findsOneWidget);
     expect(find.text('检查更新'), findsOneWidget);
+    expect(find.byIcon(Icons.system_update_alt_rounded), findsOneWidget);
     expect(find.text('Flutter'), findsOneWidget);
     expect(find.text('SQLite / sqflite'), findsOneWidget);
     expect(find.text('AndroidX Media3'), findsOneWidget);
