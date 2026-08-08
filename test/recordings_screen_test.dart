@@ -295,10 +295,21 @@ void main() {
         of: voiceCard,
         matching: find.byKey(const Key('order-speech-settings')),
       ),
-      findsOneWidget,
+      findsNothing,
     );
 
-    // 订单接收与关于保持独立卡片，不并入两张组卡。
+    // 订单播报并入订单接收卡片，订单接收与关于保持独立卡片。
+    final Finder orderReceiverCard = find.byKey(
+      const Key('order-receiver-settings'),
+    );
+    expect(orderReceiverCard, findsOneWidget);
+    expect(
+      find.descendant(
+        of: orderReceiverCard,
+        matching: find.byKey(const Key('order-speech-settings')),
+      ),
+      findsOneWidget,
+    );
     expect(
       find.descendant(
         of: recordingCard,
