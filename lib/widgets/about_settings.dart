@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app/app_build_config.dart';
 import '../app/packing_proof_mobile_app.dart';
-import '../services/recording_path_diagnostics.dart';
+import '../services/camera_diagnostics_service.dart';
+import '../services/continuous_camera_service.dart';
 
 const String packingProofRepositoryUrl =
     'https://github.com/PackingProof/PackingProof-Mobile';
@@ -123,9 +127,14 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _exportDiagnostics() async {
-    final DiagnosticsTextLoader loader =
-        widget.diagnosticsLoader ?? RecordingPathDiagnostics().exportText;
-    final String? text = await loader();
+    String? text;
+    try {
+      final DiagnosticsTextLoader loader =
+          widget.diagnosticsLoader ?? _loadDefaultDiagnostics;
+      text = await loader();
+    } on Object {
+      text = null;
+    }
     if (text == null || text.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -133,22 +142,62 @@ class _AboutScreenState extends State<AboutScreen> {
       ).showSnackBar(const SnackBar(content: Text('暂无诊断记录')));
       return;
     }
-    final Uri uri = Uri(
-      scheme: 'mailto',
-      path: packingProofSupportEmail,
-      queryParameters: <String, String>{
-        'subject': 'PackingProof 诊断日志',
-        'body': text,
-      },
+    final File? file = await _writeDiagnosticsFile(text);
+    final bool shared = file != null && await _shareDiagnostics(file);
+    if (shared || !mounted) return;
+    bool copied = false;
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      copied = true;
+    } on Object {
+      copied = false;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(copied ? '分享不可用，诊断日志已复制到剪贴板' : '无法导出诊断日志，请稍后重试')),
     );
-    final ExternalUriLauncher launcher =
-        widget.uriLauncher ??
-        (Uri value) => launchUrl(value, mode: LaunchMode.externalApplication);
-    final bool opened = await launcher(uri);
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法打开邮箱，请手动发送到 PackingProof@outlook.com')),
+  }
+
+  Future<String?> _loadDefaultDiagnostics() async {
+    final String header = await _diagnosticsHeader();
+    return CameraDiagnosticsService().exportText(header: header);
+  }
+
+  Future<String> _diagnosticsHeader() async {
+    final PackageInfo info = await _packageInfo;
+    final CameraDiagnosticsSnapshot? snapshot = await CameraDiagnosticsService()
+        .loadSnapshot();
+    final String build = widget.buildConfig.buildTimestamp.isEmpty
+        ? widget.buildConfig.buildRevision
+        : '${widget.buildConfig.buildRevision} · ${widget.buildConfig.buildTimestamp}';
+    return <String>[
+      'PackingProof-Mobile 诊断日志',
+      '导出时间: ${DateTime.now().toIso8601String()}',
+      '版本: ${info.version}+${info.buildNumber}',
+      '构建: ${build.isEmpty ? '未知' : build}',
+      '设备: ${snapshot?.deviceSummary ?? '未知设备'}',
+    ].join('\n');
+  }
+
+  Future<File?> _writeDiagnosticsFile(String text) async {
+    try {
+      return await CameraDiagnosticsService().writeExportFile(text);
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<bool> _shareDiagnostics(File file) async {
+    try {
+      final ShareResult result = await SharePlus.instance.share(
+        ShareParams(
+          title: 'PackingProof 诊断日志',
+          files: <XFile>[XFile(file.path, mimeType: 'text/plain')],
+        ),
       );
+      return result.status != ShareResultStatus.unavailable;
+    } on Object {
+      return false;
     }
   }
 
@@ -229,7 +278,7 @@ class _AboutScreenState extends State<AboutScreen> {
                   _InfoRow(
                     icon: Icons.bug_report_outlined,
                     title: '导出诊断日志',
-                    subtitle: '发送到 PackingProof@outlook.com',
+                    subtitle: '分享或复制后发送到 $packingProofSupportEmail',
                     onTap: () => unawaited(_exportDiagnostics()),
                   ),
                   const SizedBox(height: 14),

@@ -22,6 +22,7 @@ import '../models/work_mode.dart';
 import '../services/barcode_candidate_policy.dart';
 import '../services/barcode_stability_tracker.dart';
 import '../services/barcode_work_mode_policy.dart';
+import '../services/camera_diagnostics_service.dart';
 import '../services/continuous_camera_service.dart';
 import '../services/initial_recording_prompt_policy.dart';
 import '../services/lan_backup_service.dart';
@@ -91,6 +92,8 @@ class PackingSessionController extends ChangeNotifier {
   final RecordingTimeline _timeline = RecordingTimeline();
   final InitialRecordingPromptPolicy _initialPromptPolicy =
       InitialRecordingPromptPolicy();
+  final CameraDiagnosticsService _cameraDiagnostics =
+      CameraDiagnosticsService();
   Future<void> _cameraInitializeTail = Future<void>.value();
 
   CameraController? _cameraController;
@@ -105,6 +108,7 @@ class PackingSessionController extends ChangeNotifier {
   Timer? _initialPromptTimer;
   Timer? _pairingFeedbackTimer;
   Timer? _storageMonitorTimer;
+  Timer? _diagnosticsTimer;
   Duration _elapsed = Duration.zero;
   BarcodeMarker? _lastMarker;
   String _candidateCode = '';
@@ -244,6 +248,7 @@ class PackingSessionController extends ChangeNotifier {
       _repository.tryReserveMobileUpdatePrompt(DateTime.now());
 
   Future<void> initialize({bool force = false}) {
+    _startCameraDiagnosticsTimer();
     final Future<void> next = _cameraInitializeTail.then(
       (_) => _initializeCamera(force: force),
     );
@@ -315,6 +320,12 @@ class PackingSessionController extends ChangeNotifier {
         nativeCamera.onError = (String message) {
           _errorMessage = message;
           _speakErrorMessage(message);
+          unawaited(
+            _cameraDiagnostics.recordEvent(
+              kind: 'native_error',
+              extra: <String, Object?>{'message': message},
+            ),
+          );
           if (!_disposed) {
             notifyListeners();
           }
@@ -387,8 +398,32 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   Future<void> retryInitialize() async {
+    unawaited(_cameraDiagnostics.recordEvent(kind: 'retry_initialize'));
     await _disposeCamera();
     await initialize(force: true);
+  }
+
+  void _startCameraDiagnosticsTimer() {
+    if (!Platform.isAndroid || _diagnosticsTimer != null) return;
+    _diagnosticsTimer = Timer.periodic(
+      CameraDiagnosticsService.heartbeatInterval,
+      (_) => unawaited(_captureCameraDiagnosticsSnapshot('heartbeat')),
+    );
+  }
+
+  Future<void> _captureCameraDiagnosticsSnapshot(String trigger) async {
+    if (!Platform.isAndroid || _disposed || _nativeCamera == null) return;
+    try {
+      final CameraDiagnosticsSnapshot? snapshot = await _nativeCamera!
+          .getDiagnostics();
+      if (snapshot == null) return;
+      await _cameraDiagnostics.recordSnapshot(
+        trigger: trigger,
+        snapshot: snapshot,
+      );
+    } on Object {
+      // 诊断轮询绝不能阻塞或中断相机工作流。
+    }
   }
 
   Future<void> toggleTorch() async {
@@ -421,6 +456,7 @@ class PackingSessionController extends ChangeNotifier {
       _setPhase(PackingSessionPhase.initializing);
       _nativeInitialization = await _nativeCamera!.switchCamera();
       _setPhase(PackingSessionPhase.ready);
+      unawaited(_captureCameraDiagnosticsSnapshot('switch_camera'));
     } on Object {
       await _disposeCamera();
       await initialize();
@@ -466,6 +502,7 @@ class PackingSessionController extends ChangeNotifier {
     try {
       await WakelockPlus.enable();
       await _setNativeWorkScanEnabled(true);
+      unawaited(_captureCameraDiagnosticsSnapshot('start_work'));
       _workActive = true;
       _startStorageMonitor();
       await _orderInfoReceiver.setBackgroundKeepAlive(false);
@@ -534,6 +571,7 @@ class PackingSessionController extends ChangeNotifier {
       final List<RecordingSession> savedSessions = Platform.isAndroid
           ? await _finishNativeRecording()
           : await _finishRecording();
+      unawaited(_captureCameraDiagnosticsSnapshot('stop_work'));
       _candidateCode = '';
       _stabilityTracker.reset();
       _workActive = false;
@@ -662,6 +700,7 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   Future<void> _handleNativeStorageCritical() async {
+    unawaited(_cameraDiagnostics.recordEvent(kind: 'storage_critical'));
     await _checkAndHandleStorage(allowStop: false);
     await _queueStorageNotice(
       const StorageNotice(
@@ -2088,6 +2127,7 @@ class PackingSessionController extends ChangeNotifier {
     _feedbackTimer?.cancel();
     _scanWarningTimer?.cancel();
     _storageMonitorTimer?.cancel();
+    _diagnosticsTimer?.cancel();
     unawaited(WakelockPlus.disable());
     final CameraController? camera = _cameraController;
     if (camera != null) {

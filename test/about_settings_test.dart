@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:packing_proof_mobile/widgets/about_settings.dart';
@@ -118,8 +119,17 @@ void main() {
     expect(find.text('暂无诊断记录'), findsOneWidget);
   });
 
-  testWidgets('导出诊断日志会打开邮箱并预填收件人与正文', (WidgetTester tester) async {
-    Uri? opened;
+  testWidgets('导出诊断日志在分享不可用时复制到剪贴板', (WidgetTester tester) async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall call) async => null,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -131,10 +141,6 @@ void main() {
               buildNumber: '11013',
             ),
             diagnosticsLoader: () async => 'line1\nline2',
-            uriLauncher: (Uri uri) async {
-              opened = uri;
-              return true;
-            },
           ),
         ),
       ),
@@ -142,13 +148,12 @@ void main() {
     await tester.tap(find.byKey(const Key('about-settings-open')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('导出诊断日志'));
-    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      await tester.tap(find.text('导出诊断日志'));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pump();
 
-    expect(opened, isNotNull);
-    expect(opened!.scheme, 'mailto');
-    expect(opened!.path, packingProofSupportEmail);
-    expect(opened!.queryParameters['subject'], 'PackingProof 诊断日志');
-    expect(opened!.queryParameters['body'], 'line1\nline2');
+    expect(find.text('分享不可用，诊断日志已复制到剪贴板'), findsOneWidget);
   });
 }

@@ -34,6 +34,31 @@ void main() {
     expect(initialization.textureId, greaterThanOrEqualTo(0));
     expect(initialization.fps, 30);
 
+    final CameraDiagnosticsSnapshot initialDiagnostics = (await camera
+        .getDiagnostics())!;
+    expect(initialDiagnostics.initialized, isTrue);
+    await Future<void>.delayed(const Duration(seconds: 1));
+    final CameraDiagnosticsSnapshot previewAlive = (await camera
+        .getDiagnostics())!;
+    expect(
+      previewAlive.previewFrameCount,
+      greaterThan(initialDiagnostics.previewFrameCount),
+    );
+
+    // 工作扫描开启后预览帧必须继续前进；此步可捕获“开始工作后预览冻结”。
+    await camera.setWorkScanEnabled(true);
+    final CameraDiagnosticsSnapshot beforeScan = (await camera
+        .getDiagnostics())!;
+    await Future<void>.delayed(const Duration(seconds: 2));
+    final CameraDiagnosticsSnapshot afterScan = (await camera
+        .getDiagnostics())!;
+    expect(
+      afterScan.previewFrameCount,
+      greaterThan(beforeScan.previewFrameCount),
+    );
+    expect(afterScan.previewFrameAgeMs, lessThan(3000));
+    await camera.setWorkScanEnabled(false);
+
     final NativeRecordingStart started = await camera.startWork(
       first.path,
       recordAudio: true,

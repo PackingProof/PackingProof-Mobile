@@ -24,6 +24,7 @@ class ContinuousCameraInitialization {
   final int sensorOrientation;
   final int fps;
   final String videoMime;
+
   /// 编码回退原因（如 no_hevc_decoder）；正常为 null。
   final String? codecFallbackReason;
   final bool flashAvailable;
@@ -145,6 +146,38 @@ class NativeBarcodeCandidate {
   }
 }
 
+/// 原生相机与预览心跳的诊断快照。
+class CameraDiagnosticsSnapshot {
+  const CameraDiagnosticsSnapshot({required this.device, required this.camera});
+
+  final Map<String, Object?> device;
+  final Map<String, Object?> camera;
+
+  bool get initialized => camera['initialized'] == true;
+  int get previewFrameCount =>
+      (camera['previewFrameCount'] as num?)?.toInt() ?? 0;
+  int get previewFrameAgeMs =>
+      (camera['previewFrameAgeMs'] as num?)?.toInt() ?? -1;
+  String? get lastRequestTemplate => camera['lastRequestTemplate'] as String?;
+  bool get stallActive => camera['stallActive'] == true;
+
+  String get deviceSummary {
+    final String manufacturer = '${device['manufacturer'] ?? ''}';
+    final String model = '${device['model'] ?? ''}';
+    final String release = '${device['release'] ?? ''}';
+    final Object? sdkInt = device['sdkInt'];
+    final String name = '$manufacturer $model'.trim();
+    return name.isEmpty ? '未知设备' : '$name · Android $release (SDK $sdkInt)';
+  }
+
+  factory CameraDiagnosticsSnapshot.fromMap(Map<Object?, Object?> map) {
+    return CameraDiagnosticsSnapshot(
+      device: Map<String, Object?>.from(map['device']! as Map),
+      camera: Map<String, Object?>.from(map['camera']! as Map),
+    );
+  }
+}
+
 class ContinuousCameraService {
   static const MethodChannel _channel = MethodChannel(
     'app.packingproof.mobile/continuous_camera',
@@ -201,6 +234,13 @@ class ContinuousCameraService {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('stopWork'))!;
     return NativeRecordingStop.fromMap(values);
+  }
+
+  Future<CameraDiagnosticsSnapshot?> getDiagnostics() async {
+    final Map<Object?, Object?>? values = await _channel
+        .invokeMethod<Map<Object?, Object?>>('getDiagnostics');
+    if (values == null) return null;
+    return CameraDiagnosticsSnapshot.fromMap(values);
   }
 
   Future<void> setPairingScanEnabled(bool enabled) async {

@@ -100,6 +100,45 @@ void main() {
     expect(legacy.format, isNull);
   });
 
+  test('诊断快照解析设备与相机心跳', () async {
+    const MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/continuous_camera',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method != 'getDiagnostics') return null;
+          return <Object?, Object?>{
+            'device': <Object?, Object?>{
+              'manufacturer': 'vivo',
+              'model': 'V2241A',
+              'sdkInt': 34,
+              'release': '14',
+            },
+            'camera': <Object?, Object?>{
+              'initialized': true,
+              'previewFrameCount': 123,
+              'previewFrameAgeMs': 25,
+              'lastRequestTemplate': 'preview',
+              'stallActive': false,
+            },
+          };
+        });
+    final ContinuousCameraService service = ContinuousCameraService();
+    addTearDown(() async {
+      await service.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    final CameraDiagnosticsSnapshot? snapshot = await service.getDiagnostics();
+
+    expect(snapshot, isNotNull);
+    expect(snapshot!.initialized, isTrue);
+    expect(snapshot.previewFrameCount, 123);
+    expect(snapshot.previewFrameAgeMs, 25);
+    expect(snapshot.deviceSummary, contains('vivo'));
+  });
+
   test('初始化时传递录像编码偏好', () async {
     const MethodChannel channel = MethodChannel(
       'app.packingproof.mobile/continuous_camera',

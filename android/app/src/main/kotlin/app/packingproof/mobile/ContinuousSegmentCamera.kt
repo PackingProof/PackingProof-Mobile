@@ -11,6 +11,7 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.StreamConfigurationMap
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -30,6 +31,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.os.StatFs
+import android.util.Log
 import android.util.Range
 import android.util.Size
 import android.view.Surface
@@ -70,6 +72,9 @@ class ContinuousSegmentCamera(
         private const val ANALYSIS_INTERVAL_MS = 250L
         private const val START_TIMEOUT_MS = 6_000L
         private const val SPLIT_TIMEOUT_MS = 3_000L
+        private const val CAMERA_LOG_TAG = "PackingProof.Camera"
+        private const val PREVIEW_STALL_THRESHOLD_MS = 1_500L
+        private const val PREVIEW_STALL_CHECK_INTERVAL_MS = 2_000L
     }
 
     private val mainHandler = Handler(activity.mainLooper)
@@ -78,6 +83,11 @@ class ContinuousSegmentCamera(
     private val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     private val previewFpsPolicy = AdaptivePreviewFpsPolicy()
     private val captureRequestTargetPolicy = CaptureRequestTargetPolicy()
+    @Volatile private var captureStartedCount = 0L
+    @Volatile private var lastCaptureStartedAtMs = 0L
+    @Volatile private var lastCaptureCompletedAtMs = 0L
+    @Volatile private var stallActive = false
+    private var lastRequestTemplate = "preview"
     private val barcodeScanner: BarcodeScanner = BarcodeScanning.getClient(
         BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS).build(),
     )
@@ -214,6 +224,7 @@ class ContinuousSegmentCamera(
             storageFailureReported = false
             recordingRequested = true
             refreshCaptureRequest()
+            Log.i(CAMERA_LOG_TAG, "startWork path=$path recordAudio=$recordAudio")
             pendingStartPath = path
             startResult = result
             audioOutputFormat = null
@@ -293,6 +304,7 @@ class ContinuousSegmentCamera(
             stopResult = result
             recordingRequested = false
             recordingActive = false
+            Log.i(CAMERA_LOG_TAG, "stopWork")
             if (previewActive) previewFpsPolicy.activate(SystemClock.elapsedRealtime())
             refreshCaptureRequest()
             audioRunning.set(false)
@@ -373,6 +385,7 @@ class ContinuousSegmentCamera(
             captureSession = null
             cameraDevice?.close()
             cameraDevice = null
+            cameraHandler?.removeCallbacks(previewStallCheck)
             previewSurface?.release()
             previewSurface = null
             mainHandler.post {
@@ -620,6 +633,12 @@ class ContinuousSegmentCamera(
                             applyCaptureRequest(session, camera, characteristics)
                             initialized = true
                             updateMotionSensorRegistration()
+                            schedulePreviewStallCheck()
+                            Log.i(
+                                CAMERA_LOG_TAG,
+                                "camera session configured cameraId=$selectedCameraId " +
+                                    "video=$videoSize analysis=$analysisSize mime=$selectedVideoMime",
+                            )
                             val result = initializeResult
                             initializeResult = null
                             if (result != null) replySuccess(result, initializationMap())
@@ -789,6 +808,60 @@ class ContinuousSegmentCamera(
         }
     }
 
+    private val captureCallback = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureStarted(
+            session: CameraCaptureSession,
+            request: CaptureRequest,
+            timestamp: Long,
+            frameNumber: Long,
+        ) {
+            val now = SystemClock.elapsedRealtime()
+            val previous = lastCaptureStartedAtMs
+            if (previous != 0L && now - previous > PREVIEW_STALL_THRESHOLD_MS) {
+                markStall(now - previous)
+            }
+            captureStartedCount++
+            lastCaptureStartedAtMs = now
+        }
+
+        override fun onCaptureCompleted(
+            session: CameraCaptureSession,
+            request: CaptureRequest,
+            result: TotalCaptureResult,
+        ) {
+            lastCaptureCompletedAtMs = SystemClock.elapsedRealtime()
+            if (stallActive) {
+                stallActive = false
+                Log.i(CAMERA_LOG_TAG, "preview recovered: captures resumed")
+            }
+        }
+    }
+
+    private val previewStallCheck = Runnable {
+        if (disposed || !initialized) return@Runnable
+        val now = SystemClock.elapsedRealtime()
+        val last = lastCaptureStartedAtMs
+        if (last != 0L && previewActive && now - last > PREVIEW_STALL_THRESHOLD_MS) {
+            markStall(now - last)
+        }
+        schedulePreviewStallCheck()
+    }
+
+    private fun schedulePreviewStallCheck() {
+        cameraHandler?.postDelayed(previewStallCheck, PREVIEW_STALL_CHECK_INTERVAL_MS)
+    }
+
+    private fun markStall(gapMs: Long) {
+        if (stallActive) return
+        stallActive = true
+        Log.w(
+            CAMERA_LOG_TAG,
+            "preview stall: no capture for ${gapMs}ms " +
+                "previewActive=$previewActive workScanEnabled=$workScanEnabled " +
+                "recordingActive=$recordingActive request=$lastRequestTemplate",
+        )
+    }
+
     private fun applyCaptureRequest(
         session: CameraCaptureSession,
         camera: CameraDevice,
@@ -811,17 +884,25 @@ class ContinuousSegmentCamera(
                 set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, it)
             }
         }.build()
-        session.setRepeatingRequest(request, null, cameraHandler)
+        session.setRepeatingRequest(request, captureCallback, cameraHandler)
+        lastRequestTemplate = if (targets.includeEncoder) "record" else "preview"
+        Log.i(
+            CAMERA_LOG_TAG,
+            "capture request template=$lastRequestTemplate " +
+                "analysis=${targets.includeAnalysis} encoder=${targets.includeEncoder}",
+        )
     }
 
     fun setPairingScanEnabled(enabled: Boolean) {
         pairingScanEnabled = enabled
+        Log.i(CAMERA_LOG_TAG, "pairingScanEnabled=$enabled")
         refreshCaptureRequest()
     }
 
     fun setWorkScanEnabled(enabled: Boolean) {
         workScanEnabled = enabled
         if (!enabled) lastAnalysisElapsedMs = 0L
+        Log.i(CAMERA_LOG_TAG, "workScanEnabled=$enabled")
         refreshCaptureRequest()
     }
 
@@ -834,6 +915,7 @@ class ContinuousSegmentCamera(
         }
         updateMotionSensorRegistration()
         if (active || changed) refreshCaptureRequest()
+        Log.i(CAMERA_LOG_TAG, "previewActive=$active targetFps=${previewFpsPolicy.targetFps}")
     }
 
     private fun updateMotionSensorRegistration() {
@@ -1218,6 +1300,7 @@ class ContinuousSegmentCamera(
 
     private fun failPendingStart(code: String, message: String) {
         val result = startResult ?: return
+        Log.w(CAMERA_LOG_TAG, "start failed code=$code message=$message")
         startResult = null
         pendingStartPath?.let { File(it).delete() }
         pendingStartPath = null
@@ -1238,11 +1321,52 @@ class ContinuousSegmentCamera(
         val result = initializeResult
         initializeResult = null
         initialized = false
+        Log.w(CAMERA_LOG_TAG, "initialization failed code=$code message=$message", error)
         if (result != null) replyError(result, code, error?.let { "$message：${it.message}" } ?: message)
         else notifyNativeError(message, error)
     }
 
+    fun getDiagnostics(result: MethodChannel.Result) {
+        val now = SystemClock.elapsedRealtime()
+        val state = mapOf<String, Any?>(
+            "initialized" to initialized,
+            "cameraId" to selectedCameraId,
+            "lensFacing" to if (selectedLensFacing == CameraCharacteristics.LENS_FACING_FRONT) "front" else "back",
+            "sensorOrientation" to sensorOrientation,
+            "videoWidth" to videoSize.width,
+            "videoHeight" to videoSize.height,
+            "analysisWidth" to analysisSize.width,
+            "analysisHeight" to analysisSize.height,
+            "videoMime" to selectedVideoMime,
+            "fps" to (if (recordingRequested || recordingActive) VIDEO_FPS else previewFpsPolicy.targetFps),
+            "previewActive" to previewActive,
+            "workScanEnabled" to workScanEnabled,
+            "pairingScanEnabled" to pairingScanEnabled,
+            "recordingRequested" to recordingRequested,
+            "recordingActive" to recordingActive,
+            "torchEnabled" to torchEnabled,
+            "canSwitchCamera" to canSwitchCamera,
+            "previewFrameCount" to captureStartedCount,
+            "previewFrameAgeMs" to if (lastCaptureStartedAtMs == 0L) -1L else now - lastCaptureStartedAtMs,
+            "lastCaptureCompletedAgeMs" to if (lastCaptureCompletedAtMs == 0L) -1L else now - lastCaptureCompletedAtMs,
+            "lastRequestTemplate" to lastRequestTemplate,
+            "stallActive" to stallActive,
+        )
+        result.success(
+            mapOf(
+                "device" to mapOf(
+                    "manufacturer" to Build.MANUFACTURER,
+                    "model" to Build.MODEL,
+                    "sdkInt" to Build.VERSION.SDK_INT,
+                    "release" to Build.VERSION.RELEASE,
+                ),
+                "camera" to state,
+            ),
+        )
+    }
+
     private fun notifyNativeError(message: String, error: Throwable?) {
+        Log.w(CAMERA_LOG_TAG, "$message", error)
         emit("nativeError", error?.let { "$message：${it.message}" } ?: message)
     }
 
