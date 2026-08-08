@@ -77,6 +77,7 @@ class ContinuousSegmentCamera(
     private val sensorManager = activity.getSystemService(SensorManager::class.java)
     private val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     private val previewFpsPolicy = AdaptivePreviewFpsPolicy()
+    private val captureRequestTargetPolicy = CaptureRequestTargetPolicy()
     private val barcodeScanner: BarcodeScanner = BarcodeScanning.getClient(
         BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS).build(),
     )
@@ -793,21 +794,20 @@ class ContinuousSegmentCamera(
         camera: CameraDevice,
         characteristics: CameraCharacteristics,
     ) {
-        val includeRecording = recordingRequested || recordingActive
-        val includeAnalysis = includeRecording || workScanEnabled || pairingScanEnabled
+        val targets = captureRequestTargetPolicy.targets(recordingRequested, recordingActive)
         val preview = previewSurface ?: return
         val request = camera.createCaptureRequest(
-            if (includeRecording) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW,
+            if (targets.includeEncoder) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW,
         ).apply {
             addTarget(preview)
-            if (includeRecording) videoInputSurface?.let(::addTarget)
-            if (includeAnalysis) analysisReader?.surface?.let(::addTarget)
+            if (targets.includeEncoder) videoInputSurface?.let(::addTarget)
+            if (targets.includeAnalysis) analysisReader?.surface?.let(::addTarget)
             applyAutomaticCameraControls(this, characteristics)
             set(
                 CaptureRequest.FLASH_MODE,
                 if (torchEnabled) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF,
             )
-            chooseFpsRange(characteristics, includeRecording)?.let {
+            chooseFpsRange(characteristics, targets.includeEncoder)?.let {
                 set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, it)
             }
         }.build()
