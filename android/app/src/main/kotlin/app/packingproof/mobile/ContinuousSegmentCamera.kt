@@ -657,41 +657,63 @@ class ContinuousSegmentCamera(
         val preview = previewSurface ?: return
         val encoder = videoInputSurface ?: return
         val analysis = analysisReader?.surface ?: return
+        submitCaptureSession(
+            camera = camera,
+            surfaces = listOf(preview, encoder, analysis),
+            onConfigured = { session ->
+                captureSession = session
+                try {
+                    applyCaptureRequest(session, camera, characteristics)
+                    initialized = true
+                    schedulePreviewStallCheck()
+                    Log.i(
+                        CAMERA_LOG_TAG,
+                        "camera session configured cameraId=$selectedCameraId " +
+                            "video=$videoSize analysis=$analysisSize mime=$selectedVideoMime",
+                    )
+                    val result = initializeResult
+                    initializeResult = null
+                    if (result != null) replySuccess(result, initializationMap())
+                } catch (error: Throwable) {
+                    failInitialization("capture_request", "摄像头预览启动失败", error)
+                }
+            },
+            onConfigureFailed = {
+                failInitialization("session_config", "摄像头无法同时提供预览、识别和录像", null)
+            },
+            onCreateFailed = { error ->
+                failInitialization("session_create", "摄像头会话创建失败", error)
+            },
+        )
+    }
+
+    private fun submitCaptureSession(
+        camera: CameraDevice,
+        surfaces: List<Surface>,
+        onConfigured: (CameraCaptureSession) -> Unit,
+        onConfigureFailed: () -> Unit,
+        onCreateFailed: (Throwable) -> Unit,
+    ) {
         try {
             camera.createCaptureSession(
-                listOf(preview, encoder, analysis),
+                surfaces,
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         if (disposed) {
                             session.close()
                             return
                         }
-                        captureSession = session
-                        try {
-                            applyCaptureRequest(session, camera, characteristics)
-                            initialized = true
-                            schedulePreviewStallCheck()
-                            Log.i(
-                                CAMERA_LOG_TAG,
-                                "camera session configured cameraId=$selectedCameraId " +
-                                    "video=$videoSize analysis=$analysisSize mime=$selectedVideoMime",
-                            )
-                            val result = initializeResult
-                            initializeResult = null
-                            if (result != null) replySuccess(result, initializationMap())
-                        } catch (error: Throwable) {
-                            failInitialization("capture_request", "摄像头预览启动失败", error)
-                        }
+                        onConfigured(session)
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
-                        failInitialization("session_config", "摄像头无法同时提供预览、识别和录像", null)
+                        onConfigureFailed()
                     }
                 },
                 cameraHandler,
             )
         } catch (error: Throwable) {
-            failInitialization("session_create", "摄像头会话创建失败", error)
+            onCreateFailed(error)
         }
     }
 
@@ -935,36 +957,34 @@ class ContinuousSegmentCamera(
             captureSession = null
             try {
                 oldSession?.close()
-                camera.createCaptureSession(
-                    listOf(preview, encoder, analysis),
-                    object : CameraCaptureSession.StateCallback() {
-                        override fun onConfigured(session: CameraCaptureSession) {
-                            if (disposed) {
-                                session.close()
-                                return
-                            }
-                            captureSession = session
-                            try {
-                                applyCaptureRequest(session, camera, characteristics)
-                                Log.i(CAMERA_LOG_TAG, "capture session recreated")
-                                onConfigured?.invoke()
-                            } catch (error: Throwable) {
-                                notifyNativeError("摄像头会话启动失败", error)
-                                onError?.invoke(error.message ?: "摄像头会话启动失败")
-                            }
-                        }
-
-                        override fun onConfigureFailed(session: CameraCaptureSession) {
-                            notifyNativeError("摄像头会话配置失败", null)
-                            onError?.invoke("摄像头会话配置失败")
-                        }
-                    },
-                    handler,
-                )
             } catch (error: Throwable) {
                 notifyNativeError("摄像头会话创建失败", error)
                 onError?.invoke(error.message ?: "摄像头会话创建失败")
+                return@post
             }
+            submitCaptureSession(
+                camera = camera,
+                surfaces = listOf(preview, encoder, analysis),
+                onConfigured = { session ->
+                    captureSession = session
+                    try {
+                        applyCaptureRequest(session, camera, characteristics)
+                        Log.i(CAMERA_LOG_TAG, "capture session recreated")
+                        onConfigured?.invoke()
+                    } catch (error: Throwable) {
+                        notifyNativeError("摄像头会话启动失败", error)
+                        onError?.invoke(error.message ?: "摄像头会话启动失败")
+                    }
+                },
+                onConfigureFailed = {
+                    notifyNativeError("摄像头会话配置失败", null)
+                    onError?.invoke("摄像头会话配置失败")
+                },
+                onCreateFailed = { error ->
+                    notifyNativeError("摄像头会话创建失败", error)
+                    onError?.invoke(error.message ?: "摄像头会话创建失败")
+                },
+            )
         }
     }
 
