@@ -87,6 +87,7 @@ pwsh -NoProfile -File Tools\Publish-Android.ps1 `
 - Prefer release tags in the form `v<versionName>+<increasing-versionCode>`, for example `v0.5.4+11004`. A plain `v<versionName>` tag is accepted only when `pubspec.yaml` has the same version name and supplies the version code.
 - The formal release script must reject a dirty worktree, a missing or ambiguous tag, and a missing external signing configuration.
 - Complete and record the release-readiness audit (technical debt, performance, concurrency/race conditions) before creating the release tag.
+- Create and upload the GitHub Release (tag, APK, `SHA256SUMS.txt`, release notes) with the GitHub plugin or `gh`; Gitee Release creation remains with the user unless the user says otherwise.
 - Release builds fingerprint tracked Android configuration, dependency files, and the Flutter SDK. Matching inputs reuse Gradle/native caches, while every build still regenerates Flutter Release output and verifies the Git revision and timestamp inside `libapp.so`.
 - Pass `-ForceClean` to `Tools/Publish-Android.ps1` or `Tools/Build-Release-Diagnostic.ps1` when diagnosing a toolchain or cache problem that requires a full `flutter clean`.
 - Keep diagnostic defaults in `Tools/Build-Android.ps1` synchronized with `pubspec.yaml`.
