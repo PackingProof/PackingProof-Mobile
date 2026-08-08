@@ -33,11 +33,11 @@ void main() {
 
     await tester.tap(find.byKey(const Key('about-settings-open')));
     await tester.pumpAndSettle();
-    expect(find.text('版本 0.3.1+9002'), findsOneWidget);
-    expect(find.text('构建修订'), findsOneWidget);
-    expect(find.text('abc1234 · 2026-07-19T14:00:00Z'), findsOneWidget);
+    expect(find.text('版本 0.3.1+9002 · abc1234'), findsOneWidget);
+    expect(find.text('构建修订'), findsNothing);
+    expect(find.text('版本 0.3.1+9002'), findsNothing);
     expect(find.text('源码仓库'), findsOneWidget);
-    expect(find.text('版本发布'), findsOneWidget);
+    expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('Flutter'), findsOneWidget);
     expect(find.text('SQLite / sqflite'), findsOneWidget);
     expect(find.text('AndroidX Media3'), findsOneWidget);
@@ -45,7 +45,7 @@ void main() {
     expect(find.text('wakelock_plus'), findsOneWidget);
     expect(find.text('Microsoft Edge TTS'), findsOneWidget);
 
-    await tester.tap(find.text('版本发布'));
+    await tester.tap(find.text('检查更新'));
     await tester.pump();
     expect(opened.toString(), packingProofReleasesUrl);
   });

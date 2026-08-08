@@ -266,26 +266,21 @@ class _AboutScreenState extends State<AboutScreen> {
                           final String version = info == null
                               ? '正在读取版本'
                               : '版本 ${info.version}+${info.buildNumber}';
+                          final String revision = widget
+                              .buildConfig
+                              .buildRevision
+                              .trim();
                           return _InfoRow(
                             icon: Icons.info_outline_rounded,
                             title: 'PackingProof-Mobile',
-                            subtitle: version,
+                            subtitle: revision.isEmpty
+                                ? version
+                                : '$version · $revision',
                             onTap: _showStartupNotice,
                           );
                         },
                   ),
                   const SizedBox(height: 8),
-                  if (widget.buildConfig.buildRevision.isNotEmpty) ...<Widget>[
-                    _InfoRow(
-                      icon: Icons.build_circle_outlined,
-                      title: '构建修订',
-                      subtitle: widget.buildConfig.buildTimestamp.isEmpty
-                          ? widget.buildConfig.buildRevision
-                          : '${widget.buildConfig.buildRevision} · ${widget.buildConfig.buildTimestamp}',
-                      onTap: _showStartupNotice,
-                    ),
-                    const SizedBox(height: 8),
-                  ],
                   _LinkRow(
                     icon: Icons.code_rounded,
                     title: '源码仓库',
@@ -295,7 +290,7 @@ class _AboutScreenState extends State<AboutScreen> {
                   const SizedBox(height: 8),
                   _LinkRow(
                     icon: Icons.new_releases_outlined,
-                    title: '版本发布',
+                    title: '检查更新',
                     subtitle: packingProofReleasesUrl,
                     onTap: () => unawaited(_open(packingProofReleasesUrl)),
                   ),
