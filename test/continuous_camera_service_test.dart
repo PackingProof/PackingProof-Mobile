@@ -118,6 +118,11 @@ void main() {
               'initialized': true,
               'previewFrameCount': 123,
               'previewFrameAgeMs': 25,
+              'storageAvailableBytes': 123456789,
+              'storageTotalBytes': 999999999,
+              'muxWriteMaxMs': 140,
+              'muxWriteStallCount': 3,
+              'codecFallbackReason': 'vendor_hevc_playback_risk',
               'lastRequestTemplate': 'preview',
               'stallActive': false,
             },
@@ -136,6 +141,11 @@ void main() {
     expect(snapshot!.initialized, isTrue);
     expect(snapshot.previewFrameCount, 123);
     expect(snapshot.previewFrameAgeMs, 25);
+    expect(snapshot.storageAvailableBytes, 123456789);
+    expect(snapshot.storageTotalBytes, 999999999);
+    expect(snapshot.muxWriteMaxMs, 140);
+    expect(snapshot.muxWriteStallCount, 3);
+    expect(snapshot.codecFallbackReason, 'vendor_hevc_playback_risk');
     expect(snapshot.deviceSummary, contains('vivo'));
   });
 

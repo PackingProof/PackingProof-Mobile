@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import androidx.lifecycle.Observer
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -29,6 +30,7 @@ internal class LanBackupPlugin(
     companion object {
         private const val CHANNEL = "app.packingproof.mobile/lan_backup"
         private const val WORK_PREFIX = "lan-backup-"
+        private const val INVALID_RSSI = -127
     }
 
     private val context: Context = activity.applicationContext
@@ -156,6 +158,7 @@ internal class LanBackupPlugin(
                     result.success(storageManager.checkAndReclaim())
                     notifySnapshotChanged()
                 }
+                "getNetworkDiagnostics" -> result.success(networkDiagnostics())
                 "retry" -> {
                     val id = call.argument<String>("id") ?: error("缺少任务编号")
                     val sourceStatus = store.discardJobIfUnavailable(id)
@@ -200,6 +203,30 @@ internal class LanBackupPlugin(
             connectivity.getNetworkCapabilities(network)
                 ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
         }
+    }
+
+    private fun networkDiagnostics(): Map<String, Any?> {
+        val wifiConnected = isWifiConnected()
+        var rssiDbm: Int? = null
+        var linkSpeedMbps: Int? = null
+        if (wifiConnected) {
+            runCatching {
+                val wifiManager =
+                    context.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                val info = wifiManager.connectionInfo
+                if (info != null) {
+                    if (info.rssi != INVALID_RSSI) {
+                        rssiDbm = info.rssi
+                    }
+                    linkSpeedMbps = info.linkSpeed.takeIf { it > 0 }
+                }
+            }
+        }
+        return mapOf(
+            "wifiConnected" to wifiConnected,
+            "rssiDbm" to rssiDbm,
+            "linkSpeedMbps" to linkSpeedMbps,
+        )
     }
 
     private fun schedulePending() {

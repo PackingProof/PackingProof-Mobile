@@ -375,6 +375,62 @@ void main() {
     expect(enqueueCount, 0);
   });
 
+  test('获取网络诊断并解析 Wi-Fi 信号', () async {
+    final MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/lan_backup_network_test',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method != 'getNetworkDiagnostics') return null;
+          return <Object?, Object?>{
+            'wifiConnected': true,
+            'rssiDbm': -55,
+            'linkSpeedMbps': 866,
+          };
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    final LanBackupService service = LanBackupService(channel: channel);
+    addTearDown(service.dispose);
+
+    final NetworkDiagnostics? diagnostics =
+        await service.getNetworkDiagnostics();
+
+    expect(diagnostics, isNotNull);
+    expect(diagnostics!.wifiConnected, isTrue);
+    expect(diagnostics.rssiDbm, -55);
+    expect(diagnostics.linkSpeedMbps, 866);
+  });
+
+  test('未连接 Wi-Fi 时网络诊断返回空信号字段', () async {
+    final MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/lan_backup_network_empty_test',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'getNetworkDiagnostics') {
+            return <Object?, Object?>{'wifiConnected': false};
+          }
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    final LanBackupService service = LanBackupService(channel: channel);
+    addTearDown(service.dispose);
+
+    final NetworkDiagnostics? diagnostics =
+        await service.getNetworkDiagnostics();
+
+    expect(diagnostics, isNotNull);
+    expect(diagnostics!.wifiConnected, isFalse);
+    expect(diagnostics.rssiDbm, isNull);
+    expect(diagnostics.linkSpeedMbps, isNull);
+  });
+
   test('保存主机允许后才保存设备专属令牌', () async {
     final MethodChannel channel = const MethodChannel(
       'app.packingproof.mobile/lan_backup_v3_enrollment_test',

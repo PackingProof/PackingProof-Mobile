@@ -153,6 +153,7 @@ abstract interface class LanBackupSink implements Listenable {
   Future<void> retry(String jobId);
   Future<void> cancel(String jobId);
   Future<StorageSpaceResult> checkAndReclaimStorage();
+  Future<NetworkDiagnostics?> getNetworkDiagnostics();
   Future<void> refresh();
   Future<RemoteRecordingPage> fetchRemoteRecordings({
     required int page,
@@ -858,6 +859,20 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
         <Object?, Object?>{};
     await refresh();
     return StorageSpaceResult.fromMap(values);
+  }
+
+  @override
+  Future<NetworkDiagnostics?> getNetworkDiagnostics() async {
+    try {
+      final Map<Object?, Object?> values =
+          (await _channel.invokeMapMethod<Object?, Object?>(
+            'getNetworkDiagnostics',
+          )) ??
+          <Object?, Object?>{};
+      return NetworkDiagnostics.fromMap(values);
+    } on Object {
+      return null;
+    }
   }
 
   @override

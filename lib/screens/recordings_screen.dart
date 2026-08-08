@@ -124,6 +124,7 @@ class RecordingsScreen extends StatefulWidget {
     this.onHideRemoteRecordings,
     this.remotePlaybackHeaders = const <String, String>{},
     this.remoteClipServiceFactory,
+    this.onNetworkDiagnostics,
     this.mode = RecordingsScreenMode.history,
     this.embedded = false,
     this.onConnectComputer,
@@ -195,6 +196,7 @@ class RecordingsScreen extends StatefulWidget {
   final Future<void> Function(Set<int> ids)? onHideRemoteRecordings;
   final Map<String, String> remotePlaybackHeaders;
   final RemoteVideoClipSink? Function(Uri remoteUri)? remoteClipServiceFactory;
+  final Future<NetworkDiagnostics?> Function()? onNetworkDiagnostics;
   final RecordingsScreenMode mode;
   final bool embedded;
   final VoidCallback? onConnectComputer;
@@ -1576,6 +1578,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                                         : widget.remoteClipServiceFactory?.call(
                                             item.remote!.playUri,
                                           ),
+                                    networkDiagnosticsLoader:
+                                        widget.onNetworkDiagnostics,
                                   ),
                             ),
                           );

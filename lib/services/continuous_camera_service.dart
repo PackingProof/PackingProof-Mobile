@@ -158,6 +158,14 @@ class CameraDiagnosticsSnapshot {
       (camera['previewFrameCount'] as num?)?.toInt() ?? 0;
   int get previewFrameAgeMs =>
       (camera['previewFrameAgeMs'] as num?)?.toInt() ?? -1;
+  int get storageAvailableBytes =>
+      (camera['storageAvailableBytes'] as num?)?.toInt() ?? -1;
+  int get storageTotalBytes =>
+      (camera['storageTotalBytes'] as num?)?.toInt() ?? -1;
+  int get muxWriteMaxMs => (camera['muxWriteMaxMs'] as num?)?.toInt() ?? 0;
+  int get muxWriteStallCount =>
+      (camera['muxWriteStallCount'] as num?)?.toInt() ?? 0;
+  String? get codecFallbackReason => camera['codecFallbackReason'] as String?;
   String? get lastRequestTemplate => camera['lastRequestTemplate'] as String?;
   bool get stallActive => camera['stallActive'] == true;
 

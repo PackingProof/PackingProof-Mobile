@@ -936,6 +936,9 @@ class PackingSessionController extends ChangeNotifier {
 
   Future<void> disconnectBackup() => _lanBackupService.disconnect();
 
+  Future<NetworkDiagnostics?> fetchNetworkDiagnostics() =>
+      _lanBackupService.getNetworkDiagnostics();
+
   Future<void> retryBackupConnection() async {
     final bool connected = await _lanBackupService.retryConnection();
     if (connected && _lanBackupService.snapshot.autoEnabled) {

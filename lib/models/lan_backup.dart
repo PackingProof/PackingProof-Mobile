@@ -201,6 +201,27 @@ class StorageSpaceResult {
   final bool insufficient;
 }
 
+/// 播放/备份诊断用的网络状态快照（无信号时字段为 null）。
+class NetworkDiagnostics {
+  const NetworkDiagnostics({
+    required this.wifiConnected,
+    this.rssiDbm,
+    this.linkSpeedMbps,
+  });
+
+  factory NetworkDiagnostics.fromMap(Map<Object?, Object?> map) {
+    return NetworkDiagnostics(
+      wifiConnected: map['wifiConnected'] == true,
+      rssiDbm: (map['rssiDbm'] as num?)?.toInt(),
+      linkSpeedMbps: (map['linkSpeedMbps'] as num?)?.toInt(),
+    );
+  }
+
+  final bool wifiConnected;
+  final int? rssiDbm;
+  final int? linkSpeedMbps;
+}
+
 class LanBackupSnapshot {
   const LanBackupSnapshot({
     this.endpoint,

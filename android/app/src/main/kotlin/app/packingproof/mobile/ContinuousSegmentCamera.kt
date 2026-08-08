@@ -70,6 +70,9 @@ class ContinuousSegmentCamera(
         private const val CAMERA_LOG_TAG = "PackingProof.Camera"
         private const val PREVIEW_STALL_THRESHOLD_MS = 1_500L
         private const val PREVIEW_STALL_CHECK_INTERVAL_MS = 2_000L
+        private const val MUX_WRITE_STALL_THRESHOLD_MS = 100L
+        private const val CAMERA_DISABLED_MESSAGE =
+            "摄像头被系统或设备策略禁用，请检查摄像头访问开关"
     }
 
     private val mainHandler = Handler(activity.mainLooper)
@@ -85,6 +88,8 @@ class ContinuousSegmentCamera(
     @Volatile private var stallRecoveryStage = 0
     private var stallRecoveryBaseCaptureMs = 0L
     private var stallRecoveryLastLogAtMs = 0L
+    @Volatile private var muxWriteMaxMs = 0L
+    @Volatile private var muxWriteStallCount = 0L
     @Volatile private var lastRequestTemplate = "preview"
     private val barcodeScanner: BarcodeScanner = BarcodeScanning.getClient(
         BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS).build(),
@@ -594,11 +599,29 @@ class ContinuousSegmentCamera(
                     ) {
                         retryCameraOpen()
                     } else {
-                        failInitialization("camera_error", "摄像头打开失败（$error）", null)
+                        failInitialization(
+                            "camera_error",
+                            if (error == CameraDevice.StateCallback.ERROR_CAMERA_DISABLED) {
+                                CAMERA_DISABLED_MESSAGE
+                            } else {
+                                "摄像头打开失败（$error）"
+                            },
+                            null,
+                        )
                     }
                 }
             }, cameraHandler)
         } catch (error: Throwable) {
+            if (error is CameraAccessException &&
+                error.reason == CameraAccessException.CAMERA_DISABLED
+            ) {
+                failInitialization(
+                    "camera_disabled",
+                    CAMERA_DISABLED_MESSAGE,
+                    error,
+                )
+                return
+            }
             if (openCameraAttempts < CameraOpenRetryPolicy.MAX_ATTEMPTS &&
                 (error is CameraAccessException || error is SecurityException)
             ) {
@@ -1319,11 +1342,13 @@ class ContinuousSegmentCamera(
                 flags and MediaCodec.BUFFER_FLAG_KEY_FRAME,
             )
         }
+        val writeStartedAtMs = SystemClock.elapsedRealtime()
         activeMuxer.writeSampleData(
             videoTrack,
             sample,
             info,
         )
+        recordMuxWrite(writeStartedAtMs)
     }
 
     private fun writeAudio(sample: EncodedSample) {
@@ -1337,7 +1362,15 @@ class ContinuousSegmentCamera(
         val info = MediaCodec.BufferInfo().apply {
             set(0, sample.bytes.size, ptsUs, 0)
         }
+        val writeStartedAtMs = SystemClock.elapsedRealtime()
         activeMuxer.writeSampleData(audioTrack, ByteBuffer.wrap(sample.bytes), info)
+        recordMuxWrite(writeStartedAtMs)
+    }
+
+    private fun recordMuxWrite(startedAtMs: Long) {
+        val elapsedMs = SystemClock.elapsedRealtime() - startedAtMs
+        if (elapsedMs > muxWriteMaxMs) muxWriteMaxMs = elapsedMs
+        if (elapsedMs > MUX_WRITE_STALL_THRESHOLD_MS) muxWriteStallCount++
     }
 
     private fun audioPtsOnVideoTimeline(sample: EncodedSample): Long {
@@ -1472,6 +1505,15 @@ class ContinuousSegmentCamera(
             "previewFrameCount" to captureStartedCount,
             "previewFrameAgeMs" to if (lastCaptureStartedAtMs == 0L) -1L else now - lastCaptureStartedAtMs,
             "lastCaptureCompletedAgeMs" to if (lastCaptureCompletedAtMs == 0L) -1L else now - lastCaptureCompletedAtMs,
+            "storageAvailableBytes" to runCatching {
+                StatFs(activity.filesDir.path).availableBytes
+            }.getOrDefault(-1L),
+            "storageTotalBytes" to runCatching {
+                StatFs(activity.filesDir.path).totalBytes
+            }.getOrDefault(-1L),
+            "muxWriteMaxMs" to muxWriteMaxMs,
+            "muxWriteStallCount" to muxWriteStallCount,
+            "codecFallbackReason" to codecFallbackReason,
             "lastRequestTemplate" to lastRequestTemplate,
             "stallActive" to stallActive,
             "stallRecoveryStage" to stallRecoveryStage,

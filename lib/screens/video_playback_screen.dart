@@ -6,7 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
+import '../models/lan_backup.dart';
 import '../models/recording_session.dart';
+import '../services/camera_diagnostics_service.dart';
+import '../services/continuous_camera_service.dart';
 import '../services/diagnostics_log_service.dart';
 import '../services/recording_path_diagnostics.dart';
 import '../services/remote_playback_probe.dart';
@@ -19,6 +22,23 @@ import '../widgets/playback_error_panel.dart';
 import 'video_trim_screen.dart';
 import 'remote_video_trim_screen.dart';
 
+/// 统计播放过程中进入缓冲的次数与最近播放位置，供诊断日志使用。
+class PlaybackBufferingTracker {
+  int bufferingCount = 0;
+  int lastPositionMs = 0;
+  bool _wasBuffering = false;
+
+  void observe(VideoPlayerValue value) {
+    if (value.isBuffering && !_wasBuffering) {
+      bufferingCount++;
+      _wasBuffering = true;
+    } else if (!value.isBuffering) {
+      _wasBuffering = false;
+    }
+    lastPositionMs = value.position.inMilliseconds;
+  }
+}
+
 class VideoPlaybackScreen extends StatefulWidget {
   const VideoPlaybackScreen({
     required this.session,
@@ -29,6 +49,7 @@ class VideoPlaybackScreen extends StatefulWidget {
     this.remoteHeaders = const <String, String>{},
     this.remoteClipService,
     this.backedUpOffline = false,
+    this.networkDiagnosticsLoader,
     super.key,
   });
 
@@ -40,6 +61,7 @@ class VideoPlaybackScreen extends StatefulWidget {
   final Map<String, String> remoteHeaders;
   final RemoteVideoClipSink? remoteClipService;
   final bool backedUpOffline;
+  final Future<NetworkDiagnostics?> Function()? networkDiagnosticsLoader;
 
   @override
   State<VideoPlaybackScreen> createState() => _VideoPlaybackScreenState();
@@ -57,6 +79,8 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
       (widget.remoteVideoId != null && widget.remoteClipService != null);
   bool _resumeAfterScrub = false;
   double? _scrubMilliseconds;
+  final PlaybackBufferingTracker _bufferingTracker = PlaybackBufferingTracker();
+  bool _playbackEndLogged = false;
   final VideoShareService _shareService = VideoShareService();
   bool _sharing = false;
   double _shareProgress = 0;
@@ -92,6 +116,7 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         },
       ),
     );
+    unawaited(_logPlaybackEnvironment());
     try {
       await _video.initialize();
       await _video.setVolume(1);
@@ -189,8 +214,45 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
   @override
   void dispose() {
     _video.removeListener(_handlePlaybackBoundary);
+    unawaited(_logPlaybackEnd());
     _video.dispose();
     super.dispose();
+  }
+
+  Future<void> _logPlaybackEnvironment() async {
+    final Map<String, Object?> extra = <String, Object?>{};
+    final CameraDiagnosticsSnapshot? camera =
+        await CameraDiagnosticsService().loadSnapshot();
+    if (camera != null) {
+      extra['storageAvailableBytes'] = camera.storageAvailableBytes;
+      extra['storageTotalBytes'] = camera.storageTotalBytes;
+    }
+    final Future<NetworkDiagnostics?> Function()? loader =
+        widget.networkDiagnosticsLoader;
+    if (loader != null) {
+      final NetworkDiagnostics? network = await loader();
+      if (network != null) {
+        extra['wifiConnected'] = network.wifiConnected;
+        extra['wifiRssiDbm'] = network.rssiDbm;
+        extra['wifiLinkSpeedMbps'] = network.linkSpeedMbps;
+      }
+    }
+    if (extra.isEmpty) return;
+    await DiagnosticsLogService().log(kind: 'playback_env', extra: extra);
+  }
+
+  Future<void> _logPlaybackEnd() async {
+    if (_playbackEndLogged) return;
+    _playbackEndLogged = true;
+    await DiagnosticsLogService().log(
+      kind: 'playback_end',
+      extra: <String, Object?>{
+        'source': widget.remoteUri == null ? 'local' : 'remote',
+        'sessionId': _session.id,
+        'watchedMs': _bufferingTracker.lastPositionMs,
+        'bufferingCount': _bufferingTracker.bufferingCount,
+      },
+    );
   }
 
   Future<void> _togglePlayback() async {
@@ -263,6 +325,7 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
   }
 
   void _handlePlaybackBoundary() {
+    _bufferingTracker.observe(_video.value);
     if (_handlingBoundary ||
         !_video.value.isInitialized ||
         _video.value.position < _playbackEnd) {

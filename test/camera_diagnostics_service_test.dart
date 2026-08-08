@@ -32,6 +32,10 @@ void main() {
           'initialized': true,
           'previewFrameCount': count,
           'previewFrameAgeMs': ageMs,
+          'storageAvailableBytes': 123456789,
+          'storageTotalBytes': 999999999,
+          'muxWriteMaxMs': 140,
+          'muxWriteStallCount': 3,
           'workScanEnabled': true,
           'lastRequestTemplate': 'preview',
           'stallActive': false,
@@ -57,6 +61,10 @@ void main() {
     expect(first['kind'], 'snapshot');
     expect(first['trigger'], 'heartbeat');
     expect(first['previewFrameCount'], 1);
+    expect(first['storageAvailableBytes'], 123456789);
+    expect(first['storageTotalBytes'], 999999999);
+    expect(first['muxWriteMaxMs'], 140);
+    expect(first['muxWriteStallCount'], 3);
     expect(first['device.manufacturer'], 'vivo');
   });
 
