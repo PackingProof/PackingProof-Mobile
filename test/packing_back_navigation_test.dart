@@ -31,6 +31,25 @@ void main() {
     expect(_resolve(now, selectedTab: 2), PackingBackAction.showHome);
   });
 
+  test('工作中切换历史或设置被拦截', () {
+    expect(
+      shouldBlockTabSwitch(workInProgress: true, busy: false, from: 1, to: 0),
+      isTrue,
+    );
+    expect(
+      shouldBlockTabSwitch(workInProgress: false, busy: true, from: 1, to: 2),
+      isTrue,
+    );
+    expect(
+      shouldBlockTabSwitch(workInProgress: true, busy: false, from: 1, to: 1),
+      isFalse,
+    );
+    expect(
+      shouldBlockTabSwitch(workInProgress: false, busy: false, from: 1, to: 0),
+      isFalse,
+    );
+  });
+
   test('录像首页两秒内第二次返回才退出', () {
     expect(_resolve(now), PackingBackAction.armExit);
     expect(

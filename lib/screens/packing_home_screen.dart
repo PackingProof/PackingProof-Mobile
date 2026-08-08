@@ -65,6 +65,14 @@ PackingBackAction resolvePackingBackAction({
 }
 
 @visibleForTesting
+bool shouldBlockTabSwitch({
+  required bool workInProgress,
+  required bool busy,
+  required int from,
+  required int to,
+}) => (workInProgress || busy) && to != 1;
+
+@visibleForTesting
 Future<void> showComputerPairingFailureDialog(
   BuildContext context,
   String message,
@@ -255,7 +263,16 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   }
 
   void _selectTab(int value) {
-    if ((_controller.isWorking || _controller.isBusy) && value != 1) return;
+    if (shouldBlockTabSwitch(
+      workInProgress: _controller.isWorking,
+      busy: _controller.isBusy,
+      from: _selectedTab,
+      to: value,
+    )) {
+      _resetExitIntent();
+      _showBackMessage('工作进行中，请先结束工作');
+      return;
+    }
     _resetExitIntent();
     setState(() => _selectedTab = value);
     unawaited(_controller.setPreviewActive(value == 1));
