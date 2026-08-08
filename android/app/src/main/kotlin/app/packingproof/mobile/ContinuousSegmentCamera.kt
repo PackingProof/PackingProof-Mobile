@@ -82,10 +82,10 @@ class ContinuousSegmentCamera(
     @Volatile private var lastCaptureStartedAtMs = 0L
     @Volatile private var lastCaptureCompletedAtMs = 0L
     @Volatile private var stallActive = false
-    private var stallRecoveryStage = 0
+    @Volatile private var stallRecoveryStage = 0
     private var stallRecoveryBaseCaptureMs = 0L
     private var stallRecoveryLastLogAtMs = 0L
-    private var lastRequestTemplate = "preview"
+    @Volatile private var lastRequestTemplate = "preview"
     private val barcodeScanner: BarcodeScanner = BarcodeScanning.getClient(
         BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS).build(),
     )
@@ -98,16 +98,16 @@ class ContinuousSegmentCamera(
     private var textureEntry: TextureRegistry.SurfaceTextureEntry? = null
     private var previewSurface: Surface? = null
     private var cameraDevice: CameraDevice? = null
-    private var selectedCameraId: String? = null
-    private var selectedCameraCharacteristics: CameraCharacteristics? = null
+    @Volatile private var selectedCameraId: String? = null
+    @Volatile private var selectedCameraCharacteristics: CameraCharacteristics? = null
     private var captureSession: CameraCaptureSession? = null
     private var analysisReader: ImageReader? = null
-    private var sensorOrientation = 90
-    private var selectedLensFacing = CameraCharacteristics.LENS_FACING_BACK
-    private var canSwitchCamera = false
-    private var videoSize = Size(VIDEO_WIDTH, VIDEO_HEIGHT)
-    private var analysisSize = Size(1280, 720)
-    private var initialized = false
+    @Volatile private var sensorOrientation = 90
+    @Volatile private var selectedLensFacing = CameraCharacteristics.LENS_FACING_BACK
+    @Volatile private var canSwitchCamera = false
+    @Volatile private var videoSize = Size(VIDEO_WIDTH, VIDEO_HEIGHT)
+    @Volatile private var analysisSize = Size(1280, 720)
+    @Volatile private var initialized = false
     private var disposed = false
     private var initializeResult: MethodChannel.Result? = null
     private var openCameraAttempts = 0
@@ -117,15 +117,15 @@ class ContinuousSegmentCamera(
     private var videoEncoder: MediaCodec? = null
     private var videoInputSurface: Surface? = null
     private var videoOutputFormat: MediaFormat? = null
-    private var selectedVideoMime = MediaFormat.MIMETYPE_VIDEO_HEVC
+    @Volatile private var selectedVideoMime = MediaFormat.MIMETYPE_VIDEO_HEVC
     private var audioOutputFormat: MediaFormat? = null
 
     private val audioRunning = AtomicBoolean(false)
     @Volatile private var audioRecord: AudioRecord? = null
-    private var audioThread: Thread? = null
+    @Volatile private var audioThread: Thread? = null
 
-    private var recordingRequested = false
-    private var recordingActive = false
+    @Volatile private var recordingRequested = false
+    @Volatile private var recordingActive = false
     private var startResult: MethodChannel.Result? = null
     private var stopResult: MethodChannel.Result? = null
     private var splitResult: MethodChannel.Result? = null
@@ -146,11 +146,11 @@ class ContinuousSegmentCamera(
     private var storageFailureReported = false
 
     private var scannerBusy = false
-    private var pairingScanEnabled = false
-    private var workScanEnabled = false
-    private var torchEnabled = false
-    private var lastAnalysisElapsedMs = 0L
-    private var previewActive = true
+    @Volatile private var pairingScanEnabled = false
+    @Volatile private var workScanEnabled = false
+    @Volatile private var torchEnabled = false
+    @Volatile private var lastAnalysisElapsedMs = 0L
+    @Volatile private var previewActive = true
     private var recordAudio = true
 
     fun initialize(result: MethodChannel.Result, videoCodec: String? = null) {
@@ -188,6 +188,10 @@ class ContinuousSegmentCamera(
 
     fun startWork(path: String, recordAudio: Boolean, result: MethodChannel.Result) {
         val handler = muxHandler
+        if (disposed) {
+            result.error("disposed", "摄像头已经关闭", null)
+            return
+        }
         if (!initialized || handler == null) {
             result.error("camera_not_ready", "摄像头尚未准备完成", null)
             return
@@ -241,6 +245,10 @@ class ContinuousSegmentCamera(
 
     fun split(path: String, result: MethodChannel.Result) {
         val handler = muxHandler
+        if (disposed) {
+            result.error("disposed", "摄像头已经关闭", null)
+            return
+        }
         if (handler == null) {
             result.error("camera_not_ready", "摄像头尚未准备完成", null)
             return
@@ -280,6 +288,10 @@ class ContinuousSegmentCamera(
 
     fun stopWork(result: MethodChannel.Result) {
         val handler = muxHandler
+        if (disposed) {
+            result.error("disposed", "摄像头已经关闭", null)
+            return
+        }
         if (handler == null) {
             result.error("camera_not_ready", "摄像头尚未准备完成", null)
             return
@@ -337,14 +349,6 @@ class ContinuousSegmentCamera(
         startResult?.let { replyError(it, "disposed", "录像启动已取消") }
         splitResult?.let { replyError(it, "disposed", "录像分段已取消") }
         stopResult?.let { replyError(it, "disposed", "录像保存已取消") }
-        initializeResult = null
-        startResult = null
-        splitResult = null
-        stopResult = null
-        initialized = false
-        recordingRequested = false
-        recordingActive = false
-        workScanEnabled = false
         audioRunning.set(false)
         try {
             audioRecord?.stop()
@@ -357,6 +361,16 @@ class ContinuousSegmentCamera(
         val activeMuxHandler = muxHandler
         val activeCameraHandler = cameraHandler
         if (activeMuxHandler != null) activeMuxHandler.post {
+            // 与 muxHandler 上可能在途的开始/停止/分段任务串行清空状态。
+            initializeResult = null
+            startResult = null
+            stopResult = null
+            splitResult = null
+            pendingStartPath = null
+            pendingSplitPath = null
+            recordingRequested = false
+            recordingActive = false
+            initialized = false
             closeMuxer(deleteEmpty = false)
             try {
                 videoEncoder?.stop()
@@ -373,6 +387,8 @@ class ContinuousSegmentCamera(
         } else finishCleanup()
         if (activeCameraHandler != null) activeCameraHandler.post {
             scannerBusy = false
+            workScanEnabled = false
+            pairingScanEnabled = false
             analysisReader?.close()
             analysisReader = null
             captureSession?.close()
@@ -783,8 +799,10 @@ class ContinuousSegmentCamera(
                 }
                 .addOnFailureListener { emit("barcodeFrame", emptyList<Any>()) }
                 .addOnCompleteListener {
-                    image.close()
-                    scannerBusy = false
+                    cameraHandler?.post {
+                        image.close()
+                        scannerBusy = false
+                    }
                 }
         } catch (error: Throwable) {
             image.close()
