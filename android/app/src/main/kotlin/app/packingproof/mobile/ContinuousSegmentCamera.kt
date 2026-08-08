@@ -76,6 +76,7 @@ class ContinuousSegmentCamera(
     private val cameraManager = activity.getSystemService(CameraManager::class.java)
     private val captureRequestTargetPolicy = CaptureRequestTargetPolicy()
     private val recordingFpsRangePolicy = RecordingFpsRangePolicy(VIDEO_FPS)
+    private val recordingCodecPolicy = RecordingCodecPolicy(Build.MANUFACTURER)
     private val stallRecoveryPolicy = PreviewStallRecoveryPolicy()
     @Volatile private var captureStartedCount = 0L
     @Volatile private var lastCaptureStartedAtMs = 0L
@@ -411,49 +412,76 @@ class ContinuousSegmentCamera(
         // 部分鸿蒙/低端机型只有 H.265 编码器却没有可用的 H.265 解码器，
         // 录出的 H.265 在本机无法播放，必须直接回退到 H.264。
         val hevcDecodable = CodecCapabilities.hasDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC)
+        val preferH264 = recordingCodecPolicy.preferH264OverHevc()
         if (rawPreferred == MediaFormat.MIMETYPE_VIDEO_HEVC && !hevcDecodable) {
-            codecFallbackReason = "no_hevc_decoder"
+            codecFallbackReason = RecordingCodecPolicy.FALLBACK_NO_HEVC_DECODER
+        } else if (rawPreferred == MediaFormat.MIMETYPE_VIDEO_HEVC && preferH264) {
+            // 鸿蒙/华为机型虽然声明支持 H.265 解码，应用内播放仍可能失败，
+            // 自动优先 H.264 保证 App 内可直接回放。
+            codecFallbackReason = RecordingCodecPolicy.FALLBACK_VENDOR_HEVC_RISK
         }
-        val candidates = listOf(rawPreferred, fallback).filter {
+        val candidates = if (rawPreferred == MediaFormat.MIMETYPE_VIDEO_HEVC && preferH264) {
+            listOf(MediaFormat.MIMETYPE_VIDEO_AVC, MediaFormat.MIMETYPE_VIDEO_HEVC)
+        } else {
+            listOf(rawPreferred, fallback)
+        }.filter {
             it != MediaFormat.MIMETYPE_VIDEO_HEVC || hevcDecodable
         }
         for (mime in candidates) {
-            var codec: MediaCodec? = null
-            try {
-                val format = MediaFormat.createVideoFormat(mime, videoSize.width, videoSize.height).apply {
-                    setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-                    setInteger(
-                        MediaFormat.KEY_BIT_RATE,
-                        if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) HEVC_VIDEO_BIT_RATE else AVC_VIDEO_BIT_RATE,
-                    )
-                    setInteger(MediaFormat.KEY_FRAME_RATE, VIDEO_FPS)
-                    setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
-                    setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+            val formats = buildList {
+                add(createEncoderFormat(mime).apply {
+                    if (mime == MediaFormat.MIMETYPE_VIDEO_AVC) {
+                        setInteger(
+                            MediaFormat.KEY_PROFILE,
+                            MediaCodecInfo.CodecProfileLevel.AVCProfileMain,
+                        )
                     }
+                })
+                if (mime == MediaFormat.MIMETYPE_VIDEO_AVC) {
+                    // 个别厂商编码器不接受显式 Main Profile，再试一次默认 Profile。
+                    add(createEncoderFormat(mime))
                 }
-                codec = MediaCodec.createEncoderByType(mime)
-                codec.setCallback(videoEncoderCallback(), muxHandler)
-                codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-                videoInputSurface = codec.createInputSurface()
-                codec.start()
-                videoEncoder = codec
-                selectedVideoMime = mime
-                setVideoSuspended(true)
-                return
-            } catch (error: Throwable) {
-                lastError = error
+            }
+            for (format in formats) {
+                var codec: MediaCodec? = null
                 try {
-                    codec?.release()
-                } catch (_: Throwable) {
+                    codec = MediaCodec.createEncoderByType(mime)
+                    codec.setCallback(videoEncoderCallback(), muxHandler)
+                    codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                    videoInputSurface = codec.createInputSurface()
+                    codec.start()
+                    videoEncoder = codec
+                    selectedVideoMime = mime
+                    setVideoSuspended(true)
+                    return
+                } catch (error: Throwable) {
+                    lastError = error
+                    try {
+                        codec?.release()
+                    } catch (_: Throwable) {
+                    }
+                    videoInputSurface?.release()
+                    videoInputSurface = null
                 }
-                videoInputSurface?.release()
-                videoInputSurface = null
             }
         }
         throw IllegalStateException("设备没有可用的 H.265 或 H.264 编码器", lastError)
     }
+
+    private fun createEncoderFormat(mime: String): MediaFormat =
+        MediaFormat.createVideoFormat(mime, videoSize.width, videoSize.height).apply {
+            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            setInteger(
+                MediaFormat.KEY_BIT_RATE,
+                if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) HEVC_VIDEO_BIT_RATE else AVC_VIDEO_BIT_RATE,
+            )
+            setInteger(MediaFormat.KEY_FRAME_RATE, VIDEO_FPS)
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+            setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+            }
+        }
 
     private fun videoEncoderCallback(): MediaCodec.Callback =
         object : MediaCodec.Callback() {

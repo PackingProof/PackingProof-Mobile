@@ -10,16 +10,19 @@ void main() {
         'model': 'test-model',
         'sdkInt': 31,
         'release': 'HarmonyOS',
-        'hasHevcDecoder': false,
+        'hasHevcDecoder': true,
         'hasAvcDecoder': true,
+        'preferH264': true,
       },
     );
     expect(support.manufacturer, 'HUAWEI');
     expect(support.model, 'test-model');
     expect(support.sdkInt, 31);
     expect(support.release, 'HarmonyOS');
-    expect(support.hasHevcDecoder, isFalse);
+    expect(support.hasHevcDecoder, isTrue);
     expect(support.hasAvcDecoder, isTrue);
+    expect(support.preferH264, isTrue);
+    expect(support.hevcRecommended, isFalse);
   });
 
   test('VideoDecodeSupport 容忍缺失字段', () {
@@ -30,5 +33,7 @@ void main() {
     expect(support.sdkInt, 0);
     expect(support.hasHevcDecoder, isFalse);
     expect(support.hasAvcDecoder, isFalse);
+    expect(support.preferH264, isFalse);
+    expect(support.hevcRecommended, isFalse);
   });
 }

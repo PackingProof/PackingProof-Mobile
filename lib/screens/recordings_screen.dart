@@ -1269,7 +1269,13 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
             const SizedBox(height: 12),
             _VideoCodecSettings(
               codec: _preferredVideoCodec,
-              hevcPlayable: _deviceDecodeSupport?.hasHevcDecoder,
+              hevcWarning: _deviceDecodeSupport == null
+                  ? null
+                  : (!_deviceDecodeSupport!.hasHevcDecoder
+                      ? '当前设备不支持播放 H.265，新录像将自动使用 H.264'
+                      : (_deviceDecodeSupport!.preferH264
+                          ? '当前设备在应用内播放 H.265 兼容性较差，新录像将自动使用 H.264'
+                          : null)),
               onChanged: _setPreferredVideoCodec,
             ),
             const SizedBox(height: 12),
@@ -2619,12 +2625,12 @@ class _WorkModeSettings extends StatelessWidget {
 class _VideoCodecSettings extends StatelessWidget {
   const _VideoCodecSettings({
     required this.codec,
-    this.hevcPlayable,
+    this.hevcWarning,
     required this.onChanged,
   });
 
   final RecordingVideoCodec codec;
-  final bool? hevcPlayable;
+  final String? hevcWarning;
   final ValueChanged<RecordingVideoCodec> onChanged;
 
   @override
@@ -2673,10 +2679,10 @@ class _VideoCodecSettings extends StatelessWidget {
               height: 1.5,
             ),
           ),
-          if (hevcPlayable == false) ...<Widget>[
+          if (hevcWarning != null) ...<Widget>[
             const SizedBox(height: 10),
             Text(
-              '当前设备不支持播放 H.265，新录像将自动使用 H.264',
+              hevcWarning!,
               style: TextStyle(
                 color: colors.error,
                 fontSize: 13,

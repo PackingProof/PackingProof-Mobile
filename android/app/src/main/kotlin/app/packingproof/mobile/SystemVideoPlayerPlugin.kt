@@ -47,6 +47,9 @@ class SystemVideoPlayerPlugin(
                     "hasAvcDecoder" to CodecCapabilities.hasDecoder(
                         MediaFormat.MIMETYPE_VIDEO_AVC,
                     ),
+                    "preferH264" to RecordingCodecPolicy(
+                        Build.MANUFACTURER,
+                    ).preferH264OverHevc(),
                 ),
             )
             "openWithSystemPlayer" -> openWithSystemPlayer(
