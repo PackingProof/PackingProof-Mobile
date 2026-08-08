@@ -83,10 +83,14 @@ class ContinuousSegmentCamera(
     private val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     private val previewFpsPolicy = AdaptivePreviewFpsPolicy()
     private val captureRequestTargetPolicy = CaptureRequestTargetPolicy()
+    private val stallRecoveryPolicy = PreviewStallRecoveryPolicy()
     @Volatile private var captureStartedCount = 0L
     @Volatile private var lastCaptureStartedAtMs = 0L
     @Volatile private var lastCaptureCompletedAtMs = 0L
     @Volatile private var stallActive = false
+    private var stallRecoveryStage = 0
+    private var stallRecoveryBaseCaptureMs = 0L
+    private var stallRecoveryLastLogAtMs = 0L
     private var lastRequestTemplate = "preview"
     private val barcodeScanner: BarcodeScanner = BarcodeScanning.getClient(
         BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS).build(),
@@ -223,6 +227,7 @@ class ContinuousSegmentCamera(
             ensureParent(path)
             storageFailureReported = false
             recordingRequested = true
+            resetStallRecovery()
             refreshCaptureRequest()
             Log.i(CAMERA_LOG_TAG, "startWork path=$path recordAudio=$recordAudio")
             pendingStartPath = path
@@ -304,6 +309,7 @@ class ContinuousSegmentCamera(
             stopResult = result
             recordingRequested = false
             recordingActive = false
+            resetStallRecovery()
             Log.i(CAMERA_LOG_TAG, "stopWork")
             if (previewActive) previewFpsPolicy.activate(SystemClock.elapsedRealtime())
             refreshCaptureRequest()
@@ -383,6 +389,7 @@ class ContinuousSegmentCamera(
             analysisReader = null
             captureSession?.close()
             captureSession = null
+            resetStallRecovery()
             cameraDevice?.close()
             cameraDevice = null
             cameraHandler?.removeCallbacks(previewStallCheck)
@@ -832,6 +839,8 @@ class ContinuousSegmentCamera(
             lastCaptureCompletedAtMs = SystemClock.elapsedRealtime()
             if (stallActive) {
                 stallActive = false
+                stallRecoveryStage = 0
+                stallRecoveryBaseCaptureMs = 0L
                 Log.i(CAMERA_LOG_TAG, "preview recovered: captures resumed")
             }
         }
@@ -841,10 +850,96 @@ class ContinuousSegmentCamera(
         if (disposed || !initialized) return@Runnable
         val now = SystemClock.elapsedRealtime()
         val last = lastCaptureStartedAtMs
+        val recording = recordingRequested || recordingActive
         if (last != 0L && previewActive && now - last > PREVIEW_STALL_THRESHOLD_MS) {
             markStall(now - last)
+            runStallRecoveryStep(now, last, recording)
+        } else if (stallActive) {
+            stallActive = false
+            stallRecoveryStage = 0
+            stallRecoveryBaseCaptureMs = 0L
+            Log.i(CAMERA_LOG_TAG, "preview recovered: captures resumed")
         }
         schedulePreviewStallCheck()
+    }
+
+    private fun runStallRecoveryStep(
+        nowMs: Long,
+        lastCaptureMs: Long,
+        recording: Boolean,
+    ) {
+        when (stallRecoveryPolicy.nextAction(stallRecoveryStage, recording, stallActive)) {
+            PreviewStallRecoveryAction.REAPPLY_REQUEST -> {
+                stallRecoveryStage = 1
+                stallRecoveryBaseCaptureMs = lastCaptureMs
+                Log.w(CAMERA_LOG_TAG, "preview recovery stage=reapply request")
+                refreshCaptureRequest()
+            }
+            PreviewStallRecoveryAction.RECREATE_SESSION -> {
+                if (lastCaptureStartedAtMs == stallRecoveryBaseCaptureMs) {
+                    stallRecoveryStage = 2
+                    stallRecoveryBaseCaptureMs = lastCaptureStartedAtMs
+                    Log.w(CAMERA_LOG_TAG, "preview recovery stage=recreate session")
+                    recreateCaptureSession()
+                }
+            }
+            PreviewStallRecoveryAction.LOG_FAILURE -> {
+                if (nowMs - stallRecoveryLastLogAtMs >= 10_000L) {
+                    stallRecoveryLastLogAtMs = nowMs
+                    Log.w(
+                        CAMERA_LOG_TAG,
+                        "preview recovery failed: captures still stalled " +
+                            "recording=$recording request=$lastRequestTemplate",
+                    )
+                }
+            }
+            PreviewStallRecoveryAction.NONE -> Unit
+        }
+    }
+
+    private fun resetStallRecovery() {
+        stallRecoveryStage = 0
+        stallRecoveryBaseCaptureMs = 0L
+        stallRecoveryLastLogAtMs = 0L
+    }
+
+    private fun recreateCaptureSession() {
+        val camera = cameraDevice ?: return
+        val characteristics = selectedCameraCharacteristics ?: return
+        val preview = previewSurface ?: return
+        val encoder = videoInputSurface ?: return
+        val analysis = analysisReader?.surface ?: return
+        val oldSession = captureSession
+        captureSession = null
+        try {
+            oldSession?.close()
+            camera.createCaptureSession(
+                listOf(preview, encoder, analysis),
+                object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        if (disposed) {
+                            session.close()
+                            return
+                        }
+                        captureSession = session
+                        try {
+                            applyCaptureRequest(session, camera, characteristics)
+                            Log.w(CAMERA_LOG_TAG, "preview recovery: session recreated")
+                        } catch (error: Throwable) {
+                            notifyNativeError("摄像头预览恢复失败", error)
+                        }
+                    }
+
+                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                        Log.w(CAMERA_LOG_TAG, "preview recovery: session recreate failed")
+                        notifyNativeError("摄像头预览恢复失败", null)
+                    }
+                },
+                cameraHandler,
+            )
+        } catch (error: Throwable) {
+            notifyNativeError("摄像头预览恢复失败", error)
+        }
     }
 
     private fun schedulePreviewStallCheck() {
@@ -1306,6 +1401,7 @@ class ContinuousSegmentCamera(
         pendingStartPath = null
         recordingRequested = false
         recordingActive = false
+        resetStallRecovery()
         if (previewActive) previewFpsPolicy.activate(SystemClock.elapsedRealtime())
         refreshCaptureRequest()
         setVideoSuspended(true)
@@ -1351,6 +1447,7 @@ class ContinuousSegmentCamera(
             "lastCaptureCompletedAgeMs" to if (lastCaptureCompletedAtMs == 0L) -1L else now - lastCaptureCompletedAtMs,
             "lastRequestTemplate" to lastRequestTemplate,
             "stallActive" to stallActive,
+            "stallRecoveryStage" to stallRecoveryStage,
         )
         result.success(
             mapOf(
