@@ -99,6 +99,7 @@ pwsh -NoProfile -File Tools\Publish-Android.ps1 `
 ## Change Discipline
 
 - Keep changes focused and preserve the existing Flutter/Dart style.
+- Before investigating or fixing a bug, first search upstream GitHub issues and PRs for the affected component (Flutter framework, plugins, native dependencies), note the relevant issue/PR numbers and conclusions, then implement.
 - Keep `README.md` product-facing: describe user value, setup, privacy, and download paths; put internal implementation rules in this file or focused developer documentation.
 - Do not mix unrelated fixes, features, refactors, documentation, or release maintenance in one commit.
 - Avoid broad formatting, generated-file churn, dependency upgrades, or platform changes unless required.
