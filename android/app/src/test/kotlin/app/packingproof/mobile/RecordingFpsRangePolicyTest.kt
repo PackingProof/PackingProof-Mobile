@@ -14,26 +14,26 @@ class RecordingFpsRangePolicyTest {
     }
 
     @Test
-    fun `优先选择与目标帧率完全一致的固定范围`() {
+    fun `优先选择上界为目标帧率且下限最低的范围`() {
         assertEquals(
-            30 to 30,
+            15 to 30,
             policy.choose(listOf(15 to 30, 30 to 30, 24 to 30)),
         )
     }
 
     @Test
-    fun `没有固定范围时选择包含目标帧率的最窄范围`() {
+    fun `没有上界为目标帧率的范围时选择包含目标帧率且下限最低的范围`() {
         assertEquals(
-            15 to 30,
-            policy.choose(listOf(15 to 60, 15 to 30, 24 to 60)),
+            15 to 60,
+            policy.choose(listOf(15 to 60, 24 to 60)),
         )
     }
 
     @Test
     fun `没有包含范围时选择最接近目标帧率的范围`() {
         assertEquals(
-            24 to 30,
-            policy.choose(listOf(24 to 30, 60 to 60)),
+            15 to 24,
+            policy.choose(listOf(15 to 24, 10 to 20)),
         )
     }
 }

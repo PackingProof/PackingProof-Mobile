@@ -1068,6 +1068,7 @@ class ContinuousSegmentCamera(
                         ?.map { it.lower to it.upper },
                 )?.let { (lower, upper) ->
                     set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(lower, upper))
+                    Log.i(CAMERA_LOG_TAG, "capture fpsRange=$lower-$upper")
                 }
             }
         }.build()
