@@ -76,4 +76,37 @@ void main() {
     expect(text, contains('"errorCode":"VideoError"'));
     expect(text, contains('"fileSizeBytes":12345'));
   });
+
+  test('远程播放失败记录设备、HTTP 状态与主机错误码', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'path_diagnostics_remote_test',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final RecordingPathDiagnostics diagnostics = RecordingPathDiagnostics(
+      rootProvider: () async => root,
+    );
+
+    await diagnostics.recordPlaybackFailure(
+      source: 'remote',
+      sessionId: 'remote-4',
+      pathOrUri:
+          'http://192.168.31.63:5280/api/mobile-backup/videos/4/play?ticket=abc',
+      deviceManufacturer: 'vivo',
+      deviceModel: 'V2241A',
+      deviceSdkInt: 34,
+      errorCode: 'VideoError',
+      errorMessage: 'Source error',
+      httpStatus: 403,
+      hostErrorCode: 'device_identity_required',
+      hostError: '设备身份验证失败',
+    );
+
+    final String? text = await diagnostics.exportText();
+    expect(text, isNotNull);
+    expect(text, contains('"source":"remote"'));
+    expect(text, contains('"deviceManufacturer":"vivo"'));
+    expect(text, contains('"httpStatus":403'));
+    expect(text, contains('"hostErrorCode":"device_identity_required"'));
+    expect(text, contains('"hostError":"设备身份验证失败"'));
+  });
 }

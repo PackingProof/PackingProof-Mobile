@@ -7,7 +7,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/recording_session.dart';
+import '../services/diagnostics_log_service.dart';
 import '../services/recording_path_diagnostics.dart';
+import '../services/remote_playback_probe.dart';
 import '../services/system_video_player_service.dart';
 import '../services/video_share_service.dart';
 import '../services/remote_video_clip_service.dart';
@@ -80,6 +82,16 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
   }
 
   Future<void> _initializePlayback() async {
+    unawaited(
+      DiagnosticsLogService().log(
+        kind: 'playback_start',
+        extra: <String, Object?>{
+          'source': widget.remoteUri == null ? 'local' : 'remote',
+          'sessionId': _session.id,
+          'pathOrUri': widget.remoteUri?.toString() ?? _session.filePath,
+        },
+      ),
+    );
     try {
       await _video.initialize();
       await _video.setVolume(1);
@@ -122,10 +134,11 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
   Future<void> _loadLocalPlaybackContext() async {
     final File file = File(_session.filePath);
     if (!file.existsSync()) return;
-    _localVideoMime =
-        await SystemVideoPlayerService().getVideoTrackMime(_session.filePath);
-    _deviceDecodeSupport =
-        await SystemVideoPlayerService().getVideoDecodeSupport();
+    _localVideoMime = await SystemVideoPlayerService().getVideoTrackMime(
+      _session.filePath,
+    );
+    _deviceDecodeSupport = await SystemVideoPlayerService()
+        .getVideoDecodeSupport();
   }
 
   Future<void> _recordPlaybackFailure(Object error) async {
@@ -144,7 +157,13 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         _session.filePath,
       );
     }
-    final VideoDecodeSupport? decodeSupport = _deviceDecodeSupport;
+    final VideoDecodeSupport? decodeSupport =
+        _deviceDecodeSupport ??
+        await SystemVideoPlayerService().getVideoDecodeSupport();
+    RemotePlaybackProbeResult? probe;
+    if (remote) {
+      probe = await RemotePlaybackProbe().probe(widget.remoteUri!);
+    }
     await RecordingPathDiagnostics().recordPlaybackFailure(
       source: remote ? 'remote' : 'local',
       sessionId: _session.id,
@@ -160,6 +179,10 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
           ? error.code
           : error.runtimeType.toString(),
       errorMessage: _playbackErrorSummary(error),
+      httpStatus: probe?.statusCode,
+      hostErrorCode: probe?.hostErrorCode,
+      hostError: probe?.hostError,
+      probeError: probe?.networkError,
     );
   }
 

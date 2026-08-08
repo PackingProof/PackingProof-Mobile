@@ -24,6 +24,7 @@ import '../services/barcode_stability_tracker.dart';
 import '../services/barcode_work_mode_policy.dart';
 import '../services/camera_diagnostics_service.dart';
 import '../services/continuous_camera_service.dart';
+import '../services/diagnostics_log_service.dart';
 import '../services/initial_recording_prompt_policy.dart';
 import '../services/lan_backup_service.dart';
 import '../services/max_volume_service.dart';
@@ -94,7 +95,9 @@ class PackingSessionController extends ChangeNotifier {
       InitialRecordingPromptPolicy();
   final CameraDiagnosticsService _cameraDiagnostics =
       CameraDiagnosticsService();
+  final DiagnosticsLogService _runtimeLog = DiagnosticsLogService();
   Future<void> _cameraInitializeTail = Future<void>.value();
+  bool _appStartLogged = false;
 
   CameraController? _cameraController;
   ContinuousCameraService? _nativeCamera;
@@ -248,6 +251,10 @@ class PackingSessionController extends ChangeNotifier {
       _repository.tryReserveMobileUpdatePrompt(DateTime.now());
 
   Future<void> initialize({bool force = false}) {
+    if (!_appStartLogged) {
+      _appStartLogged = true;
+      unawaited(_runtimeLog.log(kind: 'app_start'));
+    }
     _startCameraDiagnosticsTimer();
     final Future<void> next = _cameraInitializeTail.then(
       (_) => _initializeCamera(force: force),

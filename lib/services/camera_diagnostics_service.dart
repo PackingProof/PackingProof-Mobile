@@ -28,6 +28,7 @@ class CameraDiagnosticsService {
   final Future<Directory> Function() _rootProvider;
   final Future<CameraDiagnosticsSnapshot?> Function() _snapshotLoader;
   final int maximumEntries;
+  Future<void> _pending = Future<void>.value();
 
   Future<CameraDiagnosticsSnapshot?> loadSnapshot() async {
     try {
@@ -63,7 +64,13 @@ class CameraDiagnosticsService {
     await _append(<String, Object?>{'kind': kind, ...extra});
   }
 
-  Future<void> _append(Map<String, Object?> entry) async {
+  Future<void> _append(Map<String, Object?> entry) {
+    final Future<void> next = _pending.then((_) => _appendNow(entry));
+    _pending = next.catchError((Object _) {});
+    return next;
+  }
+
+  Future<void> _appendNow(Map<String, Object?> entry) async {
     try {
       final File file = await _logFile();
       final List<String> lines = await file.exists()
@@ -99,6 +106,7 @@ class CameraDiagnosticsService {
       parts.add(header);
     }
     for (final String name in const <String>[
+      'runtime.jsonl',
       'camera.jsonl',
       'path_fix.jsonl',
     ]) {

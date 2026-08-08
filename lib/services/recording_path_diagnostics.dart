@@ -16,6 +16,7 @@ class RecordingPathDiagnostics {
   final Future<Directory> Function() _rootProvider;
 
   static const int maximumEntries = 200;
+  Future<void> _pending = Future<void>.value();
 
   Future<File> logFile() async {
     final Directory root = await _rootProvider();
@@ -51,6 +52,10 @@ class RecordingPathDiagnostics {
     bool? deviceHasAvcDecoder,
     required String errorCode,
     required String errorMessage,
+    int? httpStatus,
+    String? hostErrorCode,
+    String? hostError,
+    String? probeError,
   }) async {
     developer.log(
       '录像播放失败：$errorCode $errorMessage',
@@ -70,10 +75,20 @@ class RecordingPathDiagnostics {
       'deviceHasAvcDecoder': ?deviceHasAvcDecoder,
       'errorCode': errorCode,
       'errorMessage': errorMessage,
+      'httpStatus': ?httpStatus,
+      'hostErrorCode': ?hostErrorCode,
+      'hostError': ?hostError,
+      'probeError': ?probeError,
     });
   }
 
-  Future<void> _appendEntry(Map<String, Object?> entry) async {
+  Future<void> _appendEntry(Map<String, Object?> entry) {
+    final Future<void> next = _pending.then((_) => _appendEntryNow(entry));
+    _pending = next.catchError((Object _) {});
+    return next;
+  }
+
+  Future<void> _appendEntryNow(Map<String, Object?> entry) async {
     try {
       final File file = await logFile();
       final List<String> lines = await file.exists()

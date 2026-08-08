@@ -11,6 +11,7 @@ import '../app/app_build_config.dart';
 import '../app/packing_proof_mobile_app.dart';
 import '../services/camera_diagnostics_service.dart';
 import '../services/continuous_camera_service.dart';
+import '../services/diagnostics_log_service.dart';
 
 const String packingProofRepositoryUrl =
     'https://github.com/PackingProof/PackingProof-Mobile';
@@ -144,7 +145,21 @@ class _AboutScreenState extends State<AboutScreen> {
     }
     final File? file = await _writeDiagnosticsFile(text);
     final bool shared = file != null && await _shareDiagnostics(file);
-    if (shared || !mounted) return;
+    if (shared || !mounted) {
+      if (shared && mounted) {
+        unawaited(
+          DiagnosticsLogService().log(
+            kind: 'diagnostics_export',
+            extra: <String, Object?>{
+              'shared': true,
+              'copied': false,
+              'chars': text.length,
+            },
+          ),
+        );
+      }
+      return;
+    }
     bool copied = false;
     try {
       await Clipboard.setData(ClipboardData(text: text));
@@ -153,6 +168,16 @@ class _AboutScreenState extends State<AboutScreen> {
       copied = false;
     }
     if (!mounted) return;
+    unawaited(
+      DiagnosticsLogService().log(
+        kind: 'diagnostics_export',
+        extra: <String, Object?>{
+          'shared': false,
+          'copied': copied,
+          'chars': text.length,
+        },
+      ),
+    );
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(copied ? '分享不可用，诊断日志已复制到剪贴板' : '无法导出诊断日志，请稍后重试')),
     );

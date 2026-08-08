@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/services/camera_diagnostics_service.dart';
 import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
+import 'package:packing_proof_mobile/services/diagnostics_log_service.dart';
 
 void main() {
   late Directory temp;
@@ -76,12 +77,15 @@ void main() {
     expect(entry['message'], 'camera error');
   });
 
-  test('导出合并头部、相机日志与路径诊断', () async {
+  test('导出合并头部、运行日志、相机日志与路径诊断', () async {
     service = CameraDiagnosticsService(
       rootProvider: () async => temp,
       snapshotLoader: () async => null,
     );
     await service.recordEvent(kind: 'snapshot_test');
+    await DiagnosticsLogService(
+      rootProvider: () async => temp,
+    ).log(kind: 'app_start');
     final Directory diagnostics = Directory('${temp.path}/diagnostics');
     await diagnostics.create(recursive: true);
     await File(
@@ -91,6 +95,7 @@ void main() {
     final String text = await service.exportText(header: 'header-line');
 
     expect(text, contains('header-line'));
+    expect(text, contains('app_start'));
     expect(text, contains('snapshot_test'));
     expect(text, contains('"kind":"path"'));
   });
