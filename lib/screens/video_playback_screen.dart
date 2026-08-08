@@ -12,6 +12,7 @@ import '../services/camera_diagnostics_service.dart';
 import '../services/continuous_camera_service.dart';
 import '../services/diagnostics_log_service.dart';
 import '../services/recording_path_diagnostics.dart';
+import '../services/remote_playback_compat.dart';
 import '../services/remote_playback_probe.dart';
 import '../services/system_video_player_service.dart';
 import '../services/video_share_service.dart';
@@ -68,8 +69,9 @@ class VideoPlaybackScreen extends StatefulWidget {
 }
 
 class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
-  late final VideoPlayerController _video;
-  late final Future<void> _initialized;
+  late VideoPlayerController _video;
+  late Future<void> _initialized;
+  bool _remoteCompatRetryTried = false;
   late RecordingSession _session;
   late Duration _playbackStart;
   late Duration _playbackEnd;
@@ -96,13 +98,17 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     _session = widget.session;
     _playbackStart = _session.mediaStart;
     _playbackEnd = _session.playbackEnd;
-    _video = widget.remoteUri == null
+    _video = _createVideoController();
+    _initialized = _initializePlayback();
+  }
+
+  VideoPlayerController _createVideoController() {
+    return widget.remoteUri == null
         ? VideoPlayerController.file(File(_session.filePath))
         : VideoPlayerController.networkUrl(
             widget.remoteUri!,
             httpHeaders: widget.remoteHeaders,
           );
-    _initialized = _initializePlayback();
   }
 
   Future<void> _initializePlayback() async {
@@ -134,6 +140,33 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         setState(() {});
       }
     } catch (error) {
+      if (widget.remoteUri != null &&
+          !_remoteCompatRetryTried &&
+          RemotePlaybackCompat.isDirect(widget.remoteUri!)) {
+        _remoteCompatRetryTried = true;
+        final Uri retryUri = RemotePlaybackCompat.withCompat(
+          widget.remoteUri!,
+          RemotePlaybackCompat.transcode,
+        );
+        unawaited(
+          DiagnosticsLogService().log(
+            kind: 'playback_retry',
+            extra: <String, Object?>{
+              'sessionId': _session.id,
+              'fromCompat': RemotePlaybackCompat.direct,
+              'toCompat': RemotePlaybackCompat.transcode,
+              'uri': retryUri.toString(),
+            },
+          ),
+        );
+        await _video.dispose();
+        _video = VideoPlayerController.networkUrl(
+          retryUri,
+          httpHeaders: widget.remoteHeaders,
+        );
+        await _initializePlayback();
+        return;
+      }
       _playbackErrorDetail = _playbackErrorSummary(error);
       if (widget.remoteUri == null) {
         await _loadLocalPlaybackContext();

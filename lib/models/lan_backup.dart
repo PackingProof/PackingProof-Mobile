@@ -344,6 +344,7 @@ class RemoteRecording {
     required this.sourceSessionId,
     required this.contentSha256,
     required this.playUri,
+    this.videoCodec = '',
     this.thumbnailUri,
     this.exists = true,
     this.status = RemoteRecordingStatus.available,
@@ -367,6 +368,7 @@ class RemoteRecording {
       sourceDeviceName: '${json['sourceDeviceName'] ?? ''}',
       sourceSessionId: '${json['sourceSessionId'] ?? ''}',
       contentSha256: '${json['contentSha256'] ?? ''}',
+      videoCodec: '${json['videoCodec'] ?? ''}',
       playUri: baseUri.resolve(
         '${json['playUrl'] ?? '/api/mobile-backup/videos/${json['id']}/play?compat=0'}',
       ),
@@ -388,6 +390,7 @@ class RemoteRecording {
   final String sourceDeviceName;
   final String sourceSessionId;
   final String contentSha256;
+  final String videoCodec;
   final Uri playUri;
   final Uri? thumbnailUri;
   final bool exists;
@@ -410,6 +413,7 @@ class RemoteRecording {
     sourceDeviceName: sourceDeviceName,
     sourceSessionId: sourceSessionId,
     contentSha256: contentSha256,
+    videoCodec: videoCodec,
     playUri: playUri,
     thumbnailUri: thumbnailUri,
     exists: exists,

@@ -20,6 +20,7 @@ import '../widgets/about_settings.dart';
 import '../widgets/two_button_confirm_dialog.dart';
 import '../services/recording_thumbnail_service.dart';
 import '../services/recording_database.dart';
+import '../services/remote_playback_compat.dart';
 import '../services/remote_video_clip_service.dart';
 import '../services/system_video_player_service.dart';
 import 'video_playback_screen.dart';
@@ -1573,6 +1574,21 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                         );
                         return;
                       }
+                      Uri? resolvedRemoteUri;
+                      if (!localAvailable &&
+                          remoteAvailable &&
+                          item.remote != null) {
+                        final VideoDecodeSupport? decodeSupport =
+                            await SystemVideoPlayerService()
+                                .getVideoDecodeSupport();
+                        resolvedRemoteUri =
+                            RemotePlaybackCompat.resolvePlaybackUri(
+                              item.remote!.playUri,
+                              decodeSupport: decodeSupport,
+                              videoCodec: item.remote!.videoCodec,
+                            );
+                      }
+                      if (!context.mounted) return;
                       final bool? deleted = await Navigator.of(context)
                           .push<bool>(
                             MaterialPageRoute<bool>(
@@ -1588,7 +1604,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                                     remoteUri: localAvailable
                                         ? null
                                         : remoteAvailable
-                                        ? item.remote?.playUri
+                                        ? resolvedRemoteUri
                                         : null,
                                     remoteVideoId: localAvailable
                                         ? null
