@@ -499,6 +499,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                   operationMode: _controller.operationMode,
                   errorMessage: _controller.errorMessage,
                   scanWarningMessage: _controller.scanWarningMessage,
+                  rejectedBarcodeMessage: _controller.rejectedBarcodeMessage,
                   pairingScanActive: _controller.pairingScanActive,
                   pairingMessage: _controller.pairingMessage,
                   historyScanActive: _controller.historyScanActive,
@@ -678,6 +679,7 @@ class PackingHomeView extends StatelessWidget {
     this.operationMode = RecordingOperationMode.shipping,
     this.errorMessage,
     this.scanWarningMessage,
+    this.rejectedBarcodeMessage,
     this.pairingScanActive = false,
     this.pairingMessage,
     this.historyScanActive = false,
@@ -708,6 +710,7 @@ class PackingHomeView extends StatelessWidget {
   final RecordingOperationMode operationMode;
   final String? errorMessage;
   final String? scanWarningMessage;
+  final String? rejectedBarcodeMessage;
   final bool pairingScanActive;
   final String? pairingMessage;
   final bool historyScanActive;
@@ -911,6 +914,22 @@ class _CameraArea extends StatelessWidget {
                   shadows: <Shadow>[
                     Shadow(color: Color(0x88000000), blurRadius: 8),
                   ],
+                ),
+              ),
+            ),
+          if (view.rejectedBarcodeMessage != null)
+            Positioned(
+              left: 18,
+              right: 18,
+              bottom: lowerOverlayInset + 118,
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 340),
+                  child: _ScanWarningToast(
+                    key: const Key('rejected-barcode-toast'),
+                    message: view.rejectedBarcodeMessage!,
+                  ),
                 ),
               ),
             ),
@@ -1431,7 +1450,7 @@ class _RecognitionToast extends StatelessWidget {
 }
 
 class _ScanWarningToast extends StatelessWidget {
-  const _ScanWarningToast({required this.message});
+  const _ScanWarningToast({super.key, required this.message});
 
   final String message;
 

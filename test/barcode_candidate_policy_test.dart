@@ -96,5 +96,36 @@ void main() {
       );
       expect(BarcodeCandidatePolicy.isValid('1234567890'), isTrue);
     });
+
+    test('拒绝原因分类覆盖长度、商品码制和其他无效', () {
+      expect(
+        BarcodeCandidatePolicy.rejectionForWorkScan(
+          '1234567890',
+          format: 'code128',
+        ),
+        WorkScanRejection.tooShort,
+      );
+      expect(
+        BarcodeCandidatePolicy.rejectionForWorkScan(
+          '6901234567890',
+          format: 'ean13',
+        ),
+        WorkScanRejection.productFormat,
+      );
+      expect(
+        BarcodeCandidatePolicy.rejectionForWorkScan(
+          'START1234567890',
+          format: 'code128',
+        ),
+        WorkScanRejection.invalid,
+      );
+      expect(
+        BarcodeCandidatePolicy.rejectionForWorkScan(
+          'JT1234567890',
+          format: 'code128',
+        ),
+        isNull,
+      );
+    });
   });
 }

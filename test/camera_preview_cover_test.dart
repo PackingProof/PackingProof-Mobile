@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
+import 'package:packing_proof_mobile/models/barcode_marker.dart';
 import 'package:packing_proof_mobile/screens/packing_home_screen.dart';
 import 'package:packing_proof_mobile/services/preview_cover_transform.dart';
 
@@ -42,6 +43,31 @@ void main() {
 
     expect(find.byKey(const Key('scan-warning-toast')), findsOneWidget);
     expect(find.text('警告：重复单号，请确认'), findsOneWidget);
+  });
+
+  testWidgets('无效条码 Toast 不覆盖已识别反馈', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 5),
+          currentCode: 'TRACK-1',
+          lastMarker: BarcodeMarker(
+            code: 'TRACK-1',
+            occurredAt: DateTime(2026, 8, 9, 10),
+            offset: Duration.zero,
+          ),
+          rejectedBarcodeMessage: '识别到非面单条码：1234567890，已忽略',
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('rejected-barcode-toast')), findsOneWidget);
+    expect(find.text('已识别面单，当前录像已绑定'), findsOneWidget);
+    expect(find.text('识别到非面单条码：1234567890，已忽略'), findsOneWidget);
   });
 
   testWidgets('录像前后都完整显示竖屏画面', (WidgetTester tester) async {

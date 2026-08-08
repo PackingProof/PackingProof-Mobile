@@ -44,12 +44,32 @@ class BarcodeCandidatePolicy {
     String? value, {
     String? format,
     int minimumLength = defaultMinimumLength,
+  }) =>
+      rejectionForWorkScan(
+        value,
+        format: format,
+        minimumLength: minimumLength,
+      ) ==
+      null;
+
+  /// 工作识别被拒绝的原因；返回 null 表示可接受。
+  static WorkScanRejection? rejectionForWorkScan(
+    String? value, {
+    String? format,
+    int minimumLength = defaultMinimumLength,
   }) {
-    if (!isValid(value)) {
-      return false;
-    }
     final String normalized = normalize(value);
-    return normalized.length >= minimumLength &&
-        !_productFormats.contains(format);
+    if (!isValid(value)) {
+      return WorkScanRejection.invalid;
+    }
+    if (normalized.length < minimumLength) {
+      return WorkScanRejection.tooShort;
+    }
+    if (_productFormats.contains(format)) {
+      return WorkScanRejection.productFormat;
+    }
+    return null;
   }
 }
+
+enum WorkScanRejection { tooShort, productFormat, invalid }

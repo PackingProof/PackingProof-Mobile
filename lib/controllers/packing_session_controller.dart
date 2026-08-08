@@ -30,6 +30,7 @@ import '../services/initial_recording_prompt_policy.dart';
 import '../services/lan_backup_service.dart';
 import '../services/max_volume_service.dart';
 import '../services/order_info_receiver_service.dart';
+import '../services/rejected_barcode_policy.dart';
 import '../services/remote_video_clip_service.dart';
 import '../services/nv21_center_crop.dart';
 import '../services/recording_timeline.dart';
@@ -116,6 +117,7 @@ class PackingSessionController extends ChangeNotifier {
   Timer? _elapsedTimer;
   Timer? _feedbackTimer;
   Timer? _scanWarningTimer;
+  Timer? _rejectedBarcodeTimer;
   Timer? _initialPromptTimer;
   Timer? _pairingFeedbackTimer;
   Timer? _storageMonitorTimer;
@@ -138,6 +140,9 @@ class PackingSessionController extends ChangeNotifier {
   String? _errorMessage;
   String? _scanWarningMessage;
   String? _storageWarningMessage;
+  String? _rejectedBarcodeMessage;
+  String _lastRejectedBarcodeCode = '';
+  DateTime? _lastRejectedBarcodeAt;
   bool _processingFrame = false;
   bool _handlingBarcode = false;
   bool _disposed = false;
@@ -243,6 +248,7 @@ class PackingSessionController extends ChangeNotifier {
 
   String? get scanWarningMessage =>
       _storageWarningMessage ?? _scanWarningMessage;
+  String? get rejectedBarcodeMessage => _rejectedBarcodeMessage;
   int get storageNoticeRevision => _storageNoticeRevision;
   bool get isRecording => _phase == PackingSessionPhase.recording;
   bool get isWorking => _workActive;
@@ -1304,6 +1310,15 @@ class PackingSessionController extends ChangeNotifier {
     if (!isWorking || isBusy || _handlingBarcode) {
       return;
     }
+    final List<RejectedBarcodeCandidate> rejectedCandidates = candidates
+        .map(
+          (NativeBarcodeCandidate candidate) => RejectedBarcodeCandidate(
+            value: candidate.value,
+            area: candidate.area.toDouble(),
+            format: candidate.format,
+          ),
+        )
+        .toList(growable: false);
     String? validCode;
     int largestArea = -1;
     for (final NativeBarcodeCandidate candidate in candidates) {
@@ -1318,6 +1333,16 @@ class PackingSessionController extends ChangeNotifier {
       }
     }
     final DateTime now = DateTime.now();
+    final RejectedBarcodeDecision? rejected = RejectedBarcodePolicy.decide(
+      candidates: rejectedCandidates,
+      minimumLength: _minimumBarcodeLength,
+      now: now,
+      lastCode: _lastRejectedBarcodeCode,
+      lastShownAt: _lastRejectedBarcodeAt,
+    );
+    if (rejected != null) {
+      _showRejectedBarcodeNotice(rejected, now);
+    }
     final BarcodeObservation observation = _stabilityTracker.observe(
       validCode,
       now,
@@ -1364,6 +1389,17 @@ class PackingSessionController extends ChangeNotifier {
           barcodes = await _barcodeScanner.processImage(croppedInput);
         }
       }
+      final List<RejectedBarcodeCandidate> rejectedCandidates = barcodes
+          .map(
+            (Barcode barcode) => RejectedBarcodeCandidate(
+              value: barcode.rawValue ?? '',
+              area:
+                  barcode.boundingBox.width.abs() *
+                  barcode.boundingBox.height.abs(),
+              format: barcode.format.name,
+            ),
+          )
+          .toList(growable: false);
       String? validCode;
       double largestArea = -1;
       for (final Barcode barcode in barcodes) {
@@ -1382,6 +1418,16 @@ class PackingSessionController extends ChangeNotifier {
         }
       }
 
+      final RejectedBarcodeDecision? rejected = RejectedBarcodePolicy.decide(
+        candidates: rejectedCandidates,
+        minimumLength: _minimumBarcodeLength,
+        now: now,
+        lastCode: _lastRejectedBarcodeCode,
+        lastShownAt: _lastRejectedBarcodeAt,
+      );
+      if (rejected != null) {
+        _showRejectedBarcodeNotice(rejected, now);
+      }
       final BarcodeObservation observation = _stabilityTracker.observe(
         validCode,
         now,
@@ -2065,6 +2111,22 @@ class PackingSessionController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _showRejectedBarcodeNotice(
+    RejectedBarcodeDecision decision,
+    DateTime now,
+  ) {
+    _rejectedBarcodeMessage = decision.message;
+    _lastRejectedBarcodeCode = decision.code;
+    _lastRejectedBarcodeAt = now;
+    _rejectedBarcodeTimer?.cancel();
+    _rejectedBarcodeTimer = Timer(const Duration(seconds: 4), () {
+      if (_disposed) return;
+      _rejectedBarcodeMessage = null;
+      notifyListeners();
+    });
+    notifyListeners();
+  }
+
   void _showDuplicateOrderWarning(String trackingNumber) {
     _scanWarningMessage = '警告：重复单号，请确认';
     _scanWarningTimer?.cancel();
@@ -2189,6 +2251,7 @@ class PackingSessionController extends ChangeNotifier {
     _elapsedTimer?.cancel();
     _feedbackTimer?.cancel();
     _scanWarningTimer?.cancel();
+    _rejectedBarcodeTimer?.cancel();
     _storageMonitorTimer?.cancel();
     _diagnosticsTimer?.cancel();
     unawaited(WakelockPlus.disable());
