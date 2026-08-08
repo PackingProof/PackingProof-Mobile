@@ -1109,7 +1109,7 @@ class ContinuousSegmentCamera(
                     }
                 }
                 val info = MediaCodec.BufferInfo()
-                var outputIndex = codec.dequeueOutputBuffer(info, 0)
+                var outputIndex = codec.dequeueOutputBuffer(info, 10_000)
                 while (outputIndex >= 0) {
                     val output = codec.getOutputBuffer(outputIndex)
                     if (output != null && info.size > 0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
@@ -1122,7 +1122,7 @@ class ContinuousSegmentCamera(
                     }
                     outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                     codec.releaseOutputBuffer(outputIndex, false)
-                    outputIndex = codec.dequeueOutputBuffer(info, 0)
+                    outputIndex = codec.dequeueOutputBuffer(info, 10_000)
                 }
                 if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                     val format = codec.outputFormat
