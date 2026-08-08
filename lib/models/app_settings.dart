@@ -4,6 +4,10 @@ import 'storage_notice.dart';
 import 'recording_video_codec.dart';
 
 class AppSettings {
+  static const int defaultMinimumBarcodeLength = 11;
+  static const int minimumBarcodeLengthLowerBound = 8;
+  static const int minimumBarcodeLengthUpperBound = 40;
+
   const AppSettings({
     this.workMode = WorkMode.continuousScan,
     this.speechEnabled = true,
@@ -19,6 +23,7 @@ class AppSettings {
     this.backedRetention = BackedRetentionPolicy.days7,
     this.hiddenRemoteRecordingIds = const <int>{},
     this.storageNoticeState = const StorageNoticeState(),
+    this.minimumBarcodeLength = defaultMinimumBarcodeLength,
     this.extraValues = const <String, Object?>{},
   });
 
@@ -36,6 +41,7 @@ class AppSettings {
       ..remove('unbackedRetention')
       ..remove('backedRetention');
     extraValues.remove('storageNoticeState');
+    extraValues.remove('minimumBarcodeLength');
     final Set<int> hiddenRemoteRecordingIds =
         ((json['hiddenRemoteRecordingIds'] as List<Object?>?) ?? const [])
             .whereType<num>()
@@ -80,8 +86,23 @@ class AppSettings {
       storageNoticeState: StorageNoticeState.fromJson(
         json['storageNoticeState'],
       ),
+      minimumBarcodeLength: normalizeBarcodeLength(
+        json['minimumBarcodeLength'] is num
+            ? (json['minimumBarcodeLength']! as num).toInt()
+            : defaultMinimumBarcodeLength,
+      ),
       extraValues: extraValues,
     );
+  }
+
+  static int normalizeBarcodeLength(int value) {
+    if (value < minimumBarcodeLengthLowerBound) {
+      return minimumBarcodeLengthLowerBound;
+    }
+    if (value > minimumBarcodeLengthUpperBound) {
+      return minimumBarcodeLengthUpperBound;
+    }
+    return value;
   }
 
   final WorkMode workMode;
@@ -98,6 +119,7 @@ class AppSettings {
   final BackedRetentionPolicy backedRetention;
   final Set<int> hiddenRemoteRecordingIds;
   final StorageNoticeState storageNoticeState;
+  final int minimumBarcodeLength;
   final Map<String, Object?> extraValues;
 
   AppSettings copyWith({
@@ -115,6 +137,7 @@ class AppSettings {
     BackedRetentionPolicy? backedRetention,
     Set<int>? hiddenRemoteRecordingIds,
     StorageNoticeState? storageNoticeState,
+    int? minimumBarcodeLength,
   }) {
     return AppSettings(
       workMode: workMode ?? this.workMode,
@@ -134,6 +157,7 @@ class AppSettings {
       hiddenRemoteRecordingIds:
           hiddenRemoteRecordingIds ?? this.hiddenRemoteRecordingIds,
       storageNoticeState: storageNoticeState ?? this.storageNoticeState,
+      minimumBarcodeLength: minimumBarcodeLength ?? this.minimumBarcodeLength,
       extraValues: extraValues,
     );
   }
@@ -154,5 +178,6 @@ class AppSettings {
     'backedRetention': backedRetention.storageValue,
     'hiddenRemoteRecordingIds': hiddenRemoteRecordingIds.toList()..sort(),
     'storageNoticeState': storageNoticeState.toJson(),
+    'minimumBarcodeLength': minimumBarcodeLength,
   };
 }

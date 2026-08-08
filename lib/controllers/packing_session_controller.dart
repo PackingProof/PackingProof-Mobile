@@ -129,6 +129,7 @@ class PackingSessionController extends ChangeNotifier {
   bool _maxVolumeEnabled = true;
   bool _recordAudioEnabled = true;
   RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
+  int _minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength;
   UnbackedRetentionPolicy _unbackedRetention = UnbackedRetentionPolicy.days30;
   BackedRetentionPolicy _backedRetention = BackedRetentionPolicy.days7;
   bool _appIsActive = true;
@@ -190,6 +191,7 @@ class PackingSessionController extends ChangeNotifier {
   BackedRetentionPolicy get backedRetention => _backedRetention;
   bool get recordAudioEnabled => _recordAudioEnabled;
   RecordingVideoCodec get preferredVideoCodec => _preferredVideoCodec;
+  int get minimumBarcodeLength => _minimumBarcodeLength;
   LanBackupSnapshot get backupSnapshot => _lanBackupService.snapshot;
   bool get pairingScanActive => _pairingScanActive;
   int get pairingSuccessRevision => _pairingSuccessRevision;
@@ -289,6 +291,7 @@ class PackingSessionController extends ChangeNotifier {
       _backedRetention = settings.backedRetention;
       _recordAudioEnabled = settings.recordAudioEnabled;
       _preferredVideoCodec = settings.preferredVideoCodec;
+      _minimumBarcodeLength = settings.minimumBarcodeLength;
       _hiddenRemoteRecordingIds = Set<int>.of(
         settings.hiddenRemoteRecordingIds,
       );
@@ -838,6 +841,16 @@ class PackingSessionController extends ChangeNotifier {
     }
   }
 
+  Future<void> setMinimumBarcodeLength(int value) async {
+    final int normalized = AppSettings.normalizeBarcodeLength(value);
+    if (_minimumBarcodeLength == normalized) {
+      return;
+    }
+    _minimumBarcodeLength = normalized;
+    notifyListeners();
+    await _repository.saveMinimumBarcodeLength(normalized);
+  }
+
   Future<void> _requestRecordingAudioPermission() async {
     try {
       await _nativeCamera?.ensurePermissions(recordAudio: true);
@@ -1270,6 +1283,7 @@ class PackingSessionController extends ChangeNotifier {
       if (BarcodeCandidatePolicy.isValidForWorkScan(
             candidate.value,
             format: candidate.format,
+            minimumLength: _minimumBarcodeLength,
           ) &&
           candidate.area > largestArea) {
         largestArea = candidate.area;
@@ -1329,6 +1343,7 @@ class PackingSessionController extends ChangeNotifier {
         if (BarcodeCandidatePolicy.isValidForWorkScan(
           barcode.rawValue,
           format: barcode.format.name,
+          minimumLength: _minimumBarcodeLength,
         )) {
           final double area =
               barcode.boundingBox.width.abs() *

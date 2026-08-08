@@ -1,6 +1,8 @@
 class BarcodeCandidatePolicy {
   const BarcodeCandidatePolicy._();
 
+  static const int defaultMinimumLength = 11;
+
   static final RegExp _allowed = RegExp(r'^[A-Z0-9-]{8,40}$');
   static const List<String> _blockedWords = <String>[
     'CLEAR',
@@ -38,7 +40,16 @@ class BarcodeCandidatePolicy {
 
   /// 工作识别专用：先按普通规则校验，再拒绝商品码制。
   /// 历史记录扫码继续使用 [isValid]，不受商品码制过滤影响。
-  static bool isValidForWorkScan(String? value, {String? format}) {
-    return isValid(value) && !_productFormats.contains(format);
+  static bool isValidForWorkScan(
+    String? value, {
+    String? format,
+    int minimumLength = defaultMinimumLength,
+  }) {
+    if (!isValid(value)) {
+      return false;
+    }
+    final String normalized = normalize(value);
+    return normalized.length >= minimumLength &&
+        !_productFormats.contains(format);
   }
 }

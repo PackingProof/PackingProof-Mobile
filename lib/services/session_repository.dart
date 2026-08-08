@@ -566,6 +566,12 @@ class SessionRepository {
         (AppSettings value) => value.copyWith(preferredVideoCodec: codec),
       );
 
+  Future<void> saveMinimumBarcodeLength(int minimumLength) => _updateSettings(
+    (AppSettings settings) => settings.copyWith(
+      minimumBarcodeLength: AppSettings.normalizeBarcodeLength(minimumLength),
+    ),
+  );
+
   Future<List<RecordingSession>> pruneMissingSessions({
     Set<String> retainedMissingPaths = const <String>{},
   }) => _serializeSessionMutation(() async {

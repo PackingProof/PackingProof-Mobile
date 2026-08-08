@@ -40,6 +40,7 @@ void main() {
     expect(settings.lanBackupAutoEnabled, isTrue);
     expect(settings.unbackedRetention, UnbackedRetentionPolicy.days30);
     expect(settings.backedRetention, BackedRetentionPolicy.days7);
+    expect(settings.minimumBarcodeLength, 11);
 
     await repository.saveSpeechEnabled(false);
     final Map<String, Object?> persisted = Map<String, Object?>.from(
@@ -98,6 +99,26 @@ void main() {
           as Map<Object?, Object?>,
     );
     expect(persisted['preferredVideoCodec'], 'h264');
+  });
+
+  test('面单条码最短长度默认 11 且可持久化', () async {
+    final SessionRepository repository = testRepository(root);
+
+    final AppSettings defaults = await repository.loadSettings();
+    expect(defaults.minimumBarcodeLength, 11);
+
+    await repository.saveMinimumBarcodeLength(12);
+    final AppSettings updated = await repository.loadSettings();
+    expect(updated.minimumBarcodeLength, 12);
+
+    final Map<String, Object?> persisted = Map<String, Object?>.from(
+      jsonDecode(await File('${root.path}/settings.json').readAsString())
+          as Map<Object?, Object?>,
+    );
+    expect(persisted['minimumBarcodeLength'], 12);
+
+    await repository.saveMinimumBarcodeLength(100);
+    expect((await repository.loadSettings()).minimumBarcodeLength, 40);
   });
 
   test('首次说明版本在两个编译版本间共享且保留其他设置', () async {

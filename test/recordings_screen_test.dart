@@ -183,6 +183,43 @@ void main() {
     expect(find.textContaining('不会自动删除未备份录像'), findsOneWidget);
   });
 
+  testWidgets('高级设置可调整面单条码最短长度', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    int? changedLength;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          sessions: const [],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          minimumBarcodeLength: 11,
+          onMinimumBarcodeLengthChanged: (int value) async {
+            changedLength = value;
+          },
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('advanced-settings-card')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('minimum-barcode-length-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('12 位').last);
+    await tester.pumpAndSettle();
+
+    expect(changedLength, 12);
+  });
+
   testWidgets('设置按录像、语音、接收分组为独立卡片', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 2400);
     tester.view.devicePixelRatio = 1;

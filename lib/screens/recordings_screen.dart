@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/app_settings.dart';
 import '../models/backup_retention_policy.dart';
 import '../models/barcode_marker.dart';
 import '../models/lan_backup.dart';
@@ -92,6 +93,7 @@ class RecordingsScreen extends StatefulWidget {
     required this.maxVolumeEnabled,
     this.recordAudioEnabled = true,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
+    this.minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength,
     required this.onWorkModeChanged,
     required this.onSpeechEnabledChanged,
     this.onOrderSpeechEnabledChanged,
@@ -99,6 +101,7 @@ class RecordingsScreen extends StatefulWidget {
     required this.onMaxVolumeEnabledChanged,
     this.onRecordAudioEnabledChanged,
     this.onPreferredVideoCodecChanged,
+    this.onMinimumBarcodeLengthChanged,
     required this.onSpeechPreview,
     required this.onSessionUpdated,
     required this.onDeleteSessions,
@@ -142,6 +145,7 @@ class RecordingsScreen extends StatefulWidget {
   final bool maxVolumeEnabled;
   final bool recordAudioEnabled;
   final RecordingVideoCodec preferredVideoCodec;
+  final int minimumBarcodeLength;
   final Future<void> Function(WorkMode mode) onWorkModeChanged;
   final Future<void> Function(bool enabled) onSpeechEnabledChanged;
   final Future<void> Function(bool enabled)? onOrderSpeechEnabledChanged;
@@ -150,6 +154,7 @@ class RecordingsScreen extends StatefulWidget {
   final Future<void> Function(bool enabled)? onRecordAudioEnabledChanged;
   final Future<void> Function(RecordingVideoCodec codec)?
   onPreferredVideoCodecChanged;
+  final Future<void> Function(int value)? onMinimumBarcodeLengthChanged;
   final Future<void> Function() onSpeechPreview;
   final Future<void> Function(RecordingSession session) onSessionUpdated;
   final Future<void> Function(Set<String> sessionIds) onDeleteSessions;
@@ -220,6 +225,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   late bool _maxVolumeEnabled;
   late bool _recordAudioEnabled;
   late RecordingVideoCodec _preferredVideoCodec;
+  late int _minimumBarcodeLength;
   VideoDecodeSupport? _deviceDecodeSupport;
   late List<RecordingSession> _sessions;
   late int _localRecordingBytes;
@@ -295,6 +301,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _maxVolumeEnabled = widget.maxVolumeEnabled;
     _recordAudioEnabled = widget.recordAudioEnabled;
     _preferredVideoCodec = widget.preferredVideoCodec;
+    _minimumBarcodeLength = widget.minimumBarcodeLength;
     unawaited(_loadDeviceDecodeSupport());
     _sessions = List<RecordingSession>.of(widget.sessions);
     _refreshLocalRecordingStats();
@@ -348,6 +355,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _maxVolumeEnabled = widget.maxVolumeEnabled;
     _recordAudioEnabled = widget.recordAudioEnabled;
     _preferredVideoCodec = widget.preferredVideoCodec;
+    _minimumBarcodeLength = widget.minimumBarcodeLength;
     _unbackedRetention = widget.unbackedRetention;
     _backedRetention = widget.backedRetention;
     _hiddenRemoteIds.addAll(widget.hiddenRemoteRecordingIds);
@@ -987,6 +995,14 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     }
   }
 
+  Future<void> _setMinimumBarcodeLength(int value) async {
+    if (_minimumBarcodeLength == value) {
+      return;
+    }
+    setState(() => _minimumBarcodeLength = value);
+    await widget.onMinimumBarcodeLengthChanged?.call(value);
+  }
+
   Future<void> _setUnbackedRetention(UnbackedRetentionPolicy value) async {
     setState(() => _unbackedRetention = value);
     await widget.onBackupRetentionChanged?.call(
@@ -1311,6 +1327,17 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            if (widget.onMinimumBarcodeLengthChanged != null)
+              _SettingsCard(
+                key: const Key('advanced-settings-card'),
+                children: <Widget>[
+                  _MinimumBarcodeLengthSettings(
+                    value: _minimumBarcodeLength,
+                    onChanged: _setMinimumBarcodeLength,
+                  ),
+                ],
+              ),
             const SizedBox(height: 12),
             _OrderReceiverSettings(
               snapshot: widget.orderReceiverSnapshot,
@@ -2746,6 +2773,87 @@ class _RecordAudioSettings extends StatelessWidget {
             key: const Key('record-audio-enabled-switch'),
             value: enabled,
             onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MinimumBarcodeLengthSettings extends StatelessWidget {
+  const _MinimumBarcodeLengthSettings({
+    required this.value,
+    required this.onChanged,
+  });
+
+  static const List<int> _options = <int>[
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+  ];
+
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final int current = _options.contains(value)
+        ? value
+        : _options.firstWhere(
+            (int candidate) => candidate >= value,
+            orElse: () => _options.last,
+          );
+    return Padding(
+      key: const Key('minimum-barcode-length-settings'),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            '高级设置',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<int>(
+            key: const Key('minimum-barcode-length-dropdown'),
+            initialValue: current,
+            decoration: const InputDecoration(
+              labelText: '面单条码最短长度',
+              isDense: true,
+            ),
+            items: _options
+                .map(
+                  (int length) => DropdownMenuItem<int>(
+                    value: length,
+                    child: Text('$length 位'),
+                  ),
+                )
+                .toList(growable: false),
+            onChanged: (int? length) {
+              if (length != null) {
+                onChanged(length);
+              }
+            },
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '低于该长度的条码不会作为面单号，用于过滤商品防伪码等短码；默认 11 位。',
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 13,
+              height: 1.5,
+            ),
           ),
         ],
       ),
