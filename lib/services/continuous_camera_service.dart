@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
+import '../models/recording_spec.dart';
 import '../models/recording_video_codec.dart';
 
 class ContinuousCameraInitialization {
@@ -201,10 +202,12 @@ class ContinuousCameraService {
 
   Future<ContinuousCameraInitialization> initialize({
     RecordingVideoCodec videoCodec = RecordingVideoCodec.hevc,
+    RecordingSpecPreset recordingSpec = RecordingSpecPreset.hd1080p30,
   }) async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('initialize', <String, Object>{
           'videoCodec': videoCodec.storageValue,
+          'recordingSpec': recordingSpec.storageValue,
         }))!;
     return ContinuousCameraInitialization.fromMap(values);
   }

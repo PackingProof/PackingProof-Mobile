@@ -56,11 +56,6 @@ class ContinuousSegmentCamera(
     private val emit: (String, Any?) -> Unit,
 ) {
     companion object {
-        private const val VIDEO_WIDTH = 1920
-        private const val VIDEO_HEIGHT = 1080
-        private const val VIDEO_FPS = 30
-        private const val HEVC_VIDEO_BIT_RATE = 7_000_000
-        private const val AVC_VIDEO_BIT_RATE = 10_000_000
         private const val AUDIO_SAMPLE_RATE = 48_000
         private const val AUDIO_CHANNEL_COUNT = 1
         private const val AUDIO_BIT_RATE = 96_000
@@ -78,9 +73,12 @@ class ContinuousSegmentCamera(
     private val mainHandler = Handler(activity.mainLooper)
     private val cameraManager = activity.getSystemService(CameraManager::class.java)
     private val captureRequestTargetPolicy = CaptureRequestTargetPolicy()
-    private val recordingFpsRangePolicy = RecordingFpsRangePolicy(VIDEO_FPS)
+    private var recordingFpsRangePolicy =
+        RecordingFpsRangePolicy(RecordingSpecPolicy.HD.fps)
     private val recordingCodecPolicy = RecordingCodecPolicy(Build.MANUFACTURER)
     private val stallRecoveryPolicy = PreviewStallRecoveryPolicy()
+    private var recordingSpec = RecordingSpecPolicy.HD
+    private var recordingSpecName = RecordingSpecPolicy.DEFAULT_SPEC_NAME
     @Volatile private var captureStartedCount = 0L
     @Volatile private var lastCaptureStartedAtMs = 0L
     @Volatile private var lastCaptureCompletedAtMs = 0L
@@ -110,7 +108,10 @@ class ContinuousSegmentCamera(
     @Volatile private var sensorOrientation = 90
     @Volatile private var selectedLensFacing = CameraCharacteristics.LENS_FACING_BACK
     @Volatile private var canSwitchCamera = false
-    @Volatile private var videoSize = Size(VIDEO_WIDTH, VIDEO_HEIGHT)
+    @Volatile private var videoSize = Size(
+        RecordingSpecPolicy.HD.videoWidth,
+        RecordingSpecPolicy.HD.videoHeight,
+    )
     @Volatile private var analysisSize = Size(1280, 720)
     @Volatile private var initialized = false
     private var disposed = false
@@ -158,7 +159,11 @@ class ContinuousSegmentCamera(
     @Volatile private var previewActive = true
     private var recordAudio = true
 
-    fun initialize(result: MethodChannel.Result, videoCodec: String? = null) {
+    fun initialize(
+        result: MethodChannel.Result,
+        videoCodec: String? = null,
+        recordingSpecName: String? = null,
+    ) {
         if (disposed) {
             result.error("disposed", "摄像头已经关闭", null)
             return
@@ -173,6 +178,9 @@ class ContinuousSegmentCamera(
         }
         initializeResult = result
         openCameraAttempts = 0
+        recordingSpec = RecordingSpecPolicy.resolve(recordingSpecName)
+        this.recordingSpecName = RecordingSpecPolicy.resolveName(recordingSpecName)
+        recordingFpsRangePolicy = RecordingFpsRangePolicy(recordingSpec.fps)
         preferredVideoMime = if (videoCodec == "h264") {
             MediaFormat.MIMETYPE_VIDEO_AVC
         } else {
@@ -507,9 +515,13 @@ class ContinuousSegmentCamera(
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(
                 MediaFormat.KEY_BIT_RATE,
-                if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) HEVC_VIDEO_BIT_RATE else AVC_VIDEO_BIT_RATE,
+                if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) {
+                    recordingSpec.hevcBitRate
+                } else {
+                    recordingSpec.avcBitRate
+                },
             )
-            setInteger(MediaFormat.KEY_FRAME_RATE, VIDEO_FPS)
+            setInteger(MediaFormat.KEY_FRAME_RATE, recordingSpec.fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -804,8 +816,14 @@ class ContinuousSegmentCamera(
 
     private fun chooseVideoSize(configuration: StreamConfigurationMap): Size {
         val sizes = configuration.getOutputSizes(MediaRecorder::class.java)?.toList().orEmpty()
-        return sizes.firstOrNull { it.width == VIDEO_WIDTH && it.height == VIDEO_HEIGHT }
-            ?: sizes.filter { it.width <= VIDEO_WIDTH && it.height <= VIDEO_HEIGHT && it.width > it.height }
+        return sizes.firstOrNull {
+            it.width == recordingSpec.videoWidth && it.height == recordingSpec.videoHeight
+        }
+            ?: sizes.filter {
+                it.width <= recordingSpec.videoWidth &&
+                    it.height <= recordingSpec.videoHeight &&
+                    it.width > it.height
+            }
                 .maxByOrNull { it.width.toLong() * it.height }
             ?: sizes.maxByOrNull { it.width.toLong() * it.height }
             ?: Size(1280, 720)
@@ -1494,7 +1512,8 @@ class ContinuousSegmentCamera(
             "analysisWidth" to analysisSize.width,
             "analysisHeight" to analysisSize.height,
             "videoMime" to selectedVideoMime,
-            "fps" to (if (recordingRequested || recordingActive) VIDEO_FPS else "auto"),
+            "fps" to (if (recordingRequested || recordingActive) recordingSpec.fps else "auto"),
+            "recordingSpec" to recordingSpecName,
             "previewActive" to previewActive,
             "workScanEnabled" to workScanEnabled,
             "pairingScanEnabled" to pairingScanEnabled,
@@ -1563,7 +1582,8 @@ class ContinuousSegmentCamera(
         "sensorOrientation" to sensorOrientation,
         "lensDirection" to if (selectedLensFacing == CameraCharacteristics.LENS_FACING_FRONT) "front" else "back",
         "canSwitchCamera" to canSwitchCamera,
-        "fps" to VIDEO_FPS,
+        "fps" to recordingSpec.fps,
+        "recordingSpec" to recordingSpecName,
         "videoMime" to selectedVideoMime,
         "codecFallbackReason" to codecFallbackReason,
         "flashAvailable" to (

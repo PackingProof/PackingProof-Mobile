@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:packing_proof_mobile/models/recording_spec.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 
@@ -176,10 +177,52 @@ void main() {
           .setMockMethodCallHandler(channel, null);
     });
 
-    await service.initialize(videoCodec: RecordingVideoCodec.h264);
+    await service.initialize(
+      videoCodec: RecordingVideoCodec.h264,
+      recordingSpec: RecordingSpecPreset.smooth720p30,
+    );
 
     expect(calls.single.method, 'initialize');
-    expect(calls.single.arguments, <String, Object>{'videoCodec': 'h264'});
+    expect(calls.single.arguments, <String, Object>{
+      'videoCodec': 'h264',
+      'recordingSpec': 'smooth720p30',
+    });
+  });
+
+  test('初始化未指定规格时默认高清 1080p', () async {
+    const MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/continuous_camera',
+    );
+    final List<MethodCall> calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          calls.add(call);
+          return <Object?, Object?>{
+            'textureId': 1,
+            'previewWidth': 1920,
+            'previewHeight': 1080,
+            'sensorOrientation': 90,
+            'fps': 30,
+            'videoMime': 'video/avc',
+            'flashAvailable': false,
+            'lensDirection': 'back',
+            'canSwitchCamera': false,
+          };
+        });
+    final ContinuousCameraService service = ContinuousCameraService();
+    addTearDown(() async {
+      await service.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    await service.initialize();
+
+    expect(calls.single.method, 'initialize');
+    expect(calls.single.arguments, <String, Object>{
+      'videoCodec': 'hevc',
+      'recordingSpec': 'hd1080p30',
+    });
   });
 
   test('关闭录制声音时只申请摄像头权限', () async {

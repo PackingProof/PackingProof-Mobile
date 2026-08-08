@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/backup_retention_policy.dart';
 import 'package:packing_proof_mobile/models/app_settings.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
+import 'package:packing_proof_mobile/models/recording_spec.dart';
 import 'package:packing_proof_mobile/models/work_mode.dart';
 import 'package:packing_proof_mobile/services/session_repository.dart';
 
@@ -99,6 +100,35 @@ void main() {
           as Map<Object?, Object?>,
     );
     expect(persisted['preferredVideoCodec'], 'h264');
+  });
+
+  test('录像规格默认高清且可切换持久化', () async {
+    final SessionRepository repository = testRepository(root);
+
+    final AppSettings defaults = await repository.loadSettings();
+    expect(defaults.recordingSpec, RecordingSpecPreset.hd1080p30);
+
+    await repository.saveRecordingSpec(RecordingSpecPreset.smooth720p30);
+    final AppSettings updated = await repository.loadSettings();
+    expect(updated.recordingSpec, RecordingSpecPreset.smooth720p30);
+
+    final Map<String, Object?> persisted = Map<String, Object?>.from(
+      jsonDecode(await File('${root.path}/settings.json').readAsString())
+          as Map<Object?, Object?>,
+    );
+    expect(persisted['recordingSpec'], 'smooth720p30');
+  });
+
+  test('旧设置缺少录像规格时按高清处理', () async {
+    await File('${root.path}/settings.json').writeAsString(
+      jsonEncode(<String, Object>{'speechEnabled': false}),
+    );
+    final SessionRepository repository = testRepository(root);
+
+    final settings = await repository.loadSettings();
+
+    expect(settings.recordingSpec, RecordingSpecPreset.hd1080p30);
+    expect(settings.speechEnabled, isFalse);
   });
 
   test('面单条码最短长度默认 11 且可持久化', () async {

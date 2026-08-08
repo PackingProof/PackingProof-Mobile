@@ -8,6 +8,7 @@ import 'package:packing_proof_mobile/models/barcode_marker.dart';
 import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
+import 'package:packing_proof_mobile/models/recording_spec.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/work_mode.dart';
 import 'package:packing_proof_mobile/screens/recordings_screen.dart';
@@ -274,6 +275,13 @@ void main() {
     expect(
       find.descendant(
         of: recordingCard,
+        matching: find.byKey(const Key('recording-spec-settings')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: recordingCard,
         matching: find.byKey(const Key('record-audio-settings')),
       ),
       findsOneWidget,
@@ -526,6 +534,42 @@ void main() {
 
     expect(changed, RecordingVideoCodec.h264);
     expect(find.text('录像编码已切换，新录像将使用所选编码'), findsOneWidget);
+  });
+
+  testWidgets('切换录像规格会回调并提示已生效', (WidgetTester tester) async {
+    RecordingSpecPreset? changed;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          sessions: const [],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onRecordingSpecChanged: (RecordingSpecPreset spec) async {
+            changed = spec;
+          },
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+
+    await tester.dragUntilVisible(
+      find.text('流畅 720p'),
+      find.byType(ListView).first,
+      const Offset(0, -120),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('流畅 720p'));
+    await tester.pumpAndSettle();
+
+    expect(changed, RecordingSpecPreset.smooth720p30);
+    expect(find.text('录像规格已切换，新录像将使用所选规格'), findsOneWidget);
   });
 
   testWidgets('电脑备份未连接时提供扫码入口', (WidgetTester tester) async {

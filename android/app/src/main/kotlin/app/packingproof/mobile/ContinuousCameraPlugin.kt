@@ -25,6 +25,8 @@ class ContinuousCameraPlugin(
     private var engine = createEngine()
     private var pendingPermissionResult: MethodChannel.Result? = null
     private var pendingPermissionRecordAudio = false
+    private var lastVideoCodec: String? = null
+    private var lastRecordingSpec: String? = null
 
     init {
         channel.setMethodCallHandler(this)
@@ -32,7 +34,11 @@ class ContinuousCameraPlugin(
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "initialize" -> initialize(result, call.argument<String>("videoCodec"))
+            "initialize" -> initialize(
+                result,
+                call.argument<String>("videoCodec"),
+                call.argument<String>("recordingSpec"),
+            )
             "ensurePermissions" -> ensurePermissions(
                 call.argument<Boolean>("recordAudio") == true,
                 result,
@@ -81,7 +87,7 @@ class ContinuousCameraPlugin(
                     else CameraCharacteristics.LENS_FACING_FRONT
                     engine.dispose {
                         engine = createEngine(target)
-                        engine.initialize(result)
+                        engine.initialize(result, lastVideoCodec, lastRecordingSpec)
                     }
                 }
             }
@@ -97,11 +103,17 @@ class ContinuousCameraPlugin(
         }
     }
 
-    private fun initialize(result: MethodChannel.Result, videoCodec: String?) {
+    private fun initialize(
+        result: MethodChannel.Result,
+        videoCodec: String?,
+        recordingSpec: String?,
+    ) {
         if (ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
         ) {
-            engine.initialize(result, videoCodec)
+            lastVideoCodec = videoCodec
+            lastRecordingSpec = recordingSpec
+            engine.initialize(result, videoCodec, recordingSpec)
             return
         }
         result.error("permission_denied", "需要摄像头权限才能工作", null)

@@ -15,6 +15,7 @@ import '../models/lan_backup.dart';
 import '../models/recording_session.dart';
 import '../models/order_info.dart';
 import '../models/recording_operation_mode.dart';
+import '../models/recording_spec.dart';
 import '../models/recording_video_codec.dart';
 import '../models/speech_prompt.dart';
 import '../models/storage_notice.dart';
@@ -129,6 +130,7 @@ class PackingSessionController extends ChangeNotifier {
   bool _maxVolumeEnabled = true;
   bool _recordAudioEnabled = true;
   RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
+  RecordingSpecPreset _recordingSpec = RecordingSpecPreset.hd1080p30;
   int _minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength;
   UnbackedRetentionPolicy _unbackedRetention = UnbackedRetentionPolicy.days30;
   BackedRetentionPolicy _backedRetention = BackedRetentionPolicy.days7;
@@ -191,6 +193,7 @@ class PackingSessionController extends ChangeNotifier {
   BackedRetentionPolicy get backedRetention => _backedRetention;
   bool get recordAudioEnabled => _recordAudioEnabled;
   RecordingVideoCodec get preferredVideoCodec => _preferredVideoCodec;
+  RecordingSpecPreset get recordingSpec => _recordingSpec;
   int get minimumBarcodeLength => _minimumBarcodeLength;
   LanBackupSnapshot get backupSnapshot => _lanBackupService.snapshot;
   bool get pairingScanActive => _pairingScanActive;
@@ -291,6 +294,7 @@ class PackingSessionController extends ChangeNotifier {
       _backedRetention = settings.backedRetention;
       _recordAudioEnabled = settings.recordAudioEnabled;
       _preferredVideoCodec = settings.preferredVideoCodec;
+      _recordingSpec = settings.recordingSpec;
       _minimumBarcodeLength = settings.minimumBarcodeLength;
       _hiddenRemoteRecordingIds = Set<int>.of(
         settings.hiddenRemoteRecordingIds,
@@ -353,7 +357,10 @@ class PackingSessionController extends ChangeNotifier {
         _nativeCamera = nativeCamera;
         await nativeCamera.ensurePermissions(recordAudio: _recordAudioEnabled);
         _nativeInitialization = await nativeCamera
-            .initialize(videoCodec: _preferredVideoCodec)
+            .initialize(
+              videoCodec: _preferredVideoCodec,
+              recordingSpec: _recordingSpec,
+            )
             .timeout(
               const Duration(seconds: 15),
               onTimeout: () => throw TimeoutException('摄像头初始化超过 15 秒'),
@@ -833,6 +840,23 @@ class PackingSessionController extends ChangeNotifier {
     await _repository.savePreferredVideoCodec(codec);
     if (Platform.isAndroid && _phase != PackingSessionPhase.saving) {
       // 编码器在相机初始化时创建，切换后必须重建相机才会生效；
+      // 若正在工作，先安全结束当前工作（正在录的片段会正常保存）。
+      if (isWorking) {
+        await stopWork();
+      }
+      await retryInitialize();
+    }
+  }
+
+  Future<void> setRecordingSpec(RecordingSpecPreset spec) async {
+    if (_recordingSpec == spec) {
+      return;
+    }
+    _recordingSpec = spec;
+    notifyListeners();
+    await _repository.saveRecordingSpec(spec);
+    if (Platform.isAndroid && _phase != PackingSessionPhase.saving) {
+      // 编码器在相机初始化时创建，切换规格后必须重建相机才会生效；
       // 若正在工作，先安全结束当前工作（正在录的片段会正常保存）。
       if (isWorking) {
         await stopWork();

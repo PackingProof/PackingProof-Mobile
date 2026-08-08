@@ -2,6 +2,7 @@ import 'backup_retention_policy.dart';
 import 'work_mode.dart';
 import 'storage_notice.dart';
 import 'recording_video_codec.dart';
+import 'recording_spec.dart';
 
 class AppSettings {
   static const int defaultMinimumBarcodeLength = 11;
@@ -15,6 +16,7 @@ class AppSettings {
     this.maxVolumeEnabled = true,
     this.recordAudioEnabled = true,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
+    this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.startupNoticeVersion = 0,
     this.mobileUpdatePromptDate = '',
     this.mobileUpdatePromptCount = 0,
@@ -34,6 +36,7 @@ class AppSettings {
       ..remove('orderSpeechEnabled')
       ..remove('maxVolumeEnabled')
       ..remove('preferredVideoCodec')
+      ..remove('recordingSpec')
       ..remove('startupNoticeVersion')
       ..remove('mobileUpdatePromptDate')
       ..remove('mobileUpdatePromptCount')
@@ -66,6 +69,7 @@ class AppSettings {
       preferredVideoCodec: recordingVideoCodecFromStorage(
         json['preferredVideoCodec'],
       ),
+      recordingSpec: recordingSpecFromStorage(json['recordingSpec']),
       startupNoticeVersion: json['startupNoticeVersion'] is num
           ? (json['startupNoticeVersion']! as num).toInt()
           : 0,
@@ -111,6 +115,7 @@ class AppSettings {
   final bool maxVolumeEnabled;
   final bool recordAudioEnabled;
   final RecordingVideoCodec preferredVideoCodec;
+  final RecordingSpecPreset recordingSpec;
   final int startupNoticeVersion;
   final String mobileUpdatePromptDate;
   final int mobileUpdatePromptCount;
@@ -129,6 +134,7 @@ class AppSettings {
     bool? maxVolumeEnabled,
     bool? recordAudioEnabled,
     RecordingVideoCodec? preferredVideoCodec,
+    RecordingSpecPreset? recordingSpec,
     int? startupNoticeVersion,
     String? mobileUpdatePromptDate,
     int? mobileUpdatePromptCount,
@@ -146,6 +152,7 @@ class AppSettings {
       maxVolumeEnabled: maxVolumeEnabled ?? this.maxVolumeEnabled,
       recordAudioEnabled: recordAudioEnabled ?? this.recordAudioEnabled,
       preferredVideoCodec: preferredVideoCodec ?? this.preferredVideoCodec,
+      recordingSpec: recordingSpec ?? this.recordingSpec,
       startupNoticeVersion: startupNoticeVersion ?? this.startupNoticeVersion,
       mobileUpdatePromptDate:
           mobileUpdatePromptDate ?? this.mobileUpdatePromptDate,
@@ -170,6 +177,7 @@ class AppSettings {
     'maxVolumeEnabled': maxVolumeEnabled,
     'recordAudioEnabled': recordAudioEnabled,
     'preferredVideoCodec': preferredVideoCodec.storageValue,
+    'recordingSpec': recordingSpec.storageValue,
     'startupNoticeVersion': startupNoticeVersion,
     'mobileUpdatePromptDate': mobileUpdatePromptDate,
     'mobileUpdatePromptCount': mobileUpdatePromptCount,

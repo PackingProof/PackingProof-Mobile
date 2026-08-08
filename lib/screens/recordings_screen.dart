@@ -11,6 +11,7 @@ import '../models/lan_backup.dart';
 import '../models/recording_video_codec.dart';
 import '../models/recording_operation_mode.dart';
 import '../models/recording_session.dart';
+import '../models/recording_spec.dart';
 import '../services/order_info_receiver_service.dart';
 import '../services/lan_backup_discovery_service.dart';
 import '../services/lan_backup_service.dart';
@@ -93,6 +94,7 @@ class RecordingsScreen extends StatefulWidget {
     required this.maxVolumeEnabled,
     this.recordAudioEnabled = true,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
+    this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength,
     required this.onWorkModeChanged,
     required this.onSpeechEnabledChanged,
@@ -101,6 +103,7 @@ class RecordingsScreen extends StatefulWidget {
     required this.onMaxVolumeEnabledChanged,
     this.onRecordAudioEnabledChanged,
     this.onPreferredVideoCodecChanged,
+    this.onRecordingSpecChanged,
     this.onMinimumBarcodeLengthChanged,
     required this.onSpeechPreview,
     required this.onSessionUpdated,
@@ -146,6 +149,7 @@ class RecordingsScreen extends StatefulWidget {
   final bool maxVolumeEnabled;
   final bool recordAudioEnabled;
   final RecordingVideoCodec preferredVideoCodec;
+  final RecordingSpecPreset recordingSpec;
   final int minimumBarcodeLength;
   final Future<void> Function(WorkMode mode) onWorkModeChanged;
   final Future<void> Function(bool enabled) onSpeechEnabledChanged;
@@ -155,6 +159,7 @@ class RecordingsScreen extends StatefulWidget {
   final Future<void> Function(bool enabled)? onRecordAudioEnabledChanged;
   final Future<void> Function(RecordingVideoCodec codec)?
   onPreferredVideoCodecChanged;
+  final Future<void> Function(RecordingSpecPreset spec)? onRecordingSpecChanged;
   final Future<void> Function(int value)? onMinimumBarcodeLengthChanged;
   final Future<void> Function() onSpeechPreview;
   final Future<void> Function(RecordingSession session) onSessionUpdated;
@@ -227,6 +232,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   late bool _maxVolumeEnabled;
   late bool _recordAudioEnabled;
   late RecordingVideoCodec _preferredVideoCodec;
+  late RecordingSpecPreset _recordingSpec;
   late int _minimumBarcodeLength;
   VideoDecodeSupport? _deviceDecodeSupport;
   late List<RecordingSession> _sessions;
@@ -303,6 +309,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _maxVolumeEnabled = widget.maxVolumeEnabled;
     _recordAudioEnabled = widget.recordAudioEnabled;
     _preferredVideoCodec = widget.preferredVideoCodec;
+    _recordingSpec = widget.recordingSpec;
     _minimumBarcodeLength = widget.minimumBarcodeLength;
     unawaited(_loadDeviceDecodeSupport());
     _sessions = List<RecordingSession>.of(widget.sessions);
@@ -357,6 +364,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _maxVolumeEnabled = widget.maxVolumeEnabled;
     _recordAudioEnabled = widget.recordAudioEnabled;
     _preferredVideoCodec = widget.preferredVideoCodec;
+    _recordingSpec = widget.recordingSpec;
     _minimumBarcodeLength = widget.minimumBarcodeLength;
     _unbackedRetention = widget.unbackedRetention;
     _backedRetention = widget.backedRetention;
@@ -997,6 +1005,19 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     }
   }
 
+  Future<void> _setRecordingSpec(RecordingSpecPreset spec) async {
+    if (_recordingSpec == spec) {
+      return;
+    }
+    setState(() => _recordingSpec = spec);
+    await widget.onRecordingSpecChanged?.call(spec);
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('录像规格已切换，新录像将使用所选规格')));
+    }
+  }
+
   Future<void> _setMinimumBarcodeLength(int value) async {
     if (_minimumBarcodeLength == value) {
       return;
@@ -1299,6 +1320,11 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                                   ? '当前设备在应用内播放 H.265 兼容性较差，新录像将自动使用 H.264'
                                   : null)),
                   onChanged: _setPreferredVideoCodec,
+                ),
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                _RecordingSpecSettings(
+                  spec: _recordingSpec,
+                  onChanged: _setRecordingSpec,
                 ),
                 Divider(height: 1, thickness: 1, color: colors.outlineVariant),
                 _RecordAudioSettings(
@@ -2730,6 +2756,60 @@ class _VideoCodecSettings extends StatelessWidget {
               style: TextStyle(color: colors.error, fontSize: 13, height: 1.5),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RecordingSpecSettings extends StatelessWidget {
+  const _RecordingSpecSettings({required this.spec, required this.onChanged});
+
+  final RecordingSpecPreset spec;
+  final ValueChanged<RecordingSpecPreset> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Padding(
+      key: const Key('recording-spec-settings'),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            '录像规格',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<RecordingSpecPreset>(
+              showSelectedIcon: false,
+              segments: RecordingSpecPreset.values
+                  .map(
+                    (RecordingSpecPreset value) =>
+                        ButtonSegment<RecordingSpecPreset>(
+                          value: value,
+                          label: Text(value.label),
+                        ),
+                  )
+                  .toList(growable: false),
+              selected: <RecordingSpecPreset>{spec},
+              onSelectionChanged: (Set<RecordingSpecPreset> values) {
+                onChanged(values.single);
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            spec.description,
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
         ],
       ),
     );
