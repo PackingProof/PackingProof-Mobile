@@ -72,10 +72,21 @@ void main() {
     expect(split.boundaryAt.isAfter(started.startedAt), isTrue);
     await Future<void>.delayed(const Duration(seconds: 4));
 
+    final CameraDiagnosticsSnapshot beforeStop = (await camera
+        .getDiagnostics())!;
     final NativeRecordingStop stopped = await camera.stopWork();
     expect(stopped.path, second.path);
     expect(await first.length(), greaterThan(100000));
     expect(await second.length(), greaterThan(100000));
+    // 停止后预览帧必须继续前进；此步可捕获“按结束后仍卡住”。
+    await Future<void>.delayed(const Duration(seconds: 3));
+    final CameraDiagnosticsSnapshot previewAfterStop = (await camera
+        .getDiagnostics())!;
+    expect(
+      previewAfterStop.previewFrameCount,
+      greaterThan(beforeStop.previewFrameCount),
+    );
+    expect(previewAfterStop.previewFrameAgeMs, lessThan(4000));
 
     final NativeRecordingStart audioStart = await camera.startWork(
       withAudio.path,

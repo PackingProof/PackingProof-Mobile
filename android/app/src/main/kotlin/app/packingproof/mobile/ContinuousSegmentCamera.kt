@@ -206,7 +206,6 @@ class ContinuousSegmentCamera(
             storageFailureReported = false
             recordingRequested = true
             resetStallRecovery()
-            refreshCaptureRequest()
             Log.i(CAMERA_LOG_TAG, "startWork path=$path recordAudio=$recordAudio")
             pendingStartPath = path
             startResult = result
@@ -217,7 +216,21 @@ class ContinuousSegmentCamera(
             if (recordAudio) {
                 startAudioPipeline()
             }
-            requestSyncFrame()
+            // 后置摄像头在运行中的重复请求上增删录像目标会冻结预览；
+            // 与 camera_android 一致：开始工作时重建会话，让预览+识别+编码
+            // 目标从会话配置起保持固定。
+            recreateCaptureSession(
+                onConfigured = {
+                    muxHandler?.post {
+                        if (startResult != null && recordingRequested) {
+                            requestSyncFrame()
+                        }
+                    }
+                },
+                onError = { message ->
+                    muxHandler?.post { failPendingStart("session_config", message) }
+                },
+            )
             handler.postDelayed({
                 if (startResult === result) {
                     failPendingStart("start_timeout", "录像编码器启动超时")
@@ -289,7 +302,7 @@ class ContinuousSegmentCamera(
             recordingActive = false
             resetStallRecovery()
             Log.i(CAMERA_LOG_TAG, "stopWork")
-            refreshCaptureRequest()
+            recreateCaptureSession()
             audioRunning.set(false)
             try {
                 audioRecord?.stop()
@@ -889,42 +902,51 @@ class ContinuousSegmentCamera(
         stallRecoveryLastLogAtMs = 0L
     }
 
-    private fun recreateCaptureSession() {
-        val camera = cameraDevice ?: return
-        val characteristics = selectedCameraCharacteristics ?: return
-        val preview = previewSurface ?: return
-        val encoder = videoInputSurface ?: return
-        val analysis = analysisReader?.surface ?: return
-        val oldSession = captureSession
-        captureSession = null
-        try {
-            oldSession?.close()
-            camera.createCaptureSession(
-                listOf(preview, encoder, analysis),
-                object : CameraCaptureSession.StateCallback() {
-                    override fun onConfigured(session: CameraCaptureSession) {
-                        if (disposed) {
-                            session.close()
-                            return
+    private fun recreateCaptureSession(
+        onConfigured: (() -> Unit)? = null,
+        onError: ((String) -> Unit)? = null,
+    ) {
+        val handler = cameraHandler ?: return
+        handler.post {
+            val camera = cameraDevice ?: return@post
+            val characteristics = selectedCameraCharacteristics ?: return@post
+            val preview = previewSurface ?: return@post
+            val encoder = videoInputSurface ?: return@post
+            val analysis = analysisReader?.surface ?: return@post
+            val oldSession = captureSession
+            captureSession = null
+            try {
+                oldSession?.close()
+                camera.createCaptureSession(
+                    listOf(preview, encoder, analysis),
+                    object : CameraCaptureSession.StateCallback() {
+                        override fun onConfigured(session: CameraCaptureSession) {
+                            if (disposed) {
+                                session.close()
+                                return
+                            }
+                            captureSession = session
+                            try {
+                                applyCaptureRequest(session, camera, characteristics)
+                                Log.i(CAMERA_LOG_TAG, "capture session recreated")
+                                onConfigured?.invoke()
+                            } catch (error: Throwable) {
+                                notifyNativeError("摄像头会话启动失败", error)
+                                onError?.invoke(error.message ?: "摄像头会话启动失败")
+                            }
                         }
-                        captureSession = session
-                        try {
-                            applyCaptureRequest(session, camera, characteristics)
-                            Log.w(CAMERA_LOG_TAG, "preview recovery: session recreated")
-                        } catch (error: Throwable) {
-                            notifyNativeError("摄像头预览恢复失败", error)
-                        }
-                    }
 
-                    override fun onConfigureFailed(session: CameraCaptureSession) {
-                        Log.w(CAMERA_LOG_TAG, "preview recovery: session recreate failed")
-                        notifyNativeError("摄像头预览恢复失败", null)
-                    }
-                },
-                cameraHandler,
-            )
-        } catch (error: Throwable) {
-            notifyNativeError("摄像头预览恢复失败", error)
+                        override fun onConfigureFailed(session: CameraCaptureSession) {
+                            notifyNativeError("摄像头会话配置失败", null)
+                            onError?.invoke("摄像头会话配置失败")
+                        }
+                    },
+                    handler,
+                )
+            } catch (error: Throwable) {
+                notifyNativeError("摄像头会话创建失败", error)
+                onError?.invoke(error.message ?: "摄像头会话创建失败")
+            }
         }
     }
 
@@ -1370,7 +1392,7 @@ class ContinuousSegmentCamera(
         recordingRequested = false
         recordingActive = false
         resetStallRecovery()
-        refreshCaptureRequest()
+        recreateCaptureSession()
         setVideoSuspended(true)
         audioRunning.set(false)
         try {
