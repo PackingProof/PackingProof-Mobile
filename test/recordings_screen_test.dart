@@ -212,9 +212,26 @@ void main() {
       ),
     );
 
+    final Finder recordingCard = find.byKey(
+      const Key('recording-settings-card'),
+    );
     expect(
-      find.byKey(const Key('minimum-barcode-length-card')),
+      find.descendant(
+        of: recordingCard,
+        matching: find.byKey(const Key('minimum-barcode-length-settings')),
+      ),
       findsOneWidget,
+    );
+    expect(find.byKey(const Key('minimum-barcode-length-card')), findsNothing);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('work-mode-settings'))).dy,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('minimum-barcode-length-settings')),
+            )
+            .dy,
+      ),
     );
     await tester.tap(find.byKey(const Key('minimum-barcode-length-dropdown')));
     await tester.pumpAndSettle();

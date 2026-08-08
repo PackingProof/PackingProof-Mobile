@@ -1303,6 +1303,17 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
               key: const Key('recording-settings-card'),
               children: <Widget>[
                 _WorkModeSettings(workMode: _workMode, onChanged: _setWorkMode),
+                if (widget.onMinimumBarcodeLengthChanged != null) ...<Widget>[
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: colors.outlineVariant,
+                  ),
+                  _MinimumBarcodeLengthSettings(
+                    value: _minimumBarcodeLength,
+                    onChanged: _setMinimumBarcodeLength,
+                  ),
+                ],
                 Divider(height: 1, thickness: 1, color: colors.outlineVariant),
                 _RetentionSettings(
                   unbackedRetention: _unbackedRetention,
@@ -1350,17 +1361,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            if (widget.onMinimumBarcodeLengthChanged != null)
-              _SettingsCard(
-                key: const Key('minimum-barcode-length-card'),
-                children: <Widget>[
-                  _MinimumBarcodeLengthSettings(
-                    value: _minimumBarcodeLength,
-                    onChanged: _setMinimumBarcodeLength,
-                  ),
-                ],
-              ),
             const SizedBox(height: 12),
             _OrderReceiverSettings(
               snapshot: widget.orderReceiverSnapshot,
