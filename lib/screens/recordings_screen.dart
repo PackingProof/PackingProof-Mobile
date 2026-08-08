@@ -1234,6 +1234,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         .take(_historyPageSize)
         .toList(growable: false);
     final bool historyMode = widget.mode == RecordingsScreenMode.history;
+    final ColorScheme colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: !widget.embedded,
@@ -1258,47 +1259,57 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
         children: <Widget>[
           if (!historyMode) ...<Widget>[
-            _WorkModeSettings(workMode: _workMode, onChanged: _setWorkMode),
-            const SizedBox(height: 12),
-            _RetentionSettings(
-              unbackedRetention: _unbackedRetention,
-              backedRetention: _backedRetention,
-              onUnbackedRetentionChanged: _setUnbackedRetention,
-              onBackedRetentionChanged: _setBackedRetention,
+            _SettingsCard(
+              key: const Key('recording-settings-card'),
+              children: <Widget>[
+                _WorkModeSettings(workMode: _workMode, onChanged: _setWorkMode),
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                _RetentionSettings(
+                  unbackedRetention: _unbackedRetention,
+                  backedRetention: _backedRetention,
+                  onUnbackedRetentionChanged: _setUnbackedRetention,
+                  onBackedRetentionChanged: _setBackedRetention,
+                ),
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                _VideoCodecSettings(
+                  codec: _preferredVideoCodec,
+                  hevcWarning: _deviceDecodeSupport == null
+                      ? null
+                      : (!_deviceDecodeSupport!.hasHevcDecoder
+                            ? '当前设备不支持播放 H.265，新录像将自动使用 H.264'
+                            : (_deviceDecodeSupport!.preferH264
+                                  ? '当前设备在应用内播放 H.265 兼容性较差，新录像将自动使用 H.264'
+                                  : null)),
+                  onChanged: _setPreferredVideoCodec,
+                ),
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                _RecordAudioSettings(
+                  enabled: _recordAudioEnabled,
+                  onChanged: _setRecordAudioEnabled,
+                ),
+              ],
             ),
             const SizedBox(height: 12),
-            _VideoCodecSettings(
-              codec: _preferredVideoCodec,
-              hevcWarning: _deviceDecodeSupport == null
-                  ? null
-                  : (!_deviceDecodeSupport!.hasHevcDecoder
-                      ? '当前设备不支持播放 H.265，新录像将自动使用 H.264'
-                      : (_deviceDecodeSupport!.preferH264
-                          ? '当前设备在应用内播放 H.265 兼容性较差，新录像将自动使用 H.264'
-                          : null)),
-              onChanged: _setPreferredVideoCodec,
-            ),
-            const SizedBox(height: 12),
-            _RecordAudioSettings(
-              enabled: _recordAudioEnabled,
-              onChanged: _setRecordAudioEnabled,
-            ),
-            const SizedBox(height: 12),
-            _SpeechPromptSettings(
-              enabled: _speechEnabled,
-              onChanged: _setSpeechEnabled,
-              onPreview: widget.onSpeechPreview,
-            ),
-            const SizedBox(height: 12),
-            _MaxVolumeSettings(
-              enabled: _maxVolumeEnabled,
-              onChanged: _setMaxVolumeEnabled,
-            ),
-            const SizedBox(height: 12),
-            _OrderSpeechSettings(
-              enabled: _orderSpeechEnabled,
-              masterEnabled: _speechEnabled,
-              onChanged: _setOrderSpeechEnabled,
+            _SettingsCard(
+              key: const Key('voice-settings-card'),
+              children: <Widget>[
+                _SpeechPromptSettings(
+                  enabled: _speechEnabled,
+                  onChanged: _setSpeechEnabled,
+                  onPreview: widget.onSpeechPreview,
+                ),
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                _MaxVolumeSettings(
+                  enabled: _maxVolumeEnabled,
+                  onChanged: _setMaxVolumeEnabled,
+                ),
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                _OrderSpeechSettings(
+                  enabled: _orderSpeechEnabled,
+                  masterEnabled: _speechEnabled,
+                  onChanged: _setOrderSpeechEnabled,
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             _OrderReceiverSettings(
@@ -1850,13 +1861,8 @@ class _RetentionSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -2565,6 +2571,24 @@ class _ComputerBackupSettings extends StatelessWidget {
   }
 }
 
+class _SettingsCard extends StatelessWidget {
+  const _SettingsCard({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.surfaceContainer,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
 class _WorkModeSettings extends StatelessWidget {
   const _WorkModeSettings({required this.workMode, required this.onChanged});
 
@@ -2574,13 +2598,9 @@ class _WorkModeSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return Container(
+    return Padding(
       key: const Key('work-mode-settings'),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -2636,13 +2656,9 @@ class _VideoCodecSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return Container(
+    return Padding(
       key: const Key('video-codec-settings'),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -2683,11 +2699,7 @@ class _VideoCodecSettings extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               hevcWarning!,
-              style: TextStyle(
-                color: colors.error,
-                fontSize: 13,
-                height: 1.5,
-              ),
+              style: TextStyle(color: colors.error, fontSize: 13, height: 1.5),
             ),
           ],
         ],
@@ -2705,13 +2717,9 @@ class _RecordAudioSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return Container(
+    return Padding(
       key: const Key('record-audio-settings'),
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-      ),
       child: Row(
         children: <Widget>[
           Expanded(
@@ -2759,13 +2767,9 @@ class _SpeechPromptSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return Container(
+    return Padding(
       key: const Key('speech-prompt-settings'),
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-      ),
       child: Row(
         children: <Widget>[
           Expanded(
@@ -2818,13 +2822,9 @@ class _OrderSpeechSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return Container(
+    return Padding(
       key: const Key('order-speech-settings'),
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-      ),
       child: Row(
         children: <Widget>[
           Expanded(
@@ -2969,13 +2969,9 @@ class _MaxVolumeSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return Container(
+    return Padding(
       key: const Key('max-volume-settings'),
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-      ),
       child: Row(
         children: <Widget>[
           Expanded(

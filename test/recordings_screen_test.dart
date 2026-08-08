@@ -183,6 +183,109 @@ void main() {
     expect(find.textContaining('不会自动删除未备份录像'), findsOneWidget);
   });
 
+  testWidgets('设置按录像、语音、接收分组为独立卡片', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          sessions: const [],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+
+    final Finder recordingCard = find.byKey(
+      const Key('recording-settings-card'),
+    );
+    final Finder voiceCard = find.byKey(const Key('voice-settings-card'));
+    expect(recordingCard, findsOneWidget);
+    expect(voiceCard, findsOneWidget);
+
+    expect(
+      find.descendant(
+        of: recordingCard,
+        matching: find.byKey(const Key('work-mode-settings')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: recordingCard, matching: find.text('录像清理')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: recordingCard,
+        matching: find.byKey(const Key('video-codec-settings')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: recordingCard,
+        matching: find.byKey(const Key('record-audio-settings')),
+      ),
+      findsOneWidget,
+    );
+
+    expect(
+      find.descendant(
+        of: voiceCard,
+        matching: find.byKey(const Key('speech-prompt-settings')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: voiceCard,
+        matching: find.byKey(const Key('max-volume-settings')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: voiceCard,
+        matching: find.byKey(const Key('order-speech-settings')),
+      ),
+      findsOneWidget,
+    );
+
+    // 订单接收与关于保持独立卡片，不并入两张组卡。
+    expect(
+      find.descendant(
+        of: recordingCard,
+        matching: find.byKey(const Key('order-receiver-settings')),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: voiceCard,
+        matching: find.byKey(const Key('order-receiver-settings')),
+      ),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('about-settings-open')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: recordingCard,
+        matching: find.byKey(const Key('about-settings-open')),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets('录像页面可切换工作模式', (WidgetTester tester) async {
     WorkMode selected = WorkMode.continuousScan;
     await tester.pumpWidget(
