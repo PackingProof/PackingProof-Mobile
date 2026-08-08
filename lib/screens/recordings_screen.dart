@@ -1324,7 +1324,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
             const SizedBox(height: 12),
             if (widget.onMinimumBarcodeLengthChanged != null)
               _SettingsCard(
-                key: const Key('advanced-settings-card'),
+                key: const Key('minimum-barcode-length-card'),
                 children: <Widget>[
                   _MinimumBarcodeLengthSettings(
                     value: _minimumBarcodeLength,
@@ -2813,22 +2813,35 @@ class _MinimumBarcodeLengthSettings extends StatelessWidget {
           );
     return Padding(
       key: const Key('minimum-barcode-length-settings'),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(
         children: <Widget>[
-          const Text(
-            '高级设置',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<int>(
-            key: const Key('minimum-barcode-length-dropdown'),
-            initialValue: current,
-            decoration: const InputDecoration(
-              labelText: '面单条码最短长度',
-              isDense: true,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  '面单条码最短长度',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  '低于该长度不会触发录制',
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ],
             ),
+          ),
+          const SizedBox(width: 8),
+          DropdownButton<int>(
+            key: const Key('minimum-barcode-length-dropdown'),
+            value: current,
+            isDense: true,
+            underline: const SizedBox.shrink(),
             items: _options
                 .map(
                   (int length) => DropdownMenuItem<int>(
@@ -2842,15 +2855,6 @@ class _MinimumBarcodeLengthSettings extends StatelessWidget {
                 onChanged(length);
               }
             },
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '低于该长度的条码不会作为面单号，用于过滤商品防伪码等短码；默认 11 位。',
-            style: TextStyle(
-              color: colors.onSurfaceVariant,
-              fontSize: 13,
-              height: 1.5,
-            ),
           ),
         ],
       ),

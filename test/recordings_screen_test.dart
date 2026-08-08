@@ -183,7 +183,7 @@ void main() {
     expect(find.textContaining('不会自动删除未备份录像'), findsOneWidget);
   });
 
-  testWidgets('高级设置可调整面单条码最短长度', (WidgetTester tester) async {
+  testWidgets('面单条码最短长度可调整', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -211,7 +211,10 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const Key('advanced-settings-card')), findsOneWidget);
+    expect(
+      find.byKey(const Key('minimum-barcode-length-card')),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const Key('minimum-barcode-length-dropdown')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('12 位').last);
