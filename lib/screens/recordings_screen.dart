@@ -314,6 +314,11 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       )
       .toList(growable: false);
 
+  bool get _hasOtherDeviceRecordings => _visibleItems.any(
+    (_RecordingListItem item) =>
+        item.remote != null && !_isRemoteFromThisDevice(item.remote!),
+  );
+
   @override
   void initState() {
     super.initState();
@@ -1661,6 +1666,15 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   children: <Widget>[
                     Row(
                       children: <Widget>[
+                        const Expanded(
+                          child: Text(
+                            '录像记录',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
                         if (_backupSnapshot.connectionStatus ==
                             LanConnectionStatus.connected)
                           IconButton(
@@ -1678,15 +1692,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                                   )
                                 : const Icon(Icons.refresh_rounded),
                           ),
-                        const Expanded(
-                          child: Text(
-                            '录像记录',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
                         if (_managing && visibleSessions.isNotEmpty)
                           TextButton(
                             onPressed: () => _toggleSelectAll(visibleSessions),
@@ -1840,10 +1845,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                       selected: _selectedIds.contains(session.id),
                       onLongPress: () =>
                           _handleRecordingLongPress(item, session),
-                      hideSourceChip:
-                          _managing ||
-                          (_sourceFilter == RecordingSourceFilter.local &&
-                              _backupSnapshot.endpoint == null),
+                      hideSourceChip: _managing || !_hasOtherDeviceRecordings,
                       onTap: () async {
                         if (_managing) {
                           if (item.local != null) _toggleSelection(session.id);

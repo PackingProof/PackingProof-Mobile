@@ -1997,7 +1997,22 @@ void main() {
   });
 
   testWidgets('录像来源标签显示在快递单号右侧', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final RemoteRecording computerRecording = RemoteRecording(
+      id: 1,
+      trackingNumber: 'PC-001',
+      startedAt: startedAt.subtract(const Duration(minutes: 1)),
+      duration: const Duration(seconds: 5),
+      sourceType: 'pc',
+      sourceDeviceId: 'computer-1',
+      sourceDeviceName: '仓库电脑',
+      sourceSessionId: '',
+      contentSha256: 'pc-sha',
+      playUri: Uri.parse('http://192.168.1.20/api/videos/1/play'),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: RecordingsScreen(
@@ -2007,10 +2022,28 @@ void main() {
           workMode: WorkMode.continuousScan,
           speechEnabled: true,
           maxVolumeEnabled: true,
-          backupSnapshot: const LanBackupSnapshot(
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '仓库电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
             deviceId: 'phone-1',
             deviceName: '手机1',
           ),
+          onLoadRemoteRecordings:
+              ({required page, required pageSize, keyword = ''}) async =>
+                  RemoteRecordingPage(
+                    data: page == 1
+                        ? <RemoteRecording>[computerRecording]
+                        : const <RemoteRecording>[],
+                    page: page,
+                    pageSize: pageSize,
+                    total: 1,
+                    deviceTotal: 0,
+                  ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -2021,16 +2054,15 @@ void main() {
       ),
     );
 
-    await tester.drag(find.byType(ListView), const Offset(0, -420));
-    await tester.pump();
+    await tester.pumpAndSettle();
     final Offset codeCenter = tester.getCenter(find.text('TRACKING-001'));
     final Offset sourceCenter = tester.getCenter(
-      find.byKey(const Key('recording-source-chip')),
+      find.byKey(const Key('recording-source-chip')).first,
     );
     expect((codeCenter.dy - sourceCenter.dy).abs(), lessThan(2));
     expect(sourceCenter.dx, greaterThan(codeCenter.dx));
     expect(
-      tester.getSize(find.byKey(const Key('recording-thumbnail'))),
+      tester.getSize(find.byKey(const Key('recording-thumbnail')).first),
       const Size.square(56),
     );
   });
@@ -3395,7 +3427,7 @@ void main() {
     expect(checkbox.visualDensity, VisualDensity.compact);
   });
 
-  testWidgets('本地筛选且未连接电脑时隐藏本机来源标签', (WidgetTester tester) async {
+  testWidgets('没有其他设备录像时不显示来源标签', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -3423,7 +3455,7 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.byKey(const Key('recording-source-chip')), findsOneWidget);
+    expect(find.byKey(const Key('recording-source-chip')), findsNothing);
     await tester.tap(find.byKey(const Key('recording-source-filter')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('本地').last);
@@ -3431,7 +3463,7 @@ void main() {
     expect(find.byKey(const Key('recording-source-chip')), findsNothing);
   });
 
-  testWidgets('连接电脑后本地筛选仍显示来源标签', (WidgetTester tester) async {
+  testWidgets('本地筛选只有本机录像时不显示来源标签', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -3470,10 +3502,71 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('本地').last);
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('recording-source-chip')), findsOneWidget);
+    expect(find.byKey(const Key('recording-source-chip')), findsNothing);
   });
 
-  testWidgets('未连接或电脑离线时不显示刷新按钮', (WidgetTester tester) async {
+  testWidgets('有电脑录像时显示来源标签', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final RemoteRecording computerRecording = RemoteRecording(
+      id: 1,
+      trackingNumber: 'PC-001',
+      startedAt: startedAt.subtract(const Duration(minutes: 1)),
+      duration: const Duration(seconds: 5),
+      sourceType: 'pc',
+      sourceDeviceId: 'computer-1',
+      sourceDeviceName: '仓库电脑',
+      sourceSessionId: '',
+      contentSha256: 'pc-sha',
+      playUri: Uri.parse('http://192.168.1.20/api/videos/1/play'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '仓库电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+            deviceId: 'phone-1',
+            deviceName: '手机1',
+          ),
+          onLoadRemoteRecordings:
+              ({required page, required pageSize, keyword = ''}) async =>
+                  RemoteRecordingPage(
+                    data: page == 1
+                        ? <RemoteRecording>[computerRecording]
+                        : const <RemoteRecording>[],
+                    page: page,
+                    pageSize: pageSize,
+                    total: 1,
+                    deviceTotal: 0,
+                  ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recording-source-chip')), findsNWidgets(2));
+  });
+
+  testWidgets('未连接或电脑离线时不显示刷新按钮和来源标签', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -3508,6 +3601,7 @@ void main() {
     );
     await tester.pump();
     expect(find.byKey(const Key('refresh-recordings-button')), findsNothing);
+    expect(find.byKey(const Key('recording-source-chip')), findsNothing);
 
     await tester.pumpWidget(
       build(
@@ -3520,6 +3614,7 @@ void main() {
     );
     await tester.pump();
     expect(find.byKey(const Key('refresh-recordings-button')), findsNothing);
+    expect(find.byKey(const Key('recording-source-chip')), findsNothing);
 
     await tester.pumpWidget(
       build(
@@ -3532,9 +3627,10 @@ void main() {
     );
     await tester.pump();
     expect(find.byKey(const Key('refresh-recordings-button')), findsOneWidget);
+    expect(find.byKey(const Key('recording-source-chip')), findsNothing);
   });
 
-  testWidgets('刷新按钮位于录像记录标题左侧', (WidgetTester tester) async {
+  testWidgets('刷新按钮位于录像记录标题右侧', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -3571,7 +3667,11 @@ void main() {
       find.byKey(const Key('refresh-recordings-button')),
     );
     final Rect titleRect = tester.getRect(find.text('录像记录'));
-    expect(refreshRect.right, lessThanOrEqualTo(titleRect.left));
+    final Rect manageRect = tester.getRect(
+      find.byKey(const Key('manage-recordings-button')),
+    );
+    expect(refreshRect.left, greaterThanOrEqualTo(titleRect.right));
+    expect(refreshRect.right, lessThanOrEqualTo(manageRect.left));
   });
 
   testWidgets('管理模式点击返回键退出管理', (WidgetTester tester) async {
@@ -3647,7 +3747,7 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.byKey(const Key('recording-source-chip')), findsOneWidget);
+    expect(find.byKey(const Key('recording-source-chip')), findsNothing);
     await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
     expect(find.byKey(const Key('recording-source-chip')), findsNothing);
