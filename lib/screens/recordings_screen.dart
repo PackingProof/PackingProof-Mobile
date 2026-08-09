@@ -1519,9 +1519,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   @override
   Widget build(BuildContext context) {
     final List<_RecordingListItem> visibleItems = _visibleItems;
-    final List<RecordingSession> visibleSessions = visibleItems
-        .map((item) => item.session)
-        .toList(growable: false);
     final int localCount = _filteredSessions
         .where((session) => File(session.filePath).existsSync())
         .length;
@@ -1549,6 +1546,9 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     final List<_RecordingListItem> pageItems = visibleItems
         .skip(historyPage * _historyPageSize)
         .take(_historyPageSize)
+        .toList(growable: false);
+    final List<RecordingSession> currentPageSessions = pageItems
+        .map((item) => item.session)
         .toList(growable: false);
     final bool historyMode = widget.mode == RecordingsScreenMode.history;
     final ColorScheme colors = Theme.of(context).colorScheme;
@@ -2004,18 +2004,19 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   children: <Widget>[
                     Row(
                       children: <Widget>[
-                        if (visibleSessions.isNotEmpty)
+                        if (currentPageSessions.isNotEmpty)
                           TextButton(
                             key: const Key('select-all-recordings-button'),
-                            onPressed: () => _toggleSelectAll(visibleSessions),
+                            onPressed: () =>
+                                _toggleSelectAll(currentPageSessions),
                             child: Text(
                               _selectedIds.containsAll(
-                                    visibleSessions.map(
+                                    currentPageSessions.map(
                                       (RecordingSession item) => item.id,
                                     ),
                                   )
                                   ? '取消全选'
-                                  : '全选',
+                                  : '全选本页',
                             ),
                           ),
                         const Spacer(),

@@ -3827,7 +3827,7 @@ void main() {
       find.descendant(of: find.byType(AppBar), matching: find.text('完成')),
       findsNothing,
     );
-    final double selectAllTop = tester.getTopLeft(find.text('全选')).dy;
+    final double selectAllTop = tester.getTopLeft(find.text('全选本页')).dy;
     final double finishTop = tester.getTopLeft(find.text('完成')).dy;
     final double copyTop = tester.getTopLeft(find.text('复制单号')).dy;
     final double deleteTop = tester.getTopLeft(find.text('删除')).dy;
@@ -3836,7 +3836,7 @@ void main() {
     expect(selectAllTop, lessThan(deleteTop));
     expect(finishTop, lessThan(deleteTop));
 
-    await tester.tap(find.text('全选'));
+    await tester.tap(find.text('全选本页'));
     await tester.pump();
     expect(find.text('取消全选'), findsOneWidget);
     expect(find.text('已选 2 项'), findsOneWidget);
@@ -3844,6 +3844,67 @@ void main() {
     await tester.tap(find.text('完成'));
     await tester.pump();
     expect(find.text('管理'), findsOneWidget);
+  });
+
+  testWidgets('全选本页只选中当前页录像', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final List<RecordingSession> all = List<RecordingSession>.generate(
+      12,
+      (int index) => _session(
+        'clip-$index',
+        'NO-${index + 1}',
+        startedAt.subtract(Duration(minutes: index)),
+        filePath: 'pubspec.yaml',
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: all,
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onLoadLocalRecordings:
+              ({required page, required pageSize, keyword = ''}) async {
+                final int start = (page - 1) * pageSize;
+                return LocalRecordingPage(
+                  data: start >= all.length
+                      ? const <RecordingSession>[]
+                      : all.skip(start).take(pageSize).toList(growable: false),
+                  page: page,
+                  pageSize: pageSize,
+                  total: all.length,
+                );
+              },
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+    expect(find.text('1 / 3 页'), findsOneWidget);
+
+    await tester.tap(find.text('全选本页'));
+    await tester.pump();
+    expect(find.text('已选 5 项'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('recording-page-next')));
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 3 页'), findsOneWidget);
+    expect(find.text('已选 5 项'), findsOneWidget);
+
+    await tester.tap(find.text('全选本页'));
+    await tester.pump();
+    expect(find.text('已选 10 项'), findsOneWidget);
   });
 
   testWidgets('管理入口与搜索框收纳在录像记录区块', (WidgetTester tester) async {
