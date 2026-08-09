@@ -2739,6 +2739,117 @@ void main() {
     expect(find.text('REMOTE-OLD'), findsNothing);
   });
 
+  testWidgets('自定义日期范围过滤只显示范围内的录像（含电脑录像）', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day, 10);
+    final DateTime yesterday = today.subtract(const Duration(days: 1));
+    final RemoteRecording remoteToday = RemoteRecording(
+      id: 21,
+      trackingNumber: 'REMOTE-CUSTOM-TODAY',
+      startedAt: today.add(const Duration(hours: 1)),
+      duration: const Duration(seconds: 5),
+      sourceType: 'pc',
+      sourceDeviceId: '',
+      sourceDeviceName: '',
+      sourceSessionId: '',
+      contentSha256: '',
+      playUri: Uri.parse('http://192.168.1.20/video/21'),
+    );
+    final RemoteRecording remoteYesterday = RemoteRecording(
+      id: 22,
+      trackingNumber: 'REMOTE-CUSTOM-OLD',
+      startedAt: yesterday,
+      duration: const Duration(seconds: 5),
+      sourceType: 'pc',
+      sourceDeviceId: '',
+      sourceDeviceName: '',
+      sourceSessionId: '',
+      contentSha256: '',
+      playUri: Uri.parse('http://192.168.1.20/video/22'),
+    );
+    RecordingSession session(String id, String code, DateTime startedAt) =>
+        RecordingSession(
+          id: id,
+          filePath: 'pubspec.yaml',
+          startedAt: startedAt,
+          endedAt: startedAt.add(const Duration(seconds: 8)),
+          markers: <BarcodeMarker>[
+            BarcodeMarker(
+              code: code,
+              occurredAt: startedAt,
+              offset: Duration.zero,
+            ),
+          ],
+        );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            session('today', 'LOCAL-CUSTOM-TODAY', today),
+            session('yesterday', 'LOCAL-CUSTOM-OLD', yesterday),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+          ),
+          onLoadRemoteRecordings:
+              ({required page, required pageSize, keyword = ''}) async =>
+                  RemoteRecordingPage(
+                    data: page == 1
+                        ? <RemoteRecording>[remoteToday, remoteYesterday]
+                        : const <RemoteRecording>[],
+                    page: page,
+                    pageSize: pageSize,
+                    total: 2,
+                    deviceTotal: 0,
+                  ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('recording-date-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('自定义范围'));
+    await tester.pumpAndSettle();
+
+    // 日历初始显示当前月；同一天点两次作为起止日期，保存后即为“今天”范围。
+    await tester.tap(find.text('${today.day}').first);
+    await tester.pump();
+    await tester.tap(find.text('${today.day}').first);
+    await tester.pump();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('LOCAL-CUSTOM-TODAY'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('LOCAL-CUSTOM-TODAY'), findsOneWidget);
+    expect(find.text('REMOTE-CUSTOM-TODAY'), findsOneWidget);
+    expect(find.text('LOCAL-CUSTOM-OLD'), findsNothing);
+    expect(find.text('REMOTE-CUSTOM-OLD'), findsNothing);
+  });
+
   testWidgets('管理模式复制单号去重并写入剪贴板', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
