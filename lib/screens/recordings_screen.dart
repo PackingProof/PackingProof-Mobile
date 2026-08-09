@@ -1492,18 +1492,16 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     final int localLogicalCount = widget.onLoadLocalRecordings == null
         ? _filteredSessions.length
         : _localTotal;
-    final int estimatedCount = _managing
-        ? visibleItems.length
-        : switch (_sourceFilter) {
-            RecordingSourceFilter.local =>
-              widget.onLoadLocalRecordings == null ? localCount : _localTotal,
-            RecordingSourceFilter.backedUp => _remoteDeviceTotal,
-            RecordingSourceFilter.computer => _remoteTotal,
-            RecordingSourceFilter.all =>
-              localLogicalCount +
-                  _remoteTotal -
-                  _remoteDeviceTotal.clamp(0, localLogicalCount),
-          };
+    final int estimatedCount = switch (_sourceFilter) {
+      RecordingSourceFilter.local =>
+        widget.onLoadLocalRecordings == null ? localCount : _localTotal,
+      RecordingSourceFilter.backedUp => _remoteDeviceTotal,
+      RecordingSourceFilter.computer => _remoteTotal,
+      RecordingSourceFilter.all =>
+        localLogicalCount +
+            _remoteTotal -
+            _remoteDeviceTotal.clamp(0, localLogicalCount),
+    };
     final int historyPageCount = estimatedCount <= 0
         ? (visibleItems.isEmpty ? 0 : 1)
         : (estimatedCount / _historyPageSize).ceil();
