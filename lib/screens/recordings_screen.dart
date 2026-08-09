@@ -39,6 +39,21 @@ String recordingsHistoryTitle(String deviceName, String ipAddress) {
 }
 
 @visibleForTesting
+String fitTrackingNumber(String value, double maxWidth, double fontSize) {
+  const double averageCharWidthFactor = 0.62;
+  const int tailLength = 4;
+  final int maxChars = (maxWidth / (fontSize * averageCharWidthFactor)).floor();
+  if (value.length <= maxChars) {
+    return value;
+  }
+  final int headLength = (maxChars - 1 - tailLength)
+      .clamp(0, value.length - tailLength)
+      .toInt();
+  return '${value.substring(0, headLength)}…'
+      '${value.substring(value.length - tailLength)}';
+}
+
+@visibleForTesting
 String friendlyBackupConnectionError(Object error) {
   if (error is LanBackupConnectionException ||
       error is LanBackupHostUpgradeRequiredException ||
@@ -1855,6 +1870,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                       onLongPress: () =>
                           _handleRecordingLongPress(item, session),
                       hideSourceChip: !_hasOtherDeviceRecordings,
+                      sourceChipOnSecondaryRow: _managing && item.local == null,
                       onTap: () async {
                         if (_managing) {
                           _toggleSelection(session.id);
@@ -3733,6 +3749,7 @@ class _RecordingTile extends StatelessWidget {
     this.remoteThumbnail,
     this.onLongPress,
     this.hideSourceChip = false,
+    this.sourceChipOnSecondaryRow = false,
   });
 
   final RecordingSession session;
@@ -3747,6 +3764,7 @@ class _RecordingTile extends StatelessWidget {
   final bool backedUp;
   final VoidCallback? onLongPress;
   final bool hideSourceChip;
+  final bool sourceChipOnSecondaryRow;
   final Future<String?>? localThumbnail;
   final Uri? remoteThumbnail;
   final Map<String, String> remoteHeaders;
@@ -3796,18 +3814,33 @@ class _RecordingTile extends StatelessWidget {
                                 Row(
                                   children: <Widget>[
                                     Expanded(
-                                      child: Text(
-                                        session.displayCode,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                        ),
+                                      child: LayoutBuilder(
+                                        builder:
+                                            (
+                                              BuildContext context,
+                                              BoxConstraints constraints,
+                                            ) {
+                                              const TextStyle codeStyle =
+                                                  TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w800,
+                                                  );
+                                              return Text(
+                                                fitTrackingNumber(
+                                                  session.displayCode,
+                                                  constraints.maxWidth,
+                                                  codeStyle.fontSize!,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: codeStyle,
+                                              );
+                                            },
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    if (!hideSourceChip)
+                                    if (!hideSourceChip &&
+                                        !sourceChipOnSecondaryRow) ...[
+                                      const SizedBox(width: 8),
                                       _StatusChip(
                                         key: const Key('recording-source-chip'),
                                         label: sourceLabel,
@@ -3816,6 +3849,7 @@ class _RecordingTile extends StatelessWidget {
                                             : _StatusChipTone.recordingDevice,
                                         identity: sourceIdentity,
                                       ),
+                                    ],
                                   ],
                                 ),
                                 const SizedBox(height: 7),
@@ -3835,6 +3869,18 @@ class _RecordingTile extends StatelessWidget {
                                         ),
                                       ),
                                     ),
+                                    if (!hideSourceChip &&
+                                        sourceChipOnSecondaryRow) ...[
+                                      const SizedBox(width: 8),
+                                      _StatusChip(
+                                        key: const Key('recording-source-chip'),
+                                        label: sourceLabel,
+                                        tone: sourceLabel == '电脑'
+                                            ? _StatusChipTone.computer
+                                            : _StatusChipTone.recordingDevice,
+                                        identity: sourceIdentity,
+                                      ),
+                                    ],
                                     if (backedUp) ...<Widget>[
                                       const SizedBox(width: 8),
                                       const _StatusChip(

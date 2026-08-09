@@ -61,6 +61,22 @@ void main() {
     );
   });
 
+  test('条码按宽度动态省略并保留末尾', () {
+    expect(
+      fitTrackingNumber('JT1234567890123456', 480, 16),
+      'JT1234567890123456',
+    );
+    expect(
+      fitTrackingNumber('JT1234567890123456', 160, 16),
+      'JT123456789…3456',
+    );
+    expect(fitTrackingNumber('JT1234567890123456', 64, 16), 'J…3456');
+    expect(
+      fitTrackingNumber(RecordingSession.unrecognizedLabel, 64, 16),
+      RecordingSession.unrecognizedLabel,
+    );
+  });
+
   test('未知连接错误不会向用户暴露状态码或异常类型', () {
     final String message = friendlyBackupConnectionError(
       const HttpException('电脑连接失败（426）'),
@@ -2121,6 +2137,120 @@ void main() {
       tester.getSize(find.byKey(const Key('recording-thumbnail')).first),
       const Size.square(56),
     );
+  });
+
+  testWidgets('长条码在历史行中间省略且保留结尾', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final String longCode = 'JT${List<String>.filled(10, '1234567890').join()}';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', longCode, startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    final Finder ellipsized = find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is Text &&
+          widget.data != null &&
+          widget.data!.contains('…') &&
+          widget.data!.endsWith('7890') &&
+          widget.data!.length > 20,
+    );
+    expect(ellipsized, findsOneWidget);
+    expect(find.text(longCode), findsNothing);
+  });
+
+  testWidgets('管理模式电脑录像的来源标签下移到第二行', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final RemoteRecording remote = RemoteRecording(
+      id: 11,
+      trackingNumber: 'REMOTE-1',
+      startedAt: startedAt.subtract(const Duration(minutes: 1)),
+      duration: const Duration(seconds: 5),
+      sourceType: 'pc',
+      sourceDeviceId: 'computer-1',
+      sourceDeviceName: '电脑',
+      sourceSessionId: '',
+      contentSha256: 'sha',
+      playUri: Uri.parse('http://192.168.1.20/video/11'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+            deviceId: 'phone-1',
+            deviceName: '手机1',
+          ),
+          onLoadRemoteRecordings:
+              ({required page, required pageSize, keyword = ''}) async =>
+                  RemoteRecordingPage(
+                    data: page == 1
+                        ? <RemoteRecording>[remote]
+                        : const <RemoteRecording>[],
+                    page: page,
+                    pageSize: pageSize,
+                    total: 1,
+                    deviceTotal: 0,
+                  ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+
+    final Offset localCodeCenter = tester.getCenter(find.text('A-1111'));
+    final Offset localChipCenter = tester.getCenter(
+      find.byKey(const Key('recording-source-chip')).first,
+    );
+    final Offset remoteCodeCenter = tester.getCenter(find.text('REMOTE-1'));
+    final Offset remoteChipCenter = tester.getCenter(
+      find.byKey(const Key('recording-source-chip')).last,
+    );
+    final Offset remoteDateCenter = tester.getCenter(
+      find.byKey(const Key('recording-date-duration')).last,
+    );
+    expect((localChipCenter.dy - localCodeCenter.dy).abs(), lessThan(2));
+    expect(remoteChipCenter.dy, greaterThan(remoteCodeCenter.dy + 10));
+    expect((remoteChipCenter.dy - remoteDateCenter.dy).abs(), lessThan(2));
   });
 
   testWidgets('录像来源标签区分电脑和其他手机', (WidgetTester tester) async {
