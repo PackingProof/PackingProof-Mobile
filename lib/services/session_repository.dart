@@ -18,6 +18,14 @@ import 'recording_database.dart';
 import 'recording_path_diagnostics.dart';
 import 'recording_path_resolver.dart';
 
+/// 用户手动删除的审计原因。
+///
+/// 产品要求把“用户手动删除”与自动清理（保留策略、容量清理等）严格区分：
+/// 手动删除写入 [DeletionReason.userManual]，自动清理使用各自的清理原因。
+abstract final class DeletionReason {
+  static const String userManual = '手动删除';
+}
+
 class SessionRepository {
   SessionRepository({Directory? rootDirectory}) : this._(rootDirectory);
 
@@ -451,7 +459,10 @@ class SessionRepository {
     await initialize();
     final List<RecordingSession> removed = await _recordingDatabase
         .findActiveByIds(sessionIds);
-    await _recordingDatabase.markDeleted(removed, reason: '手动删除');
+    await _recordingDatabase.markDeleted(
+      removed,
+      reason: DeletionReason.userManual,
+    );
     for (final String filePath
         in removed
             .map((RecordingSession item) => p.normalize(item.filePath))

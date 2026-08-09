@@ -1642,7 +1642,7 @@ void main() {
           sessions: <RecordingSession>[
             RecordingSession(
               id: 'recording-1',
-              filePath: 'master.mp4',
+              filePath: 'legacy.mp4',
               startedAt: startedAt,
               endedAt: startedAt.add(const Duration(seconds: 8)),
               markers: <BarcodeMarker>[
@@ -2547,19 +2547,334 @@ void main() {
     );
     await tester.tap(find.text('管理'));
     await tester.pump();
-    await tester.drag(find.byType(ListView), const Offset(0, -420));
+    await tester.drag(find.byType(ListView), const Offset(0, -520));
     await tester.pump();
     await tester.tap(find.text('JT1234567890'));
     await tester.pump();
 
     expect(find.text('已选 1 项'), findsOneWidget);
-    await tester.tap(find.text('删除所选录像'));
+    await tester.tap(find.byKey(const Key('delete-selected-recordings')));
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    expect(find.text('应用会按保留策略自动清理录像，一般无需手动删除。删除后无法恢复。'), findsOneWidget);
+    expect(find.textContaining('共享同一录像文件'), findsNothing);
+    await tester.tap(find.widgetWithText(FilledButton, '仍要删除'));
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(deletedIds, <String>{'clip-1'});
     expect(find.text('JT1234567890'), findsNothing);
+  });
+
+  testWidgets('日期筛选面板提供快捷项和自定义范围', (WidgetTester tester) async {
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            RecordingSession(
+              id: 'clip-1',
+              filePath: 'pubspec.yaml',
+              startedAt: startedAt,
+              endedAt: startedAt.add(const Duration(seconds: 8)),
+              markers: <BarcodeMarker>[
+                BarcodeMarker(
+                  code: 'JT1234567890',
+                  occurredAt: startedAt,
+                  offset: Duration.zero,
+                ),
+              ],
+            ),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('recording-date-filter')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('recording-date-filter')));
+    await tester.pumpAndSettle();
+    for (final String label in <String>[
+      '全部日期',
+      '今天',
+      '最近7天',
+      '最近30天',
+      '自定义范围',
+    ]) {
+      expect(find.text(label), findsAtLeastNWidgets(1));
+    }
+  });
+
+  testWidgets('选择最近7天只显示该日期范围内的录像（含电脑录像）', (WidgetTester tester) async {
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day, 10);
+    final DateTime old = today.subtract(const Duration(days: 30));
+    final RemoteRecording remoteToday = RemoteRecording(
+      id: 11,
+      trackingNumber: 'REMOTE-TODAY',
+      startedAt: today.add(const Duration(hours: 1)),
+      duration: const Duration(seconds: 5),
+      sourceType: 'pc',
+      sourceDeviceId: '',
+      sourceDeviceName: '',
+      sourceSessionId: '',
+      contentSha256: '',
+      playUri: Uri.parse('http://192.168.1.20/video/11'),
+    );
+    final RemoteRecording remoteOld = RemoteRecording(
+      id: 12,
+      trackingNumber: 'REMOTE-OLD',
+      startedAt: old,
+      duration: const Duration(seconds: 5),
+      sourceType: 'pc',
+      sourceDeviceId: '',
+      sourceDeviceName: '',
+      sourceSessionId: '',
+      contentSha256: '',
+      playUri: Uri.parse('http://192.168.1.20/video/12'),
+    );
+    RecordingSession session(String id, String code, DateTime startedAt) =>
+        RecordingSession(
+          id: id,
+          filePath: 'pubspec.yaml',
+          startedAt: startedAt,
+          endedAt: startedAt.add(const Duration(seconds: 8)),
+          markers: <BarcodeMarker>[
+            BarcodeMarker(
+              code: code,
+              occurredAt: startedAt,
+              offset: Duration.zero,
+            ),
+          ],
+        );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            session('today', 'LOCAL-TODAY', today),
+            session('old', 'LOCAL-OLD', old),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+          ),
+          onLoadRemoteRecordings:
+              ({required page, required pageSize, keyword = ''}) async =>
+                  RemoteRecordingPage(
+                    data: page == 1
+                        ? <RemoteRecording>[remoteToday, remoteOld]
+                        : const <RemoteRecording>[],
+                    page: page,
+                    pageSize: pageSize,
+                    total: 2,
+                    deviceTotal: 0,
+                  ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('LOCAL-TODAY'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('LOCAL-TODAY'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('LOCAL-OLD'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('LOCAL-OLD'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('REMOTE-OLD'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('REMOTE-OLD'), findsOneWidget);
+
+    await tester.drag(find.byType(ListView), const Offset(0, 2000));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('recording-date-filter')),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('recording-date-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('最近7天'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('LOCAL-TODAY'),
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('LOCAL-TODAY'), findsOneWidget);
+    expect(find.text('REMOTE-TODAY'), findsOneWidget);
+    expect(find.text('LOCAL-OLD'), findsNothing);
+    expect(find.text('REMOTE-OLD'), findsNothing);
+  });
+
+  testWidgets('管理模式复制单号去重并写入剪贴板', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    String? copied;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (
+          MethodCall call,
+        ) async {
+          if (call.method == 'Clipboard.setData') {
+            copied =
+                (call.arguments as Map<Object?, Object?>)['text'] as String?;
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    RecordingSession session(String id, String code) => RecordingSession(
+      id: id,
+      filePath: 'pubspec.yaml',
+      startedAt: startedAt,
+      endedAt: startedAt.add(const Duration(seconds: 8)),
+      markers: code.isEmpty
+          ? const <BarcodeMarker>[]
+          : <BarcodeMarker>[
+              BarcodeMarker(
+                code: code,
+                occurredAt: startedAt,
+                offset: Duration.zero,
+              ),
+            ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            session('clip-1', 'A-1111'),
+            session('clip-2', 'A-1111'),
+            session('clip-3', 'B-2222'),
+            session('clip-4', ''),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('管理'));
+    await tester.pump();
+    await tester.tap(find.text('A-1111').first);
+    await tester.pump();
+    expect(find.text('已选 1 项'), findsOneWidget);
+    await tester.tap(find.text('A-1111').last);
+    await tester.pump();
+    expect(find.text('已选 2 项'), findsOneWidget);
+    await tester.tap(find.text('B-2222'));
+    await tester.pump();
+    expect(find.text('已选 3 项'), findsOneWidget);
+    await tester.tap(find.text('未识别面单'));
+    await tester.pump();
+
+    expect(find.text('已选 4 项'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('copy-selected-tracking-numbers')));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(copied, 'A-1111\nB-2222');
+    expect(find.text('已复制 2 个单号'), findsOneWidget);
+  });
+
+  testWidgets('所选记录没有可复制单号时提示且不复制', (WidgetTester tester) async {
+    String? copied;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (
+          MethodCall call,
+        ) async {
+          if (call.method == 'Clipboard.setData') {
+            copied =
+                (call.arguments as Map<Object?, Object?>)['text'] as String?;
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            RecordingSession(
+              id: 'clip-1',
+              filePath: 'pubspec.yaml',
+              startedAt: startedAt,
+              endedAt: startedAt.add(const Duration(seconds: 8)),
+              markers: const <BarcodeMarker>[],
+            ),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('管理'));
+    await tester.pump();
+    await tester.drag(find.byType(ListView), const Offset(0, -520));
+    await tester.pump();
+    await tester.tap(find.text('未识别面单'));
+    await tester.pump();
+
+    expect(find.text('已选 1 项'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('copy-selected-tracking-numbers')));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(copied, isNull);
+    expect(find.text('所选记录没有可复制的单号'), findsOneWidget);
   });
 }
 
@@ -2638,7 +2953,7 @@ RecordingSession _session(
   String id,
   String code,
   DateTime startedAt, {
-  String filePath = 'master.mp4',
+  String filePath = 'legacy.mp4',
 }) {
   return RecordingSession(
     id: id,

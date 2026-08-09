@@ -29,6 +29,8 @@ enum RecordingsScreenMode { history, settings }
 
 enum RecordingSourceFilter { all, local, backedUp, computer }
 
+enum _HistoryDatePreset { all, today, last7Days, last30Days, custom }
+
 @visibleForTesting
 String recordingsHistoryTitle(String deviceName, String ipAddress) {
   final String name = deviceName.trim().isEmpty ? '设备' : deviceName.trim();
@@ -274,6 +276,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   int _remoteRequestGeneration = 0;
   int _localRequestGeneration = 0;
   RecordingSourceFilter _sourceFilter = RecordingSourceFilter.all;
+  _HistoryDatePreset _datePreset = _HistoryDatePreset.all;
+  DateTimeRange? _customDateRange;
   bool _backupDiscoveryStarted = false;
   bool _autoConnectStarted = false;
   bool _approvalRequestInFlight = false;
@@ -748,8 +752,13 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       }
     }
     values.sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    final ({DateTime start, DateTime end})? dateWindow = _activeDateWindow;
     return values
         .where((item) {
+          final bool inDateRange =
+              dateWindow == null ||
+              (!item.startedAt.isBefore(dateWindow.start) &&
+                  item.startedAt.isBefore(dateWindow.end));
           final bool hasLocalFile =
               item.local != null && File(item.local!.filePath).existsSync();
           final bool backedUp =
@@ -766,13 +775,14 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                         ) &&
                         _isJobConfirmedAvailable(job),
                   ));
-          return switch (_sourceFilter) {
-            RecordingSourceFilter.all => true,
-            RecordingSourceFilter.local => hasLocalFile,
-            RecordingSourceFilter.backedUp => backedUp,
-            RecordingSourceFilter.computer =>
-              !hasLocalFile && item.remote != null,
-          };
+          return inDateRange &&
+              switch (_sourceFilter) {
+                RecordingSourceFilter.all => true,
+                RecordingSourceFilter.local => hasLocalFile,
+                RecordingSourceFilter.backedUp => backedUp,
+                RecordingSourceFilter.computer =>
+                  !hasLocalFile && item.remote != null,
+              };
         })
         .toList(growable: false);
   }
@@ -1119,8 +1129,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       context: context,
       builder: (BuildContext context) => TwoButtonConfirmDialog(
         title: '删除 ${_selectedIds.length} 段录像？',
-        message: '删除后无法恢复；共用同一母视频的其他片段不会受影响',
-        confirmLabel: '删除',
+        message: '应用会按保留策略自动清理录像，一般无需手动删除。删除后无法恢复。',
+        confirmLabel: '仍要删除',
         dangerous: true,
       ),
     );
@@ -1201,6 +1211,134 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         _historyPage = 0;
       });
     }
+  }
+
+  ({DateTime start, DateTime end})? get _activeDateWindow {
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    return switch (_datePreset) {
+      _HistoryDatePreset.all => null,
+      _HistoryDatePreset.today => (
+        start: today,
+        end: today.add(const Duration(days: 1)),
+      ),
+      _HistoryDatePreset.last7Days => (
+        start: today.subtract(const Duration(days: 6)),
+        end: today.add(const Duration(days: 1)),
+      ),
+      _HistoryDatePreset.last30Days => (
+        start: today.subtract(const Duration(days: 29)),
+        end: today.add(const Duration(days: 1)),
+      ),
+      _HistoryDatePreset.custom => switch (_customDateRange) {
+        null => null,
+        DateTimeRange range => (
+          start: range.start,
+          end: range.end.add(const Duration(days: 1)),
+        ),
+      },
+    };
+  }
+
+  String get _dateFilterLabel => switch (_datePreset) {
+    _HistoryDatePreset.all => '全部日期',
+    _HistoryDatePreset.today => '今天',
+    _HistoryDatePreset.last7Days => '最近7天',
+    _HistoryDatePreset.last30Days => '最近30天',
+    _HistoryDatePreset.custom => switch (_customDateRange) {
+      null => '全部日期',
+      DateTimeRange range =>
+        '${range.start.month}月${range.start.day}日-'
+            '${range.end.month}月${range.end.day}日',
+    },
+  };
+
+  String _datePresetOptionLabel(_HistoryDatePreset preset) => switch (preset) {
+    _HistoryDatePreset.all => '全部日期',
+    _HistoryDatePreset.today => '今天',
+    _HistoryDatePreset.last7Days => '最近7天',
+    _HistoryDatePreset.last30Days => '最近30天',
+    _HistoryDatePreset.custom => '自定义范围',
+  };
+
+  Future<void> _showDateFilter() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    if (!mounted) return;
+    final _HistoryDatePreset? value =
+        await showModalBottomSheet<_HistoryDatePreset>(
+          context: context,
+          showDragHandle: true,
+          builder: (BuildContext context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: _HistoryDatePreset.values
+                  .map(
+                    (preset) => ListTile(
+                      leading: Icon(
+                        preset == _datePreset
+                            ? Icons.check_circle_rounded
+                            : Icons.circle_outlined,
+                        color: preset == _datePreset
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                      ),
+                      title: Text(_datePresetOptionLabel(preset)),
+                      onTap: () => Navigator.of(context).pop(preset),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ),
+        );
+    if (value == null || !mounted) return;
+    if (value == _HistoryDatePreset.custom) {
+      final DateTimeRange? picked = await showDateRangePicker(
+        context: context,
+        firstDate: DateTime(2020),
+        lastDate: DateTime.now(),
+        initialDateRange: _customDateRange,
+      );
+      if (picked == null || !mounted) return;
+      setState(() {
+        _datePreset = _HistoryDatePreset.custom;
+        _customDateRange = picked;
+        _historyPage = 0;
+      });
+      return;
+    }
+    setState(() {
+      _datePreset = value;
+      _historyPage = 0;
+    });
+  }
+
+  Future<void> _copySelectedTrackingNumbers() async {
+    if (_selectedIds.isEmpty) return;
+    final List<String> codes = <String>[];
+    final Set<String> seen = <String>{};
+    for (final _RecordingListItem item in _visibleItems) {
+      if (!_selectedIds.contains(item.session.id)) continue;
+      final String code = item.session.displayCode;
+      if (code.isEmpty ||
+          code == RecordingSession.unrecognizedLabel ||
+          !seen.add(code)) {
+        continue;
+      }
+      codes.add(code);
+    }
+    if (codes.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('所选记录没有可复制的单号')));
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: codes.join('\n')));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已复制 ${codes.length} 个单号')));
   }
 
   Future<void> _showNextHistoryPage(int pageCount) async {
@@ -1464,49 +1602,73 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(2, 18, 2, 12),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Expanded(
-                    child: Text(
-                      '录像记录',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
+                  Row(
+                    children: <Widget>[
+                      const Expanded(
+                        child: Text(
+                          '录像记录',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  if (_managing && visibleSessions.isNotEmpty)
-                    TextButton(
-                      onPressed: () => _toggleSelectAll(visibleSessions),
-                      child: Text(
-                        _selectedIds.containsAll(
-                              visibleSessions.map(
-                                (RecordingSession item) => item.id,
-                              ),
-                            )
-                            ? '取消全选'
-                            : '全选',
+                      if (_managing && visibleSessions.isNotEmpty)
+                        TextButton(
+                          onPressed: () => _toggleSelectAll(visibleSessions),
+                          child: Text(
+                            _selectedIds.containsAll(
+                                  visibleSessions.map(
+                                    (RecordingSession item) => item.id,
+                                  ),
+                                )
+                                ? '取消全选'
+                                : '全选',
+                          ),
+                        ),
+                      IconButton(
+                        key: const Key('refresh-recordings-button'),
+                        tooltip: '刷新录像记录',
+                        onPressed: _manualRefreshing ? null : _manualRefresh,
+                        icon: _manualRefreshing
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh_rounded),
                       ),
-                    ),
-                  IconButton(
-                    key: const Key('refresh-recordings-button'),
-                    tooltip: '刷新录像记录',
-                    onPressed: _manualRefreshing ? null : _manualRefresh,
-                    icon: _manualRefreshing
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.refresh_rounded),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  FilterChip(
-                    key: const Key('recording-source-filter'),
-                    avatar: const Icon(Icons.filter_alt_rounded, size: 18),
-                    label: Text(_sourceFilterLabel(_sourceFilter)),
-                    selected: _sourceFilter != RecordingSourceFilter.all,
-                    showCheckmark: false,
-                    onSelected: (_) => _showSourceFilter(),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: <Widget>[
+                      FilterChip(
+                        key: const Key('recording-source-filter'),
+                        avatar: const Icon(Icons.filter_alt_rounded, size: 18),
+                        label: Text(_sourceFilterLabel(_sourceFilter)),
+                        selected: _sourceFilter != RecordingSourceFilter.all,
+                        showCheckmark: false,
+                        onSelected: (_) => _showSourceFilter(),
+                      ),
+                      FilterChip(
+                        key: const Key('recording-date-filter'),
+                        avatar: const Icon(
+                          Icons.calendar_month_rounded,
+                          size: 18,
+                        ),
+                        label: Text(_dateFilterLabel),
+                        selected: _datePreset != _HistoryDatePreset.all,
+                        showCheckmark: false,
+                        onSelected: (_) => _showDateFilter(),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1672,10 +1834,28 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       bottomNavigationBar: _managing
           ? SafeArea(
               minimum: const EdgeInsets.fromLTRB(18, 8, 18, 14),
-              child: FilledButton.icon(
-                onPressed: _selectedIds.isEmpty ? null : _deleteSelected,
-                icon: const Icon(Icons.delete_outline_rounded),
-                label: Text(_selectedIds.isEmpty ? '选择要删除的录像' : '删除所选录像'),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      key: const Key('copy-selected-tracking-numbers'),
+                      onPressed: _selectedIds.isEmpty
+                          ? null
+                          : _copySelectedTrackingNumbers,
+                      icon: const Icon(Icons.copy_rounded),
+                      label: const Text('复制单号'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      key: const Key('delete-selected-recordings'),
+                      onPressed: _selectedIds.isEmpty ? null : _deleteSelected,
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      label: const Text('删除'),
+                    ),
+                  ),
+                ],
               ),
             )
           : null,

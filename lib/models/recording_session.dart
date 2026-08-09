@@ -15,6 +15,8 @@ class RecordingSession {
     this.operationMode = RecordingOperationMode.shipping,
   });
 
+  static const String unrecognizedLabel = '未识别面单';
+
   final String id;
   final String filePath;
   final DateTime startedAt;
@@ -31,7 +33,8 @@ class RecordingSession {
 
   Duration get playbackDuration => playbackEnd - mediaStart;
 
-  String get displayCode => markers.isEmpty ? '未识别面单' : markers.first.code;
+  String get displayCode =>
+      markers.isEmpty ? unrecognizedLabel : markers.first.code;
 
   RecordingSession copyWith({String? filePath}) => RecordingSession(
     id: id,
