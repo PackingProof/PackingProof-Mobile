@@ -61,8 +61,6 @@ class ComputerReplacementPrompt {
 
 String _codecFallbackMessage(String reason) => switch (reason) {
   'no_hevc_decoder' => '本机不支持 H.265 解码，新录像已改用 H.264',
-  'vendor_hevc_playback_risk' =>
-    '本机在应用内播放 H.265 兼容性较差，新录像已改用 H.264',
   _ => '录像编码自动回退：$reason',
 };
 

@@ -1619,9 +1619,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                         ? null
                         : (!_deviceDecodeSupport!.hasHevcDecoder
                               ? '当前设备不支持播放 H.265，新录像将自动使用 H.264'
-                              : (_deviceDecodeSupport!.preferH264
-                                    ? '当前设备在应用内播放 H.265 兼容性较差，新录像将自动使用 H.264'
-                                    : null)),
+                              : null),
                     onChanged: _setPreferredVideoCodec,
                   ),
                   Divider(

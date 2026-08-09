@@ -10,7 +10,6 @@ class VideoDecodeSupport {
     required this.release,
     required this.hasHevcDecoder,
     required this.hasAvcDecoder,
-    this.preferH264 = false,
     this.forceSoftwareDecode = false,
   });
 
@@ -21,13 +20,6 @@ class VideoDecodeSupport {
   final String release;
   final bool hasHevcDecoder;
   final bool hasAvcDecoder;
-
-  /// 鸿蒙/华为等机型虽然声明支持 H.265 解码，但应用内播放兼容性较差，
-  /// 新录像应自动使用 H.264。
-  final bool preferH264;
-
-  /// 应用内 H.265 回放是否可靠（有解码器且厂商未被标记为兼容性风险）。
-  bool get hevcRecommended => hasHevcDecoder && !preferH264;
 
   /// 本机 ExoPlayer 是否已配置为优先软件解码（鸿蒙/华为 API 30+）。
   final bool forceSoftwareDecode;
@@ -41,7 +33,6 @@ class VideoDecodeSupport {
       release: '${map['release'] ?? ''}',
       hasHevcDecoder: map['hasHevcDecoder'] == true,
       hasAvcDecoder: map['hasAvcDecoder'] == true,
-      preferH264: map['preferH264'] == true,
       forceSoftwareDecode: map['forceSoftwareDecode'] == true,
     );
   }

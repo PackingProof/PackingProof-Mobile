@@ -123,7 +123,7 @@ void main() {
               'storageTotalBytes': 999999999,
               'muxWriteMaxMs': 140,
               'muxWriteStallCount': 3,
-              'codecFallbackReason': 'vendor_hevc_playback_risk',
+              'codecFallbackReason': 'no_hevc_decoder',
               'lastRequestTemplate': 'preview',
               'stallActive': false,
             },
@@ -146,7 +146,7 @@ void main() {
     expect(snapshot.storageTotalBytes, 999999999);
     expect(snapshot.muxWriteMaxMs, 140);
     expect(snapshot.muxWriteStallCount, 3);
-    expect(snapshot.codecFallbackReason, 'vendor_hevc_playback_risk');
+    expect(snapshot.codecFallbackReason, 'no_hevc_decoder');
     expect(snapshot.deviceSummary, contains('vivo'));
   });
 

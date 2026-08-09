@@ -73,37 +73,6 @@ void main() {
     );
   });
 
-  test('鸿蒙机型应用内 H.265 播放兼容性较差时给出编码建议', () {
-    const VideoDecodeSupport huaweiHevcRisk = VideoDecodeSupport(
-      manufacturer: 'HUAWEI',
-      brand: 'HUAWEI',
-      model: 'test',
-      sdkInt: 31,
-      release: 'HarmonyOS',
-      hasHevcDecoder: true,
-      hasAvcDecoder: true,
-      preferH264: true,
-    );
-    expect(
-      localPlaybackErrorMessage(
-        fileExists: true,
-        backedUpOffline: false,
-        videoMime: 'video/hevc',
-        decodeSupport: huaweiHevcRisk,
-      ),
-      '该录像为 H.265 编码，当前设备在应用内播放兼容性较差。请改用 H.264 重新录制，或分享原文件查看',
-    );
-    expect(
-      localPlaybackErrorMessage(
-        fileExists: true,
-        backedUpOffline: false,
-        videoMime: 'video/avc',
-        decodeSupport: huaweiHevcRisk,
-      ),
-      '录像文件不完整或已损坏，无法播放（可能是异常退出导致）',
-    );
-  });
-
   test('设备支持解码或编码未知时保持通用文案', () {
     const VideoDecodeSupport fullSupport = VideoDecodeSupport(
       manufacturer: 'HUAWEI',

@@ -16,7 +16,7 @@ class RemotePlaybackCompat {
   }) {
     final String codec = (videoCodec ?? '').trim().toLowerCase();
     final bool directPlayback =
-        codec == 'h264' || (decodeSupport?.hevcRecommended ?? false);
+        codec == 'h264' || (decodeSupport?.hasHevcDecoder ?? false);
     return withCompat(uri, directPlayback ? direct : transcode);
   }
 

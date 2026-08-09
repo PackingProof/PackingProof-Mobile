@@ -6,18 +6,42 @@ import org.junit.Test
 
 class RecordingCodecPolicyTest {
     @Test
-    fun `鸿蒙与华为机型优先 H264`() {
-        assertTrue(RecordingCodecPolicy("HUAWEI").preferH264OverHevc())
-        assertTrue(RecordingCodecPolicy("huawei").preferH264OverHevc())
-        assertTrue(RecordingCodecPolicy("HONOR").preferH264OverHevc())
-        assertTrue(RecordingCodecPolicy(" Honor ").preferH264OverHevc())
+    fun `华为与荣耀 API 30 以上播放端优先软件解码`() {
+        assertTrue(
+            RecordingCodecPolicy("HUAWEI", sdkInt = 31)
+                .forceSoftwareDecoderPreferenceForPlayback(),
+        )
+        assertTrue(
+            RecordingCodecPolicy("huawei", sdkInt = 30)
+                .forceSoftwareDecoderPreferenceForPlayback(),
+        )
+        assertTrue(
+            RecordingCodecPolicy("HONOR", sdkInt = 31)
+                .forceSoftwareDecoderPreferenceForPlayback(),
+        )
+        assertTrue(
+            RecordingCodecPolicy(" Honor ", sdkInt = 32)
+                .forceSoftwareDecoderPreferenceForPlayback(),
+        )
     }
 
     @Test
-    fun `其他机型保持偏好编码`() {
-        assertFalse(RecordingCodecPolicy("vivo").preferH264OverHevc())
-        assertFalse(RecordingCodecPolicy("Xiaomi").preferH264OverHevc())
-        assertFalse(RecordingCodecPolicy("samsung").preferH264OverHevc())
-        assertFalse(RecordingCodecPolicy("").preferH264OverHevc())
+    fun `API 29 及以下或其他机型不强制软件解码`() {
+        assertFalse(
+            RecordingCodecPolicy("HUAWEI", sdkInt = 29)
+                .forceSoftwareDecoderPreferenceForPlayback(),
+        )
+        assertFalse(
+            RecordingCodecPolicy("HONOR", sdkInt = 29)
+                .forceSoftwareDecoderPreferenceForPlayback(),
+        )
+        assertFalse(
+            RecordingCodecPolicy("vivo", sdkInt = 34)
+                .forceSoftwareDecoderPreferenceForPlayback(),
+        )
+        assertFalse(
+            RecordingCodecPolicy("", sdkInt = 34)
+                .forceSoftwareDecoderPreferenceForPlayback(),
+        )
     }
 }

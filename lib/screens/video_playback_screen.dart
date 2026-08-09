@@ -911,9 +911,6 @@ String localPlaybackErrorMessage({
       if (!decodeSupport.hasHevcDecoder) {
         return '该录像为 H.265 编码，当前设备不支持解码播放。请改用 H.264 重新录制，或分享原文件到电脑/其他设备查看';
       }
-      if (decodeSupport.preferH264) {
-        return '该录像为 H.265 编码，当前设备在应用内播放兼容性较差。请改用 H.264 重新录制，或分享原文件查看';
-      }
     }
     if (mime.contains('avc') && !decodeSupport.hasAvcDecoder) {
       return '该录像为 H.264 编码，当前设备不支持解码播放，请分享原文件到电脑/其他设备查看';

@@ -12,7 +12,6 @@ void main() {
         'release': 'HarmonyOS',
         'hasHevcDecoder': true,
         'hasAvcDecoder': true,
-        'preferH264': true,
         'forceSoftwareDecode': true,
       },
     );
@@ -22,8 +21,6 @@ void main() {
     expect(support.release, 'HarmonyOS');
     expect(support.hasHevcDecoder, isTrue);
     expect(support.hasAvcDecoder, isTrue);
-    expect(support.preferH264, isTrue);
-    expect(support.hevcRecommended, isFalse);
     expect(support.forceSoftwareDecode, isTrue);
   });
 
@@ -35,8 +32,6 @@ void main() {
     expect(support.sdkInt, 0);
     expect(support.hasHevcDecoder, isFalse);
     expect(support.hasAvcDecoder, isFalse);
-    expect(support.preferH264, isFalse);
-    expect(support.hevcRecommended, isFalse);
     expect(support.forceSoftwareDecode, isFalse);
   });
 }

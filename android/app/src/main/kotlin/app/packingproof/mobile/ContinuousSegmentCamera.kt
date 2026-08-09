@@ -75,7 +75,6 @@ class ContinuousSegmentCamera(
     private val captureRequestTargetPolicy = CaptureRequestTargetPolicy()
     private var recordingFpsRangePolicy =
         RecordingFpsRangePolicy(RecordingSpecPolicy.HD.fps)
-    private val recordingCodecPolicy = RecordingCodecPolicy(Build.MANUFACTURER)
     private val stallRecoveryPolicy = PreviewStallRecoveryPolicy()
     private var recordingSpec = RecordingSpecPolicy.HD
     private var recordingSpecName = RecordingSpecPolicy.DEFAULT_SPEC_NAME
@@ -454,19 +453,10 @@ class ContinuousSegmentCamera(
         // 部分鸿蒙/低端机型只有 H.265 编码器却没有可用的 H.265 解码器，
         // 录出的 H.265 在本机无法播放，必须直接回退到 H.264。
         val hevcDecodable = CodecCapabilities.hasDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC)
-        val preferH264 = recordingCodecPolicy.preferH264OverHevc()
         if (rawPreferred == MediaFormat.MIMETYPE_VIDEO_HEVC && !hevcDecodable) {
             codecFallbackReason = RecordingCodecPolicy.FALLBACK_NO_HEVC_DECODER
-        } else if (rawPreferred == MediaFormat.MIMETYPE_VIDEO_HEVC && preferH264) {
-            // 鸿蒙/华为机型虽然声明支持 H.265 解码，应用内播放仍可能失败，
-            // 自动优先 H.264 保证 App 内可直接回放。
-            codecFallbackReason = RecordingCodecPolicy.FALLBACK_VENDOR_HEVC_RISK
         }
-        val candidates = if (rawPreferred == MediaFormat.MIMETYPE_VIDEO_HEVC && preferH264) {
-            listOf(MediaFormat.MIMETYPE_VIDEO_AVC, MediaFormat.MIMETYPE_VIDEO_HEVC)
-        } else {
-            listOf(rawPreferred, fallback)
-        }.filter {
+        val candidates = listOf(rawPreferred, fallback).filter {
             it != MediaFormat.MIMETYPE_VIDEO_HEVC || hevcDecodable
         }
         for (mime in candidates) {
