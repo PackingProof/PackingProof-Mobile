@@ -120,9 +120,9 @@ void main() {
   });
 
   test('旧设置缺少录像规格时按高清处理', () async {
-    await File('${root.path}/settings.json').writeAsString(
-      jsonEncode(<String, Object>{'speechEnabled': false}),
-    );
+    await File(
+      '${root.path}/settings.json',
+    ).writeAsString(jsonEncode(<String, Object>{'speechEnabled': false}));
     final SessionRepository repository = testRepository(root);
 
     final settings = await repository.loadSettings();
@@ -149,6 +149,26 @@ void main() {
 
     await repository.saveMinimumBarcodeLength(100);
     expect((await repository.loadSettings()).minimumBarcodeLength, 40);
+  });
+
+  test('每页条数默认 5 且可持久化', () async {
+    final SessionRepository repository = testRepository(root);
+
+    final AppSettings defaults = await repository.loadSettings();
+    expect(defaults.historyPageSize, 5);
+
+    await repository.saveHistoryPageSize(10);
+    final AppSettings updated = await repository.loadSettings();
+    expect(updated.historyPageSize, 10);
+
+    final Map<String, Object?> persisted = Map<String, Object?>.from(
+      jsonDecode(await File('${root.path}/settings.json').readAsString())
+          as Map<Object?, Object?>,
+    );
+    expect(persisted['historyPageSize'], 10);
+
+    await repository.saveHistoryPageSize(7);
+    expect((await repository.loadSettings()).historyPageSize, 5);
   });
 
   test('首次说明版本在两个编译版本间共享且保留其他设置', () async {

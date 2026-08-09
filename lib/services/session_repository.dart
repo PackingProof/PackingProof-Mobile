@@ -588,6 +588,12 @@ class SessionRepository {
     ),
   );
 
+  Future<void> saveHistoryPageSize(int pageSize) => _updateSettings(
+    (AppSettings settings) => settings.copyWith(
+      historyPageSize: AppSettings.normalizeHistoryPageSize(pageSize),
+    ),
+  );
+
   Future<List<RecordingSession>> pruneMissingSessions({
     Set<String> retainedMissingPaths = const <String>{},
   }) => _serializeSessionMutation(() async {

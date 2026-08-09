@@ -150,6 +150,7 @@ class RecordingsScreen extends StatefulWidget {
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength,
+    this.historyPageSize = AppSettings.defaultHistoryPageSize,
     required this.onWorkModeChanged,
     required this.onSpeechEnabledChanged,
     this.onOrderSpeechEnabledChanged,
@@ -159,6 +160,7 @@ class RecordingsScreen extends StatefulWidget {
     this.onPreferredVideoCodecChanged,
     this.onRecordingSpecChanged,
     this.onMinimumBarcodeLengthChanged,
+    this.onHistoryPageSizeChanged,
     required this.onSpeechPreview,
     required this.onSessionUpdated,
     required this.onDeleteSessions,
@@ -206,6 +208,8 @@ class RecordingsScreen extends StatefulWidget {
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
   final int minimumBarcodeLength;
+  final int historyPageSize;
+  final ValueChanged<int>? onHistoryPageSizeChanged;
   final Future<void> Function(WorkMode mode) onWorkModeChanged;
   final Future<void> Function(bool enabled) onSpeechEnabledChanged;
   final Future<void> Function(bool enabled)? onOrderSpeechEnabledChanged;
@@ -374,6 +378,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _preferredVideoCodec = widget.preferredVideoCodec;
     _recordingSpec = widget.recordingSpec;
     _minimumBarcodeLength = widget.minimumBarcodeLength;
+    _historyPageSize = widget.historyPageSize;
     unawaited(_loadDeviceDecodeSupport());
     _sessions = List<RecordingSession>.of(widget.sessions);
     _refreshLocalRecordingStats();
@@ -434,6 +439,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _preferredVideoCodec = widget.preferredVideoCodec;
     _recordingSpec = widget.recordingSpec;
     _minimumBarcodeLength = widget.minimumBarcodeLength;
+    _historyPageSize = widget.historyPageSize;
     _unbackedRetention = widget.unbackedRetention;
     _backedRetention = widget.backedRetention;
     _hiddenRemoteIds.addAll(widget.hiddenRemoteRecordingIds);
@@ -1514,6 +1520,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     });
     unawaited(_loadLocal(reset: true, pageNumber: 1, prefetchNext: true));
     unawaited(_loadRemote(reset: true, pageNumber: 1, prefetchNext: true));
+    widget.onHistoryPageSizeChanged?.call(pageSize);
   }
 
   @override

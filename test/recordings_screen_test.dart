@@ -1798,6 +1798,7 @@ void main() {
       ),
     );
     final List<int> requestedPageSizes = <int>[];
+    final List<int> changedPageSizes = <int>[];
     await tester.pumpWidget(
       MaterialApp(
         home: RecordingsScreen(
@@ -1805,6 +1806,9 @@ void main() {
           workMode: WorkMode.continuousScan,
           speechEnabled: true,
           maxVolumeEnabled: true,
+          onHistoryPageSizeChanged: (int value) {
+            changedPageSizes.add(value);
+          },
           onLoadLocalRecordings:
               ({required page, required pageSize, keyword = ''}) async {
                 requestedPageSizes.add(pageSize);
@@ -1836,6 +1840,42 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(requestedPageSizes, contains(10));
+    expect(changedPageSizes, <int>[10]);
+    expect(find.text('1 / 2 页'), findsOneWidget);
+  });
+
+  testWidgets('每页条数使用保存的初始值', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final List<RecordingSession> all = List<RecordingSession>.generate(
+      12,
+      (int index) => _session(
+        'clip-$index',
+        'NO-${index + 1}',
+        startedAt.subtract(Duration(minutes: index)),
+        filePath: 'pubspec.yaml',
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: all,
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          historyPageSize: 10,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
     expect(find.text('1 / 2 页'), findsOneWidget);
   });
 

@@ -8,6 +8,8 @@ class AppSettings {
   static const int defaultMinimumBarcodeLength = 11;
   static const int minimumBarcodeLengthLowerBound = 8;
   static const int minimumBarcodeLengthUpperBound = 40;
+  static const int defaultHistoryPageSize = 5;
+  static const List<int> historyPageSizeOptions = <int>[5, 10, 20];
 
   const AppSettings({
     this.workMode = WorkMode.continuousScan,
@@ -26,6 +28,7 @@ class AppSettings {
     this.hiddenRemoteRecordingIds = const <int>{},
     this.storageNoticeState = const StorageNoticeState(),
     this.minimumBarcodeLength = defaultMinimumBarcodeLength,
+    this.historyPageSize = defaultHistoryPageSize,
     this.extraValues = const <String, Object?>{},
   });
 
@@ -45,6 +48,7 @@ class AppSettings {
       ..remove('backedRetention');
     extraValues.remove('storageNoticeState');
     extraValues.remove('minimumBarcodeLength');
+    extraValues.remove('historyPageSize');
     final Set<int> hiddenRemoteRecordingIds =
         ((json['hiddenRemoteRecordingIds'] as List<Object?>?) ?? const [])
             .whereType<num>()
@@ -95,6 +99,11 @@ class AppSettings {
             ? (json['minimumBarcodeLength']! as num).toInt()
             : defaultMinimumBarcodeLength,
       ),
+      historyPageSize: normalizeHistoryPageSize(
+        json['historyPageSize'] is num
+            ? (json['historyPageSize']! as num).toInt()
+            : defaultHistoryPageSize,
+      ),
       extraValues: extraValues,
     );
   }
@@ -107,6 +116,15 @@ class AppSettings {
       return minimumBarcodeLengthUpperBound;
     }
     return value;
+  }
+
+  static int normalizeHistoryPageSize(int value) {
+    for (final int option in historyPageSizeOptions) {
+      if (option == value) {
+        return value;
+      }
+    }
+    return defaultHistoryPageSize;
   }
 
   final WorkMode workMode;
@@ -125,6 +143,7 @@ class AppSettings {
   final Set<int> hiddenRemoteRecordingIds;
   final StorageNoticeState storageNoticeState;
   final int minimumBarcodeLength;
+  final int historyPageSize;
   final Map<String, Object?> extraValues;
 
   AppSettings copyWith({
@@ -144,6 +163,7 @@ class AppSettings {
     Set<int>? hiddenRemoteRecordingIds,
     StorageNoticeState? storageNoticeState,
     int? minimumBarcodeLength,
+    int? historyPageSize,
   }) {
     return AppSettings(
       workMode: workMode ?? this.workMode,
@@ -165,6 +185,7 @@ class AppSettings {
           hiddenRemoteRecordingIds ?? this.hiddenRemoteRecordingIds,
       storageNoticeState: storageNoticeState ?? this.storageNoticeState,
       minimumBarcodeLength: minimumBarcodeLength ?? this.minimumBarcodeLength,
+      historyPageSize: historyPageSize ?? this.historyPageSize,
       extraValues: extraValues,
     );
   }
@@ -187,5 +208,6 @@ class AppSettings {
     'hiddenRemoteRecordingIds': hiddenRemoteRecordingIds.toList()..sort(),
     'storageNoticeState': storageNoticeState.toJson(),
     'minimumBarcodeLength': minimumBarcodeLength,
+    'historyPageSize': historyPageSize,
   };
 }

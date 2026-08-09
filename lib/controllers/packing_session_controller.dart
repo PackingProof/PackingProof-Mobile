@@ -140,6 +140,7 @@ class PackingSessionController extends ChangeNotifier {
   RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
   RecordingSpecPreset _recordingSpec = RecordingSpecPreset.hd1080p30;
   int _minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength;
+  int _historyPageSize = AppSettings.defaultHistoryPageSize;
   UnbackedRetentionPolicy _unbackedRetention = UnbackedRetentionPolicy.days30;
   BackedRetentionPolicy _backedRetention = BackedRetentionPolicy.days7;
   bool _appIsActive = true;
@@ -206,6 +207,7 @@ class PackingSessionController extends ChangeNotifier {
   RecordingVideoCodec get preferredVideoCodec => _preferredVideoCodec;
   RecordingSpecPreset get recordingSpec => _recordingSpec;
   int get minimumBarcodeLength => _minimumBarcodeLength;
+  int get historyPageSize => _historyPageSize;
   LanBackupSnapshot get backupSnapshot => _lanBackupService.snapshot;
   bool get pairingScanActive => _pairingScanActive;
   int get pairingSuccessRevision => _pairingSuccessRevision;
@@ -308,6 +310,7 @@ class PackingSessionController extends ChangeNotifier {
       _preferredVideoCodec = settings.preferredVideoCodec;
       _recordingSpec = settings.recordingSpec;
       _minimumBarcodeLength = settings.minimumBarcodeLength;
+      _historyPageSize = settings.historyPageSize;
       _hiddenRemoteRecordingIds = Set<int>.of(
         settings.hiddenRemoteRecordingIds,
       );
@@ -885,6 +888,16 @@ class PackingSessionController extends ChangeNotifier {
     _minimumBarcodeLength = normalized;
     notifyListeners();
     await _repository.saveMinimumBarcodeLength(normalized);
+  }
+
+  Future<void> setHistoryPageSize(int value) async {
+    final int normalized = AppSettings.normalizeHistoryPageSize(value);
+    if (_historyPageSize == normalized) {
+      return;
+    }
+    _historyPageSize = normalized;
+    notifyListeners();
+    await _repository.saveHistoryPageSize(normalized);
   }
 
   Future<void> _requestRecordingAudioPermission() async {
