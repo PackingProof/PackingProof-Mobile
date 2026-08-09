@@ -359,7 +359,12 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     } else if (sessionsChanged && widget.active) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => unawaited(
-          _loadLocal(reset: true, pageNumber: 1, prefetchNext: true),
+          _loadLocal(
+            reset: true,
+            pageNumber: 1,
+            prefetchNext: true,
+            preservePage: true,
+          ),
         ),
       );
     }
@@ -571,6 +576,10 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     final bool reconnected =
         _backupSnapshot.connectionStatus != LanConnectionStatus.connected &&
         next.connectionStatus == LanConnectionStatus.connected;
+    final bool endpointChanged = !_sameBackupEndpoint(
+      _backupSnapshot.endpoint,
+      next.endpoint,
+    );
     if (localCleanupChanged) {
       _refreshLocalRecordingStats();
     }
@@ -581,7 +590,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         _remoteRequestGeneration++;
         _loadingRemote = false;
       }
-      if (next.endpoint == null) {
+      if (endpointChanged) {
         _remoteRecordings.clear();
         _remotePages.clear();
         _remoteTotal = 0;
@@ -598,6 +607,13 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         _remoteRecordings.isEmpty) {
       unawaited(_loadRemote(reset: true, pageNumber: 1, prefetchNext: true));
     }
+  }
+
+  bool _sameBackupEndpoint(LanBackupEndpoint? left, LanBackupEndpoint? right) {
+    if (left == null || right == null) {
+      return left == null && right == null;
+    }
+    return left.computerId == right.computerId && left.baseUri == right.baseUri;
   }
 
   Set<String> _completedBackupSignatures(LanBackupSnapshot snapshot) => snapshot
@@ -662,6 +678,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     bool reset = false,
     required int pageNumber,
     bool prefetchNext = false,
+    bool preservePage = false,
   }) async {
     final callback = widget.onLoadLocalRecordings;
     if (callback == null || _loadingLocal || !widget.active) return;
@@ -672,7 +689,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         _localPages.clear();
         _sessions.clear();
         _localTotal = 0;
-        _historyPage = 0;
+        if (!preservePage) _historyPage = 0;
       }
     });
     try {
