@@ -3864,7 +3864,7 @@ void main() {
     expect(find.text('管理'), findsOneWidget);
   });
 
-  testWidgets('全选本页只选中当前页录像', (WidgetTester tester) async {
+  testWidgets('全选本页只保留当前页选中', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -3922,7 +3922,8 @@ void main() {
 
     await tester.tap(find.text('全选本页'));
     await tester.pump();
-    expect(find.text('已选 10 项'), findsOneWidget);
+    expect(find.text('已选 5 项'), findsOneWidget);
+    expect(find.text('取消全选'), findsOneWidget);
   });
 
   testWidgets('管理入口与搜索框收纳在录像记录区块', (WidgetTester tester) async {

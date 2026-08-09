@@ -1214,15 +1214,17 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     });
   }
 
-  void _toggleSelectAll(List<RecordingSession> visibleSessions) {
-    final Set<String> visibleIds = visibleSessions
+  void _toggleSelectAllCurrentPage(List<RecordingSession> currentPageSessions) {
+    final Set<String> pageIds = currentPageSessions
         .map((RecordingSession item) => item.id)
         .toSet();
     setState(() {
-      if (_selectedIds.containsAll(visibleIds)) {
-        _selectedIds.removeAll(visibleIds);
+      if (_selectedIds.containsAll(pageIds) && pageIds.isNotEmpty) {
+        _selectedIds.removeAll(pageIds);
       } else {
-        _selectedIds.addAll(visibleIds);
+        _selectedIds
+          ..clear()
+          ..addAll(pageIds);
       }
     });
   }
@@ -2015,8 +2017,9 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                           if (currentPageSessions.isNotEmpty)
                             OutlinedButton.icon(
                               key: const Key('select-all-recordings-button'),
-                              onPressed: () =>
-                                  _toggleSelectAll(currentPageSessions),
+                              onPressed: () => _toggleSelectAllCurrentPage(
+                                currentPageSessions,
+                              ),
                               icon: const Icon(
                                 Icons.select_all_rounded,
                                 size: 18,
