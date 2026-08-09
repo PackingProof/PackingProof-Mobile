@@ -1717,9 +1717,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                 onBackedRetentionChanged: _setBackedRetention,
                 showRetention: false,
               ),
-              const SizedBox(height: 12),
               Padding(
-                padding: const EdgeInsets.fromLTRB(2, 18, 2, 12),
+                padding: const EdgeInsets.fromLTRB(2, 12, 2, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
