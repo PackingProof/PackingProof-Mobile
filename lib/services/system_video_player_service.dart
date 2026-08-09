@@ -11,6 +11,7 @@ class VideoDecodeSupport {
     required this.hasHevcDecoder,
     required this.hasAvcDecoder,
     this.preferH264 = false,
+    this.forceSoftwareDecode = false,
   });
 
   final String manufacturer;
@@ -28,6 +29,9 @@ class VideoDecodeSupport {
   /// 应用内 H.265 回放是否可靠（有解码器且厂商未被标记为兼容性风险）。
   bool get hevcRecommended => hasHevcDecoder && !preferH264;
 
+  /// 本机 ExoPlayer 是否已配置为优先软件解码（鸿蒙/华为 API 30+）。
+  final bool forceSoftwareDecode;
+
   factory VideoDecodeSupport.fromMap(Map<Object?, Object?> map) {
     return VideoDecodeSupport(
       manufacturer: '${map['manufacturer'] ?? ''}',
@@ -38,6 +42,7 @@ class VideoDecodeSupport {
       hasHevcDecoder: map['hasHevcDecoder'] == true,
       hasAvcDecoder: map['hasAvcDecoder'] == true,
       preferH264: map['preferH264'] == true,
+      forceSoftwareDecode: map['forceSoftwareDecode'] == true,
     );
   }
 }

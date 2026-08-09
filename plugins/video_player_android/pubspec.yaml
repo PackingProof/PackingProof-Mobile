@@ -1,0 +1,42 @@
+name: video_player_android
+description: Android implementation of the video_player plugin.
+publish_to: none
+repository: https://github.com/flutter/packages/tree/main/packages/video_player/video_player_android
+issue_tracker: https://github.com/flutter/flutter/issues?q=is%3Aissue+is%3Aopen+label%3A%22p%3A+video_player%22
+version: 2.12.0
+
+# 本地补丁版本（基于上游 2.12.0）：
+# 鸿蒙/华为 API 30+ 机型在应用内用 ExoPlayer 播放 AVC/HEVC 时，
+# 厂商硬解会报 MediaCodecVideoRenderer error（flutter/flutter#185674、
+# #177912、#166481；androidx/media#1668），因此对这些机型优先使用
+# 软件解码并启用解码器回退。请勿用上游版本直接覆盖本目录。
+
+environment:
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
+
+flutter:
+  plugin:
+    implements: video_player
+    platforms:
+      android:
+        dartPluginClass: AndroidVideoPlayer
+        package: io.flutter.plugins.videoplayer
+        pluginClass: VideoPlayerPlugin
+
+dependencies:
+  flutter:
+    sdk: flutter
+  meta: ^1.10.0
+  video_player_platform_interface: ^6.9.0
+
+dev_dependencies:
+  build_runner: ^2.3.3
+  flutter_test:
+    sdk: flutter
+  mockito: ^5.4.4
+  pigeon: ^26.3.4
+
+topics:
+  - video
+  - video-player

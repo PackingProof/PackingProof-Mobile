@@ -69,6 +69,10 @@ dependency_overrides:
   share_plus_platform_interface:
     hosted: https://pub.dev
     version: 7.2.0
+  # 本地补丁版 video_player_android：鸿蒙/华为 API 30+ 机型优先软件解码，
+  # 绕开厂商硬解在应用内播放 AVC/HEVC 均失败的问题。
+  video_player_android:
+    path: plugins/video_player_android
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

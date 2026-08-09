@@ -50,6 +50,9 @@ class SystemVideoPlayerPlugin(
                     "preferH264" to RecordingCodecPolicy(
                         Build.MANUFACTURER,
                     ).preferH264OverHevc(),
+                    "forceSoftwareDecode" to RecordingCodecPolicy(
+                        Build.MANUFACTURER,
+                    ).forceSoftwareDecoderPreferenceForPlayback(),
                 ),
             )
             "openWithSystemPlayer" -> openWithSystemPlayer(

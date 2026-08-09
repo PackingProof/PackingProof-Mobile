@@ -13,6 +13,7 @@ void main() {
         'hasHevcDecoder': true,
         'hasAvcDecoder': true,
         'preferH264': true,
+        'forceSoftwareDecode': true,
       },
     );
     expect(support.manufacturer, 'HUAWEI');
@@ -23,6 +24,7 @@ void main() {
     expect(support.hasAvcDecoder, isTrue);
     expect(support.preferH264, isTrue);
     expect(support.hevcRecommended, isFalse);
+    expect(support.forceSoftwareDecode, isTrue);
   });
 
   test('VideoDecodeSupport 容忍缺失字段', () {
@@ -35,5 +37,6 @@ void main() {
     expect(support.hasAvcDecoder, isFalse);
     expect(support.preferH264, isFalse);
     expect(support.hevcRecommended, isFalse);
+    expect(support.forceSoftwareDecode, isFalse);
   });
 }

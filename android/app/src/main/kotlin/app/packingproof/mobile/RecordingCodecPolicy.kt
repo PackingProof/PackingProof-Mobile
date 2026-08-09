@@ -16,6 +16,17 @@ internal class RecordingCodecPolicy(
         return normalized == "HUAWEI" || normalized == "HONOR"
     }
 
+    /**
+     * 鸿蒙/华为 API 30+ 机型在应用内用 ExoPlayer 播放 AVC/HEVC 都可能触发
+     * 厂商硬解失败（flutter/flutter#185674、#177912、#166481），播放端应
+     * 优先使用软件解码；与 [preferH264OverHevc] 的判断保持一致。
+     */
+    fun forceSoftwareDecoderPreferenceForPlayback(): Boolean {
+        val normalized = manufacturer.trim().uppercase()
+        return (normalized == "HUAWEI" || normalized == "HONOR") &&
+            android.os.Build.VERSION.SDK_INT >= 30
+    }
+
     companion object {
         const val FALLBACK_NO_HEVC_DECODER = "no_hevc_decoder"
         const val FALLBACK_VENDOR_HEVC_RISK = "vendor_hevc_playback_risk"
