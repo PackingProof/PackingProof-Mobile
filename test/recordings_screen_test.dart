@@ -2319,6 +2319,15 @@ void main() {
           workMode: WorkMode.continuousScan,
           speechEnabled: true,
           maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+          ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -3462,6 +3471,263 @@ void main() {
     await tester.tap(find.text('本地').last);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('recording-source-chip')), findsOneWidget);
+  });
+
+  testWidgets('未连接或电脑离线时不显示刷新按钮', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    Widget build(LanBackupSnapshot snapshot, Key key) => MaterialApp(
+      home: RecordingsScreen(
+        key: key,
+        sessions: <RecordingSession>[
+          _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+        ],
+        workMode: WorkMode.continuousScan,
+        speechEnabled: true,
+        maxVolumeEnabled: true,
+        backupSnapshot: snapshot,
+        onWorkModeChanged: (_) async {},
+        onSpeechEnabledChanged: (_) async {},
+        onMaxVolumeEnabledChanged: (_) async {},
+        onSpeechPreview: () async {},
+        onSessionUpdated: (_) async {},
+        onDeleteSessions: (_) async {},
+      ),
+    );
+    final LanBackupEndpoint endpoint = LanBackupEndpoint(
+      baseUri: Uri.parse('http://192.168.1.20:5280'),
+      accessKey: '',
+      computerId: 'computer-1',
+      computerName: '电脑',
+    );
+
+    await tester.pumpWidget(
+      build(const LanBackupSnapshot(), const ValueKey<String>('none')),
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('refresh-recordings-button')), findsNothing);
+
+    await tester.pumpWidget(
+      build(
+        LanBackupSnapshot(
+          endpoint: endpoint,
+          connectionStatus: LanConnectionStatus.offline,
+        ),
+        const ValueKey<String>('offline'),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('refresh-recordings-button')), findsNothing);
+
+    await tester.pumpWidget(
+      build(
+        LanBackupSnapshot(
+          endpoint: endpoint,
+          connectionStatus: LanConnectionStatus.connected,
+        ),
+        const ValueKey<String>('connected'),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('refresh-recordings-button')), findsOneWidget);
+  });
+
+  testWidgets('刷新按钮位于录像记录标题左侧', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+          ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    final Rect refreshRect = tester.getRect(
+      find.byKey(const Key('refresh-recordings-button')),
+    );
+    final Rect titleRect = tester.getRect(find.text('录像记录'));
+    expect(refreshRect.right, lessThanOrEqualTo(titleRect.left));
+  });
+
+  testWidgets('管理模式点击返回键退出管理', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+            _session('clip-2', 'B-2222', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+    expect(find.text('完成'), findsOneWidget);
+    expect(find.byType(Checkbox), findsNWidgets(2));
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+
+    expect(find.text('管理本地'), findsOneWidget);
+    expect(find.text('已选 0 项'), findsNothing);
+    expect(find.byType(Checkbox), findsNothing);
+  });
+
+  testWidgets('管理模式已连接电脑也隐藏本机来源标签', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+            deviceId: 'phone-1',
+            deviceName: '手机1',
+          ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('recording-source-chip')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+    expect(find.byKey(const Key('recording-source-chip')), findsNothing);
+  });
+
+  testWidgets('删除按钮使用红色错误色', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+    final Finder deleteButton = find.byKey(
+      const Key('delete-selected-recordings'),
+    );
+    final FilledButton button = tester.widget<FilledButton>(deleteButton);
+    final Color? resolved = button.style!.backgroundColor!.resolve(
+      const <WidgetState>{},
+    );
+    final Color error = Theme.of(
+      tester.element(deleteButton),
+    ).colorScheme.error;
+    expect(resolved, error);
+  });
+
+  testWidgets('管理模式复选框位于卡片外侧左侧', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+            _session('clip-2', 'B-2222', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+    final Rect checkboxRect = tester.getRect(find.byType(Checkbox).first);
+    final Rect thumbnailRect = tester.getRect(
+      find.byKey(const Key('recording-thumbnail')).first,
+    );
+    expect(checkboxRect.right, lessThan(thumbnailRect.left));
+    expect(
+      (checkboxRect.center.dy - thumbnailRect.center.dy).abs(),
+      lessThan(2),
+    );
   });
 }
 

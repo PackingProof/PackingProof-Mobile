@@ -203,6 +203,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   late final LanBackupHostDiscoveryService _backupHostDiscovery;
   int _selectedTab = 1;
   String _historySearchQuery = '';
+  bool _historyManaging = false;
   int _handledPairingSuccessRevision = 0;
   int _handledPairingFailureRevision = 0;
   int _handledPairingReplacementRevision = 0;
@@ -366,6 +367,9 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   }
 
   void _handleSystemBack() {
+    if (_historyManaging) {
+      return;
+    }
     final DateTime now = DateTime.now();
     final PackingBackAction action = resolvePackingBackAction(
       pairingActive: _controller.pairingScanActive,
@@ -605,6 +609,9 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       onRetryConnection: _controller.retryBackupConnection,
       onRetryBackup: _controller.retryBackup,
       onRefreshHistory: _controller.refreshSessions,
+      onManagingChanged: (bool managing) {
+        if (mounted) setState(() => _historyManaging = managing);
+      },
       onLoadRemoteRecordings: _controller.fetchRemoteRecordings,
       onLoadLocalRecordings: _controller.loadLocalRecordings,
       onLoadRemoteRecordingStatuses: _controller.fetchRemoteRecordingStatuses,

@@ -120,6 +120,7 @@ class RecordingsScreen extends StatefulWidget {
     this.onRetryConnection,
     this.onRetryBackup,
     this.onRefreshHistory,
+    this.onManagingChanged,
     this.unbackedRetention = UnbackedRetentionPolicy.days30,
     this.backedRetention = BackedRetentionPolicy.days7,
     this.onBackupRetentionChanged,
@@ -176,6 +177,7 @@ class RecordingsScreen extends StatefulWidget {
   final Future<void> Function()? onRetryConnection;
   final Future<void> Function(String jobId)? onRetryBackup;
   final Future<void> Function()? onRefreshHistory;
+  final ValueChanged<bool>? onManagingChanged;
   final UnbackedRetentionPolicy unbackedRetention;
   final BackedRetentionPolicy backedRetention;
   final Future<void> Function({
@@ -1125,6 +1127,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         }
       }
     });
+    widget.onManagingChanged?.call(true);
   }
 
   void _exitManaging() {
@@ -1134,6 +1137,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       _sourceFilter = _sourceFilterBeforeManaging ?? _sourceFilter;
       _sourceFilterBeforeManaging = null;
     });
+    widget.onManagingChanged?.call(false);
   }
 
   void _toggleManaging() {
@@ -1226,6 +1230,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       _sourceFilter = _sourceFilterBeforeManaging ?? _sourceFilter;
       _sourceFilterBeforeManaging = null;
     });
+    widget.onManagingChanged?.call(false);
   }
 
   Future<void> _pasteSearch() async {
@@ -1483,456 +1488,499 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         .toList(growable: false);
     final bool historyMode = widget.mode == RecordingsScreenMode.history;
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: !widget.embedded,
-        title: _managing
-            ? Text('已选 ${_selectedIds.length} 项')
-            : historyMode
-            ? _RecordingsHistoryTitle(
-                deviceName: _backupSnapshot.deviceName,
-                ipAddress: widget.orderReceiverSnapshot.ipAddress,
-              )
-            : const Text('设置'),
-      ),
-      body: ListView(
-        controller: _scrollController,
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
-        children: <Widget>[
-          if (!historyMode) ...<Widget>[
-            _SettingsCard(
-              key: const Key('work-settings-card'),
-              children: <Widget>[
-                _WorkModeSettings(workMode: _workMode, onChanged: _setWorkMode),
-                if (widget.onMinimumBarcodeLengthChanged != null) ...<Widget>[
+    return PopScope<Object?>(
+      canPop: !_managing,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (!didPop && _managing) {
+          _exitManaging();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: !widget.embedded,
+          title: _managing
+              ? Text('已选 ${_selectedIds.length} 项')
+              : historyMode
+              ? _RecordingsHistoryTitle(
+                  deviceName: _backupSnapshot.deviceName,
+                  ipAddress: widget.orderReceiverSnapshot.ipAddress,
+                )
+              : const Text('设置'),
+        ),
+        body: ListView(
+          controller: _scrollController,
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+          children: <Widget>[
+            if (!historyMode) ...<Widget>[
+              _SettingsCard(
+                key: const Key('work-settings-card'),
+                children: <Widget>[
+                  _WorkModeSettings(
+                    workMode: _workMode,
+                    onChanged: _setWorkMode,
+                  ),
+                  if (widget.onMinimumBarcodeLengthChanged != null) ...<Widget>[
+                    Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: colors.outlineVariant,
+                    ),
+                    _MinimumBarcodeLengthSettings(
+                      value: _minimumBarcodeLength,
+                      onChanged: _setMinimumBarcodeLength,
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              _SettingsCard(
+                key: const Key('recording-settings-card'),
+                children: <Widget>[
+                  _RetentionSettings(
+                    unbackedRetention: _unbackedRetention,
+                    backedRetention: _backedRetention,
+                    onUnbackedRetentionChanged: _setUnbackedRetention,
+                    onBackedRetentionChanged: _setBackedRetention,
+                  ),
                   Divider(
                     height: 1,
                     thickness: 1,
                     color: colors.outlineVariant,
                   ),
-                  _MinimumBarcodeLengthSettings(
-                    value: _minimumBarcodeLength,
-                    onChanged: _setMinimumBarcodeLength,
+                  _VideoCodecSettings(
+                    codec: _preferredVideoCodec,
+                    hevcWarning: _deviceDecodeSupport == null
+                        ? null
+                        : (!_deviceDecodeSupport!.hasHevcDecoder
+                              ? '当前设备不支持播放 H.265，新录像将自动使用 H.264'
+                              : (_deviceDecodeSupport!.preferH264
+                                    ? '当前设备在应用内播放 H.265 兼容性较差，新录像将自动使用 H.264'
+                                    : null)),
+                    onChanged: _setPreferredVideoCodec,
                   ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 12),
-            _SettingsCard(
-              key: const Key('recording-settings-card'),
-              children: <Widget>[
-                _RetentionSettings(
-                  unbackedRetention: _unbackedRetention,
-                  backedRetention: _backedRetention,
-                  onUnbackedRetentionChanged: _setUnbackedRetention,
-                  onBackedRetentionChanged: _setBackedRetention,
-                ),
-                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-                _VideoCodecSettings(
-                  codec: _preferredVideoCodec,
-                  hevcWarning: _deviceDecodeSupport == null
-                      ? null
-                      : (!_deviceDecodeSupport!.hasHevcDecoder
-                            ? '当前设备不支持播放 H.265，新录像将自动使用 H.264'
-                            : (_deviceDecodeSupport!.preferH264
-                                  ? '当前设备在应用内播放 H.265 兼容性较差，新录像将自动使用 H.264'
-                                  : null)),
-                  onChanged: _setPreferredVideoCodec,
-                ),
-                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-                _RecordingSpecSettings(
-                  spec: _recordingSpec,
-                  onChanged: _setRecordingSpec,
-                ),
-                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-                _RecordAudioSettings(
-                  enabled: _recordAudioEnabled,
-                  onChanged: _setRecordAudioEnabled,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _SettingsCard(
-              key: const Key('voice-settings-card'),
-              children: <Widget>[
-                _SpeechPromptSettings(
-                  enabled: _speechEnabled,
-                  onChanged: _setSpeechEnabled,
-                  onPreview: widget.onSpeechPreview,
-                ),
-                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-                _MaxVolumeSettings(
-                  enabled: _maxVolumeEnabled,
-                  onChanged: _setMaxVolumeEnabled,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _OrderReceiverSettings(
-              snapshot: widget.orderReceiverSnapshot,
-              onRetry: widget.onRetryOrderReceiver,
-              speechEnabled: _orderSpeechEnabled,
-              speechMasterEnabled: _speechEnabled,
-              onSpeechChanged: _setOrderSpeechEnabled,
-            ),
-            const SizedBox(height: 12),
-            const AboutSettings(),
-          ] else ...<Widget>[
-            _HistorySummary(
-              total: _existingLocalSessions.length,
-              today: _existingLocalSessions
-                  .where((item) => _isToday(item.startedAt))
-                  .length,
-              totalBytes: _localRecordingBytes,
-            ),
-            const SizedBox(height: 12),
-            _ComputerBackupSettings(
-              snapshot: _backupSnapshot,
-              allBackedUp: _allLocalFilesBackedUp,
-              remainingBackupCount: _remainingBackupCount,
-              onConnect:
-                  widget.onConnectComputer ??
-                  () => Navigator.of(context).pop(true),
-              onAutoChanged: widget.onAutoBackupChanged,
-              onBackupNow: widget.onBackupNow,
-              onDisconnect: _confirmDeleteComputer,
-              onRetryConnection: widget.onRetryConnection,
-              onRetry: widget.onRetryBackup,
-              discovery: _backupDiscoverySnapshot,
-              onSearchHosts: () {
-                _autoConnectStarted = false;
-                return _backupHostDiscovery.search();
-              },
-              onSelectHost: _connectDiscoveredHost,
-              onRequestApproval: _lastApprovalHost != null
-                  ? () => _connectDiscoveredHost(_lastApprovalHost!)
-                  : _backupSnapshot.endpoint == null
-                  ? null
-                  : () => _connectDiscoveredHost(
-                      LanBackupDiscoveredHost(
-                        nodeId: _backupSnapshot.endpoint!.computerId,
-                        name: _backupSnapshot.endpoint!.computerName,
-                        address: _backupSnapshot.endpoint!.displayAddress,
-                      ),
-                    ),
-              onCancelApproval: _cancelBackupApproval,
-              unbackedRetention: _unbackedRetention,
-              backedRetention: _backedRetention,
-              onUnbackedRetentionChanged: _setUnbackedRetention,
-              onBackedRetentionChanged: _setBackedRetention,
-              showRetention: false,
-            ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(2, 18, 2, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Row(
-                    children: <Widget>[
-                      const Expanded(
-                        child: Text(
-                          '录像记录',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      if (_managing && visibleSessions.isNotEmpty)
-                        TextButton(
-                          onPressed: () => _toggleSelectAll(visibleSessions),
-                          child: Text(
-                            _selectedIds.containsAll(
-                                  visibleSessions.map(
-                                    (RecordingSession item) => item.id,
-                                  ),
-                                )
-                                ? '取消全选'
-                                : '全选',
-                          ),
-                        ),
-                      if (_sessions.isNotEmpty)
-                        TextButton(
-                          key: const Key('manage-recordings-button'),
-                          onPressed: _toggleManaging,
-                          child: Text(_managing ? '完成' : '管理本地'),
-                        ),
-                      IconButton(
-                        key: const Key('refresh-recordings-button'),
-                        tooltip: '刷新录像记录',
-                        onPressed: _manualRefreshing ? null : _manualRefresh,
-                        icon: _manualRefreshing
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.refresh_rounded),
-                      ),
-                    ],
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: colors.outlineVariant,
                   ),
-                  const SizedBox(height: 10),
-                  SearchBar(
-                    key: const Key('recording-search'),
-                    controller: _searchController,
-                    hintText: '搜索面单号或日期',
-                    leading: const Icon(Icons.search_rounded),
-                    trailing: <Widget>[
-                      IconButton(
-                        key: const Key('scan-search-button'),
-                        tooltip: '扫描条码搜索',
-                        onPressed: widget.onScanSearch,
-                        icon: const Icon(Icons.qr_code_scanner_rounded),
-                      ),
-                      IconButton(
-                        key: const Key('paste-search-button'),
-                        tooltip: '粘贴搜索内容',
-                        onPressed: _pasteSearch,
-                        icon: const Icon(Icons.content_paste_rounded),
-                      ),
-                      if (_query.isNotEmpty)
-                        IconButton(
-                          tooltip: '清除搜索',
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _query = '';
-                              _historyPage = 0;
-                            });
-                            unawaited(
-                              _loadRemote(
-                                reset: true,
-                                pageNumber: 1,
-                                prefetchNext: true,
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                    ],
-                    onChanged: _onSearchChanged,
+                  _RecordingSpecSettings(
+                    spec: _recordingSpec,
+                    onChanged: _setRecordingSpec,
                   ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: <Widget>[
-                      FilterChip(
-                        key: const Key('recording-source-filter'),
-                        avatar: const Icon(Icons.filter_alt_rounded, size: 18),
-                        label: Text(_sourceFilterLabel(_sourceFilter)),
-                        selected: _sourceFilter != RecordingSourceFilter.all,
-                        showCheckmark: false,
-                        onSelected: (_) => _showSourceFilter(),
-                      ),
-                      FilterChip(
-                        key: const Key('recording-date-filter'),
-                        avatar: const Icon(
-                          Icons.calendar_month_rounded,
-                          size: 18,
-                        ),
-                        label: Text(_dateFilterLabel),
-                        selected: _datePreset != _HistoryDatePreset.all,
-                        showCheckmark: false,
-                        onSelected: (_) => _showDateFilter(),
-                      ),
-                    ],
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: colors.outlineVariant,
+                  ),
+                  _RecordAudioSettings(
+                    enabled: _recordAudioEnabled,
+                    onChanged: _setRecordAudioEnabled,
                   ),
                 ],
               ),
-            ),
-            if (_sessions.isEmpty && _remoteRecordings.isEmpty)
-              const SizedBox(height: 280, child: _EmptyRecordings())
-            else if (visibleItems.isEmpty)
-              const SizedBox(height: 220, child: _NoSearchResults())
-            else
-              ...List<Widget>.generate(pageItems.length, (int index) {
-                final _RecordingListItem item = pageItems[index];
-                final RecordingSession session = item.session;
-                final bool localAvailable =
-                    item.local != null &&
-                    File(item.local!.filePath).existsSync();
-                final List<LanBackupJob> matchingBackupJobs = item.local == null
-                    ? const <LanBackupJob>[]
-                    : _backupSnapshot.jobs
-                          .where(
-                            (LanBackupJob job) => isSameLanBackupFile(
-                              job.filePath,
-                              item.local!.filePath,
-                            ),
-                          )
-                          .toList(growable: false);
-                final bool remoteAvailable =
-                    item.remote != null &&
-                    item.remote!.status == RemoteRecordingStatus.available &&
-                    item.remote!.exists;
-                final LanBackupJob? completedBackupJob = matchingBackupJobs
-                    .where(_isJobKnownAvailable)
-                    .firstOrNull;
-                final LanBackupJob? backupJob =
-                    completedBackupJob ?? matchingBackupJobs.firstOrNull;
-                final bool unavailable =
-                    !localAvailable &&
-                    !remoteAvailable &&
-                    completedBackupJob == null;
-                return Padding(
-                  padding: EdgeInsets.only(
-                    bottom: index == pageItems.length - 1 ? 0 : 10,
+              const SizedBox(height: 12),
+              _SettingsCard(
+                key: const Key('voice-settings-card'),
+                children: <Widget>[
+                  _SpeechPromptSettings(
+                    enabled: _speechEnabled,
+                    onChanged: _setSpeechEnabled,
+                    onPreview: widget.onSpeechPreview,
                   ),
-                  child: _RecordingTile(
-                    session: session,
-                    backupJob: backupJob,
-                    managing: _managing && item.local != null,
-                    unavailable: unavailable,
-                    sourceLabel: _recordingSourceLabel(item),
-                    sourceIdentity: _recordingSourceIdentity(item),
-                    localRecording: item.local != null && localAvailable,
-                    backedUp:
-                        (remoteAvailable &&
-                            _isRemoteFromThisDevice(item.remote!)) ||
-                        completedBackupJob != null,
-                    localThumbnail: localAvailable
-                        ? _localThumbnail(session.filePath)
-                        : null,
-                    remoteThumbnail: item.remote?.thumbnailUri,
-                    remoteHeaders: widget.remotePlaybackHeaders,
-                    selected: _selectedIds.contains(session.id),
-                    onLongPress: () => _handleRecordingLongPress(item, session),
-                    hideSourceChip:
-                        _sourceFilter == RecordingSourceFilter.local &&
-                        _backupSnapshot.endpoint == null,
-                    onTap: () async {
-                      if (_managing) {
-                        if (item.local != null) _toggleSelection(session.id);
-                        return;
-                      }
-                      FocusManager.instance.primaryFocus?.unfocus();
-                      if (unavailable) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('录像已清理或文件不存在，无法播放')),
-                        );
-                        return;
-                      }
-                      Uri? resolvedRemoteUri;
-                      if (!localAvailable &&
-                          remoteAvailable &&
-                          item.remote != null) {
-                        final VideoDecodeSupport? decodeSupport =
-                            await SystemVideoPlayerService()
-                                .getVideoDecodeSupport();
-                        resolvedRemoteUri =
-                            RemotePlaybackCompat.resolvePlaybackUri(
-                              item.remote!.playUri,
-                              decodeSupport: decodeSupport,
-                              videoCodec: item.remote!.videoCodec,
-                            );
-                      }
-                      if (!context.mounted) return;
-                      final bool? deleted = await Navigator.of(context)
-                          .push<bool>(
-                            MaterialPageRoute<bool>(
-                              builder: (BuildContext context) =>
-                                  VideoPlaybackScreen(
-                                    session: session,
-                                    onSessionUpdated: _updateSession,
-                                    onDelete: item.local == null
-                                        ? null
-                                        : () => widget.onDeleteSessions(
-                                            <String>{item.local!.id},
-                                          ),
-                                    remoteUri: localAvailable
-                                        ? null
-                                        : remoteAvailable
-                                        ? resolvedRemoteUri
-                                        : null,
-                                    remoteVideoId: localAvailable
-                                        ? null
-                                        : remoteAvailable
-                                        ? item.remote?.id
-                                        : null,
-                                    remoteHeaders: widget.remotePlaybackHeaders,
-                                    backedUpOffline: completedBackupJob != null,
-                                    remoteClipService: localAvailable
-                                        ? null
-                                        : item.remote == null
-                                        ? null
-                                        : widget.remoteClipServiceFactory?.call(
-                                            item.remote!.playUri,
-                                          ),
-                                    networkDiagnosticsLoader:
-                                        widget.onNetworkDiagnostics,
-                                  ),
-                            ),
-                          );
-                      if (deleted == true && mounted && item.local != null) {
-                        final Set<int> hiddenIds = <int>{
-                          if (item.remote != null) item.remote!.id,
-                          if (backupJob != null) ...backupJob.remoteRecordIds,
-                        };
-                        setState(() {
-                          _hiddenRemoteIds.addAll(hiddenIds);
-                          _sessions.removeWhere(
-                            (RecordingSession value) =>
-                                value.id == item.local!.id,
-                          );
-                          _refreshLocalRecordingStats();
-                        });
-                        await widget.onHideRemoteRecordings?.call(hiddenIds);
-                      }
-                    },
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: colors.outlineVariant,
                   ),
-                );
-              }),
-            if (historyPageCount > 1)
-              _HistoryPagination(
-                currentPage: historyPage,
-                pageCount: historyPageCount,
-                loading: _loadingRemote || _loadingLocal,
-                offline:
-                    _backupSnapshot.connected &&
-                    _backupSnapshot.connectionStatus !=
-                        LanConnectionStatus.connected,
-                canLoadMore: historyPage + 1 < historyPageCount,
-                onPrevious: historyPage == 0
+                  _MaxVolumeSettings(
+                    enabled: _maxVolumeEnabled,
+                    onChanged: _setMaxVolumeEnabled,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _OrderReceiverSettings(
+                snapshot: widget.orderReceiverSnapshot,
+                onRetry: widget.onRetryOrderReceiver,
+                speechEnabled: _orderSpeechEnabled,
+                speechMasterEnabled: _speechEnabled,
+                onSpeechChanged: _setOrderSpeechEnabled,
+              ),
+              const SizedBox(height: 12),
+              const AboutSettings(),
+            ] else ...<Widget>[
+              _HistorySummary(
+                total: _existingLocalSessions.length,
+                today: _existingLocalSessions
+                    .where((item) => _isToday(item.startedAt))
+                    .length,
+                totalBytes: _localRecordingBytes,
+              ),
+              const SizedBox(height: 12),
+              _ComputerBackupSettings(
+                snapshot: _backupSnapshot,
+                allBackedUp: _allLocalFilesBackedUp,
+                remainingBackupCount: _remainingBackupCount,
+                onConnect:
+                    widget.onConnectComputer ??
+                    () => Navigator.of(context).pop(true),
+                onAutoChanged: widget.onAutoBackupChanged,
+                onBackupNow: widget.onBackupNow,
+                onDisconnect: _confirmDeleteComputer,
+                onRetryConnection: widget.onRetryConnection,
+                onRetry: widget.onRetryBackup,
+                discovery: _backupDiscoverySnapshot,
+                onSearchHosts: () {
+                  _autoConnectStarted = false;
+                  return _backupHostDiscovery.search();
+                },
+                onSelectHost: _connectDiscoveredHost,
+                onRequestApproval: _lastApprovalHost != null
+                    ? () => _connectDiscoveredHost(_lastApprovalHost!)
+                    : _backupSnapshot.endpoint == null
                     ? null
-                    : () => setState(() => _historyPage = historyPage - 1),
-                onNext: historyPage + 1 < historyPageCount
-                    ? () => _showNextHistoryPage(historyPageCount)
-                    : null,
+                    : () => _connectDiscoveredHost(
+                        LanBackupDiscoveredHost(
+                          nodeId: _backupSnapshot.endpoint!.computerId,
+                          name: _backupSnapshot.endpoint!.computerName,
+                          address: _backupSnapshot.endpoint!.displayAddress,
+                        ),
+                      ),
+                onCancelApproval: _cancelBackupApproval,
+                unbackedRetention: _unbackedRetention,
+                backedRetention: _backedRetention,
+                onUnbackedRetentionChanged: _setUnbackedRetention,
+                onBackedRetentionChanged: _setBackedRetention,
+                showRetention: false,
               ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(2, 18, 2, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        if (_backupSnapshot.connectionStatus ==
+                            LanConnectionStatus.connected)
+                          IconButton(
+                            key: const Key('refresh-recordings-button'),
+                            tooltip: '刷新录像记录',
+                            onPressed: _manualRefreshing
+                                ? null
+                                : _manualRefresh,
+                            icon: _manualRefreshing
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.refresh_rounded),
+                          ),
+                        const Expanded(
+                          child: Text(
+                            '录像记录',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        if (_managing && visibleSessions.isNotEmpty)
+                          TextButton(
+                            onPressed: () => _toggleSelectAll(visibleSessions),
+                            child: Text(
+                              _selectedIds.containsAll(
+                                    visibleSessions.map(
+                                      (RecordingSession item) => item.id,
+                                    ),
+                                  )
+                                  ? '取消全选'
+                                  : '全选',
+                            ),
+                          ),
+                        if (_sessions.isNotEmpty)
+                          TextButton(
+                            key: const Key('manage-recordings-button'),
+                            onPressed: _toggleManaging,
+                            child: Text(_managing ? '完成' : '管理本地'),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    SearchBar(
+                      key: const Key('recording-search'),
+                      controller: _searchController,
+                      hintText: '搜索面单号或日期',
+                      leading: const Icon(Icons.search_rounded),
+                      trailing: <Widget>[
+                        IconButton(
+                          key: const Key('scan-search-button'),
+                          tooltip: '扫描条码搜索',
+                          onPressed: widget.onScanSearch,
+                          icon: const Icon(Icons.qr_code_scanner_rounded),
+                        ),
+                        IconButton(
+                          key: const Key('paste-search-button'),
+                          tooltip: '粘贴搜索内容',
+                          onPressed: _pasteSearch,
+                          icon: const Icon(Icons.content_paste_rounded),
+                        ),
+                        if (_query.isNotEmpty)
+                          IconButton(
+                            tooltip: '清除搜索',
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _query = '';
+                                _historyPage = 0;
+                              });
+                              unawaited(
+                                _loadRemote(
+                                  reset: true,
+                                  pageNumber: 1,
+                                  prefetchNext: true,
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                      ],
+                      onChanged: _onSearchChanged,
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: <Widget>[
+                        FilterChip(
+                          key: const Key('recording-source-filter'),
+                          avatar: const Icon(
+                            Icons.filter_alt_rounded,
+                            size: 18,
+                          ),
+                          label: Text(_sourceFilterLabel(_sourceFilter)),
+                          selected: _sourceFilter != RecordingSourceFilter.all,
+                          showCheckmark: false,
+                          onSelected: (_) => _showSourceFilter(),
+                        ),
+                        FilterChip(
+                          key: const Key('recording-date-filter'),
+                          avatar: const Icon(
+                            Icons.calendar_month_rounded,
+                            size: 18,
+                          ),
+                          label: Text(_dateFilterLabel),
+                          selected: _datePreset != _HistoryDatePreset.all,
+                          showCheckmark: false,
+                          onSelected: (_) => _showDateFilter(),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (_sessions.isEmpty && _remoteRecordings.isEmpty)
+                const SizedBox(height: 280, child: _EmptyRecordings())
+              else if (visibleItems.isEmpty)
+                const SizedBox(height: 220, child: _NoSearchResults())
+              else
+                ...List<Widget>.generate(pageItems.length, (int index) {
+                  final _RecordingListItem item = pageItems[index];
+                  final RecordingSession session = item.session;
+                  final bool localAvailable =
+                      item.local != null &&
+                      File(item.local!.filePath).existsSync();
+                  final List<LanBackupJob> matchingBackupJobs =
+                      item.local == null
+                      ? const <LanBackupJob>[]
+                      : _backupSnapshot.jobs
+                            .where(
+                              (LanBackupJob job) => isSameLanBackupFile(
+                                job.filePath,
+                                item.local!.filePath,
+                              ),
+                            )
+                            .toList(growable: false);
+                  final bool remoteAvailable =
+                      item.remote != null &&
+                      item.remote!.status == RemoteRecordingStatus.available &&
+                      item.remote!.exists;
+                  final LanBackupJob? completedBackupJob = matchingBackupJobs
+                      .where(_isJobKnownAvailable)
+                      .firstOrNull;
+                  final LanBackupJob? backupJob =
+                      completedBackupJob ?? matchingBackupJobs.firstOrNull;
+                  final bool unavailable =
+                      !localAvailable &&
+                      !remoteAvailable &&
+                      completedBackupJob == null;
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == pageItems.length - 1 ? 0 : 10,
+                    ),
+                    child: _RecordingTile(
+                      session: session,
+                      backupJob: backupJob,
+                      managing: _managing && item.local != null,
+                      unavailable: unavailable,
+                      sourceLabel: _recordingSourceLabel(item),
+                      sourceIdentity: _recordingSourceIdentity(item),
+                      localRecording: item.local != null && localAvailable,
+                      backedUp:
+                          (remoteAvailable &&
+                              _isRemoteFromThisDevice(item.remote!)) ||
+                          completedBackupJob != null,
+                      localThumbnail: localAvailable
+                          ? _localThumbnail(session.filePath)
+                          : null,
+                      remoteThumbnail: item.remote?.thumbnailUri,
+                      remoteHeaders: widget.remotePlaybackHeaders,
+                      selected: _selectedIds.contains(session.id),
+                      onLongPress: () =>
+                          _handleRecordingLongPress(item, session),
+                      hideSourceChip:
+                          _managing ||
+                          (_sourceFilter == RecordingSourceFilter.local &&
+                              _backupSnapshot.endpoint == null),
+                      onTap: () async {
+                        if (_managing) {
+                          if (item.local != null) _toggleSelection(session.id);
+                          return;
+                        }
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        if (unavailable) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('录像已清理或文件不存在，无法播放')),
+                          );
+                          return;
+                        }
+                        Uri? resolvedRemoteUri;
+                        if (!localAvailable &&
+                            remoteAvailable &&
+                            item.remote != null) {
+                          final VideoDecodeSupport? decodeSupport =
+                              await SystemVideoPlayerService()
+                                  .getVideoDecodeSupport();
+                          resolvedRemoteUri =
+                              RemotePlaybackCompat.resolvePlaybackUri(
+                                item.remote!.playUri,
+                                decodeSupport: decodeSupport,
+                                videoCodec: item.remote!.videoCodec,
+                              );
+                        }
+                        if (!context.mounted) return;
+                        final bool?
+                        deleted = await Navigator.of(context).push<bool>(
+                          MaterialPageRoute<bool>(
+                            builder: (BuildContext context) =>
+                                VideoPlaybackScreen(
+                                  session: session,
+                                  onSessionUpdated: _updateSession,
+                                  onDelete: item.local == null
+                                      ? null
+                                      : () => widget.onDeleteSessions(<String>{
+                                          item.local!.id,
+                                        }),
+                                  remoteUri: localAvailable
+                                      ? null
+                                      : remoteAvailable
+                                      ? resolvedRemoteUri
+                                      : null,
+                                  remoteVideoId: localAvailable
+                                      ? null
+                                      : remoteAvailable
+                                      ? item.remote?.id
+                                      : null,
+                                  remoteHeaders: widget.remotePlaybackHeaders,
+                                  backedUpOffline: completedBackupJob != null,
+                                  remoteClipService: localAvailable
+                                      ? null
+                                      : item.remote == null
+                                      ? null
+                                      : widget.remoteClipServiceFactory?.call(
+                                          item.remote!.playUri,
+                                        ),
+                                  networkDiagnosticsLoader:
+                                      widget.onNetworkDiagnostics,
+                                ),
+                          ),
+                        );
+                        if (deleted == true && mounted && item.local != null) {
+                          final Set<int> hiddenIds = <int>{
+                            if (item.remote != null) item.remote!.id,
+                            if (backupJob != null) ...backupJob.remoteRecordIds,
+                          };
+                          setState(() {
+                            _hiddenRemoteIds.addAll(hiddenIds);
+                            _sessions.removeWhere(
+                              (RecordingSession value) =>
+                                  value.id == item.local!.id,
+                            );
+                            _refreshLocalRecordingStats();
+                          });
+                          await widget.onHideRemoteRecordings?.call(hiddenIds);
+                        }
+                      },
+                    ),
+                  );
+                }),
+              if (historyPageCount > 1)
+                _HistoryPagination(
+                  currentPage: historyPage,
+                  pageCount: historyPageCount,
+                  loading: _loadingRemote || _loadingLocal,
+                  offline:
+                      _backupSnapshot.connected &&
+                      _backupSnapshot.connectionStatus !=
+                          LanConnectionStatus.connected,
+                  canLoadMore: historyPage + 1 < historyPageCount,
+                  onPrevious: historyPage == 0
+                      ? null
+                      : () => setState(() => _historyPage = historyPage - 1),
+                  onNext: historyPage + 1 < historyPageCount
+                      ? () => _showNextHistoryPage(historyPageCount)
+                      : null,
+                ),
+            ],
           ],
-        ],
+        ),
+        bottomNavigationBar: _managing
+            ? SafeArea(
+                minimum: const EdgeInsets.fromLTRB(18, 8, 18, 14),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        key: const Key('copy-selected-tracking-numbers'),
+                        onPressed: _selectedIds.isEmpty
+                            ? null
+                            : _copySelectedTrackingNumbers,
+                        icon: const Icon(Icons.copy_rounded),
+                        label: const Text('复制单号'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        key: const Key('delete-selected-recordings'),
+                        onPressed: _selectedIds.isEmpty
+                            ? null
+                            : _deleteSelected,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: colors.error,
+                          foregroundColor: colors.onError,
+                        ),
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        label: const Text('删除'),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : null,
       ),
-      bottomNavigationBar: _managing
-          ? SafeArea(
-              minimum: const EdgeInsets.fromLTRB(18, 8, 18, 14),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      key: const Key('copy-selected-tracking-numbers'),
-                      onPressed: _selectedIds.isEmpty
-                          ? null
-                          : _copySelectedTrackingNumbers,
-                      icon: const Icon(Icons.copy_rounded),
-                      label: const Text('复制单号'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      key: const Key('delete-selected-recordings'),
-                      onPressed: _selectedIds.isEmpty ? null : _deleteSelected,
-                      icon: const Icon(Icons.delete_outline_rounded),
-                      label: const Text('删除'),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : null,
     );
   }
 
@@ -3695,138 +3743,148 @@ class _RecordingTile extends StatelessWidget {
     final ColorScheme colors = Theme.of(context).colorScheme;
     return Opacity(
       opacity: unavailable ? 0.52 : 1,
-      child: Material(
-        color: colors.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(18),
-          child: Stack(
-            children: <Widget>[
-              Padding(
-                padding: EdgeInsets.fromLTRB(managing ? 8 : 14, 14, 14, 14),
-                child: Row(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          if (managing) ...<Widget>[
+            Checkbox(
+              value: selected,
+              onChanged: (_) => onTap(),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: 6),
+          ],
+          Expanded(
+            child: Material(
+              color: colors.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(18),
+              child: InkWell(
+                onTap: onTap,
+                onLongPress: onLongPress,
+                borderRadius: BorderRadius.circular(18),
+                child: Stack(
                   children: <Widget>[
-                    if (managing) ...<Widget>[
-                      Checkbox(
-                        value: selected,
-                        onChanged: (_) => onTap(),
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ],
-                    _RecordingThumbnail(
-                      localPath: localThumbnail,
-                      remoteUri: remoteThumbnail,
-                      remoteHeaders: remoteHeaders,
-                      unavailable: unavailable,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
                         children: <Widget>[
-                          Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: Text(
-                                  session.displayCode,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              if (!hideSourceChip)
-                                _StatusChip(
-                                  key: const Key('recording-source-chip'),
-                                  label: sourceLabel,
-                                  tone: sourceLabel == '电脑'
-                                      ? _StatusChipTone.computer
-                                      : _StatusChipTone.recordingDevice,
-                                  identity: sourceIdentity,
-                                ),
-                            ],
+                          _RecordingThumbnail(
+                            localPath: localThumbnail,
+                            remoteUri: remoteThumbnail,
+                            remoteHeaders: remoteHeaders,
+                            unavailable: unavailable,
                           ),
-                          const SizedBox(height: 7),
-                          Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: Text(
-                                  key: const Key('recording-date-duration'),
-                                  '${_dateTime(session.startedAt)}  ·  ${_duration(session.duration)}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: colors.onSurfaceVariant,
-                                    fontSize: 12,
-                                  ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: Text(
+                                        session.displayCode,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    if (!hideSourceChip)
+                                      _StatusChip(
+                                        key: const Key('recording-source-chip'),
+                                        label: sourceLabel,
+                                        tone: sourceLabel == '电脑'
+                                            ? _StatusChipTone.computer
+                                            : _StatusChipTone.recordingDevice,
+                                        identity: sourceIdentity,
+                                      ),
+                                  ],
                                 ),
-                              ),
-                              if (backedUp) ...<Widget>[
-                                const SizedBox(width: 8),
-                                const _StatusChip(
-                                  key: Key('recording-backed-up-chip'),
-                                  label: '已备份',
-                                  tone: _StatusChipTone.backupCompleted,
-                                ),
-                              ] else if (backupJob != null &&
-                                  backupJob!.state !=
-                                      LanBackupJobState.completed) ...[
-                                const SizedBox(width: 8),
-                                _StatusChip(
-                                  label: _backupLabel(backupJob!),
-                                  tone: _backupTone(backupJob!),
-                                ),
-                              ] else if (localRecording) ...<Widget>[
-                                const SizedBox(width: 8),
-                                const _StatusChip(
-                                  label: '未备份',
-                                  tone: _StatusChipTone.backupPending,
+                                const SizedBox(height: 7),
+                                Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      child: Text(
+                                        key: const Key(
+                                          'recording-date-duration',
+                                        ),
+                                        '${_dateTime(session.startedAt)}  ·  ${_duration(session.duration)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: colors.onSurfaceVariant,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                    if (backedUp) ...<Widget>[
+                                      const SizedBox(width: 8),
+                                      const _StatusChip(
+                                        key: Key('recording-backed-up-chip'),
+                                        label: '已备份',
+                                        tone: _StatusChipTone.backupCompleted,
+                                      ),
+                                    ] else if (backupJob != null &&
+                                        backupJob!.state !=
+                                            LanBackupJobState.completed) ...[
+                                      const SizedBox(width: 8),
+                                      _StatusChip(
+                                        label: _backupLabel(backupJob!),
+                                        tone: _backupTone(backupJob!),
+                                      ),
+                                    ] else if (localRecording) ...<Widget>[
+                                      const SizedBox(width: 8),
+                                      const _StatusChip(
+                                        label: '未备份',
+                                        tone: _StatusChipTone.backupPending,
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ],
-                            ],
+                            ),
                           ),
+                          if (!managing)
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: colors.onSurfaceVariant,
+                            ),
                         ],
                       ),
                     ),
-                    if (!managing)
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        color: colors.onSurfaceVariant,
+                    Positioned(
+                      key: const Key('recording-operation-mode-strip'),
+                      left: 0,
+                      top: 12,
+                      bottom: 12,
+                      width: 4,
+                      child: Semantics(
+                        label: '${session.operationMode.label}录像',
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color:
+                                session.operationMode ==
+                                    RecordingOperationMode.returnGoods
+                                ? const Color(0xFFFF9800)
+                                : colors.primary,
+                            borderRadius: const BorderRadius.horizontal(
+                              right: Radius.circular(4),
+                            ),
+                          ),
+                        ),
                       ),
+                    ),
                   ],
                 ),
               ),
-              Positioned(
-                key: const Key('recording-operation-mode-strip'),
-                left: 0,
-                top: 12,
-                bottom: 12,
-                width: 4,
-                child: Semantics(
-                  label: '${session.operationMode.label}录像',
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color:
-                          session.operationMode ==
-                              RecordingOperationMode.returnGoods
-                          ? const Color(0xFFFF9800)
-                          : colors.primary,
-                      borderRadius: const BorderRadius.horizontal(
-                        right: Radius.circular(4),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
