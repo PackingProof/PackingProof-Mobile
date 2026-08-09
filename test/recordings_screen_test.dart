@@ -1767,6 +1767,62 @@ void main() {
     expect(find.text('2 / 3 页'), findsOneWidget);
   });
 
+  testWidgets('切换每页条数后按新条数重新加载', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final List<RecordingSession> all = List<RecordingSession>.generate(
+      12,
+      (int index) => _session(
+        'clip-$index',
+        'NO-${index + 1}',
+        startedAt.subtract(Duration(minutes: index)),
+        filePath: 'pubspec.yaml',
+      ),
+    );
+    final List<int> requestedPageSizes = <int>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: all,
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onLoadLocalRecordings:
+              ({required page, required pageSize, keyword = ''}) async {
+                requestedPageSizes.add(pageSize);
+                final int start = (page - 1) * pageSize;
+                return LocalRecordingPage(
+                  data: start >= all.length
+                      ? const <RecordingSession>[]
+                      : all.skip(start).take(pageSize).toList(growable: false),
+                  page: page,
+                  pageSize: pageSize,
+                  total: all.length,
+                );
+              },
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('1 / 3 页'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('recording-page-size-selector')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('10').last);
+    await tester.pumpAndSettle();
+
+    expect(requestedPageSizes, contains(10));
+    expect(find.text('1 / 2 页'), findsOneWidget);
+  });
+
   testWidgets('本机录像从数据库分页并用关键词重新查询', (WidgetTester tester) async {
     final List<int> requestedPages = <int>[];
     final List<String> requestedKeywords = <String>[];
@@ -3670,8 +3726,10 @@ void main() {
     final Rect manageRect = tester.getRect(
       find.byKey(const Key('manage-recordings-button')),
     );
-    expect(refreshRect.left, greaterThanOrEqualTo(titleRect.right));
+    expect(titleRect.left, lessThan(30));
+    expect((refreshRect.left - titleRect.right).abs(), lessThanOrEqualTo(2));
     expect(refreshRect.right, lessThanOrEqualTo(manageRect.left));
+    expect(manageRect.right, greaterThan(700));
   });
 
   testWidgets('管理模式点击返回键退出管理', (WidgetTester tester) async {

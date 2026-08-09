@@ -40,6 +40,48 @@ class PlaybackBufferingTracker {
   }
 }
 
+class PlaybackBufferingOverlay extends StatelessWidget {
+  const PlaybackBufferingOverlay({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Color(0x99000000),
+            borderRadius: BorderRadius.all(Radius.circular(14)),
+          ),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                SizedBox.square(
+                  dimension: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  '缓冲中…',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class VideoPlaybackScreen extends StatefulWidget {
   const VideoPlaybackScreen({
     required this.session,
@@ -254,8 +296,8 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
 
   Future<void> _logPlaybackEnvironment() async {
     final Map<String, Object?> extra = <String, Object?>{};
-    final CameraDiagnosticsSnapshot? camera =
-        await CameraDiagnosticsService().loadSnapshot();
+    final CameraDiagnosticsSnapshot? camera = await CameraDiagnosticsService()
+        .loadSnapshot();
     if (camera != null) {
       extra['storageAvailableBytes'] = camera.storageAvailableBytes;
       extra['storageTotalBytes'] = camera.storageTotalBytes;
@@ -326,6 +368,9 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
 
   void _scrubTo(double value) {
     setState(() => _scrubMilliseconds = value);
+    if (widget.remoteUri != null) {
+      return;
+    }
     unawaited(
       _video.seekTo(_playbackStart + Duration(milliseconds: value.round())),
     );
@@ -705,6 +750,10 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
                                         ),
                                       ),
                                     ),
+                                  ),
+                                if (value.isBuffering && value.isInitialized)
+                                  const PlaybackBufferingOverlay(
+                                    key: Key('playback-buffering-indicator'),
                                   ),
                                 Positioned(
                                   left: 0,

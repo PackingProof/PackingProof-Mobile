@@ -227,7 +227,7 @@ class RecordingsScreen extends StatefulWidget {
 }
 
 class _RecordingsScreenState extends State<RecordingsScreen> {
-  static const int _historyPageSize = 5;
+  int _historyPageSize = 5;
   static const RecordingThumbnailService _thumbnailService =
       RecordingThumbnailService();
 
@@ -1452,6 +1452,27 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     }
   }
 
+  void _setHistoryPageSize(int pageSize) {
+    if (pageSize == _historyPageSize) return;
+    _localRequestGeneration++;
+    _remoteRequestGeneration++;
+    setState(() {
+      _historyPageSize = pageSize;
+      _loadingLocal = false;
+      _loadingRemote = false;
+      _localPages.clear();
+      _remotePages.clear();
+      _sessions.clear();
+      _remoteRecordings.clear();
+      _localTotal = 0;
+      _remoteTotal = 0;
+      _remoteDeviceTotal = 0;
+      _historyPage = 0;
+    });
+    unawaited(_loadLocal(reset: true, pageNumber: 1, prefetchNext: true));
+    unawaited(_loadRemote(reset: true, pageNumber: 1, prefetchNext: true));
+  }
+
   @override
   Widget build(BuildContext context) {
     final List<_RecordingListItem> visibleItems = _managing
@@ -1666,13 +1687,11 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   children: <Widget>[
                     Row(
                       children: <Widget>[
-                        const Expanded(
-                          child: Text(
-                            '录像记录',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
+                        const Text(
+                          '录像记录',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                         if (_backupSnapshot.connectionStatus ==
@@ -1692,6 +1711,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                                   )
                                 : const Icon(Icons.refresh_rounded),
                           ),
+                        const Spacer(),
                         if (_managing && visibleSessions.isNotEmpty)
                           TextButton(
                             onPressed: () => _toggleSelectAll(visibleSessions),
@@ -1944,6 +1964,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   onNext: historyPage + 1 < historyPageCount
                       ? () => _showNextHistoryPage(historyPageCount)
                       : null,
+                  pageSize: _historyPageSize,
+                  onPageSizeChanged: _setHistoryPageSize,
                 ),
             ],
           ],
@@ -3901,6 +3923,8 @@ class _HistoryPagination extends StatelessWidget {
     required this.canLoadMore,
     required this.onPrevious,
     required this.onNext,
+    required this.pageSize,
+    required this.onPageSizeChanged,
   });
 
   final int currentPage;
@@ -3910,43 +3934,77 @@ class _HistoryPagination extends StatelessWidget {
   final bool canLoadMore;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
+  final int pageSize;
+  final ValueChanged<int> onPageSizeChanged;
 
   @override
   Widget build(BuildContext context) {
     final int shownPageCount = pageCount == 0 ? 1 : pageCount;
     return Padding(
       padding: const EdgeInsets.only(top: 14),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          IconButton.outlined(
-            key: const Key('recording-page-previous'),
-            tooltip: '上一页',
-            onPressed: loading ? null : onPrevious,
-            icon: const Icon(Icons.chevron_left_rounded),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              IconButton.outlined(
+                key: const Key('recording-page-previous'),
+                tooltip: '上一页',
+                onPressed: loading ? null : onPrevious,
+                icon: const Icon(Icons.chevron_left_rounded),
+              ),
+              SizedBox(
+                width: 104,
+                child: Text(
+                  offline ? '电脑离线' : '${currentPage + 1} / $shownPageCount 页',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              IconButton.outlined(
+                key: const Key('recording-page-next'),
+                tooltip: offline
+                    ? '电脑离线'
+                    : canLoadMore && currentPage + 1 >= pageCount
+                    ? '加载下一页'
+                    : '下一页',
+                onPressed: loading ? null : onNext,
+                icon: loading
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.chevron_right_rounded),
+              ),
+            ],
           ),
-          SizedBox(
-            width: 104,
-            child: Text(
-              offline ? '电脑离线' : '${currentPage + 1} / $shownPageCount 页',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-          IconButton.outlined(
-            key: const Key('recording-page-next'),
-            tooltip: offline
-                ? '电脑离线'
-                : canLoadMore && currentPage + 1 >= pageCount
-                ? '加载下一页'
-                : '下一页',
-            onPressed: loading ? null : onNext,
-            icon: loading
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.chevron_right_rounded),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              const Text('每页显示', style: TextStyle(fontSize: 12)),
+              const SizedBox(width: 4),
+              DropdownButton<int>(
+                key: const Key('recording-page-size-selector'),
+                value: pageSize,
+                underline: const SizedBox.shrink(),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+                items: const <DropdownMenuItem<int>>[
+                  DropdownMenuItem<int>(value: 5, child: Text('5')),
+                  DropdownMenuItem<int>(value: 10, child: Text('10')),
+                  DropdownMenuItem<int>(value: 20, child: Text('20')),
+                ],
+                onChanged: (int? value) {
+                  if (value != null) onPageSizeChanged(value);
+                },
+              ),
+              const SizedBox(width: 4),
+              const Text('条', style: TextStyle(fontSize: 12)),
+            ],
           ),
         ],
       ),
