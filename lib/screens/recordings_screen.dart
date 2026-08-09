@@ -276,6 +276,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   int _remoteRequestGeneration = 0;
   int _localRequestGeneration = 0;
   RecordingSourceFilter _sourceFilter = RecordingSourceFilter.all;
+  RecordingSourceFilter? _sourceFilterBeforeManaging;
   _HistoryDatePreset _datePreset = _HistoryDatePreset.all;
   DateTimeRange? _customDateRange;
   bool _backupDiscoveryStarted = false;
@@ -304,6 +305,12 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         })
         .toList(growable: false);
   }
+
+  List<_RecordingListItem> get _managingItems => _visibleItems
+      .where(
+        (item) => item.local != null && File(item.local!.filePath).existsSync(),
+      )
+      .toList(growable: false);
 
   @override
   void initState() {
@@ -1102,16 +1109,59 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     });
   }
 
-  void _toggleManaging() {
+  void _enterManaging({RecordingSession? keepVisible}) {
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
-      _managing = !_managing;
+      _managing = true;
       _selectedIds.clear();
-      _historyPage = 0;
-      if (_managing) {
-        _sourceFilter = RecordingSourceFilter.local;
+      _sourceFilterBeforeManaging = _sourceFilter;
+      _sourceFilter = RecordingSourceFilter.local;
+      if (keepVisible != null) {
+        final int index = _managingItems.indexWhere(
+          (item) => item.session.id == keepVisible.id,
+        );
+        if (index >= 0) {
+          _historyPage = index ~/ _historyPageSize;
+        }
       }
     });
+  }
+
+  void _exitManaging() {
+    setState(() {
+      _managing = false;
+      _selectedIds.clear();
+      _sourceFilter = _sourceFilterBeforeManaging ?? _sourceFilter;
+      _sourceFilterBeforeManaging = null;
+    });
+  }
+
+  void _toggleManaging() {
+    if (_managing) {
+      _exitManaging();
+    } else {
+      _enterManaging();
+    }
+  }
+
+  void _handleRecordingLongPress(
+    _RecordingListItem item,
+    RecordingSession session,
+  ) {
+    final bool manageable =
+        item.local != null && File(item.local!.filePath).existsSync();
+    if (!manageable) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('管理模式仅支持本地录像')));
+      return;
+    }
+    if (!_managing) {
+      _enterManaging(keepVisible: session);
+    }
+    if (item.local != null) {
+      _toggleSelection(session.id);
+    }
   }
 
   Future<String?> _localThumbnail(String filePath) => _localThumbnailFutures
@@ -1173,6 +1223,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       _refreshLocalRecordingStats();
       _selectedIds.clear();
       _managing = false;
+      _sourceFilter = _sourceFilterBeforeManaging ?? _sourceFilter;
+      _sourceFilterBeforeManaging = null;
     });
   }
 
@@ -1334,12 +1386,13 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     if (_selectedIds.isEmpty) return;
     final List<String> codes = <String>[];
     final Set<String> seen = <String>{};
+    int duplicateRows = 0;
     for (final _RecordingListItem item in _visibleItems) {
       if (!_selectedIds.contains(item.session.id)) continue;
       final String code = item.session.displayCode;
-      if (code.isEmpty ||
-          code == RecordingSession.unrecognizedLabel ||
-          !seen.add(code)) {
+      if (code.isEmpty || code == RecordingSession.unrecognizedLabel) continue;
+      if (!seen.add(code)) {
+        duplicateRows++;
         continue;
       }
       codes.add(code);
@@ -1353,9 +1406,15 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     }
     await Clipboard.setData(ClipboardData(text: codes.join('\n')));
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('已复制 ${codes.length} 个单号')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          duplicateRows > 0
+              ? '已复制 ${codes.length} 个唯一单号（重复 $duplicateRows 行）'
+              : '已复制 ${codes.length} 个单号',
+        ),
+      ),
+    );
   }
 
   Future<void> _showNextHistoryPage(int pageCount) async {
@@ -1386,13 +1445,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   @override
   Widget build(BuildContext context) {
     final List<_RecordingListItem> visibleItems = _managing
-        ? _visibleItems
-              .where(
-                (item) =>
-                    item.local != null &&
-                    File(item.local!.filePath).existsSync(),
-              )
-              .toList(growable: false)
+        ? _managingItems
         : _visibleItems;
     final List<RecordingSession> visibleSessions = visibleItems
         .map((item) => item.local)
@@ -1441,13 +1494,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                 ipAddress: widget.orderReceiverSnapshot.ipAddress,
               )
             : const Text('设置'),
-        actions: <Widget>[
-          if (historyMode && _sessions.isNotEmpty)
-            TextButton(
-              onPressed: _toggleManaging,
-              child: Text(_managing ? '完成' : '管理'),
-            ),
-        ],
       ),
       body: ListView(
         controller: _scrollController,
@@ -1577,46 +1623,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
               showRetention: false,
             ),
             const SizedBox(height: 12),
-            SearchBar(
-              key: const Key('recording-search'),
-              controller: _searchController,
-              hintText: '搜索面单号或日期',
-              leading: const Icon(Icons.search_rounded),
-              trailing: <Widget>[
-                IconButton(
-                  key: const Key('scan-search-button'),
-                  tooltip: '扫描条码搜索',
-                  onPressed: widget.onScanSearch,
-                  icon: const Icon(Icons.qr_code_scanner_rounded),
-                ),
-                IconButton(
-                  key: const Key('paste-search-button'),
-                  tooltip: '粘贴搜索内容',
-                  onPressed: _pasteSearch,
-                  icon: const Icon(Icons.content_paste_rounded),
-                ),
-                if (_query.isNotEmpty)
-                  IconButton(
-                    tooltip: '清除搜索',
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() {
-                        _query = '';
-                        _historyPage = 0;
-                      });
-                      unawaited(
-                        _loadRemote(
-                          reset: true,
-                          pageNumber: 1,
-                          prefetchNext: true,
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-              ],
-              onChanged: _onSearchChanged,
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(2, 18, 2, 12),
               child: Column(
@@ -1646,6 +1652,12 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                                 : '全选',
                           ),
                         ),
+                      if (_sessions.isNotEmpty)
+                        TextButton(
+                          key: const Key('manage-recordings-button'),
+                          onPressed: _toggleManaging,
+                          child: Text(_managing ? '完成' : '管理本地'),
+                        ),
                       IconButton(
                         key: const Key('refresh-recordings-button'),
                         tooltip: '刷新录像记录',
@@ -1662,6 +1674,47 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
+                  SearchBar(
+                    key: const Key('recording-search'),
+                    controller: _searchController,
+                    hintText: '搜索面单号或日期',
+                    leading: const Icon(Icons.search_rounded),
+                    trailing: <Widget>[
+                      IconButton(
+                        key: const Key('scan-search-button'),
+                        tooltip: '扫描条码搜索',
+                        onPressed: widget.onScanSearch,
+                        icon: const Icon(Icons.qr_code_scanner_rounded),
+                      ),
+                      IconButton(
+                        key: const Key('paste-search-button'),
+                        tooltip: '粘贴搜索内容',
+                        onPressed: _pasteSearch,
+                        icon: const Icon(Icons.content_paste_rounded),
+                      ),
+                      if (_query.isNotEmpty)
+                        IconButton(
+                          tooltip: '清除搜索',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {
+                              _query = '';
+                              _historyPage = 0;
+                            });
+                            unawaited(
+                              _loadRemote(
+                                reset: true,
+                                pageNumber: 1,
+                                prefetchNext: true,
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                    ],
+                    onChanged: _onSearchChanged,
+                  ),
+                  const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -1746,6 +1799,10 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                     remoteThumbnail: item.remote?.thumbnailUri,
                     remoteHeaders: widget.remotePlaybackHeaders,
                     selected: _selectedIds.contains(session.id),
+                    onLongPress: () => _handleRecordingLongPress(item, session),
+                    hideSourceChip:
+                        _sourceFilter == RecordingSourceFilter.local &&
+                        _backupSnapshot.endpoint == null,
                     onTap: () async {
                       if (_managing) {
                         if (item.local != null) _toggleSelection(session.id);
@@ -3613,6 +3670,8 @@ class _RecordingTile extends StatelessWidget {
     this.backupJob,
     this.localThumbnail,
     this.remoteThumbnail,
+    this.onLongPress,
+    this.hideSourceChip = false,
   });
 
   final RecordingSession session;
@@ -3625,6 +3684,8 @@ class _RecordingTile extends StatelessWidget {
   final bool localRecording;
   final bool unavailable;
   final bool backedUp;
+  final VoidCallback? onLongPress;
+  final bool hideSourceChip;
   final Future<String?>? localThumbnail;
   final Uri? remoteThumbnail;
   final Map<String, String> remoteHeaders;
@@ -3639,16 +3700,21 @@ class _RecordingTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(18),
           child: Stack(
             children: <Widget>[
               Padding(
-                padding: const EdgeInsets.all(14),
+                padding: EdgeInsets.fromLTRB(managing ? 8 : 14, 14, 14, 14),
                 child: Row(
                   children: <Widget>[
                     if (managing) ...<Widget>[
-                      Checkbox(value: selected, onChanged: (_) => onTap()),
-                      const SizedBox(width: 4),
+                      Checkbox(
+                        value: selected,
+                        onChanged: (_) => onTap(),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
                     ],
                     _RecordingThumbnail(
                       localPath: localThumbnail,
@@ -3675,14 +3741,15 @@ class _RecordingTile extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              _StatusChip(
-                                key: const Key('recording-source-chip'),
-                                label: sourceLabel,
-                                tone: sourceLabel == '电脑'
-                                    ? _StatusChipTone.computer
-                                    : _StatusChipTone.recordingDevice,
-                                identity: sourceIdentity,
-                              ),
+                              if (!hideSourceChip)
+                                _StatusChip(
+                                  key: const Key('recording-source-chip'),
+                                  label: sourceLabel,
+                                  tone: sourceLabel == '电脑'
+                                      ? _StatusChipTone.computer
+                                      : _StatusChipTone.recordingDevice,
+                                  identity: sourceIdentity,
+                                ),
                             ],
                           ),
                           const SizedBox(height: 7),

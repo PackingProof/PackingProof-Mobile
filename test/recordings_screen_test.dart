@@ -2501,6 +2501,9 @@ void main() {
   });
 
   testWidgets('管理模式可多选并确认删除录像', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     const MethodChannel thumbnailChannel = MethodChannel(
       'app.packingproof.mobile/recording_thumbnail',
     );
@@ -2545,7 +2548,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('管理'));
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
     await tester.drag(find.byType(ListView), const Offset(0, -520));
     await tester.pump();
@@ -2908,7 +2911,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.text('管理'));
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
     await tester.tap(find.text('A-1111').first);
     await tester.pump();
@@ -2927,7 +2930,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(copied, 'A-1111\nB-2222');
-    expect(find.text('已复制 2 个单号'), findsOneWidget);
+    expect(find.text('已复制 2 个唯一单号（重复 1 行）'), findsOneWidget);
   });
 
   testWidgets('所选记录没有可复制单号时提示且不复制', (WidgetTester tester) async {
@@ -2973,7 +2976,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.text('管理'));
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
     await tester.drag(find.byType(ListView), const Offset(0, -520));
     await tester.pump();
@@ -2987,6 +2990,7 @@ void main() {
     expect(copied, isNull);
     expect(find.text('所选记录没有可复制的单号'), findsOneWidget);
   });
+
   testWidgets('未连接电脑时后台通知不会重置历史页', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
@@ -3116,6 +3120,348 @@ void main() {
     await tester.pump();
     expect(find.text('1 / 3 页'), findsOneWidget);
     expect(find.text('NO-1'), findsOneWidget);
+  });
+
+  testWidgets('长按录像行进入管理模式并选中该行', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+            _session('clip-2', 'B-2222', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.longPress(find.text('B-2222'));
+    await tester.pump();
+
+    expect(find.text('已选 1 项'), findsOneWidget);
+    expect(find.text('完成'), findsOneWidget);
+    expect(find.byType(Checkbox), findsNWidgets(2));
+    await tester.tap(find.text('A-1111'));
+    await tester.pump();
+    expect(find.text('已选 2 项'), findsOneWidget);
+  });
+
+  testWidgets('长按本地行后目标行仍保留在当前页', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final List<RecordingSession> all = List<RecordingSession>.generate(
+      12,
+      (int index) => _session(
+        'clip-$index',
+        'NO-${index + 1}',
+        startedAt.subtract(Duration(minutes: index)),
+        filePath: 'pubspec.yaml',
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: all,
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onLoadLocalRecordings:
+              ({required page, required pageSize, keyword = ''}) async {
+                final int start = (page - 1) * pageSize;
+                return LocalRecordingPage(
+                  data: start >= all.length
+                      ? const <RecordingSession>[]
+                      : all.skip(start).take(pageSize).toList(growable: false),
+                  page: page,
+                  pageSize: pageSize,
+                  total: all.length,
+                );
+              },
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('recording-page-next')));
+    await tester.pumpAndSettle();
+    expect(find.text('NO-6'), findsOneWidget);
+    await tester.longPress(find.text('NO-6'));
+    await tester.pump();
+
+    expect(find.text('已选 1 项'), findsOneWidget);
+    expect(find.text('NO-6'), findsOneWidget);
+    expect(find.text('本地'), findsOneWidget);
+  });
+
+  testWidgets('长按电脑录像不进入管理模式并提示', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final RemoteRecording remote = RemoteRecording(
+      id: 11,
+      trackingNumber: 'REMOTE-1',
+      startedAt: startedAt,
+      duration: const Duration(seconds: 5),
+      sourceType: 'pc',
+      sourceDeviceId: 'computer-1',
+      sourceDeviceName: '电脑',
+      sourceSessionId: '',
+      contentSha256: 'sha',
+      playUri: Uri.parse('http://192.168.1.20/video/11'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+          ),
+          onLoadRemoteRecordings:
+              ({required page, required pageSize, keyword = ''}) async =>
+                  RemoteRecordingPage(
+                    data: page == 1
+                        ? <RemoteRecording>[remote]
+                        : const <RemoteRecording>[],
+                    page: page,
+                    pageSize: pageSize,
+                    total: 1,
+                    deviceTotal: 0,
+                  ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('REMOTE-1'));
+    await tester.pump();
+
+    expect(find.text('已选 1 项'), findsNothing);
+    expect(find.byType(Checkbox), findsNothing);
+    expect(find.text('管理模式仅支持本地录像'), findsOneWidget);
+    expect(find.text('REMOTE-1'), findsOneWidget);
+  });
+
+  testWidgets('管理模式退出后恢复之前的来源筛选', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('全部来源'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+    expect(find.text('本地'), findsOneWidget);
+    await tester.tap(find.text('完成'));
+    await tester.pump();
+    expect(find.text('全部来源'), findsOneWidget);
+    expect(find.text('管理本地'), findsOneWidget);
+  });
+
+  testWidgets('管理入口与搜索框收纳在录像记录区块', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('管理本地')),
+      findsNothing,
+    );
+    final Rect titleRect = tester.getRect(find.text('录像记录'));
+    final Rect manageRect = tester.getRect(
+      find.byKey(const Key('manage-recordings-button')),
+    );
+    final double searchTop = tester
+        .getTopLeft(find.byKey(const Key('recording-search')))
+        .dy;
+    final double filterTop = tester
+        .getTopLeft(find.byKey(const Key('recording-source-filter')))
+        .dy;
+    expect(manageRect.left, greaterThanOrEqualTo(titleRect.right));
+    expect(searchTop, greaterThan(manageRect.bottom));
+    expect(filterTop, greaterThan(searchTop));
+  });
+
+  testWidgets('管理模式复选框使用紧凑尺寸', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+            _session('clip-2', 'B-2222', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+    final Checkbox checkbox = tester.widget<Checkbox>(
+      find.byType(Checkbox).first,
+    );
+    expect(checkbox.materialTapTargetSize, MaterialTapTargetSize.shrinkWrap);
+    expect(checkbox.visualDensity, VisualDensity.compact);
+  });
+
+  testWidgets('本地筛选且未连接电脑时隐藏本机来源标签', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: const LanBackupSnapshot(
+            deviceId: 'phone-1',
+            deviceName: '手机1',
+          ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('recording-source-chip')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('recording-source-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('本地').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recording-source-chip')), findsNothing);
+  });
+
+  testWidgets('连接电脑后本地筛选仍显示来源标签', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+            deviceId: 'phone-1',
+            deviceName: '手机1',
+          ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('recording-source-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('本地').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recording-source-chip')), findsOneWidget);
   });
 }
 
