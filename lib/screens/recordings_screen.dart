@@ -1222,9 +1222,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       if (_selectedIds.containsAll(pageIds) && pageIds.isNotEmpty) {
         _selectedIds.removeAll(pageIds);
       } else {
-        _selectedIds
-          ..clear()
-          ..addAll(pageIds);
+        _selectedIds.addAll(pageIds);
       }
     });
   }
@@ -1673,50 +1671,52 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
               const SizedBox(height: 12),
               const AboutSettings(),
             ] else ...<Widget>[
-              _HistorySummary(
-                total: _existingLocalSessions.length,
-                today: _existingLocalSessions
-                    .where((item) => _isToday(item.startedAt))
-                    .length,
-                totalBytes: _localRecordingBytes,
-              ),
-              const SizedBox(height: 12),
-              _ComputerBackupSettings(
-                snapshot: _backupSnapshot,
-                allBackedUp: _allLocalFilesBackedUp,
-                remainingBackupCount: _remainingBackupCount,
-                onConnect:
-                    widget.onConnectComputer ??
-                    () => Navigator.of(context).pop(true),
-                onAutoChanged: widget.onAutoBackupChanged,
-                onBackupNow: widget.onBackupNow,
-                onDisconnect: _confirmDeleteComputer,
-                onRetryConnection: widget.onRetryConnection,
-                onRetry: widget.onRetryBackup,
-                discovery: _backupDiscoverySnapshot,
-                onSearchHosts: () {
-                  _autoConnectStarted = false;
-                  return _backupHostDiscovery.search();
-                },
-                onSelectHost: _connectDiscoveredHost,
-                onRequestApproval: _lastApprovalHost != null
-                    ? () => _connectDiscoveredHost(_lastApprovalHost!)
-                    : _backupSnapshot.endpoint == null
-                    ? null
-                    : () => _connectDiscoveredHost(
-                        LanBackupDiscoveredHost(
-                          nodeId: _backupSnapshot.endpoint!.computerId,
-                          name: _backupSnapshot.endpoint!.computerName,
-                          address: _backupSnapshot.endpoint!.displayAddress,
+              if (!_managing) ...<Widget>[
+                _HistorySummary(
+                  total: _existingLocalSessions.length,
+                  today: _existingLocalSessions
+                      .where((item) => _isToday(item.startedAt))
+                      .length,
+                  totalBytes: _localRecordingBytes,
+                ),
+                const SizedBox(height: 12),
+                _ComputerBackupSettings(
+                  snapshot: _backupSnapshot,
+                  allBackedUp: _allLocalFilesBackedUp,
+                  remainingBackupCount: _remainingBackupCount,
+                  onConnect:
+                      widget.onConnectComputer ??
+                      () => Navigator.of(context).pop(true),
+                  onAutoChanged: widget.onAutoBackupChanged,
+                  onBackupNow: widget.onBackupNow,
+                  onDisconnect: _confirmDeleteComputer,
+                  onRetryConnection: widget.onRetryConnection,
+                  onRetry: widget.onRetryBackup,
+                  discovery: _backupDiscoverySnapshot,
+                  onSearchHosts: () {
+                    _autoConnectStarted = false;
+                    return _backupHostDiscovery.search();
+                  },
+                  onSelectHost: _connectDiscoveredHost,
+                  onRequestApproval: _lastApprovalHost != null
+                      ? () => _connectDiscoveredHost(_lastApprovalHost!)
+                      : _backupSnapshot.endpoint == null
+                      ? null
+                      : () => _connectDiscoveredHost(
+                          LanBackupDiscoveredHost(
+                            nodeId: _backupSnapshot.endpoint!.computerId,
+                            name: _backupSnapshot.endpoint!.computerName,
+                            address: _backupSnapshot.endpoint!.displayAddress,
+                          ),
                         ),
-                      ),
-                onCancelApproval: _cancelBackupApproval,
-                unbackedRetention: _unbackedRetention,
-                backedRetention: _backedRetention,
-                onUnbackedRetentionChanged: _setUnbackedRetention,
-                onBackedRetentionChanged: _setBackedRetention,
-                showRetention: false,
-              ),
+                  onCancelApproval: _cancelBackupApproval,
+                  unbackedRetention: _unbackedRetention,
+                  backedRetention: _backedRetention,
+                  onUnbackedRetentionChanged: _setUnbackedRetention,
+                  onBackedRetentionChanged: _setBackedRetention,
+                  showRetention: false,
+                ),
+              ],
               Padding(
                 padding: const EdgeInsets.fromLTRB(2, 12, 2, 12),
                 child: Column(
@@ -1749,7 +1749,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                                 : const Icon(Icons.refresh_rounded),
                           ),
                         const Spacer(),
-                        if (!_managing && _sessions.isNotEmpty)
+                        if (!_managing && visibleItems.isNotEmpty)
                           TextButton(
                             key: const Key('manage-recordings-button'),
                             onPressed: _toggleManaging,
@@ -2012,16 +2012,12 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                       Row(
                         children: <Widget>[
                           if (currentPageSessions.isNotEmpty)
-                            OutlinedButton.icon(
+                            OutlinedButton(
                               key: const Key('select-all-recordings-button'),
                               onPressed: () => _toggleSelectAllCurrentPage(
                                 currentPageSessions,
                               ),
-                              icon: const Icon(
-                                Icons.select_all_rounded,
-                                size: 18,
-                              ),
-                              label: Text(
+                              child: Text(
                                 _selectedIds.containsAll(
                                       currentPageSessions.map(
                                         (RecordingSession item) => item.id,

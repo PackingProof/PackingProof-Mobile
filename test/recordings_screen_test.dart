@@ -3864,7 +3864,7 @@ void main() {
     expect(find.text('管理'), findsOneWidget);
   });
 
-  testWidgets('全选本页只保留当前页选中', (WidgetTester tester) async {
+  testWidgets('全选本页按页叠加选择', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -3914,6 +3914,7 @@ void main() {
     await tester.tap(find.text('全选本页'));
     await tester.pump();
     expect(find.text('已选 5 项'), findsOneWidget);
+    expect(find.text('取消全选'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('recording-page-next')));
     await tester.pumpAndSettle();
@@ -3922,8 +3923,103 @@ void main() {
 
     await tester.tap(find.text('全选本页'));
     await tester.pump();
-    expect(find.text('已选 5 项'), findsOneWidget);
+    expect(find.text('已选 10 项'), findsOneWidget);
     expect(find.text('取消全选'), findsOneWidget);
+  });
+
+  testWidgets('只有电脑录像时也显示管理入口', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final RemoteRecording remote = RemoteRecording(
+      id: 11,
+      trackingNumber: 'REMOTE-1',
+      startedAt: startedAt,
+      duration: const Duration(seconds: 5),
+      sourceType: 'pc',
+      sourceDeviceId: 'computer-1',
+      sourceDeviceName: '电脑',
+      sourceSessionId: '',
+      contentSha256: 'sha',
+      playUri: Uri.parse('http://192.168.1.20/video/11'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+          ),
+          onLoadRemoteRecordings:
+              ({required page, required pageSize, keyword = ''}) async =>
+                  RemoteRecordingPage(
+                    data: page == 1
+                        ? <RemoteRecording>[remote]
+                        : const <RemoteRecording>[],
+                    page: page,
+                    pageSize: pageSize,
+                    total: 1,
+                    deviceTotal: 0,
+                  ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('manage-recordings-button')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+    expect(find.text('完成'), findsOneWidget);
+  });
+
+  testWidgets('管理模式隐藏统计与电脑备份卡片', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+            _session('clip-2', 'B-2222', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('本机今日'), findsOneWidget);
+    expect(find.text('电脑备份'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+    expect(find.text('本机今日'), findsNothing);
+    expect(find.text('电脑备份'), findsNothing);
+    expect(find.text('A-1111'), findsOneWidget);
   });
 
   testWidgets('管理入口与搜索框收纳在录像记录区块', (WidgetTester tester) async {
