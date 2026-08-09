@@ -4,7 +4,7 @@
 
 Give every package reviewable packing evidence.
 
-PackingProof Mobile is an Android recording tool for online sellers and packing stations. Mount a phone above the packing area, tap **Start Work** once, and the app continuously records, automatically recognizes shipping-label barcodes, and marks each recognition time on the video timeline. When an after-sales dispute occurs, operators can quickly locate the relevant footage by tracking number.
+PackingProof Mobile is an Android recording tool for online sellers and packing stations. Mount a phone above the packing area, tap **Start Work** once, and the app continuously records, automatically recognizes shipping-label barcodes, and adds a marker when a tracking number is recognized. When an after-sales dispute occurs, operators can quickly locate the relevant footage by tracking number.
 
 [Download the latest release](https://github.com/PackingProof/PackingProof-Mobile/releases)
 
@@ -17,7 +17,7 @@ PackingProof Mobile is an Android recording tool for online sellers and packing 
 ## Key Features
 
 - **One-tap work session**: keeps the camera preview active and the screen awake, minimizing touch interaction while packing
-- **Automatic label recognition**: recognizes common one-dimensional logistics barcodes and records the tracking number and video timestamp
+- **Automatic label recognition**: recognizes common one-dimensional logistics barcodes, records the tracking number, and marks the moment in the recording
 - **Two work modes**: continuous scanning for production-line packing, or stop-on-same-code for one-order-per-clip workflows
 - **Fast evidence lookup**: searches order history by tracking number and jumps directly to the matching position in the recording
 - **Spoken order alerts**: announces buyer messages, seller notes, product information, and refund status; refunds trigger a prominent industrial alarm
@@ -30,7 +30,7 @@ PackingProof Mobile is an Android recording tool for online sellers and packing 
 1. Install the app and grant the required camera, microphone, and storage permissions
 2. Mount the phone where both the packing area and shipping label are clearly visible
 3. Tap **Start Work** and pack orders normally
-4. When a label enters the frame, the app recognizes its tracking number and records the corresponding timestamp
+4. When a label enters the frame, the app recognizes its tracking number and marks the moment in the recording
 5. To review evidence, open **Order History**, search for the tracking number, and play the matching recording
 
 For computer backup or spoken order alerts, keep the phone and computer on the same local network and follow the in-app connection instructions.
@@ -63,6 +63,8 @@ Build an Android debug APK:
 flutter build apk --debug
 ```
 
+Alternatively, double-click `双击构建Debug包.bat` to build a debug-signed APK at `dist/android/PackingProof-Mobile-debug.apk` with no signing configuration.
+
 Build a local diagnostic APK with the Android debug certificate:
 
 ```powershell
@@ -88,6 +90,6 @@ The formal release script requires a clean worktree and an exact version tag on 
 
 The release workflow generates or reuses bundled speech assets, runs static analysis and the full test suite, and then creates one unified `arm64-v8a` APK. A locally built diagnostic APK uses the Android debug certificate: it cannot replace a formally signed installation and must not be distributed as an official release.
 
-To build a Release test APK that can replace an installed build signed with the same certificate, set `PACKING_PROOF_SIGNING_DIRECTORY=<external-signing-directory>` in the untracked root `.env` file and run `双击构建Release调试版.bat`. This helper reads the version from `pubspec.yaml`, overwrites `dist/android/PackingProof-Mobile.apk`, and does not create a Git tag or release.
+To build a Release test APK that can replace an installed build signed with the same certificate, set `PACKING_PROOF_SIGNING_DIRECTORY=<external-signing-directory>` in the untracked root `.env` file and run `双击构建Release包.bat`. This helper reads the version from `pubspec.yaml`, overwrites `dist/android/PackingProof-Mobile.apk`, and does not create a Git tag or release.
 
 Release artifacts are written to `dist/android/` as `PackingProof-Mobile.apk`, `SHA256SUMS.txt`, and `build-manifest.json`. No ZIP archive is generated.

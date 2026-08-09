@@ -3,7 +3,7 @@ import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/services/recording_timeline.dart';
 
 void main() {
-  test('兼容录像路径可按识别时间形成多个逻辑片段', () {
+  test('兼容旧版连续录像拆分：按识别时间形成多条记录', () {
     final RecordingTimeline timeline = RecordingTimeline();
     final DateTime startedAt = DateTime(2026, 7, 18, 9);
     timeline.start(startedAt);
@@ -12,13 +12,13 @@ void main() {
     timeline.startNext('CODE-002', startedAt.add(const Duration(seconds: 10)));
     final List<RecordingSession> sessions = timeline.buildSessions(
       endedAt: startedAt.add(const Duration(seconds: 20)),
-      filePath: 'master.mp4',
+      filePath: 'legacy.mp4',
       recordingId: 'recording-1',
     );
 
     expect(sessions, hasLength(2));
     expect(sessions.map((RecordingSession item) => item.filePath).toSet(), {
-      'master.mp4',
+      'legacy.mp4',
     });
     expect(sessions.first.displayCode, 'CODE-001');
     expect(sessions.first.mediaStart, Duration.zero);
@@ -62,7 +62,7 @@ void main() {
 
     final List<RecordingSession> sessions = timeline.buildSessions(
       endedAt: startedAt.add(const Duration(seconds: 8)),
-      filePath: 'master.mp4',
+      filePath: 'legacy.mp4',
       recordingId: 'recording-1',
     );
 

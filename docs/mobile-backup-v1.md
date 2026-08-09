@@ -121,20 +121,21 @@ X-Chunk-SHA256: <当前分块 SHA256>
 
 `POST /api/mobile-backup/uploads/{uploadId}/complete`
 
-请求使用“最小录像元数据”中的 JSON。电脑重新计算完整文件 SHA256，校验通过后原子保存物理文件、为每个逻辑片段写入录像记录并返回：
+请求使用“最小录像元数据”中的 JSON。电脑重新计算完整文件 SHA256，校验通过后原子保存物理文件并写入对应的录像记录，返回：
 
 ```json
 {
   "status": "verified",
   "fileSha256": "...",
   "recordId": 123,
-  "recordIds": [123, 124],
   "alreadyCompleted": false,
   "message": "电脑校验完成，备份成功"
 }
 ```
 
 APP 只有收到 `status=verified` 且 SHA256 与本地一致时，才显示“电脑校验完成，备份成功”。若响应丢失，使用相同 `sourceDeviceId + sessions[].id` 再次完成会返回相同录像记录，并将 `alreadyCompleted` 设为 `true`。
+
+一个视频文件只对应一条录像记录。旧版本一次上传包含多条录像记录时，响应会额外返回 `recordIds` 数组，仅作旧数据兼容。
 
 ## 远程录像库与播放
 

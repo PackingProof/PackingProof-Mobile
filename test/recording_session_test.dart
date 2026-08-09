@@ -79,7 +79,7 @@ void main() {
     );
   });
 
-  test('旧录像记录缺少片段区间时仍按完整视频播放', () {
+  test('旧录像记录缺少媒体区间时仍按完整视频播放', () {
     final DateTime startedAt = DateTime(2026, 7, 16, 10);
     final RecordingSession session = RecordingSession.fromJson(
       <String, Object?>{
@@ -135,7 +135,7 @@ void main() {
     final DateTime startedAt = DateTime(2026, 7, 18, 10);
     final RecordingSession session = RecordingSession(
       id: 'clip-1',
-      filePath: 'master.mp4',
+      filePath: 'legacy.mp4',
       startedAt: startedAt,
       endedAt: startedAt.add(const Duration(seconds: 20)),
       markers: <BarcodeMarker>[
@@ -165,7 +165,7 @@ void main() {
     final DateTime sourceStartedAt = DateTime(2026, 7, 18, 10);
     final RecordingSession clipped = RecordingSession(
       id: 'clip-restore',
-      filePath: 'master.mp4',
+      filePath: 'legacy.mp4',
       startedAt: sourceStartedAt.add(const Duration(seconds: 10)),
       endedAt: sourceStartedAt.add(const Duration(seconds: 20)),
       markers: <BarcodeMarker>[
@@ -191,7 +191,7 @@ void main() {
     expect(restored.markers.single.offset, const Duration(seconds: 7));
   });
 
-  test('删除共享母视频的最后一个片段时才清理文件', () async {
+  test('删除最后一个引用旧录像文件的记录时才清理文件（兼容旧数据）', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing_proof_mobile_delete_test',
     );
@@ -703,7 +703,7 @@ void main() {
     expect(await repository.hasRecentTrackingNumber('RECENT-TRACK'), isFalse);
   });
 
-  test('备份分页不会拆散共享同一母视频的录像片段', () async {
+  test('备份分页不会拆散引用同一旧录像文件的记录（兼容旧数据）', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing_proof_mobile_backup_page_test',
     );

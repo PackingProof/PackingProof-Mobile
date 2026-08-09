@@ -270,11 +270,11 @@ void main() {
     expect(service.snapshot.message, contains('不是录像备份主机'));
   });
 
-  test('录像备份元数据包含逻辑片段和面单标记', () {
+  test('录像备份元数据包含记录区间和面单标记', () {
     final DateTime startedAt = DateTime.utc(2026, 7, 19, 10);
     final RecordingSession session = RecordingSession(
       id: 'session-1',
-      filePath: '${Directory.systemTemp.path}/master.mp4',
+      filePath: '${Directory.systemTemp.path}/legacy.mp4',
       startedAt: startedAt,
       endedAt: startedAt.add(const Duration(seconds: 8)),
       markers: <BarcodeMarker>[
@@ -448,8 +448,8 @@ void main() {
     final LanBackupService service = LanBackupService(channel: channel);
     addTearDown(service.dispose);
 
-    final NetworkDiagnostics? diagnostics =
-        await service.getNetworkDiagnostics();
+    final NetworkDiagnostics? diagnostics = await service
+        .getNetworkDiagnostics();
 
     expect(diagnostics, isNotNull);
     expect(diagnostics!.wifiConnected, isTrue);
@@ -475,8 +475,8 @@ void main() {
     final LanBackupService service = LanBackupService(channel: channel);
     addTearDown(service.dispose);
 
-    final NetworkDiagnostics? diagnostics =
-        await service.getNetworkDiagnostics();
+    final NetworkDiagnostics? diagnostics = await service
+        .getNetworkDiagnostics();
 
     expect(diagnostics, isNotNull);
     expect(diagnostics!.wifiConnected, isFalse);
