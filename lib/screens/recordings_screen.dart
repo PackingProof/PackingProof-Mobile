@@ -278,7 +278,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   int _remoteRequestGeneration = 0;
   int _localRequestGeneration = 0;
   RecordingSourceFilter _sourceFilter = RecordingSourceFilter.all;
-  RecordingSourceFilter? _sourceFilterBeforeManaging;
   _HistoryDatePreset _datePreset = _HistoryDatePreset.all;
   DateTimeRange? _customDateRange;
   bool _backupDiscoveryStarted = false;
@@ -307,12 +306,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         })
         .toList(growable: false);
   }
-
-  List<_RecordingListItem> get _managingItems => _visibleItems
-      .where(
-        (item) => item.local != null && File(item.local!.filePath).existsSync(),
-      )
-      .toList(growable: false);
 
   bool get _hasOtherDeviceRecordings => _visibleItems.any(
     (_RecordingListItem item) =>
@@ -946,7 +939,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       context: context,
       builder: (BuildContext context) => const TwoButtonConfirmDialog(
         title: '删除这台电脑？',
-        message: '将删除保存主机连接并停止当前备份。手机中的录像不会被删除。',
+        message: '将删除保存主机连接并停止当前备份。手机中的录像不会被删除',
         confirmLabel: '继续',
       ),
     );
@@ -1082,7 +1075,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         context: context,
         builder: (BuildContext context) => const TwoButtonConfirmDialog(
           title: '备份后立即清除？',
-          message: '录像成功备份到电脑后，将自动删除手机中的本机文件。电脑离线时仍可查看录像记录，但无法播放远程视频。',
+          message: '录像成功备份到电脑后，将自动删除手机中的本机文件。电脑离线时仍可查看录像记录，但无法播放远程视频',
           confirmLabel: '确认',
           dangerous: true,
         ),
@@ -1121,10 +1114,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     setState(() {
       _managing = true;
       _selectedIds.clear();
-      _sourceFilterBeforeManaging = _sourceFilter;
-      _sourceFilter = RecordingSourceFilter.local;
       if (keepVisible != null) {
-        final int index = _managingItems.indexWhere(
+        final int index = _visibleItems.indexWhere(
           (item) => item.session.id == keepVisible.id,
         );
         if (index >= 0) {
@@ -1139,8 +1130,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     setState(() {
       _managing = false;
       _selectedIds.clear();
-      _sourceFilter = _sourceFilterBeforeManaging ?? _sourceFilter;
-      _sourceFilterBeforeManaging = null;
     });
     widget.onManagingChanged?.call(false);
   }
@@ -1157,20 +1146,10 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _RecordingListItem item,
     RecordingSession session,
   ) {
-    final bool manageable =
-        item.local != null && File(item.local!.filePath).existsSync();
-    if (!manageable) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('管理模式仅支持本地录像')));
-      return;
-    }
     if (!_managing) {
       _enterManaging(keepVisible: session);
     }
-    if (item.local != null) {
-      _toggleSelection(session.id);
-    }
+    _toggleSelection(session.id);
   }
 
   Future<String?> _localThumbnail(String filePath) => _localThumbnailFutures
@@ -1201,11 +1180,26 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     if (_selectedIds.isEmpty) {
       return;
     }
+    final Set<String> localIds = _selectedIds
+        .where(
+          (String id) =>
+              _sessions.any((RecordingSession session) => session.id == id),
+        )
+        .toSet();
+    if (localIds.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('电脑录像仅支持复制单号，无法删除')));
+      return;
+    }
+    final bool mixedSelection = localIds.length < _selectedIds.length;
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => TwoButtonConfirmDialog(
-        title: '删除 ${_selectedIds.length} 段录像？',
-        message: '应用会按保留策略自动清理录像，一般无需手动删除。删除后无法恢复。',
+        title: '删除 ${localIds.length} 段录像？',
+        message: mixedSelection
+            ? '仅删除本机录像，电脑录像不会删除'
+            : '应用会按保留策略自动清理录像，一般无需手动删除。删除后无法恢复',
         confirmLabel: '仍要删除',
         dangerous: true,
       ),
@@ -1213,7 +1207,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     if (confirmed != true || !mounted) {
       return;
     }
-    final Set<String> ids = Set<String>.of(_selectedIds);
+    final Set<String> ids = localIds;
     try {
       await widget.onDeleteSessions(ids);
     } on Object {
@@ -1232,8 +1226,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       _refreshLocalRecordingStats();
       _selectedIds.clear();
       _managing = false;
-      _sourceFilter = _sourceFilterBeforeManaging ?? _sourceFilter;
-      _sourceFilterBeforeManaging = null;
     });
     widget.onManagingChanged?.call(false);
   }
@@ -1475,12 +1467,9 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<_RecordingListItem> visibleItems = _managing
-        ? _managingItems
-        : _visibleItems;
+    final List<_RecordingListItem> visibleItems = _visibleItems;
     final List<RecordingSession> visibleSessions = visibleItems
-        .map((item) => item.local)
-        .whereType<RecordingSession>()
+        .map((item) => item.session)
         .toList(growable: false);
     final int localCount = _filteredSessions
         .where((session) => File(session.filePath).existsSync())
@@ -1729,7 +1718,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                           TextButton(
                             key: const Key('manage-recordings-button'),
                             onPressed: _toggleManaging,
-                            child: Text(_managing ? '完成' : '管理本地'),
+                            child: Text(_managing ? '完成' : '管理'),
                           ),
                       ],
                     ),
@@ -1848,7 +1837,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                     child: _RecordingTile(
                       session: session,
                       backupJob: backupJob,
-                      managing: _managing && item.local != null,
+                      managing: _managing,
                       unavailable: unavailable,
                       sourceLabel: _recordingSourceLabel(item),
                       sourceIdentity: _recordingSourceIdentity(item),
@@ -1865,10 +1854,10 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                       selected: _selectedIds.contains(session.id),
                       onLongPress: () =>
                           _handleRecordingLongPress(item, session),
-                      hideSourceChip: _managing || !_hasOtherDeviceRecordings,
+                      hideSourceChip: !_hasOtherDeviceRecordings,
                       onTap: () async {
                         if (_managing) {
-                          if (item.local != null) _toggleSelection(session.id);
+                          _toggleSelection(session.id);
                           return;
                         }
                         FocusManager.instance.primaryFocus?.unfocus();
@@ -2264,7 +2253,7 @@ class _RetentionSettings extends StatelessWidget {
       '空间不足时：\n'
       '· 优先清理最老的、已完成电脑校验的备份录像；\n'
       '· 不会为腾出空间删除未备份录像。\n'
-      '正在上传或等待备份的录像会延后清理。';
+      '正在上传或等待备份的录像会延后清理';
 
   @override
   Widget build(BuildContext context) {
@@ -3939,6 +3928,7 @@ class _HistoryPagination extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
     final int shownPageCount = pageCount == 0 ? 1 : pageCount;
     return Padding(
       padding: const EdgeInsets.only(top: 14),
@@ -3985,22 +3975,32 @@ class _HistoryPagination extends StatelessWidget {
             children: <Widget>[
               const Text('每页显示', style: TextStyle(fontSize: 12)),
               const SizedBox(width: 4),
-              DropdownButton<int>(
-                key: const Key('recording-page-size-selector'),
-                value: pageSize,
-                underline: const SizedBox.shrink(),
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
+              Container(
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                items: const <DropdownMenuItem<int>>[
-                  DropdownMenuItem<int>(value: 5, child: Text('5')),
-                  DropdownMenuItem<int>(value: 10, child: Text('10')),
-                  DropdownMenuItem<int>(value: 20, child: Text('20')),
-                ],
-                onChanged: (int? value) {
-                  if (value != null) onPageSizeChanged(value);
-                },
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: DropdownButton<int>(
+                  key: const Key('recording-page-size-selector'),
+                  value: pageSize,
+                  underline: const SizedBox.shrink(),
+                  dropdownColor: colors.surfaceContainerHigh,
+                  iconEnabledColor: colors.onSurfaceVariant,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: colors.onSurface,
+                  ),
+                  items: const <DropdownMenuItem<int>>[
+                    DropdownMenuItem<int>(value: 5, child: Text('5')),
+                    DropdownMenuItem<int>(value: 10, child: Text('10')),
+                    DropdownMenuItem<int>(value: 20, child: Text('20')),
+                  ],
+                  onChanged: (int? value) {
+                    if (value != null) onPageSizeChanged(value);
+                  },
+                ),
               ),
               const SizedBox(width: 4),
               const Text('条', style: TextStyle(fontSize: 12)),

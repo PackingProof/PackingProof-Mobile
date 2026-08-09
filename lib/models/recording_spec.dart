@@ -13,8 +13,8 @@ extension RecordingSpecPresetDetails on RecordingSpecPreset {
   };
 
   String get description => switch (this) {
-    RecordingSpecPreset.hd1080p30 => '默认画质，1080p 30 帧，文件较大，适合常规打包录像。',
-    RecordingSpecPreset.smooth720p30 => '720p 30 帧，文件更小，存储紧张或预览卡顿时更流畅。',
+    RecordingSpecPreset.hd1080p30 => '默认画质，1080p 30 帧，文件较大，适合常规打包录像',
+    RecordingSpecPreset.smooth720p30 => '720p 30 帧，文件更小，存储紧张或预览卡顿时更流畅',
   };
 
   int get videoWidth => switch (this) {

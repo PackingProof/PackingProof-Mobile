@@ -2655,7 +2655,7 @@ void main() {
     expect(find.text('已选 1 项'), findsOneWidget);
     await tester.tap(find.byKey(const Key('delete-selected-recordings')));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('应用会按保留策略自动清理录像，一般无需手动删除。删除后无法恢复。'), findsOneWidget);
+    expect(find.text('应用会按保留策略自动清理录像，一般无需手动删除。删除后无法恢复'), findsOneWidget);
     expect(find.textContaining('共享同一录像文件'), findsNothing);
     await tester.tap(find.widgetWithText(FilledButton, '仍要删除'));
     await tester.pump(const Duration(milliseconds: 400));
@@ -3306,10 +3306,91 @@ void main() {
 
     expect(find.text('已选 1 项'), findsOneWidget);
     expect(find.text('NO-6'), findsOneWidget);
-    expect(find.text('本地'), findsOneWidget);
+    expect(find.text('全部来源'), findsOneWidget);
   });
 
-  testWidgets('长按电脑录像不进入管理模式并提示', (WidgetTester tester) async {
+  testWidgets('长按电脑录像可进入管理并复制单号', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    String? copied;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (
+          MethodCall call,
+        ) async {
+          if (call.method == 'Clipboard.setData') {
+            copied =
+                (call.arguments as Map<Object?, Object?>)['text'] as String?;
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final RemoteRecording remote = RemoteRecording(
+      id: 11,
+      trackingNumber: 'REMOTE-1',
+      startedAt: startedAt,
+      duration: const Duration(seconds: 5),
+      sourceType: 'pc',
+      sourceDeviceId: 'computer-1',
+      sourceDeviceName: '电脑',
+      sourceSessionId: '',
+      contentSha256: 'sha',
+      playUri: Uri.parse('http://192.168.1.20/video/11'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+          ),
+          onLoadRemoteRecordings:
+              ({required page, required pageSize, keyword = ''}) async =>
+                  RemoteRecordingPage(
+                    data: page == 1
+                        ? <RemoteRecording>[remote]
+                        : const <RemoteRecording>[],
+                    page: page,
+                    pageSize: pageSize,
+                    total: 1,
+                    deviceTotal: 0,
+                  ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('REMOTE-1'));
+    await tester.pump();
+
+    expect(find.text('已选 1 项'), findsOneWidget);
+    expect(find.byType(Checkbox), findsOneWidget);
+    expect(find.text('REMOTE-1'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('copy-selected-tracking-numbers')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(copied, 'REMOTE-1');
+    expect(find.text('已复制 1 个单号'), findsOneWidget);
+  });
+
+  testWidgets('只选电脑录像时删除给出提示', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -3365,14 +3446,133 @@ void main() {
     await tester.pumpAndSettle();
     await tester.longPress(find.text('REMOTE-1'));
     await tester.pump();
+    expect(find.text('已选 1 项'), findsOneWidget);
 
-    expect(find.text('已选 1 项'), findsNothing);
-    expect(find.byType(Checkbox), findsNothing);
-    expect(find.text('管理模式仅支持本地录像'), findsOneWidget);
-    expect(find.text('REMOTE-1'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('delete-selected-recordings')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('电脑录像仅支持复制单号，无法删除'), findsOneWidget);
   });
 
-  testWidgets('管理模式退出后恢复之前的来源筛选', (WidgetTester tester) async {
+  testWidgets('混合选择删除时只删除本机录像并说明', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final RemoteRecording remote = RemoteRecording(
+      id: 11,
+      trackingNumber: 'REMOTE-1',
+      startedAt: startedAt.subtract(const Duration(minutes: 1)),
+      duration: const Duration(seconds: 5),
+      sourceType: 'pc',
+      sourceDeviceId: 'computer-1',
+      sourceDeviceName: '电脑',
+      sourceSessionId: '',
+      contentSha256: 'sha',
+      playUri: Uri.parse('http://192.168.1.20/video/11'),
+    );
+    Set<String>? deletedIds;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+          ),
+          onLoadRemoteRecordings:
+              ({required page, required pageSize, keyword = ''}) async =>
+                  RemoteRecordingPage(
+                    data: page == 1
+                        ? <RemoteRecording>[remote]
+                        : const <RemoteRecording>[],
+                    page: page,
+                    pageSize: pageSize,
+                    total: 1,
+                    deviceTotal: 0,
+                  ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (Set<String> ids) async {
+            deletedIds = ids;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('REMOTE-1'));
+    await tester.pump();
+    await tester.tap(find.text('A-1111'));
+    await tester.pump();
+    expect(find.text('已选 2 项'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('delete-selected-recordings')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('仅删除本机录像，电脑录像不会删除'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '仍要删除'));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(deletedIds, <String>{'clip-1'});
+  });
+
+  testWidgets('每页条数下拉使用显式配色', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: List<RecordingSession>.generate(
+            12,
+            (int index) => _session(
+              'clip-$index',
+              'NO-${index + 1}',
+              startedAt.subtract(Duration(minutes: index)),
+            ),
+          ),
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('recording-page-size-selector')),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final Finder selector = find.byKey(
+      const Key('recording-page-size-selector'),
+    );
+    final DropdownButton<int> dropdown = tester.widget<DropdownButton<int>>(
+      selector,
+    );
+    final ColorScheme colors = Theme.of(tester.element(selector)).colorScheme;
+    expect(dropdown.style?.color, colors.onSurface);
+    expect(dropdown.dropdownColor, colors.surfaceContainerHigh);
+  });
+
+  testWidgets('管理模式不切换来源筛选', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -3399,11 +3599,11 @@ void main() {
     expect(find.text('全部来源'), findsOneWidget);
     await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
-    expect(find.text('本地'), findsOneWidget);
+    expect(find.text('全部来源'), findsOneWidget);
     await tester.tap(find.text('完成'));
     await tester.pump();
     expect(find.text('全部来源'), findsOneWidget);
-    expect(find.text('管理本地'), findsOneWidget);
+    expect(find.text('管理'), findsOneWidget);
   });
 
   testWidgets('管理入口与搜索框收纳在录像记录区块', (WidgetTester tester) async {
@@ -3431,7 +3631,7 @@ void main() {
     );
     await tester.pump();
     expect(
-      find.descendant(of: find.byType(AppBar), matching: find.text('管理本地')),
+      find.descendant(of: find.byType(AppBar), matching: find.text('管理')),
       findsNothing,
     );
     final Rect titleRect = tester.getRect(find.text('录像记录'));
@@ -3765,7 +3965,7 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pump();
 
-    expect(find.text('管理本地'), findsOneWidget);
+    expect(find.text('管理'), findsOneWidget);
     expect(find.text('已选 0 项'), findsNothing);
     expect(find.byType(Checkbox), findsNothing);
   });

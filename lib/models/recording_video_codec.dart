@@ -12,8 +12,8 @@ extension RecordingVideoCodecDetails on RecordingVideoCodec {
   };
 
   String get description => switch (this) {
-    RecordingVideoCodec.h264 => '兼容性最好，几乎所有手机都能播放；文件体积约增加 30–40%。',
-    RecordingVideoCodec.hevc => '默认编码，文件更小；个别设备解码兼容性较差。',
+    RecordingVideoCodec.h264 => '兼容性最好，几乎所有手机都能播放；文件体积约增加 30–40%',
+    RecordingVideoCodec.hevc => '默认编码，文件更小；个别设备解码兼容性较差',
   };
 }
 
