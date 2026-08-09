@@ -89,7 +89,7 @@ pwsh -NoProfile -File Tools\Publish-Android.ps1 `
 - The formal release script must reject a dirty worktree, a missing or ambiguous tag, and a missing external signing configuration.
 - Complete and record the release-readiness audit (technical debt, performance, concurrency/race conditions) before creating the release tag.
 - Create and upload the GitHub Release (tag, APK, `SHA256SUMS.txt`, release notes) with the GitHub plugin or `gh`; create and upload the Gitee Release with the `gitee` CLI (`gitee auth status`, `gitee release create --tag <tag> --name "..." --notes "..."`, `gitee release upload <tag> dist/android/PackingProof-Mobile.apk SHA256SUMS.txt`).
-- 发布笔记必须使用仓库根目录的 `RELEASE_NOTES_TEMPLATE.md`：更新内容按“功能与体验 / 问题修复 / 兼容与工程”三类填写，并包含下载与更新说明、未验证事项；禁止自创格式，GitHub 与 Gitee 的 Release 笔记保持一致。
+- 发布笔记必须使用仓库根目录的 `RELEASE_NOTES_TEMPLATE.md`：更新内容按“功能与体验 / 问题修复 / 兼容与工程”三类填写，并包含下载与更新说明、未验证事项；禁止自创格式，GitHub 与 Gitee 的 Release 笔记保持一致。Release 标题固定为“`v<X.Y.Z+VVVV> <一句话内容>`”（版本号开头，不加产品名或“发布”等前缀）。
 - Release builds fingerprint tracked Android configuration, dependency files, and the Flutter SDK. Matching inputs reuse Gradle/native caches, while every build still regenerates Flutter Release output and verifies the Git revision and timestamp inside `libapp.so`.
 - Pass `-ForceClean` to `Tools/Publish-Android.ps1` or `Tools/Build-Release-Diagnostic.ps1` when diagnosing a toolchain or cache problem that requires a full `flutter clean`.
 - Keep diagnostic defaults in `Tools/Build-Android.ps1` synchronized with `pubspec.yaml`.
