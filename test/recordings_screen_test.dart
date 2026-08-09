@@ -3827,6 +3827,24 @@ void main() {
       find.descendant(of: find.byType(AppBar), matching: find.text('完成')),
       findsNothing,
     );
+    final ColorScheme colors = Theme.of(
+      tester.element(find.byKey(const Key('manage-bottom-bar'))),
+    ).colorScheme;
+    final Container bottomBar = tester.widget<Container>(
+      find.byKey(const Key('manage-bottom-bar')),
+    );
+    expect(
+      (bottomBar.decoration! as BoxDecoration).color,
+      colors.surfaceContainerLow,
+    );
+    expect(
+      tester.widget(find.byKey(const Key('select-all-recordings-button'))),
+      isA<OutlinedButton>(),
+    );
+    expect(
+      tester.widget(find.byKey(const Key('finish-managing-button'))),
+      isA<FilledButton>(),
+    );
     final double selectAllTop = tester.getTopLeft(find.text('全选本页')).dy;
     final double finishTop = tester.getTopLeft(find.text('完成')).dy;
     final double copyTop = tester.getTopLeft(find.text('复制单号')).dy;
