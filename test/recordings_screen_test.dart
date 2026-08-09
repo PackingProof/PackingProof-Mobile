@@ -3795,6 +3795,57 @@ void main() {
     expect(find.text('管理'), findsOneWidget);
   });
 
+  testWidgets('管理模式全选与完成按钮位于底部操作栏上方', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+            _session('clip-2', 'B-2222', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('完成')),
+      findsNothing,
+    );
+    final double selectAllTop = tester.getTopLeft(find.text('全选')).dy;
+    final double finishTop = tester.getTopLeft(find.text('完成')).dy;
+    final double copyTop = tester.getTopLeft(find.text('复制单号')).dy;
+    final double deleteTop = tester.getTopLeft(find.text('删除')).dy;
+    expect(selectAllTop, lessThan(copyTop));
+    expect(finishTop, lessThan(copyTop));
+    expect(selectAllTop, lessThan(deleteTop));
+    expect(finishTop, lessThan(deleteTop));
+
+    await tester.tap(find.text('全选'));
+    await tester.pump();
+    expect(find.text('取消全选'), findsOneWidget);
+    expect(find.text('已选 2 项'), findsOneWidget);
+
+    await tester.tap(find.text('完成'));
+    await tester.pump();
+    expect(find.text('管理'), findsOneWidget);
+  });
+
   testWidgets('管理入口与搜索框收纳在录像记录区块', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;

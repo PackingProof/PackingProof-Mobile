@@ -1750,24 +1750,11 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                                 : const Icon(Icons.refresh_rounded),
                           ),
                         const Spacer(),
-                        if (_managing && visibleSessions.isNotEmpty)
-                          TextButton(
-                            onPressed: () => _toggleSelectAll(visibleSessions),
-                            child: Text(
-                              _selectedIds.containsAll(
-                                    visibleSessions.map(
-                                      (RecordingSession item) => item.id,
-                                    ),
-                                  )
-                                  ? '取消全选'
-                                  : '全选',
-                            ),
-                          ),
-                        if (_sessions.isNotEmpty)
+                        if (!_managing && _sessions.isNotEmpty)
                           TextButton(
                             key: const Key('manage-recordings-button'),
                             onPressed: _toggleManaging,
-                            child: Text(_managing ? '完成' : '管理'),
+                            child: const Text('管理'),
                           ),
                       ],
                     ),
@@ -2012,32 +1999,62 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         bottomNavigationBar: _managing
             ? SafeArea(
                 minimum: const EdgeInsets.fromLTRB(18, 8, 18, 14),
-                child: Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    Expanded(
-                      child: FilledButton.tonalIcon(
-                        key: const Key('copy-selected-tracking-numbers'),
-                        onPressed: _selectedIds.isEmpty
-                            ? null
-                            : _copySelectedTrackingNumbers,
-                        icon: const Icon(Icons.copy_rounded),
-                        label: const Text('复制单号'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        key: const Key('delete-selected-recordings'),
-                        onPressed: _selectedIds.isEmpty
-                            ? null
-                            : _deleteSelected,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: colors.error,
-                          foregroundColor: colors.onError,
+                    Row(
+                      children: <Widget>[
+                        if (visibleSessions.isNotEmpty)
+                          TextButton(
+                            key: const Key('select-all-recordings-button'),
+                            onPressed: () => _toggleSelectAll(visibleSessions),
+                            child: Text(
+                              _selectedIds.containsAll(
+                                    visibleSessions.map(
+                                      (RecordingSession item) => item.id,
+                                    ),
+                                  )
+                                  ? '取消全选'
+                                  : '全选',
+                            ),
+                          ),
+                        const Spacer(),
+                        TextButton(
+                          key: const Key('finish-managing-button'),
+                          onPressed: _toggleManaging,
+                          child: const Text('完成'),
                         ),
-                        icon: const Icon(Icons.delete_outline_rounded),
-                        label: const Text('删除'),
-                      ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: FilledButton.tonalIcon(
+                            key: const Key('copy-selected-tracking-numbers'),
+                            onPressed: _selectedIds.isEmpty
+                                ? null
+                                : _copySelectedTrackingNumbers,
+                            icon: const Icon(Icons.copy_rounded),
+                            label: const Text('复制单号'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            key: const Key('delete-selected-recordings'),
+                            onPressed: _selectedIds.isEmpty
+                                ? null
+                                : _deleteSelected,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: colors.error,
+                              foregroundColor: colors.onError,
+                            ),
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            label: const Text('删除'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
