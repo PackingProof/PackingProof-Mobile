@@ -1,13 +1,33 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
-    [string]$SigningDirectory,
+    [string]$SigningDirectory = '',
     [switch]$ForceClean
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $builder = Join-Path $PSScriptRoot 'Build-Android.ps1'
+
+function Get-DotEnvValue {
+    param([string]$Name)
+    $envValue = [Environment]::GetEnvironmentVariable($Name)
+    if (-not [string]::IsNullOrWhiteSpace($envValue)) {
+        return $envValue
+    }
+    $envFile = Join-Path $repo '.env'
+    if (Test-Path -LiteralPath $envFile -PathType Leaf) {
+        foreach ($line in [IO.File]::ReadAllLines($envFile, [Text.Encoding]::UTF8)) {
+            $trimmed = $line.Trim()
+            if ($trimmed -match "^$Name\s*=") {
+                $value = ($trimmed -split '=', 2)[1].Trim().Trim('"', "'")
+                if (-not [string]::IsNullOrWhiteSpace($value)) {
+                    return $value
+                }
+            }
+        }
+    }
+    return ''
+}
 
 function Get-PubspecVersion {
     $pubspecPath = Join-Path $repo 'pubspec.yaml'
@@ -69,6 +89,12 @@ if (-not (Test-Path -LiteralPath $builder -PathType Leaf)) {
 }
 
 $resolvedRepo = [IO.Path]::GetFullPath($repo).TrimEnd([IO.Path]::DirectorySeparatorChar)
+if ([string]::IsNullOrWhiteSpace($SigningDirectory)) {
+    $SigningDirectory = Get-DotEnvValue 'PACKING_PROOF_SIGNING_DIRECTORY'
+}
+if ([string]::IsNullOrWhiteSpace($SigningDirectory)) {
+    throw '缺少签名目录：请通过 -SigningDirectory 传入，或在仓库根目录 .env 配置 PACKING_PROOF_SIGNING_DIRECTORY'
+}
 $resolvedSigningDirectory = [IO.Path]::GetFullPath($SigningDirectory).TrimEnd([IO.Path]::DirectorySeparatorChar)
 if ([string]::Equals($resolvedSigningDirectory, $resolvedRepo, [StringComparison]::OrdinalIgnoreCase) -or
     $resolvedSigningDirectory.StartsWith($resolvedRepo + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
