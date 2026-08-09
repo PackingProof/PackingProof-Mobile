@@ -18,6 +18,8 @@ import 'package:packing_proof_mobile/services/lan_backup_discovery_service.dart'
 import 'package:packing_proof_mobile/services/lan_backup_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   testWidgets('历史页标题显示当前录像设备名称', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -61,18 +63,16 @@ void main() {
     );
   });
 
-  test('条码按宽度动态省略并保留末尾', () {
+  test('条码按宽度精确省略并保留末尾', () {
+    const TextStyle style = TextStyle(fontSize: 16);
     expect(
-      fitTrackingNumber('JT1234567890123456', 480, 16),
+      fitTrackingNumber('JT1234567890123456', 480, style),
       'JT1234567890123456',
     );
+    expect(fitTrackingNumber('JT1234567890123456', 160, style), 'JT123…3456');
+    expect(fitTrackingNumber('JT1234567890123456', 64, style), '3456');
     expect(
-      fitTrackingNumber('JT1234567890123456', 160, 16),
-      'JT123456789…3456',
-    );
-    expect(fitTrackingNumber('JT1234567890123456', 64, 16), 'J…3456');
-    expect(
-      fitTrackingNumber(RecordingSession.unrecognizedLabel, 64, 16),
+      fitTrackingNumber(RecordingSession.unrecognizedLabel, 100, style),
       RecordingSession.unrecognizedLabel,
     );
   });
@@ -2228,6 +2228,7 @@ void main() {
           widget.data != null &&
           widget.data!.contains('…') &&
           widget.data!.endsWith('7890') &&
+          !widget.data!.endsWith('…') &&
           widget.data!.length > 20,
     );
     expect(ellipsized, findsOneWidget);

@@ -39,18 +39,54 @@ String recordingsHistoryTitle(String deviceName, String ipAddress) {
 }
 
 @visibleForTesting
-String fitTrackingNumber(String value, double maxWidth, double fontSize) {
-  const double averageCharWidthFactor = 0.62;
+String fitTrackingNumber(
+  String value,
+  double maxWidth,
+  TextStyle style, {
+  TextScaler textScaler = TextScaler.noScaling,
+}) {
   const int tailLength = 4;
-  final int maxChars = (maxWidth / (fontSize * averageCharWidthFactor)).floor();
-  if (value.length <= maxChars) {
+  final TextPainter painter = TextPainter(
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+    textScaler: textScaler,
+  );
+  double measure(String text) {
+    painter.text = TextSpan(text: text, style: style);
+    painter.layout();
+    return painter.width;
+  }
+
+  if (measure(value) <= maxWidth) {
     return value;
   }
-  final int headLength = (maxChars - 1 - tailLength)
-      .clamp(0, value.length - tailLength)
-      .toInt();
-  return '${value.substring(0, headLength)}…'
-      '${value.substring(value.length - tailLength)}';
+  final String tail = value.length <= tailLength
+      ? value
+      : value.substring(value.length - tailLength);
+  int low = 0;
+  int high = value.length - tail.length;
+  int best = 0;
+  while (low <= high) {
+    final int mid = (low + high) ~/ 2;
+    if (measure('${value.substring(0, mid)}…$tail') <= maxWidth) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  final String withEllipsis = best > 0
+      ? '${value.substring(0, best)}…$tail'
+      : '…$tail';
+  if (measure(withEllipsis) <= maxWidth) {
+    return withEllipsis;
+  }
+  int tailChars = tail.length;
+  while (tailChars > 1 &&
+      measure(tail.substring(tail.length - tailChars)) > maxWidth) {
+    tailChars--;
+  }
+  return tail.substring(tail.length - tailChars);
 }
 
 @visibleForTesting
@@ -3827,10 +3863,14 @@ class _RecordingTile extends StatelessWidget {
                                                 fitTrackingNumber(
                                                   session.displayCode,
                                                   constraints.maxWidth,
-                                                  codeStyle.fontSize!,
+                                                  codeStyle,
+                                                  textScaler:
+                                                      MediaQuery.textScalerOf(
+                                                        context,
+                                                      ),
                                                 ),
                                                 maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
+                                                overflow: TextOverflow.clip,
                                                 style: codeStyle,
                                               );
                                             },
