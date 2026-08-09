@@ -3477,7 +3477,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('已选 1 项'), findsOneWidget);
-    expect(find.text('完成'), findsOneWidget);
+    expect(find.text('完成'), findsNWidgets(2));
     expect(find.byType(Checkbox), findsNWidgets(2));
     await tester.tap(find.text('A-1111'));
     await tester.pump();
@@ -3829,7 +3829,7 @@ void main() {
     await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
     expect(find.text('全部来源'), findsOneWidget);
-    await tester.tap(find.text('完成'));
+    await tester.tap(find.byKey(const Key('finish-managing-appbar-button')));
     await tester.pump();
     expect(find.text('全部来源'), findsOneWidget);
     expect(find.text('管理'), findsOneWidget);
@@ -3865,7 +3865,7 @@ void main() {
 
     expect(
       find.descendant(of: find.byType(AppBar), matching: find.text('完成')),
-      findsNothing,
+      findsOneWidget,
     );
     final ColorScheme colors = Theme.of(
       tester.element(find.byKey(const Key('manage-bottom-bar'))),
@@ -3886,7 +3886,9 @@ void main() {
       isA<FilledButton>(),
     );
     final double selectAllTop = tester.getTopLeft(find.text('全选本页')).dy;
-    final double finishTop = tester.getTopLeft(find.text('完成')).dy;
+    final double finishTop = tester
+        .getTopLeft(find.byKey(const Key('finish-managing-button')))
+        .dy;
     final double copyTop = tester.getTopLeft(find.text('复制单号')).dy;
     final double deleteTop = tester.getTopLeft(find.text('删除')).dy;
     expect(selectAllTop, lessThan(copyTop));
@@ -3899,7 +3901,7 @@ void main() {
     expect(find.text('取消全选'), findsOneWidget);
     expect(find.text('已选 2 项'), findsOneWidget);
 
-    await tester.tap(find.text('完成'));
+    await tester.tap(find.byKey(const Key('finish-managing-button')));
     await tester.pump();
     expect(find.text('管理'), findsOneWidget);
   });
@@ -4024,7 +4026,10 @@ void main() {
     expect(find.byKey(const Key('manage-recordings-button')), findsOneWidget);
     await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
-    expect(find.text('完成'), findsOneWidget);
+    expect(
+      find.byKey(const Key('finish-managing-appbar-button')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('管理模式隐藏统计与电脑备份卡片', (WidgetTester tester) async {
@@ -4060,6 +4065,60 @@ void main() {
     expect(find.text('本机今日'), findsNothing);
     expect(find.text('电脑备份'), findsNothing);
     expect(find.text('A-1111'), findsOneWidget);
+  });
+
+  testWidgets('嵌入父页面时管理模式顶部与底部都有退出按钮', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: IndexedStack(
+            index: 0,
+            children: <Widget>[
+              RecordingsScreen(
+                sessions: <RecordingSession>[
+                  _session(
+                    'clip-1',
+                    'A-1111',
+                    startedAt,
+                    filePath: 'pubspec.yaml',
+                  ),
+                ],
+                workMode: WorkMode.continuousScan,
+                speechEnabled: true,
+                maxVolumeEnabled: true,
+                onWorkModeChanged: (_) async {},
+                onSpeechEnabledChanged: (_) async {},
+                onMaxVolumeEnabledChanged: (_) async {},
+                onSpeechPreview: () async {},
+                onSessionUpdated: (_) async {},
+                onDeleteSessions: (_) async {},
+              ),
+              const SizedBox.shrink(),
+            ],
+          ),
+          bottomNavigationBar: const SizedBox(height: 56),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+
+    final Finder appbarFinish = find.byKey(
+      const Key('finish-managing-appbar-button'),
+    );
+    final Finder bottomFinish = find.byKey(const Key('finish-managing-button'));
+    expect(appbarFinish, findsOneWidget);
+    expect(bottomFinish, findsOneWidget);
+    expect(tester.getCenter(bottomFinish).dy, greaterThan(1000));
+
+    await tester.tap(appbarFinish);
+    await tester.pump();
+    expect(find.byKey(const Key('manage-recordings-button')), findsOneWidget);
   });
 
   testWidgets('管理入口与搜索框收纳在录像记录区块', (WidgetTester tester) async {
@@ -4415,7 +4474,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
-    expect(find.text('完成'), findsOneWidget);
+    expect(find.text('完成'), findsNWidgets(2));
     expect(find.byType(Checkbox), findsNWidgets(2));
 
     await tester.binding.handlePopRoute();

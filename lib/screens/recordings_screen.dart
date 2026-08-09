@@ -1577,6 +1577,14 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   ipAddress: widget.orderReceiverSnapshot.ipAddress,
                 )
               : const Text('设置'),
+          actions: <Widget>[
+            if (_managing)
+              TextButton(
+                key: const Key('finish-managing-appbar-button'),
+                onPressed: _toggleManaging,
+                child: const Text('完成'),
+              ),
+          ],
         ),
         body: ListView(
           controller: _scrollController,
