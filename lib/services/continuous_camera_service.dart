@@ -180,6 +180,7 @@ class CameraDiagnosticsSnapshot {
       camera['recordingFallbackMode'] as String?;
   bool get preferEncoderAnalysisRecording =>
       camera['preferEncoderAnalysisRecording'] == true;
+  bool get recordAudio => camera['recordAudio'] == true;
   bool get probeInProgress => camera['probeInProgress'] == true;
   bool get probeCached => camera['probeCached'] == true;
   List<Map<String, Object?>> get probeResults =>

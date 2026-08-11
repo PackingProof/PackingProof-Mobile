@@ -584,6 +584,17 @@ class PackingSessionController extends ChangeNotifier {
     if (cameraUnavailable || isBusy || isWorking) {
       return;
     }
+    unawaited(
+      _runtimeLog.log(
+        kind: 'start_work',
+        extra: <String, Object?>{
+          'recordAudio': _recordAudioEnabled,
+          'recordingSpec': _recordingSpec.storageValue,
+          'videoCodec': _preferredVideoCodec.storageValue,
+          'nativeRecordingFallback': _nativeRecordingFallback,
+        },
+      ),
+    );
     _queuedStorageNoticePriority = -1;
     _storageWarningMessage = null;
     final StorageSpaceResult storage = await _checkAndHandleStorage(

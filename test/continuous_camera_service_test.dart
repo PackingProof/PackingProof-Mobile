@@ -134,6 +134,7 @@ void main() {
               'startFailureDetail': null,
               'recordingFallbackMode': 'encoder_analysis',
               'preferEncoderAnalysisRecording': true,
+              'recordAudio': false,
               'probeResults': <Object?>[
                 <String, Object?>{
                   'name': 'preview_only',
@@ -182,6 +183,7 @@ void main() {
     expect(snapshot.probeResults.single['name'], 'preview_only');
     expect(snapshot.recordingFallbackMode, 'encoder_analysis');
     expect(snapshot.preferEncoderAnalysisRecording, isTrue);
+    expect(snapshot.recordAudio, isFalse);
     expect(snapshot.probeInProgress, isFalse);
     expect(snapshot.probeCached, isTrue);
     expect(snapshot.hardwareLevel, 0);

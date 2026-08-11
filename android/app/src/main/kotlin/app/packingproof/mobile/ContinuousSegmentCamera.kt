@@ -2163,6 +2163,7 @@ class ContinuousSegmentCamera(
             "videoMime" to selectedVideoMime,
             "fps" to (if (recordingRequested || recordingActive) recordingSpec.fps else "auto"),
             "recordingSpec" to recordingSpecName,
+            "recordAudio" to recordAudio,
             "previewActive" to previewActive,
             "workScanEnabled" to workScanEnabled,
             "pairingScanEnabled" to pairingScanEnabled,
