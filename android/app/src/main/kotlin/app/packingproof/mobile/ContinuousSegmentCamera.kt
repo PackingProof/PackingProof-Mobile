@@ -1208,11 +1208,13 @@ class ContinuousSegmentCamera(
                     analysisCandidates.map { StreamSize(it.width, it.height) },
                 )
             } else {
-                workingStreamConfig?.let { listOf(it) }
-                    ?: streamConfigPolicy.initializationCandidates(
-                        videoCandidates.map { StreamSize(it.width, it.height) },
-                        analysisCandidates.map { StreamSize(it.width, it.height) },
-                    )
+                // 停止/自愈一律回到“预览 + 识别”两路候选，绝不沿用录制时的
+                // 三路配置：部分机型（如荣耀 X70 / Android 16）三路会话录制
+                // 中会停摆，停止后再按三路重建会直接失败并拖垮摄像头。
+                streamConfigPolicy.initializationCandidates(
+                    videoCandidates.map { StreamSize(it.width, it.height) },
+                    analysisCandidates.map { StreamSize(it.width, it.height) },
+                )
             }
             if (candidates.isEmpty()) {
                 val message = if (recording) {
