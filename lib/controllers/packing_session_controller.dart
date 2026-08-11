@@ -124,6 +124,7 @@ class PackingSessionController extends ChangeNotifier {
   Timer? _elapsedTimer;
   Timer? _feedbackTimer;
   Timer? _scanWarningTimer;
+  Timer? _cameraNoticeTimer;
   Timer? _rejectedBarcodeTimer;
   Timer? _initialPromptTimer;
   Timer? _pairingFeedbackTimer;
@@ -148,6 +149,7 @@ class PackingSessionController extends ChangeNotifier {
   String? _errorMessage;
   String? _scanWarningMessage;
   String? _storageWarningMessage;
+  String? _cameraNotice;
   String? _rejectedBarcodeMessage;
   String _lastRejectedBarcodeCode = '';
   DateTime? _lastRejectedBarcodeAt;
@@ -256,7 +258,7 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   String? get scanWarningMessage =>
-      _storageWarningMessage ?? _scanWarningMessage;
+      _storageWarningMessage ?? _cameraNotice ?? _scanWarningMessage;
   String? get rejectedBarcodeMessage => _rejectedBarcodeMessage;
   int get storageNoticeRevision => _storageNoticeRevision;
   bool get isRecording => _phase == PackingSessionPhase.recording;
@@ -371,6 +373,7 @@ class PackingSessionController extends ChangeNotifier {
           unawaited(_handleNativeStorageCritical());
         };
         nativeCamera.onProbeFinished = _handleNativeProbeFinished;
+        nativeCamera.onRecordingFallback = _handleNativeRecordingFallback;
         _nativeCamera = nativeCamera;
         await nativeCamera.ensurePermissions(recordAudio: _recordAudioEnabled);
         _nativeInitialization = await nativeCamera
@@ -471,6 +474,35 @@ class PackingSessionController extends ChangeNotifier {
         extra: <String, Object?>{'code': code, 'message': message},
       ),
     );
+  }
+
+  void _handleNativeRecordingFallback(Map<Object?, Object?> info) {
+    unawaited(
+      _cameraDiagnostics.recordEvent(
+        kind: 'recording_fallback',
+        extra: info.cast<String, Object?>(),
+      ),
+    );
+    final String mode = '${info['mode'] ?? ''}';
+    _showCameraNotice(
+      mode == 'encoder_analysis'
+          ? '当前设备录像时预览画面暂停，识别与录制正常'
+          : '已切换录像兼容模式',
+    );
+  }
+
+  void _showCameraNotice(String message) {
+    _cameraNotice = message;
+    _cameraNoticeTimer?.cancel();
+    _cameraNoticeTimer = Timer(const Duration(seconds: 5), () {
+      _cameraNotice = null;
+      if (!_disposed) {
+        notifyListeners();
+      }
+    });
+    if (!_disposed) {
+      notifyListeners();
+    }
   }
 
   void _startCameraDiagnosticsTimer() {
@@ -2312,6 +2344,7 @@ class PackingSessionController extends ChangeNotifier {
     _elapsedTimer?.cancel();
     _feedbackTimer?.cancel();
     _scanWarningTimer?.cancel();
+    _cameraNoticeTimer?.cancel();
     _rejectedBarcodeTimer?.cancel();
     _storageMonitorTimer?.cancel();
     _diagnosticsTimer?.cancel();

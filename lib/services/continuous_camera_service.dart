@@ -176,6 +176,8 @@ class CameraDiagnosticsSnapshot {
   String? get initFailureDetail => camera['initFailureDetail'] as String?;
   String? get startFailureStage => camera['startFailureStage'] as String?;
   String? get startFailureDetail => camera['startFailureDetail'] as String?;
+  String? get recordingFallbackMode =>
+      camera['recordingFallbackMode'] as String?;
   bool get probeInProgress => camera['probeInProgress'] == true;
   bool get probeCached => camera['probeCached'] == true;
   List<Map<String, Object?>> get probeResults =>
@@ -230,6 +232,7 @@ class ContinuousCameraService {
   void Function(String message)? onError;
   void Function()? onStorageCritical;
   void Function(Map<Object?, Object?> results)? onProbeFinished;
+  void Function(Map<Object?, Object?> info)? onRecordingFallback;
 
   Future<ContinuousCameraInitialization> initialize({
     RecordingVideoCodec videoCodec = RecordingVideoCodec.hevc,
@@ -347,6 +350,10 @@ class ContinuousCameraService {
         onStorageCritical?.call();
       case 'probeFinished':
         onProbeFinished?.call(
+          Map<Object?, Object?>.from(call.arguments! as Map),
+        );
+      case 'recordingFallback':
+        onRecordingFallback?.call(
           Map<Object?, Object?>.from(call.arguments! as Map),
         );
     }

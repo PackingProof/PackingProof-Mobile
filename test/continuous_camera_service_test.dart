@@ -132,6 +132,7 @@ void main() {
               'initFailureDetail': '摄像头无法同时提供预览、识别和录像',
               'startFailureStage': null,
               'startFailureDetail': null,
+              'recordingFallbackMode': 'encoder_analysis',
               'probeResults': <Object?>[
                 <String, Object?>{
                   'name': 'preview_only',
@@ -178,6 +179,7 @@ void main() {
     expect(snapshot.initFailureDetail, '摄像头无法同时提供预览、识别和录像');
     expect(snapshot.probeResults, hasLength(1));
     expect(snapshot.probeResults.single['name'], 'preview_only');
+    expect(snapshot.recordingFallbackMode, 'encoder_analysis');
     expect(snapshot.probeInProgress, isFalse);
     expect(snapshot.probeCached, isTrue);
     expect(snapshot.hardwareLevel, 0);
@@ -234,6 +236,40 @@ void main() {
     expect(received!['hardwareLevel'], 0);
     final List<Object?> results = received!['results']! as List<Object?>;
     expect(results, hasLength(1));
+  });
+
+  test('原生录像降级事件回调携带模式', () async {
+    const MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/continuous_camera',
+    );
+    final ContinuousCameraService service = ContinuousCameraService();
+    addTearDown(() async {
+      await service.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async => null);
+    Map<Object?, Object?>? received;
+    service.onRecordingFallback = (Map<Object?, Object?> info) {
+      received = info;
+    };
+
+    final ByteData message = const StandardMethodCodec().encodeMethodCall(
+      const MethodCall(
+        'recordingFallback',
+        <String, Object?>{'mode': 'encoder_analysis'},
+      ),
+    );
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          'app.packingproof.mobile/continuous_camera',
+          message,
+          (_) {},
+        );
+
+    expect(received, isNotNull);
+    expect(received!['mode'], 'encoder_analysis');
   });
 
   test('初始化时传递录像编码偏好', () async {

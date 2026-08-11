@@ -69,6 +69,7 @@ class ContinuousSegmentCamera(
         private const val CAMERA_DISABLED_MESSAGE =
             "摄像头被系统或设备策略禁用，请检查摄像头访问开关"
         private const val PROBE_TIMEOUT_MS = 2_500L
+        private const val START_STALL_FALLBACK_THRESHOLD_MS = 2_500L
         private val PROBE_TRIGGER_STAGES = setOf(
             "camera_open",
             "camera_error",
@@ -141,6 +142,11 @@ class ContinuousSegmentCamera(
     @Volatile private var initFailureDetail: String? = null
     @Volatile private var startFailureStage: String? = null
     @Volatile private var startFailureDetail: String? = null
+    @Volatile private var sessionHasPreview = false
+    @Volatile private var sessionHasEncoder = false
+    @Volatile private var sessionHasAnalysis = false
+    @Volatile private var startFallbackTried = false
+    @Volatile private var recordingFallbackMode: String? = null
     @Volatile private var probeResults: List<Map<String, Any?>> = emptyList()
     @Volatile private var probeInProgress = false
     @Volatile private var probeGeneration = 0
@@ -235,6 +241,11 @@ class ContinuousSegmentCamera(
         startFailureDetail = null
         probeResults = InitProbeCache.results ?: emptyList()
         probeInProgress = false
+        sessionHasPreview = false
+        sessionHasEncoder = false
+        sessionHasAnalysis = false
+        startFallbackTried = false
+        recordingFallbackMode = null
         preferredVideoMime = if (videoCodec == "h264") {
             MediaFormat.MIMETYPE_VIDEO_AVC
         } else {
@@ -279,6 +290,8 @@ class ContinuousSegmentCamera(
             resetStallRecovery()
             startFailureStage = null
             startFailureDetail = null
+            startFallbackTried = false
+            recordingFallbackMode = null
             Log.i(CAMERA_LOG_TAG, "startWork path=$path recordAudio=$recordAudio")
             pendingStartPath = path
             startResult = result
@@ -929,6 +942,9 @@ class ContinuousSegmentCamera(
                     onConfigured = { session ->
                         workingStreamConfig = config
                         sessionConfigStage = config.label
+                        sessionHasPreview = true
+                        sessionHasEncoder = config.includeEncoder
+                        sessionHasAnalysis = true
                         Log.i(CAMERA_LOG_TAG, "camera session configured stage=${config.label}")
                         onConfigured(session)
                     },
@@ -1134,6 +1150,14 @@ class ContinuousSegmentCamera(
         val recording = recordingRequested || recordingActive
         if (last != 0L && previewActive && now - last > PREVIEW_STALL_THRESHOLD_MS) {
             markStall(now - last)
+            if (recordingRequested &&
+                !recordingActive &&
+                startResult != null &&
+                !startFallbackTried &&
+                now - last > START_STALL_FALLBACK_THRESHOLD_MS
+            ) {
+                runStartStallFallback()
+            }
             runStallRecoveryStep(now, last, recording)
         } else if (stallActive) {
             stallActive = false
@@ -1184,6 +1208,79 @@ class ContinuousSegmentCamera(
         stallRecoveryLastLogAtMs = 0L
     }
 
+    /**
+     * 录像启动阶段三路会话停摆（部分机型如荣耀 X70 / Android 16 的 HAL
+     * 无法持续输出预览+编码+识别三路）时，自动降级为“编码器 + 识别”两路
+     * 会话：录制与条码识别继续工作，预览画面暂停；停止工作后仍重建两路
+     * 预览会话恢复画面。
+     */
+    private fun runStartStallFallback() {
+        if (startFallbackTried || disposed) return
+        startFallbackTried = true
+        Log.w(CAMERA_LOG_TAG, "recording start stalled; fallback to encoder+analysis session")
+        val mux = muxHandler ?: return
+        val cam = cameraHandler ?: return
+        mux.post {
+            if (disposed || !recordingRequested || recordingActive || startResult == null) {
+                return@post
+            }
+            cam.post {
+                if (disposed || !recordingRequested || recordingActive || startResult == null) {
+                    return@post
+                }
+                val camera = cameraDevice ?: return@post
+                val characteristics = selectedCameraCharacteristics ?: return@post
+                val encoder = videoInputSurface ?: return@post
+                val analysis = analysisReader?.surface ?: return@post
+                val oldSession = captureSession
+                captureSession = null
+                sessionHasPreview = false
+                sessionHasEncoder = false
+                sessionHasAnalysis = false
+                try {
+                    oldSession?.close()
+                } catch (error: Throwable) {
+                    notifyNativeError("摄像头降级会话关闭失败", error)
+                    return@post
+                }
+                submitCaptureSession(
+                    camera = camera,
+                    surfaces = listOf(encoder, analysis),
+                    onConfigured = { session ->
+                        captureSession = session
+                        sessionHasEncoder = true
+                        sessionHasAnalysis = true
+                        sessionHasPreview = false
+                        recordingFallbackMode = "encoder_analysis"
+                        try {
+                            applyCaptureRequest(session, camera, characteristics)
+                            Log.w(CAMERA_LOG_TAG, "recording fallback session configured encoder+analysis")
+                            emit("recordingFallback", mapOf("mode" to "encoder_analysis"))
+                            mux.post {
+                                if (startResult != null && recordingRequested) {
+                                    requestSyncFrame()
+                                }
+                            }
+                        } catch (error: Throwable) {
+                            notifyNativeError("摄像头降级会话启动失败", error)
+                            mux.post { failPendingStart("session_config", "摄像头降级会话启动失败") }
+                        }
+                    },
+                    onConfigureFailed = {
+                        notifyNativeError("此设备无法同时录像与识别", null)
+                        mux.post { failPendingStart("session_config", "此设备无法同时录像与识别") }
+                    },
+                    onCreateFailed = { error ->
+                        notifyNativeError("摄像头降级会话创建失败", error)
+                        mux.post {
+                            failPendingStart("session_create", error.message ?: "摄像头降级会话创建失败")
+                        }
+                    },
+                )
+            }
+        }
+    }
+
     private fun recreateCaptureSession(
         onConfigured: (() -> Unit)? = null,
         onError: ((String) -> Unit)? = null,
@@ -1194,6 +1291,9 @@ class ContinuousSegmentCamera(
             val characteristics = selectedCameraCharacteristics ?: return@post
             val oldSession = captureSession
             captureSession = null
+            sessionHasPreview = false
+            sessionHasEncoder = false
+            sessionHasAnalysis = false
             try {
                 oldSession?.close()
             } catch (error: Throwable) {
@@ -1272,13 +1372,12 @@ class ContinuousSegmentCamera(
         characteristics: CameraCharacteristics,
     ) {
         val targets = captureRequestTargetPolicy.targets(recordingRequested, recordingActive)
-        val preview = previewSurface ?: return
         val request = camera.createCaptureRequest(
             if (targets.includeEncoder) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW,
         ).apply {
-            addTarget(preview)
-            if (targets.includeEncoder) videoInputSurface?.let(::addTarget)
-            if (targets.includeAnalysis) analysisReader?.surface?.let(::addTarget)
+            if (sessionHasPreview) previewSurface?.let(::addTarget)
+            if (targets.includeEncoder && sessionHasEncoder) videoInputSurface?.let(::addTarget)
+            if (targets.includeAnalysis && sessionHasAnalysis) analysisReader?.surface?.let(::addTarget)
             applyAutomaticCameraControls(this, characteristics)
             set(
                 CaptureRequest.FLASH_MODE,
@@ -1734,6 +1833,9 @@ class ContinuousSegmentCamera(
             if (disposed) return@post
             captureSession?.close()
             captureSession = null
+            sessionHasPreview = false
+            sessionHasEncoder = false
+            sessionHasAnalysis = false
             analysisReader?.close()
             analysisReader = null
             cameraDevice?.close()
@@ -2056,6 +2158,9 @@ class ContinuousSegmentCamera(
             "initFailureDetail" to initFailureDetail,
             "startFailureStage" to startFailureStage,
             "startFailureDetail" to startFailureDetail,
+            "recordingFallbackMode" to recordingFallbackMode,
+            "sessionSurfaces" to
+                "preview=$sessionHasPreview encoder=$sessionHasEncoder analysis=$sessionHasAnalysis",
             "probeResults" to probeResults,
             "probeInProgress" to probeInProgress,
             "probeCached" to (InitProbeCache.results != null),

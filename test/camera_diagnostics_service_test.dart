@@ -40,6 +40,7 @@ void main() {
           'lastRequestTemplate': 'preview',
           'stallActive': false,
           'initFailureStage': 'session_config',
+          'recordingFallbackMode': 'encoder_analysis',
           'probeResults': <Object?>[
             <String, Object?>{
               'name': 'preview_only',
@@ -76,6 +77,7 @@ void main() {
     expect(first['muxWriteMaxMs'], 140);
     expect(first['muxWriteStallCount'], 3);
     expect(first['initFailureStage'], 'session_config');
+    expect(first['recordingFallbackMode'], 'encoder_analysis');
     expect(first['probeResults'], isA<List<Object?>>());
     expect(first['hardwareLevel'], 0);
     expect(first['yuvSizes'], <Object?>['960x540', '640x480']);
