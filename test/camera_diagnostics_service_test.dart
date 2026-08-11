@@ -39,6 +39,16 @@ void main() {
           'workScanEnabled': true,
           'lastRequestTemplate': 'preview',
           'stallActive': false,
+          'initFailureStage': 'session_config',
+          'probeResults': <Object?>[
+            <String, Object?>{
+              'name': 'preview_only',
+              'result': 'configured',
+            },
+          ],
+          'hardwareLevel': 0,
+          'capabilities': <Object?>['backward_compatible'],
+          'yuvSizes': <Object?>['960x540', '640x480'],
         },
       );
 
@@ -65,6 +75,10 @@ void main() {
     expect(first['storageTotalBytes'], 999999999);
     expect(first['muxWriteMaxMs'], 140);
     expect(first['muxWriteStallCount'], 3);
+    expect(first['initFailureStage'], 'session_config');
+    expect(first['probeResults'], isA<List<Object?>>());
+    expect(first['hardwareLevel'], 0);
+    expect(first['yuvSizes'], <Object?>['960x540', '640x480']);
     expect(first['device.manufacturer'], 'vivo');
   });
 
@@ -83,6 +97,27 @@ void main() {
         jsonDecode((await file.readAsLines()).single) as Map<String, Object?>;
     expect(entry['kind'], 'native_error');
     expect(entry['message'], 'camera error');
+  });
+
+  test('记录初始化失败事件', () async {
+    service = CameraDiagnosticsService(
+      rootProvider: () async => temp,
+      snapshotLoader: () async => null,
+    );
+    await service.recordEvent(
+      kind: 'init_failed',
+      extra: <String, Object?>{
+        'code': 'session_config',
+        'message': '摄像头无法同时提供预览、识别和录像',
+      },
+    );
+
+    final File file = File('${temp.path}/diagnostics/camera.jsonl');
+    final Map<String, Object?> entry =
+        jsonDecode((await file.readAsLines()).single) as Map<String, Object?>;
+    expect(entry['kind'], 'init_failed');
+    expect(entry['code'], 'session_config');
+    expect(entry['message'], contains('摄像头'));
   });
 
   test('导出合并头部、运行日志、相机日志与路径诊断', () async {

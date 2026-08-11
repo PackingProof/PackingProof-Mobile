@@ -73,6 +73,7 @@ class PackingSessionController extends ChangeNotifier {
     VideoWatermarkSink? videoWatermarkService,
     OrderInfoReceiverSink? orderInfoReceiver,
     DiagnosticsLogService? runtimeLog,
+    CameraDiagnosticsService? cameraDiagnostics,
   }) : _repository = repository ?? SessionRepository(),
        _speechService = speechService ?? SpeechPromptService(),
        _maxVolumeService = maxVolumeService ?? MaxVolumeService(),
@@ -83,6 +84,7 @@ class PackingSessionController extends ChangeNotifier {
          formats: const <BarcodeFormat>[BarcodeFormat.all],
        ) {
     _runtimeLog = runtimeLog ?? DiagnosticsLogService();
+    _cameraDiagnostics = cameraDiagnostics ?? CameraDiagnosticsService();
     _lanBackupService =
         lanBackupService ??
         LanBackupService(
@@ -108,8 +110,7 @@ class PackingSessionController extends ChangeNotifier {
   final RecordingTimeline _timeline = RecordingTimeline();
   final InitialRecordingPromptPolicy _initialPromptPolicy =
       InitialRecordingPromptPolicy();
-  final CameraDiagnosticsService _cameraDiagnostics =
-      CameraDiagnosticsService();
+  late final CameraDiagnosticsService _cameraDiagnostics;
   late final DiagnosticsLogService _runtimeLog;
   Future<void> _cameraInitializeTail = Future<void>.value();
   bool _appStartLogged = false;
@@ -369,6 +370,7 @@ class PackingSessionController extends ChangeNotifier {
         nativeCamera.onStorageCritical = () {
           unawaited(_handleNativeStorageCritical());
         };
+        nativeCamera.onProbeFinished = _handleNativeProbeFinished;
         _nativeCamera = nativeCamera;
         await nativeCamera.ensurePermissions(recordAudio: _recordAudioEnabled);
         _nativeInitialization = await nativeCamera
@@ -431,13 +433,16 @@ class PackingSessionController extends ChangeNotifier {
       _setPhase(PackingSessionPhase.ready);
       _speechService.resetIncidents();
     } on PlatformException catch (error) {
+      _recordInitFailure(error.code, error.message ?? '');
       _errorMessage = error.code == 'permission_denied'
           ? '需要摄像头${_recordAudioEnabled ? '和麦克风' : ''}权限才能工作\n请允许权限后重试'
           : '摄像头初始化失败，请重试\n${error.message ?? error.code}';
       _setPhase(PackingSessionPhase.error);
     } on CameraException catch (error) {
+      _recordInitFailure(error.code, error.description ?? '');
       _setCameraError(error);
     } on Object catch (error) {
+      _recordInitFailure('unknown', '$error');
       _errorMessage = '摄像头初始化失败，请重试\n$error';
       _setPhase(PackingSessionPhase.error);
     }
@@ -447,6 +452,25 @@ class PackingSessionController extends ChangeNotifier {
     unawaited(_cameraDiagnostics.recordEvent(kind: 'retry_initialize'));
     await _disposeCamera();
     await initialize(force: true);
+  }
+
+  void _handleNativeProbeFinished(Map<Object?, Object?> results) {
+    unawaited(
+      _cameraDiagnostics.recordEvent(
+        kind: 'probe_finished',
+        extra: results.cast<String, Object?>(),
+      ),
+    );
+    unawaited(_captureCameraDiagnosticsSnapshot('probe_finished'));
+  }
+
+  void _recordInitFailure(String code, String message) {
+    unawaited(
+      _cameraDiagnostics.recordEvent(
+        kind: 'init_failed',
+        extra: <String, Object?>{'code': code, 'message': message},
+      ),
+    );
   }
 
   void _startCameraDiagnosticsTimer() {

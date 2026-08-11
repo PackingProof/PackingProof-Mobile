@@ -128,6 +128,29 @@ void main() {
               'stallActive': false,
               'sessionConfigStage': '3_1920x1080_960x540',
               'sessionConfigAttempts': 2,
+              'initFailureStage': 'session_config',
+              'initFailureDetail': '摄像头无法同时提供预览、识别和录像',
+              'startFailureStage': null,
+              'startFailureDetail': null,
+              'probeResults': <Object?>[
+                <String, Object?>{
+                  'name': 'preview_only',
+                  'surfaces': 'preview',
+                  'result': 'configured',
+                },
+              ],
+              'probeInProgress': false,
+              'probeCached': true,
+              'hardwareLevel': 0,
+              'capabilities': <Object?>[
+                'backward_compatible',
+                'manual_sensor',
+              ],
+              'yuvSizes': <Object?>['960x540', '640x480'],
+              'videoSizes': <Object?>['1920x1080', '1280x720'],
+              'previewSizes': <Object?>['1920x1080'],
+              'physicalCameraIds': <Object?>['0'],
+              'fpsRanges': <Object?>['15-30'],
             },
           };
         });
@@ -151,7 +174,66 @@ void main() {
     expect(snapshot.codecFallbackReason, 'no_hevc_decoder');
     expect(snapshot.sessionConfigStage, '3_1920x1080_960x540');
     expect(snapshot.sessionConfigAttempts, 2);
+    expect(snapshot.initFailureStage, 'session_config');
+    expect(snapshot.initFailureDetail, '摄像头无法同时提供预览、识别和录像');
+    expect(snapshot.probeResults, hasLength(1));
+    expect(snapshot.probeResults.single['name'], 'preview_only');
+    expect(snapshot.probeInProgress, isFalse);
+    expect(snapshot.probeCached, isTrue);
+    expect(snapshot.hardwareLevel, 0);
+    expect(snapshot.capabilities, contains('manual_sensor'));
+    expect(snapshot.yuvSizes, contains('640x480'));
+    expect(snapshot.videoSizes, contains('1920x1080'));
+    expect(snapshot.previewSizes, contains('1920x1080'));
+    expect(snapshot.physicalCameraIds, contains('0'));
+    expect(snapshot.fpsRanges, contains('15-30'));
     expect(snapshot.deviceSummary, contains('vivo'));
+  });
+
+  test('原生探针完成事件回调携带结果', () async {
+    const MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/continuous_camera',
+    );
+    final ContinuousCameraService service = ContinuousCameraService();
+    addTearDown(() async {
+      await service.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async => null);
+    Map<Object?, Object?>? received;
+    service.onProbeFinished = (Map<Object?, Object?> results) {
+      received = results;
+    };
+
+    final ByteData message = const StandardMethodCodec().encodeMethodCall(
+      const MethodCall(
+        'probeFinished',
+        <String, Object?>{
+          'results': <Object?>[
+            <String, Object?>{
+              'name': 'preview_only',
+              'result': 'configured',
+            },
+          ],
+          'cameraId': '0',
+          'hardwareLevel': 0,
+        },
+      ),
+    );
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          'app.packingproof.mobile/continuous_camera',
+          message,
+          (_) {},
+        );
+
+    expect(received, isNotNull);
+    expect(received!['cameraId'], '0');
+    expect(received!['hardwareLevel'], 0);
+    final List<Object?> results = received!['results']! as List<Object?>;
+    expect(results, hasLength(1));
   });
 
   test('初始化时传递录像编码偏好', () async {

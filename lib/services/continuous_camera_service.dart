@@ -172,6 +172,33 @@ class CameraDiagnosticsSnapshot {
   String? get sessionConfigStage => camera['sessionConfigStage'] as String?;
   int get sessionConfigAttempts =>
       (camera['sessionConfigAttempts'] as num?)?.toInt() ?? 0;
+  String? get initFailureStage => camera['initFailureStage'] as String?;
+  String? get initFailureDetail => camera['initFailureDetail'] as String?;
+  String? get startFailureStage => camera['startFailureStage'] as String?;
+  String? get startFailureDetail => camera['startFailureDetail'] as String?;
+  bool get probeInProgress => camera['probeInProgress'] == true;
+  bool get probeCached => camera['probeCached'] == true;
+  List<Map<String, Object?>> get probeResults =>
+      (camera['probeResults'] as List<Object?>?)
+          ?.map(
+            (Object? item) =>
+                Map<String, Object?>.from(item! as Map),
+          )
+          .toList(growable: false) ??
+      const <Map<String, Object?>>[];
+  int? get hardwareLevel => (camera['hardwareLevel'] as num?)?.toInt();
+  List<String> get capabilities => _stringList('capabilities');
+  List<String> get yuvSizes => _stringList('yuvSizes');
+  List<String> get videoSizes => _stringList('videoSizes');
+  List<String> get previewSizes => _stringList('previewSizes');
+  List<String> get physicalCameraIds => _stringList('physicalCameraIds');
+  List<String> get fpsRanges => _stringList('fpsRanges');
+
+  List<String> _stringList(String key) =>
+      (camera[key] as List<Object?>?)
+          ?.map((Object? item) => '$item')
+          .toList(growable: false) ??
+      const <String>[];
 
   String get deviceSummary {
     final String manufacturer = '${device['manufacturer'] ?? ''}';
@@ -202,6 +229,7 @@ class ContinuousCameraService {
   void Function(List<NativeBarcodeCandidate> candidates)? onBarcodeFrame;
   void Function(String message)? onError;
   void Function()? onStorageCritical;
+  void Function(Map<Object?, Object?> results)? onProbeFinished;
 
   Future<ContinuousCameraInitialization> initialize({
     RecordingVideoCodec videoCodec = RecordingVideoCodec.hevc,
@@ -317,6 +345,10 @@ class ContinuousCameraService {
         onError?.call(call.arguments?.toString() ?? '原生录像发生未知错误');
       case 'storageCritical':
         onStorageCritical?.call();
+      case 'probeFinished':
+        onProbeFinished?.call(
+          Map<Object?, Object?>.from(call.arguments! as Map),
+        );
     }
   }
 }
