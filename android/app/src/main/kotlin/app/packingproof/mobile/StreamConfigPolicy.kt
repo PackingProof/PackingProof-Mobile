@@ -105,17 +105,17 @@ internal class StreamConfigPolicy(
     }
 
     /**
-     * 初始化候选：先尝试完整三路（画质从高到低），全部失败后
-     * 退回“预览 + 识别”两路，保证至少能进入预览界面。
+     * 初始化候选：只包含“预览 + 识别”两路（录像编码器在开始工作时
+     * 重建会话才加入），按画质从高到低逐级降级，保证尽可能进入预览界面。
      */
     fun initializationCandidates(
         videoSizes: List<StreamSize>,
         analysisSizes: List<StreamSize>,
     ): List<StreamConfig> {
-        val threeSurface = threeSurfaceCandidates(videoSizes, analysisSizes)
-        val previewOnly = videoSizes.firstOrNull()?.let { video ->
-            analysisSizes.firstOrNull()?.let { analysis ->
-                StreamConfig(
+        val result = mutableListOf<StreamConfig>()
+        for (video in videoSizes) {
+            for (analysis in analysisSizes) {
+                result += StreamConfig(
                     videoWidth = video.width,
                     videoHeight = video.height,
                     analysisWidth = analysis.width,
@@ -124,6 +124,6 @@ internal class StreamConfigPolicy(
                 )
             }
         }
-        return if (previewOnly == null) threeSurface else threeSurface + previewOnly
+        return result
     }
 }

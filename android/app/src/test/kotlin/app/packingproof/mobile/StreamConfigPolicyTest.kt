@@ -69,17 +69,21 @@ class StreamConfigPolicyTest {
     }
 
     @Test
-    fun `初始化候选在三路全失败后追加两路预览回退`() {
+    fun `初始化候选只包含预览加识别两路并按视频优先排序`() {
         val candidates = policy.initializationCandidates(
             videoSizes = listOf(StreamSize(1920, 1080), StreamSize(1280, 720)),
-            analysisSizes = listOf(StreamSize(960, 540)),
+            analysisSizes = listOf(StreamSize(960, 540), StreamSize(640, 480)),
         )
-        assertEquals(3, candidates.size)
-        assertEquals(true, candidates[0].includeEncoder)
-        assertEquals(true, candidates[1].includeEncoder)
-        assertEquals(false, candidates[2].includeEncoder)
-        assertEquals(1920, candidates[2].videoWidth)
-        assertEquals(960, candidates[2].analysisWidth)
-        assertEquals("2_1920x1080_960x540", candidates[2].label)
+        assertEquals(
+            listOf(
+                StreamConfig(1920, 1080, 960, 540, includeEncoder = false),
+                StreamConfig(1920, 1080, 640, 480, includeEncoder = false),
+                StreamConfig(1280, 720, 960, 540, includeEncoder = false),
+                StreamConfig(1280, 720, 640, 480, includeEncoder = false),
+            ),
+            candidates,
+        )
+        assertEquals(false, candidates.first().includeEncoder)
+        assertEquals("2_1920x1080_960x540", candidates.first().label)
     }
 }
