@@ -27,6 +27,7 @@ class ContinuousCameraPlugin(
     private var pendingPermissionRecordAudio = false
     private var lastVideoCodec: String? = null
     private var lastRecordingSpec: String? = null
+    private var lastFallbackRecording = false
 
     init {
         channel.setMethodCallHandler(this)
@@ -38,6 +39,7 @@ class ContinuousCameraPlugin(
                 result,
                 call.argument<String>("videoCodec"),
                 call.argument<String>("recordingSpec"),
+                call.argument<Boolean>("fallbackRecording") == true,
             )
             "ensurePermissions" -> ensurePermissions(
                 call.argument<Boolean>("recordAudio") == true,
@@ -87,7 +89,12 @@ class ContinuousCameraPlugin(
                     else CameraCharacteristics.LENS_FACING_FRONT
                     engine.dispose {
                         engine = createEngine(target)
-                        engine.initialize(result, lastVideoCodec, lastRecordingSpec)
+                        engine.initialize(
+                            result,
+                            lastVideoCodec,
+                            lastRecordingSpec,
+                            lastFallbackRecording,
+                        )
                     }
                 }
             }
@@ -107,13 +114,15 @@ class ContinuousCameraPlugin(
         result: MethodChannel.Result,
         videoCodec: String?,
         recordingSpec: String?,
+        fallbackRecording: Boolean,
     ) {
         if (ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
         ) {
             lastVideoCodec = videoCodec
             lastRecordingSpec = recordingSpec
-            engine.initialize(result, videoCodec, recordingSpec)
+            lastFallbackRecording = fallbackRecording
+            engine.initialize(result, videoCodec, recordingSpec, fallbackRecording)
             return
         }
         result.error("permission_denied", "需要摄像头权限才能工作", null)

@@ -17,6 +17,7 @@ class AppSettings {
     this.orderSpeechEnabled = true,
     this.maxVolumeEnabled = true,
     this.recordAudioEnabled = true,
+    this.nativeRecordingFallback = false,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.startupNoticeVersion = 0,
@@ -38,6 +39,7 @@ class AppSettings {
       ..remove('speechEnabled')
       ..remove('orderSpeechEnabled')
       ..remove('maxVolumeEnabled')
+      ..remove('nativeRecordingFallback')
       ..remove('preferredVideoCodec')
       ..remove('recordingSpec')
       ..remove('startupNoticeVersion')
@@ -70,6 +72,9 @@ class AppSettings {
       recordAudioEnabled: json['recordAudioEnabled'] is bool
           ? json['recordAudioEnabled']! as bool
           : true,
+      nativeRecordingFallback: json['nativeRecordingFallback'] is bool
+          ? json['nativeRecordingFallback']! as bool
+          : false,
       preferredVideoCodec: recordingVideoCodecFromStorage(
         json['preferredVideoCodec'],
       ),
@@ -132,6 +137,7 @@ class AppSettings {
   final bool orderSpeechEnabled;
   final bool maxVolumeEnabled;
   final bool recordAudioEnabled;
+  final bool nativeRecordingFallback;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
   final int startupNoticeVersion;
@@ -152,6 +158,7 @@ class AppSettings {
     bool? orderSpeechEnabled,
     bool? maxVolumeEnabled,
     bool? recordAudioEnabled,
+    bool? nativeRecordingFallback,
     RecordingVideoCodec? preferredVideoCodec,
     RecordingSpecPreset? recordingSpec,
     int? startupNoticeVersion,
@@ -171,6 +178,8 @@ class AppSettings {
       orderSpeechEnabled: orderSpeechEnabled ?? this.orderSpeechEnabled,
       maxVolumeEnabled: maxVolumeEnabled ?? this.maxVolumeEnabled,
       recordAudioEnabled: recordAudioEnabled ?? this.recordAudioEnabled,
+      nativeRecordingFallback:
+          nativeRecordingFallback ?? this.nativeRecordingFallback,
       preferredVideoCodec: preferredVideoCodec ?? this.preferredVideoCodec,
       recordingSpec: recordingSpec ?? this.recordingSpec,
       startupNoticeVersion: startupNoticeVersion ?? this.startupNoticeVersion,
@@ -197,6 +206,7 @@ class AppSettings {
     'orderSpeechEnabled': orderSpeechEnabled,
     'maxVolumeEnabled': maxVolumeEnabled,
     'recordAudioEnabled': recordAudioEnabled,
+    'nativeRecordingFallback': nativeRecordingFallback,
     'preferredVideoCodec': preferredVideoCodec.storageValue,
     'recordingSpec': recordingSpec.storageValue,
     'startupNoticeVersion': startupNoticeVersion,

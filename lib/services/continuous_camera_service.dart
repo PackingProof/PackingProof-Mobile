@@ -178,6 +178,8 @@ class CameraDiagnosticsSnapshot {
   String? get startFailureDetail => camera['startFailureDetail'] as String?;
   String? get recordingFallbackMode =>
       camera['recordingFallbackMode'] as String?;
+  bool get preferEncoderAnalysisRecording =>
+      camera['preferEncoderAnalysisRecording'] == true;
   bool get probeInProgress => camera['probeInProgress'] == true;
   bool get probeCached => camera['probeCached'] == true;
   List<Map<String, Object?>> get probeResults =>
@@ -237,11 +239,13 @@ class ContinuousCameraService {
   Future<ContinuousCameraInitialization> initialize({
     RecordingVideoCodec videoCodec = RecordingVideoCodec.hevc,
     RecordingSpecPreset recordingSpec = RecordingSpecPreset.hd1080p30,
+    bool fallbackRecording = false,
   }) async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('initialize', <String, Object>{
           'videoCodec': videoCodec.storageValue,
           'recordingSpec': recordingSpec.storageValue,
+          'fallbackRecording': fallbackRecording,
         }))!;
     return ContinuousCameraInitialization.fromMap(values);
   }

@@ -147,6 +147,7 @@ class ContinuousSegmentCamera(
     @Volatile private var sessionHasAnalysis = false
     @Volatile private var startFallbackTried = false
     @Volatile private var recordingFallbackMode: String? = null
+    @Volatile private var preferEncoderAnalysisRecording = false
     @Volatile private var probeResults: List<Map<String, Any?>> = emptyList()
     @Volatile private var probeInProgress = false
     @Volatile private var probeGeneration = 0
@@ -208,6 +209,7 @@ class ContinuousSegmentCamera(
         result: MethodChannel.Result,
         videoCodec: String? = null,
         recordingSpecName: String? = null,
+        fallbackRecording: Boolean = false,
     ) {
         if (disposed) {
             result.error("disposed", "摄像头已经关闭", null)
@@ -246,6 +248,7 @@ class ContinuousSegmentCamera(
         sessionHasAnalysis = false
         startFallbackTried = false
         recordingFallbackMode = null
+        preferEncoderAnalysisRecording = fallbackRecording
         preferredVideoMime = if (videoCodec == "h264") {
             MediaFormat.MIMETYPE_VIDEO_AVC
         } else {
@@ -302,21 +305,31 @@ class ContinuousSegmentCamera(
             if (recordAudio) {
                 startAudioPipeline()
             }
-            // 后置摄像头在运行中的重复请求上增删录像目标会冻结预览；
-            // 与 camera_android 一致：开始工作时重建会话，让预览+识别+编码
-            // 目标从会话配置起保持固定。
-            recreateCaptureSession(
-                onConfigured = {
-                    muxHandler?.post {
-                        if (startResult != null && recordingRequested) {
-                            requestSyncFrame()
+            if (preferEncoderAnalysisRecording) {
+                // 本机已保存兼容模式：直接以“编码器 + 识别”两路会话开始，
+                // 不再先尝试三路，避免每次启动都经历停摆重试。
+                recreateEncoderAnalysisSession(
+                    onError = { message ->
+                        muxHandler?.post { failPendingStart("session_config", message) }
+                    },
+                )
+            } else {
+                // 后置摄像头在运行中的重复请求上增删录像目标会冻结预览；
+                // 与 camera_android 一致：开始工作时重建会话，让预览+识别+编码
+                // 目标从会话配置起保持固定。
+                recreateCaptureSession(
+                    onConfigured = {
+                        muxHandler?.post {
+                            if (startResult != null && recordingRequested) {
+                                requestSyncFrame()
+                            }
                         }
-                    }
-                },
-                onError = { message ->
-                    muxHandler?.post { failPendingStart("session_config", message) }
-                },
-            )
+                    },
+                    onError = { message ->
+                        muxHandler?.post { failPendingStart("session_config", message) }
+                    },
+                )
+            }
             handler.postDelayed({
                 if (startResult === result) {
                     failPendingStart("start_timeout", "录像编码器启动超时")
@@ -1218,14 +1231,31 @@ class ContinuousSegmentCamera(
         if (startFallbackTried || disposed) return
         startFallbackTried = true
         Log.w(CAMERA_LOG_TAG, "recording start stalled; fallback to encoder+analysis session")
+        recreateEncoderAnalysisSession(
+            onError = { message ->
+                muxHandler?.post { failPendingStart("session_config", message) }
+            },
+        )
+    }
+
+    /**
+     * 重建为“编码器 + 识别”两路会话：录像与条码识别继续工作，预览画面暂停。
+     * 用于启动阶段三路停摆后的自动降级，以及已保存兼容模式的直接开始。
+     */
+    private fun recreateEncoderAnalysisSession(
+        onConfigured: (() -> Unit)? = null,
+        onError: ((String) -> Unit)? = null,
+    ) {
         val mux = muxHandler ?: return
         val cam = cameraHandler ?: return
         mux.post {
             if (disposed || !recordingRequested || recordingActive || startResult == null) {
+                onError?.invoke("摄像头尚未就绪")
                 return@post
             }
             cam.post {
                 if (disposed || !recordingRequested || recordingActive || startResult == null) {
+                    onError?.invoke("摄像头尚未就绪")
                     return@post
                 }
                 val camera = cameraDevice ?: return@post
@@ -1241,6 +1271,7 @@ class ContinuousSegmentCamera(
                     oldSession?.close()
                 } catch (error: Throwable) {
                     notifyNativeError("摄像头降级会话关闭失败", error)
+                    onError?.invoke(error.message ?: "摄像头降级会话关闭失败")
                     return@post
                 }
                 submitCaptureSession(
@@ -1254,27 +1285,29 @@ class ContinuousSegmentCamera(
                         recordingFallbackMode = "encoder_analysis"
                         try {
                             applyCaptureRequest(session, camera, characteristics)
-                            Log.w(CAMERA_LOG_TAG, "recording fallback session configured encoder+analysis")
+                            Log.w(
+                                CAMERA_LOG_TAG,
+                                "recording fallback session configured encoder+analysis",
+                            )
                             emit("recordingFallback", mapOf("mode" to "encoder_analysis"))
                             mux.post {
                                 if (startResult != null && recordingRequested) {
                                     requestSyncFrame()
                                 }
+                                onConfigured?.invoke()
                             }
                         } catch (error: Throwable) {
                             notifyNativeError("摄像头降级会话启动失败", error)
-                            mux.post { failPendingStart("session_config", "摄像头降级会话启动失败") }
+                            onError?.invoke(error.message ?: "摄像头降级会话启动失败")
                         }
                     },
                     onConfigureFailed = {
                         notifyNativeError("此设备无法同时录像与识别", null)
-                        mux.post { failPendingStart("session_config", "此设备无法同时录像与识别") }
+                        onError?.invoke("此设备无法同时录像与识别")
                     },
                     onCreateFailed = { error ->
                         notifyNativeError("摄像头降级会话创建失败", error)
-                        mux.post {
-                            failPendingStart("session_create", error.message ?: "摄像头降级会话创建失败")
-                        }
+                        onError?.invoke(error.message ?: "摄像头降级会话创建失败")
                     },
                 )
             }
@@ -2159,6 +2192,7 @@ class ContinuousSegmentCamera(
             "startFailureStage" to startFailureStage,
             "startFailureDetail" to startFailureDetail,
             "recordingFallbackMode" to recordingFallbackMode,
+            "preferEncoderAnalysisRecording" to preferEncoderAnalysisRecording,
             "sessionSurfaces" to
                 "preview=$sessionHasPreview encoder=$sessionHasEncoder analysis=$sessionHasAnalysis",
             "probeResults" to probeResults,

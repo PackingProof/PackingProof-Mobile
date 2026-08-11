@@ -133,6 +133,7 @@ void main() {
               'startFailureStage': null,
               'startFailureDetail': null,
               'recordingFallbackMode': 'encoder_analysis',
+              'preferEncoderAnalysisRecording': true,
               'probeResults': <Object?>[
                 <String, Object?>{
                   'name': 'preview_only',
@@ -180,6 +181,7 @@ void main() {
     expect(snapshot.probeResults, hasLength(1));
     expect(snapshot.probeResults.single['name'], 'preview_only');
     expect(snapshot.recordingFallbackMode, 'encoder_analysis');
+    expect(snapshot.preferEncoderAnalysisRecording, isTrue);
     expect(snapshot.probeInProgress, isFalse);
     expect(snapshot.probeCached, isTrue);
     expect(snapshot.hardwareLevel, 0);
@@ -308,6 +310,43 @@ void main() {
     expect(calls.single.arguments, <String, Object>{
       'videoCodec': 'h264',
       'recordingSpec': 'smooth720p30',
+      'fallbackRecording': false,
+    });
+  });
+
+  test('初始化时传递已保存的降级录像模式', () async {
+    const MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/continuous_camera',
+    );
+    final List<MethodCall> calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          calls.add(call);
+          return <Object?, Object?>{
+            'textureId': 1,
+            'previewWidth': 1920,
+            'previewHeight': 1080,
+            'sensorOrientation': 90,
+            'fps': 30,
+            'videoMime': 'video/hevc',
+            'flashAvailable': false,
+            'lensDirection': 'back',
+            'canSwitchCamera': false,
+          };
+        });
+    final ContinuousCameraService service = ContinuousCameraService();
+    addTearDown(() async {
+      await service.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    await service.initialize(fallbackRecording: true);
+
+    expect(calls.single.arguments, <String, Object>{
+      'videoCodec': 'hevc',
+      'recordingSpec': 'hd1080p30',
+      'fallbackRecording': true,
     });
   });
 
@@ -344,6 +383,7 @@ void main() {
     expect(calls.single.arguments, <String, Object>{
       'videoCodec': 'hevc',
       'recordingSpec': 'hd1080p30',
+      'fallbackRecording': false,
     });
   });
 

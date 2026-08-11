@@ -139,6 +139,7 @@ class PackingSessionController extends ChangeNotifier {
   bool _orderSpeechEnabled = true;
   bool _maxVolumeEnabled = true;
   bool _recordAudioEnabled = true;
+  bool _nativeRecordingFallback = false;
   RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
   RecordingSpecPreset _recordingSpec = RecordingSpecPreset.hd1080p30;
   int _minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength;
@@ -310,6 +311,7 @@ class PackingSessionController extends ChangeNotifier {
       _unbackedRetention = settings.unbackedRetention;
       _backedRetention = settings.backedRetention;
       _recordAudioEnabled = settings.recordAudioEnabled;
+      _nativeRecordingFallback = settings.nativeRecordingFallback;
       _preferredVideoCodec = settings.preferredVideoCodec;
       _recordingSpec = settings.recordingSpec;
       _minimumBarcodeLength = settings.minimumBarcodeLength;
@@ -380,6 +382,7 @@ class PackingSessionController extends ChangeNotifier {
             .initialize(
               videoCodec: _preferredVideoCodec,
               recordingSpec: _recordingSpec,
+              fallbackRecording: _nativeRecordingFallback,
             )
             .timeout(
               const Duration(seconds: 15),
@@ -484,6 +487,10 @@ class PackingSessionController extends ChangeNotifier {
       ),
     );
     final String mode = '${info['mode'] ?? ''}';
+    if (mode == 'encoder_analysis' && !_nativeRecordingFallback) {
+      _nativeRecordingFallback = true;
+      unawaited(_repository.saveNativeRecordingFallback(true));
+    }
     _showCameraNotice(
       mode == 'encoder_analysis'
           ? '当前设备录像时预览画面暂停，识别与录制正常'

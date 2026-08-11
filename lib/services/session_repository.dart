@@ -573,6 +573,10 @@ class SessionRepository {
     (AppSettings value) => value.copyWith(recordAudioEnabled: enabled),
   );
 
+  Future<void> saveNativeRecordingFallback(bool enabled) => _updateSettings(
+    (AppSettings value) => value.copyWith(nativeRecordingFallback: enabled),
+  );
+
   Future<void> savePreferredVideoCodec(RecordingVideoCodec codec) =>
       _updateSettings(
         (AppSettings value) => value.copyWith(preferredVideoCodec: codec),
