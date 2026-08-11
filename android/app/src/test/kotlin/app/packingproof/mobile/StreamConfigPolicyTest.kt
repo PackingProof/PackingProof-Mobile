@@ -33,6 +33,28 @@ class StreamConfigPolicyTest {
     }
 
     @Test
+    fun `视频候选在大量支持尺寸下仍保持少量`() {
+        val sizes = mutableListOf(
+            StreamSize(1920, 1080),
+            StreamSize(1280, 720),
+        )
+        for ((width, height) in listOf(
+            960 to 540,
+            864 to 480,
+            800 to 480,
+            720 to 480,
+            640 to 480,
+            480 to 360,
+            352 to 288,
+            320 to 240,
+            176 to 144,
+        )) {
+            sizes += StreamSize(width, height)
+        }
+        assertEquals(3, policy.videoCandidates(sizes).size)
+    }
+
+    @Test
     fun `识别候选优先960x540再降级到640x480`() {
         val sizes = listOf(
             StreamSize(320, 240),
