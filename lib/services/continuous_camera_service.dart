@@ -169,6 +169,9 @@ class CameraDiagnosticsSnapshot {
   String? get codecFallbackReason => camera['codecFallbackReason'] as String?;
   String? get lastRequestTemplate => camera['lastRequestTemplate'] as String?;
   bool get stallActive => camera['stallActive'] == true;
+  String? get sessionConfigStage => camera['sessionConfigStage'] as String?;
+  int get sessionConfigAttempts =>
+      (camera['sessionConfigAttempts'] as num?)?.toInt() ?? 0;
 
   String get deviceSummary {
     final String manufacturer = '${device['manufacturer'] ?? ''}';

@@ -112,6 +112,15 @@ class ContinuousSegmentCamera(
         RecordingSpecPolicy.HD.videoHeight,
     )
     @Volatile private var analysisSize = Size(1280, 720)
+    @Volatile private var sessionConfigStage: String? = null
+    @Volatile private var sessionConfigAttempts = 0
+    private var streamConfigPolicy = StreamConfigPolicy(
+        RecordingSpecPolicy.HD.videoWidth,
+        RecordingSpecPolicy.HD.videoHeight,
+    )
+    private var videoCandidates = emptyList<Size>()
+    private var analysisCandidates = emptyList<Size>()
+    private var workingStreamConfig: StreamConfig? = null
     @Volatile private var initialized = false
     private var disposed = false
     private var initializeResult: MethodChannel.Result? = null
@@ -180,6 +189,15 @@ class ContinuousSegmentCamera(
         recordingSpec = RecordingSpecPolicy.resolve(recordingSpecName)
         this.recordingSpecName = RecordingSpecPolicy.resolveName(recordingSpecName)
         recordingFpsRangePolicy = RecordingFpsRangePolicy(recordingSpec.fps)
+        streamConfigPolicy = StreamConfigPolicy(
+            recordingSpec.videoWidth,
+            recordingSpec.videoHeight,
+        )
+        sessionConfigStage = null
+        sessionConfigAttempts = 0
+        workingStreamConfig = null
+        videoCandidates = emptyList()
+        analysisCandidates = emptyList()
         preferredVideoMime = if (videoCodec == "h264") {
             MediaFormat.MIMETYPE_VIDEO_AVC
         } else {
@@ -673,18 +691,31 @@ class ContinuousSegmentCamera(
         selectedLensFacing = characteristics.get(CameraCharacteristics.LENS_FACING)
             ?: CameraCharacteristics.LENS_FACING_BACK
         sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
-        videoSize = chooseVideoSize(configuration)
-        analysisSize = chooseAnalysisSize(configuration)
+        val videoSizes = configuration.getOutputSizes(MediaRecorder::class.java)
+            ?.toList()
+            .orEmpty()
+        val analysisSizes = configuration.getOutputSizes(ImageFormat.YUV_420_888)
+            ?.toList()
+            .orEmpty()
+        videoCandidates = streamConfigPolicy.videoCandidates(
+            videoSizes.map { StreamSize(it.width, it.height) },
+        ).map { Size(it.width, it.height) }
+        analysisCandidates = streamConfigPolicy.analysisCandidates(
+            analysisSizes.map { StreamSize(it.width, it.height) },
+        ).map { Size(it.width, it.height) }
+        videoSize = videoCandidates.first()
+        analysisSize = analysisCandidates.first()
     }
 
     private fun createCaptureSession(characteristics: CameraCharacteristics) {
         val camera = cameraDevice ?: return
-        val preview = previewSurface ?: return
-        val encoder = videoInputSurface ?: return
-        val analysis = analysisReader?.surface ?: return
-        submitCaptureSession(
+        val candidates = streamConfigPolicy.initializationCandidates(
+            videoCandidates.map { StreamSize(it.width, it.height) },
+            analysisCandidates.map { StreamSize(it.width, it.height) },
+        )
+        submitWithFallback(
             camera = camera,
-            surfaces = listOf(preview, encoder, analysis),
+            candidates = candidates,
             onConfigured = { session ->
                 captureSession = session
                 try {
@@ -703,11 +734,9 @@ class ContinuousSegmentCamera(
                     failInitialization("capture_request", "摄像头预览启动失败", error)
                 }
             },
-            onConfigureFailed = {
-                failInitialization("session_config", "摄像头无法同时提供预览、识别和录像", null)
-            },
-            onCreateFailed = { error ->
-                failInitialization("session_create", "摄像头会话创建失败", error)
+            onFinalFailure = { message ->
+                closeCameraResourcesForRetry()
+                failInitialization("session_config", message, null)
             },
         )
     }
@@ -804,28 +833,142 @@ class ContinuousSegmentCamera(
         return preferredModes.firstOrNull(availableModes::contains)
     }
 
-    private fun chooseVideoSize(configuration: StreamConfigurationMap): Size {
-        val sizes = configuration.getOutputSizes(MediaRecorder::class.java)?.toList().orEmpty()
-        return sizes.firstOrNull {
-            it.width == recordingSpec.videoWidth && it.height == recordingSpec.videoHeight
+    private fun submitWithFallback(
+        camera: CameraDevice,
+        candidates: List<StreamConfig>,
+        onConfigured: (CameraCaptureSession) -> Unit,
+        onFinalFailure: (String) -> Unit,
+    ) {
+        val config = candidates.firstOrNull()
+        if (config == null) {
+            onFinalFailure("摄像头无法同时提供预览、识别和录像")
+            return
         }
-            ?: sizes.filter {
-                it.width <= recordingSpec.videoWidth &&
-                    it.height <= recordingSpec.videoHeight &&
-                    it.width > it.height
-            }
-                .maxByOrNull { it.width.toLong() * it.height }
-            ?: sizes.maxByOrNull { it.width.toLong() * it.height }
-            ?: Size(1280, 720)
+        val remaining = candidates.drop(1)
+        applyStreamConfig(
+            config = config,
+            onReady = {
+                sessionConfigAttempts++
+                val surfaces = sessionSurfaces(config)
+                val expected = if (config.includeEncoder) 3 else 2
+                if (surfaces.size < expected) {
+                    onFinalFailure("摄像头输出表面创建失败")
+                    return@applyStreamConfig
+                }
+                submitCaptureSession(
+                    camera = camera,
+                    surfaces = surfaces,
+                    onConfigured = { session ->
+                        workingStreamConfig = config
+                        sessionConfigStage = config.label
+                        Log.i(CAMERA_LOG_TAG, "camera session configured stage=${config.label}")
+                        onConfigured(session)
+                    },
+                    onConfigureFailed = {
+                        Log.w(CAMERA_LOG_TAG, "camera session configure failed stage=${config.label}")
+                        submitWithFallback(camera, remaining, onConfigured, onFinalFailure)
+                    },
+                    onCreateFailed = { error ->
+                        Log.w(
+                            CAMERA_LOG_TAG,
+                            "camera session create failed stage=${config.label}",
+                            error,
+                        )
+                        submitWithFallback(camera, remaining, onConfigured, onFinalFailure)
+                    },
+                )
+            },
+            onFailure = { message -> onFinalFailure(message) },
+        )
     }
 
-    private fun chooseAnalysisSize(configuration: StreamConfigurationMap): Size {
-        val sizes = configuration.getOutputSizes(ImageFormat.YUV_420_888)?.toList().orEmpty()
-        return sizes.firstOrNull { it.width == 960 && it.height == 540 }
-            ?: sizes.filter { it.width <= 960 && it.height <= 540 && it.width > it.height }
-                .maxByOrNull { it.width.toLong() * it.height }
-            ?: sizes.firstOrNull()
-            ?: Size(640, 480)
+    private fun applyStreamConfig(
+        config: StreamConfig,
+        onReady: () -> Unit,
+        onFailure: (String) -> Unit,
+    ) {
+        val video = config.toVideoSize()
+        val analysis = config.toAnalysisSize()
+        val encoderChanged = video != videoSize
+        val analysisChanged = analysis != analysisSize
+        val applyCameraSide = {
+            if (analysisChanged) recreateAnalysisReader(analysis)
+            resizePreviewSurface(video)
+            onReady()
+        }
+        if (encoderChanged) {
+            val handler = muxHandler
+            if (handler == null) {
+                onFailure("摄像头会话创建失败")
+                return
+            }
+            handler.post {
+                if (disposed) return@post
+                videoSize = video
+                releaseVideoEncoder()
+                try {
+                    prepareVideoEncoder()
+                    setVideoSuspended(!(recordingRequested || recordingActive))
+                } catch (error: Throwable) {
+                    notifyNativeError("视频编码器初始化失败", error)
+                    onFailure(error.message ?: "视频编码器初始化失败")
+                    return@post
+                }
+                cameraHandler?.post {
+                    if (disposed) return@post
+                    applyCameraSide()
+                } ?: onFailure("摄像头会话创建失败")
+            }
+        } else {
+            cameraHandler?.post {
+                if (disposed) return@post
+                applyCameraSide()
+            } ?: onFailure("摄像头会话创建失败")
+        }
+    }
+
+    private fun sessionSurfaces(config: StreamConfig): List<Surface> = buildList {
+        previewSurface?.let(::add)
+        if (config.includeEncoder) videoInputSurface?.let(::add)
+        analysisReader?.surface?.let(::add)
+    }
+
+    private fun recreateAnalysisReader(size: Size) {
+        analysisReader?.close()
+        analysisReader = null
+        analysisSize = size
+        val reader = ImageReader.newInstance(
+            size.width,
+            size.height,
+            ImageFormat.YUV_420_888,
+            2,
+        )
+        reader.setOnImageAvailableListener({ analyzeImage(it) }, cameraHandler)
+        analysisReader = reader
+    }
+
+    private fun resizePreviewSurface(size: Size) {
+        val entry = textureEntry ?: return
+        entry.surfaceTexture().setDefaultBufferSize(size.width, size.height)
+        if (previewSurface == null) {
+            previewSurface = Surface(entry.surfaceTexture())
+        }
+        videoSize = size
+    }
+
+    private fun releaseVideoEncoder() {
+        try {
+            videoEncoder?.stop()
+        } catch (_: Throwable) {
+        }
+        try {
+            videoEncoder?.release()
+        } catch (_: Throwable) {
+        }
+        videoEncoder = null
+        videoInputSurface?.release()
+        videoInputSurface = null
+        videoOutputFormat = null
     }
 
     private fun analyzeImage(reader: ImageReader) {
@@ -981,9 +1124,6 @@ class ContinuousSegmentCamera(
         handler.post {
             val camera = cameraDevice ?: return@post
             val characteristics = selectedCameraCharacteristics ?: return@post
-            val preview = previewSurface ?: return@post
-            val encoder = videoInputSurface ?: return@post
-            val analysis = analysisReader?.surface ?: return@post
             val oldSession = captureSession
             captureSession = null
             try {
@@ -993,27 +1133,49 @@ class ContinuousSegmentCamera(
                 onError?.invoke(error.message ?: "摄像头会话创建失败")
                 return@post
             }
-            submitCaptureSession(
+            val recording = recordingRequested || recordingActive
+            val candidates = if (recording) {
+                streamConfigPolicy.threeSurfaceCandidates(
+                    videoCandidates.map { StreamSize(it.width, it.height) },
+                    analysisCandidates.map { StreamSize(it.width, it.height) },
+                )
+            } else {
+                workingStreamConfig?.let { listOf(it) }
+                    ?: streamConfigPolicy.initializationCandidates(
+                        videoCandidates.map { StreamSize(it.width, it.height) },
+                        analysisCandidates.map { StreamSize(it.width, it.height) },
+                    )
+            }
+            if (candidates.isEmpty()) {
+                val message = if (recording) {
+                    "此设备无法同时提供预览、识别和录像，录像未能开始"
+                } else {
+                    "摄像头会话配置失败"
+                }
+                notifyNativeError(message, null)
+                onError?.invoke(message)
+                return@post
+            }
+            submitWithFallback(
                 camera = camera,
-                surfaces = listOf(preview, encoder, analysis),
+                candidates = candidates,
                 onConfigured = { session ->
                     captureSession = session
                     try {
                         applyCaptureRequest(session, camera, characteristics)
-                        Log.i(CAMERA_LOG_TAG, "capture session recreated")
+                        Log.i(
+                            CAMERA_LOG_TAG,
+                            "capture session recreated stage=${sessionConfigStage}",
+                        )
                         onConfigured?.invoke()
                     } catch (error: Throwable) {
                         notifyNativeError("摄像头会话启动失败", error)
                         onError?.invoke(error.message ?: "摄像头会话启动失败")
                     }
                 },
-                onConfigureFailed = {
-                    notifyNativeError("摄像头会话配置失败", null)
-                    onError?.invoke("摄像头会话配置失败")
-                },
-                onCreateFailed = { error ->
-                    notifyNativeError("摄像头会话创建失败", error)
-                    onError?.invoke(error.message ?: "摄像头会话创建失败")
+                onFinalFailure = { message ->
+                    notifyNativeError(message, null)
+                    onError?.invoke(message)
                 },
             )
         }
@@ -1487,8 +1649,24 @@ class ContinuousSegmentCamera(
         initializeResult = null
         initialized = false
         Log.w(CAMERA_LOG_TAG, "initialization failed code=$code message=$message", error)
+        closeCameraResourcesForRetry()
         if (result != null) replyError(result, code, error?.let { "$message：${it.message}" } ?: message)
         else notifyNativeError(message, error)
+    }
+
+    private fun closeCameraResourcesForRetry() {
+        cameraHandler?.post {
+            if (disposed) return@post
+            captureSession?.close()
+            captureSession = null
+            analysisReader?.close()
+            analysisReader = null
+            cameraDevice?.close()
+            cameraDevice = null
+            previewSurface?.release()
+            previewSurface = null
+            resetStallRecovery()
+        }
     }
 
     fun getDiagnostics(result: MethodChannel.Result) {
@@ -1527,6 +1705,8 @@ class ContinuousSegmentCamera(
             "lastRequestTemplate" to lastRequestTemplate,
             "stallActive" to stallActive,
             "stallRecoveryStage" to stallRecoveryStage,
+            "sessionConfigStage" to sessionConfigStage,
+            "sessionConfigAttempts" to sessionConfigAttempts,
         )
         result.success(
             mapOf(

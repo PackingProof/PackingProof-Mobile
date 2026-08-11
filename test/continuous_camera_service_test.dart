@@ -126,6 +126,8 @@ void main() {
               'codecFallbackReason': 'no_hevc_decoder',
               'lastRequestTemplate': 'preview',
               'stallActive': false,
+              'sessionConfigStage': '3_1920x1080_960x540',
+              'sessionConfigAttempts': 2,
             },
           };
         });
@@ -147,6 +149,8 @@ void main() {
     expect(snapshot.muxWriteMaxMs, 140);
     expect(snapshot.muxWriteStallCount, 3);
     expect(snapshot.codecFallbackReason, 'no_hevc_decoder');
+    expect(snapshot.sessionConfigStage, '3_1920x1080_960x540');
+    expect(snapshot.sessionConfigAttempts, 2);
     expect(snapshot.deviceSummary, contains('vivo'));
   });
 
