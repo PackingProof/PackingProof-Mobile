@@ -2216,6 +2216,10 @@ class ContinuousSegmentCamera(
             "initialized" to initialized,
             "cameraId" to selectedCameraId,
             "zoomRatio" to selectedZoomRatio,
+            "cameraIdList" to cameraManager.cameraIdList.toList(),
+            "zoomRatioRange" to selectedCameraCharacteristics
+                ?.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)
+                ?.let { listOf(it.lower, it.upper) },
             "lensFacing" to if (selectedLensFacing == CameraCharacteristics.LENS_FACING_FRONT) "front" else "back",
             "sensorOrientation" to sensorOrientation,
             "videoWidth" to videoSize.width,
