@@ -1164,12 +1164,28 @@ class ContinuousSegmentCamera(
         if (last != 0L && previewActive && now - last > PREVIEW_STALL_THRESHOLD_MS) {
             markStall(now - last)
             if (recordingRequested &&
-                !recordingActive &&
-                startResult != null &&
                 !startFallbackTried &&
                 now - last > START_STALL_FALLBACK_THRESHOLD_MS
             ) {
-                runStartStallFallback()
+                if (recordingActive) {
+                    // 录像已开始但管线停摆：立即保存兼容模式并提示用户，
+                    // 下次开始工作直接走两路会话，不再重试三路。
+                    startFallbackTried = true
+                    preferEncoderAnalysisRecording = true
+                    Log.w(
+                        CAMERA_LOG_TAG,
+                        "recording stall while active; save encoder+analysis mode for next start",
+                    )
+                    emit(
+                        "recordingFallback",
+                        mapOf(
+                            "mode" to "encoder_analysis",
+                            "phase" to "stall_during_recording",
+                        ),
+                    )
+                } else if (startResult != null) {
+                    runStartStallFallback()
+                }
             }
             runStallRecoveryStep(now, last, recording)
         } else if (stallActive) {
@@ -1283,6 +1299,7 @@ class ContinuousSegmentCamera(
                         sessionHasAnalysis = true
                         sessionHasPreview = false
                         recordingFallbackMode = "encoder_analysis"
+                        preferEncoderAnalysisRecording = true
                         try {
                             applyCaptureRequest(session, camera, characteristics)
                             Log.w(

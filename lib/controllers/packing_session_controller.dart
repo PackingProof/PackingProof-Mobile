@@ -487,13 +487,16 @@ class PackingSessionController extends ChangeNotifier {
       ),
     );
     final String mode = '${info['mode'] ?? ''}';
+    final String phase = '${info['phase'] ?? ''}';
     if (mode == 'encoder_analysis' && !_nativeRecordingFallback) {
       _nativeRecordingFallback = true;
       unawaited(_repository.saveNativeRecordingFallback(true));
     }
     _showCameraNotice(
       mode == 'encoder_analysis'
-          ? '当前设备录像时预览画面暂停，识别与录制正常'
+          ? (phase == 'stall_during_recording'
+                ? '当前设备录像时画面会暂停，已切换兼容模式，请停止后重新开始工作'
+                : '当前设备录像时预览画面暂停，识别与录制正常')
           : '已切换录像兼容模式',
     );
   }
