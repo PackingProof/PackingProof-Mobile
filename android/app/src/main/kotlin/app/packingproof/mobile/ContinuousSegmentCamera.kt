@@ -452,7 +452,7 @@ class ContinuousSegmentCamera(
 
     private fun buildBackLenses(mainCameraId: String? = null): List<BackLensInfo> {
         val logicalBack = cameraManager.cameraIdList.filter(::isBackCamera)
-        val entries = ArrayList<Pair<String, Float>>()
+        val entries = ArrayList<BackLensEntry>()
         for (id in logicalBack) {
             addBackLensEntry(entries, id)
         }
@@ -463,20 +463,38 @@ class ContinuousSegmentCamera(
                 }
             }
         }
+        val wideZoomRatio = logicalBack.firstNotNullOfOrNull { id ->
+            cameraManager.getCameraCharacteristics(id)
+                .get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)
+                ?.takeIf { it.lower < 1f }
+                ?.lower
+                ?.toDouble()
+        }
         return BackLensCatalog.build(
             entries,
             mainCameraId = mainCameraId ?: logicalBack.firstOrNull(),
+            wideZoomRatio = wideZoomRatio,
         )
     }
 
     private fun addBackLensEntry(
-        entries: MutableList<Pair<String, Float>>,
+        entries: MutableList<BackLensEntry>,
         cameraId: String,
     ) {
-        val focalLength = cameraManager.getCameraCharacteristics(cameraId)
+        val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+        val focalLength = characteristics
             .get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
             ?.firstOrNull() ?: return
-        entries.add(cameraId to focalLength)
+        val sensorWidth = characteristics
+            .get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
+            ?.width ?: return
+        entries.add(
+            BackLensEntry(
+                cameraId = cameraId,
+                focalLength = focalLength,
+                sensorWidthMm = sensorWidth,
+            ),
+        )
     }
 
     private fun isBackCamera(cameraId: String): Boolean =
