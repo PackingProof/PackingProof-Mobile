@@ -18,6 +18,7 @@ import '../models/lan_backup.dart';
 import '../services/preview_cover_transform.dart';
 import '../services/lan_backup_discovery_service.dart';
 import '../services/lan_backup_host_file_cache.dart';
+import '../services/continuous_camera_service.dart';
 import '../services/session_repository.dart';
 import '../services/speech_prompt_service.dart';
 import '../widgets/order_info_sheet.dart';
@@ -534,6 +535,9 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                   torchEnabled: _controller.torchEnabled,
                   cameraSwitchAvailable: _controller.cameraSwitchAvailable,
                   frontCameraActive: _controller.frontCameraActive,
+                  backCameraLenses: _controller.backCameraLenses,
+                  activeCameraId: _controller.activeCameraId,
+                  onCameraSelected: _controller.switchToCamera,
                   onPairingCancel: _cancelComputerPairingAndReturn,
                   onHistoryScanCancel: _cancelHistoryScanAndReturn,
                   onTorchPressed: _controller.toggleTorch,
@@ -723,6 +727,9 @@ class PackingHomeView extends StatelessWidget {
     this.torchEnabled = false,
     this.cameraSwitchAvailable = false,
     this.frontCameraActive = false,
+    this.backCameraLenses = const <NativeCameraLens>[],
+    this.activeCameraId,
+    this.onCameraSelected,
     this.onPairingCancel,
     this.onHistoryScanCancel,
     this.onTorchPressed,
@@ -754,6 +761,9 @@ class PackingHomeView extends StatelessWidget {
   final bool torchEnabled;
   final bool cameraSwitchAvailable;
   final bool frontCameraActive;
+  final List<NativeCameraLens> backCameraLenses;
+  final String? activeCameraId;
+  final ValueChanged<String>? onCameraSelected;
   final VoidCallback? onPairingCancel;
   final VoidCallback? onHistoryScanCancel;
   final VoidCallback? onTorchPressed;
@@ -909,6 +919,24 @@ class _CameraArea extends StatelessWidget {
               child: CustomPaint(painter: _ScanGuidePainter()),
             ),
           ),
+          if (view.backCameraLenses.length >= 2 &&
+              !view._isWorking &&
+              !view._isBusy &&
+              !view.pairingScanActive &&
+              !view.historyScanActive)
+            Positioned(
+              left: 18,
+              right: 18,
+              top: 64,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: _CameraLensCapsule(
+                  lenses: view.backCameraLenses,
+                  activeCameraId: view.activeCameraId,
+                  onSelected: view.onCameraSelected,
+                ),
+              ),
+            ),
           if (!view.pairingScanActive && !view.historyScanActive)
             Positioned(
               left: 0,
@@ -1144,6 +1172,88 @@ class _OperationModePill extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CameraLensCapsule extends StatelessWidget {
+  const _CameraLensCapsule({
+    required this.lenses,
+    required this.activeCameraId,
+    required this.onSelected,
+  });
+
+  final List<NativeCameraLens> lenses;
+  final String? activeCameraId;
+  final ValueChanged<String>? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final String active =
+        activeCameraId ??
+        lenses
+            .firstWhere(
+              (NativeCameraLens lens) => lens.isMain,
+              orElse: () => lenses.first,
+            )
+            .cameraId;
+    return Semantics(
+      container: true,
+      label: '选择后置镜头',
+      child: Material(
+        key: const Key('camera-lens-capsule'),
+        color: const Color(0xB3000000),
+        borderRadius: BorderRadius.circular(999),
+        clipBehavior: Clip.antiAlias,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (final NativeCameraLens lens in lenses)
+              _CameraLensPill(
+                lens: lens,
+                selected: lens.cameraId == active,
+                onPressed: () => onSelected?.call(lens.cameraId),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CameraLensPill extends StatelessWidget {
+  const _CameraLensPill({
+    required this.lens,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final NativeCameraLens lens;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: Key('camera-lens-${lens.cameraId}'),
+      onTap: onPressed,
+      child: Ink(
+        color: selected ? const Color(0xFF42A5F5) : Colors.transparent,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 40),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Text(
+              lens.label,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+              ),
             ),
           ),
         ),

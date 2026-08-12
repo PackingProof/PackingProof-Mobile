@@ -118,6 +118,7 @@ class PackingSessionController extends ChangeNotifier {
   CameraController? _cameraController;
   ContinuousCameraService? _nativeCamera;
   ContinuousCameraInitialization? _nativeInitialization;
+  List<NativeCameraLens> _backCameraLenses = const <NativeCameraLens>[];
   PackingSessionPhase _phase = PackingSessionPhase.initializing;
   List<RecordingSession> _sessions = <RecordingSession>[];
   DateTime _lastAnalysisAt = DateTime.fromMillisecondsSinceEpoch(0);
@@ -241,6 +242,9 @@ class PackingSessionController extends ChangeNotifier {
       _nativeInitialization?.canSwitchCamera == true &&
       !_pairingScanActive &&
       !_historyScanActive;
+  List<NativeCameraLens> get backCameraLenses => _backCameraLenses;
+  bool get multiBackCameraAvailable => _backCameraLenses.length >= 2;
+  String? get activeCameraId => _nativeInitialization?.cameraId;
   bool get frontCameraActive =>
       Platform.isAndroid && _nativeInitialization?.isFrontCamera == true;
   String? get historyScanResult => _historyScanResult;
@@ -403,6 +407,7 @@ class PackingSessionController extends ChangeNotifier {
             },
           ));
         }
+        await _refreshBackCameraLenses();
         _speechService.resetIncidents();
         _setPhase(PackingSessionPhase.ready);
         return;
@@ -567,6 +572,7 @@ class PackingSessionController extends ChangeNotifier {
       _errorMessage = null;
       _setPhase(PackingSessionPhase.initializing);
       _nativeInitialization = await _nativeCamera!.switchCamera();
+      await _refreshBackCameraLenses();
       _setPhase(PackingSessionPhase.ready);
       unawaited(_captureCameraDiagnosticsSnapshot('switch_camera'));
     } on Object {
@@ -576,6 +582,50 @@ class PackingSessionController extends ChangeNotifier {
         _errorMessage = '摄像头切换失败，已恢复后置摄像头';
         notifyListeners();
       }
+    }
+  }
+
+  Future<void> switchToCamera(String cameraId) async {
+    final ContinuousCameraService? nativeCamera = _nativeCamera;
+    if (nativeCamera == null ||
+        isBusy ||
+        isWorking ||
+        !_backCameraLenses.any(
+          (NativeCameraLens lens) => lens.cameraId == cameraId,
+        )) {
+      return;
+    }
+    try {
+      if (_torchEnabled) {
+        await nativeCamera.setTorchEnabled(false);
+        _torchEnabled = false;
+      }
+      _errorMessage = null;
+      _setPhase(PackingSessionPhase.initializing);
+      _nativeInitialization = await nativeCamera.switchToCamera(cameraId);
+      await _refreshBackCameraLenses();
+      _setPhase(PackingSessionPhase.ready);
+      unawaited(_captureCameraDiagnosticsSnapshot('switch_lens'));
+    } on Object {
+      await _disposeCamera();
+      await initialize();
+      if (!_disposed) {
+        _errorMessage = '摄像头切换失败，已恢复默认后置摄像头';
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> _refreshBackCameraLenses() async {
+    final ContinuousCameraService? nativeCamera = _nativeCamera;
+    if (nativeCamera == null) return;
+    try {
+      _backCameraLenses = await nativeCamera.listCameras();
+    } on Object {
+      _backCameraLenses = const <NativeCameraLens>[];
+    }
+    if (!_disposed) {
+      notifyListeners();
     }
   }
 
@@ -2328,6 +2378,7 @@ class PackingSessionController extends ChangeNotifier {
       final ContinuousCameraService? nativeCamera = _nativeCamera;
       _nativeCamera = null;
       _nativeInitialization = null;
+      _backCameraLenses = const <NativeCameraLens>[];
       _torchEnabled = false;
       if (nativeCamera != null) {
         await nativeCamera.dispose();

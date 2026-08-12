@@ -25,6 +25,102 @@ void main() {
     expect(initialization.canSwitchCamera, isTrue);
     expect(initialization.flashAvailable, isFalse);
     expect(initialization.portraitPreviewSize, const Size(1080, 1920));
+    expect(initialization.cameraId, isNull);
+    expect(initialization.zoomRatio, 1.0);
+  });
+
+  test('后置镜头解析焦距、变焦倍数并生成标签', () {
+    final NativeCameraLens lens = NativeCameraLens.fromMap(<Object?, Object?>{
+      'cameraId': '3',
+      'focalLength': 2.2,
+      'zoomRatio': 0.4,
+      'isMain': false,
+    });
+    expect(lens.cameraId, '3');
+    expect(lens.focalLength, 2.2);
+    expect(lens.zoomRatio, 0.4);
+    expect(lens.isMain, isFalse);
+    expect(lens.label, '0.4x');
+    expect(
+      const NativeCameraLens(
+        cameraId: '0',
+        focalLength: 5.4,
+        zoomRatio: 1.0,
+        isMain: true,
+      ).label,
+      '1x',
+    );
+    expect(
+      const NativeCameraLens(
+        cameraId: '2',
+        focalLength: 6.8,
+        zoomRatio: 1.3,
+      ).label,
+      '1.3x',
+    );
+  });
+
+  test('枚举后置镜头与按镜头切换使用独立原生方法', () async {
+    const MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/continuous_camera',
+    );
+    final List<MethodCall> calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          calls.add(call);
+          if (call.method == 'listCameras') {
+            return <Object?>[
+              <String, Object?>{
+                'cameraId': '1',
+                'focalLength': 2.2,
+                'zoomRatio': 0.4,
+                'isMain': false,
+              },
+              <String, Object?>{
+                'cameraId': '0',
+                'focalLength': 5.4,
+                'zoomRatio': 1.0,
+                'isMain': true,
+              },
+            ];
+          }
+          if (call.method == 'switchToCamera') {
+            return <String, Object?>{
+              'textureId': 7,
+              'previewWidth': 1920,
+              'previewHeight': 1080,
+              'sensorOrientation': 270,
+              'fps': 30,
+              'videoMime': 'video/hevc',
+              'flashAvailable': false,
+              'lensDirection': 'back',
+              'canSwitchCamera': true,
+              'cameraId': '1',
+              'zoomRatio': 0.4,
+            };
+          }
+          return null;
+        });
+    final ContinuousCameraService service = ContinuousCameraService();
+
+    final List<NativeCameraLens> lenses = await service.listCameras();
+    final ContinuousCameraInitialization initialization = await service
+        .switchToCamera('1');
+
+    expect(lenses.map((NativeCameraLens lens) => lens.cameraId), <String>[
+      '1',
+      '0',
+    ]);
+    expect(initialization.cameraId, '1');
+    expect(initialization.zoomRatio, 0.4);
+    expect(calls.map((MethodCall call) => call.method), <String>[
+      'listCameras',
+      'switchToCamera',
+    ]);
+    expect(calls.last.arguments, <String, Object>{'cameraId': '1'});
+    await service.dispose();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
   });
 
   test('工作扫码和预览活跃状态使用独立的原生开关', () async {
@@ -145,10 +241,7 @@ void main() {
               'probeInProgress': false,
               'probeCached': true,
               'hardwareLevel': 0,
-              'capabilities': <Object?>[
-                'backward_compatible',
-                'manual_sensor',
-              ],
+              'capabilities': <Object?>['backward_compatible', 'manual_sensor'],
               'yuvSizes': <Object?>['960x540', '640x480'],
               'videoSizes': <Object?>['1920x1080', '1280x720'],
               'previewSizes': <Object?>['1920x1080'],
@@ -214,19 +307,13 @@ void main() {
     };
 
     final ByteData message = const StandardMethodCodec().encodeMethodCall(
-      const MethodCall(
-        'probeFinished',
-        <String, Object?>{
-          'results': <Object?>[
-            <String, Object?>{
-              'name': 'preview_only',
-              'result': 'configured',
-            },
-          ],
-          'cameraId': '0',
-          'hardwareLevel': 0,
-        },
-      ),
+      const MethodCall('probeFinished', <String, Object?>{
+        'results': <Object?>[
+          <String, Object?>{'name': 'preview_only', 'result': 'configured'},
+        ],
+        'cameraId': '0',
+        'hardwareLevel': 0,
+      }),
     );
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(
@@ -260,10 +347,9 @@ void main() {
     };
 
     final ByteData message = const StandardMethodCodec().encodeMethodCall(
-      const MethodCall(
-        'recordingFallback',
-        <String, Object?>{'mode': 'encoder_analysis'},
-      ),
+      const MethodCall('recordingFallback', <String, Object?>{
+        'mode': 'encoder_analysis',
+      }),
     );
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(

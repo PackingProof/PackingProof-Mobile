@@ -4,6 +4,7 @@ import 'package:packing_proof_mobile/app/packing_proof_mobile_app.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/screens/packing_home_screen.dart';
+import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 
 void main() {
   test('下拉通知栏不会暂停打包录像', () {
@@ -233,6 +234,57 @@ void main() {
       ),
     );
     expect(find.byKey(const Key('switch-camera-button')), findsNothing);
+  });
+
+  testWidgets('待机顶部胶囊列出后置镜头且工作中隐藏', (WidgetTester tester) async {
+    String? selected;
+    const List<NativeCameraLens> lenses = <NativeCameraLens>[
+      NativeCameraLens(cameraId: 'ultra', focalLength: 2.2, zoomRatio: 0.4),
+      NativeCameraLens(
+        cameraId: 'wide',
+        focalLength: 5.4,
+        zoomRatio: 1.0,
+        isMain: true,
+      ),
+      NativeCameraLens(cameraId: 'tele', focalLength: 6.8, zoomRatio: 1.3),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.ready,
+          elapsed: Duration.zero,
+          backCameraLenses: lenses,
+          activeCameraId: 'wide',
+          previewOverride: const ColoredBox(color: Colors.black),
+          onCameraSelected: (String id) => selected = id,
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('camera-lens-capsule')), findsOneWidget);
+    expect(find.text('0.4x'), findsOneWidget);
+    expect(find.text('1x'), findsOneWidget);
+    expect(find.text('1.3x'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('camera-lens-tele')));
+    expect(selected, 'tele');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 2),
+          backCameraLenses: lenses,
+          activeCameraId: 'wide',
+          previewOverride: const ColoredBox(color: Colors.black),
+          onCameraSelected: (String id) => selected = id,
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('camera-lens-capsule')), findsNothing);
   });
 
   testWidgets('启动录像时保持摄像头预览可见', (WidgetTester tester) async {

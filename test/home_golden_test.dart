@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/app/packing_proof_mobile_app.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/screens/packing_home_screen.dart';
+import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 
 Future<void> _loadAppFonts(WidgetTester tester) async {
   await tester.runAsync(() async {
@@ -93,6 +94,25 @@ void main() {
           phase: PackingSessionPhase.ready,
           elapsed: Duration.zero,
           nativePreviewSize: const Size(1080, 1920),
+          backCameraLenses: const <NativeCameraLens>[
+            NativeCameraLens(
+              cameraId: 'ultra',
+              focalLength: 2.2,
+              zoomRatio: 0.5,
+            ),
+            NativeCameraLens(
+              cameraId: 'wide',
+              focalLength: 5.4,
+              zoomRatio: 1.0,
+              isMain: true,
+            ),
+            NativeCameraLens(
+              cameraId: 'tele',
+              focalLength: 6.8,
+              zoomRatio: 3.0,
+            ),
+          ],
+          activeCameraId: 'wide',
           watermarkTimestamp: DateTime(2026, 7, 20, 10, 57, 50),
           previewOverride: Image(image: preview, fit: BoxFit.cover),
           onPrimaryPressed: () {},

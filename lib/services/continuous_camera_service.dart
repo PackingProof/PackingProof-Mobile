@@ -17,6 +17,8 @@ class ContinuousCameraInitialization {
     required this.flashAvailable,
     required this.lensDirection,
     required this.canSwitchCamera,
+    this.cameraId,
+    this.zoomRatio = 1.0,
   });
 
   final int textureId;
@@ -31,6 +33,8 @@ class ContinuousCameraInitialization {
   final bool flashAvailable;
   final String lensDirection;
   final bool canSwitchCamera;
+  final String? cameraId;
+  final double zoomRatio;
 
   bool get isFrontCamera => lensDirection == 'front';
 
@@ -54,7 +58,43 @@ class ContinuousCameraInitialization {
       flashAvailable: map['flashAvailable'] == true,
       lensDirection: '${map['lensDirection'] ?? 'back'}',
       canSwitchCamera: map['canSwitchCamera'] == true,
+      cameraId: map['cameraId'] as String?,
+      zoomRatio: (map['zoomRatio'] as num?)?.toDouble() ?? 1.0,
     );
+  }
+}
+
+/// 一颗可选的后置镜头（按焦距升序，[zoomRatio] 相对主摄换算）。
+class NativeCameraLens {
+  const NativeCameraLens({
+    required this.cameraId,
+    required this.focalLength,
+    required this.zoomRatio,
+    this.isMain = false,
+  });
+
+  final String cameraId;
+  final double focalLength;
+  final double zoomRatio;
+  final bool isMain;
+
+  factory NativeCameraLens.fromMap(Map<Object?, Object?> map) {
+    return NativeCameraLens(
+      cameraId: '${map['cameraId'] ?? ''}',
+      focalLength: (map['focalLength'] as num?)?.toDouble() ?? 0,
+      zoomRatio: (map['zoomRatio'] as num?)?.toDouble() ?? 1.0,
+      isMain: map['isMain'] == true,
+    );
+  }
+
+  /// 变焦倍数标签，如 0.5x、1x、1.3x。
+  String get label {
+    if (zoomRatio <= 0) return '1x';
+    final double rounded = (zoomRatio * 10).roundToDouble() / 10;
+    final String value = rounded == rounded.truncateToDouble()
+        ? rounded.toStringAsFixed(0)
+        : rounded.toStringAsFixed(1);
+    return '${value}x';
   }
 }
 
@@ -322,6 +362,28 @@ class ContinuousCameraService {
   Future<ContinuousCameraInitialization> switchCamera() async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('switchCamera'))!;
+    return ContinuousCameraInitialization.fromMap(values);
+  }
+
+  Future<List<NativeCameraLens>> listCameras() async {
+    final List<Object?>? values = await _channel.invokeMethod<List<Object?>>(
+      'listCameras',
+    );
+    if (values == null) return const <NativeCameraLens>[];
+    return values
+        .map(
+          (Object? value) => NativeCameraLens.fromMap(
+            Map<Object?, Object?>.from(value! as Map),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<ContinuousCameraInitialization> switchToCamera(String cameraId) async {
+    final Map<Object?, Object?> values = (await _channel
+        .invokeMethod<Map<Object?, Object?>>('switchToCamera', <String, Object>{
+          'cameraId': cameraId,
+        }))!;
     return ContinuousCameraInitialization.fromMap(values);
   }
 
