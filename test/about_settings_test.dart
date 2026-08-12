@@ -157,4 +157,34 @@ void main() {
 
     expect(find.text('分享不可用，诊断日志已复制到剪贴板'), findsOneWidget);
   });
+
+  testWidgets('长按应用名触发爱心彩蛋', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AboutScreen(
+          packageInfoLoader: () async => PackageInfo(
+            appName: '包裹留证',
+            packageName: 'app.packingproof.mobile',
+            version: '0.5.20',
+            buildNumber: '11020',
+          ),
+        ),
+      ),
+    );
+
+    await tester.longPress(find.text('PackingProof-Mobile'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byKey(const Key('heart-easter-egg-dialog')), findsOneWidget);
+    expect(find.text('感谢你的陪伴'), findsOneWidget);
+    expect(find.text('PackingProof ♥ 包裹留证'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('heart-easter-egg-close')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byKey(const Key('heart-easter-egg-dialog')), findsNothing);
+  });
 }

@@ -236,6 +236,11 @@ class _AboutScreenState extends State<AboutScreen> {
     ),
   );
 
+  Future<void> _showHeartEasterEgg() => showDialog<void>(
+    context: context,
+    builder: (BuildContext dialogContext) => const _HeartEasterEggDialog(),
+  );
+
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
@@ -277,6 +282,7 @@ class _AboutScreenState extends State<AboutScreen> {
                                 ? version
                                 : '$version · $revision',
                             onTap: _showStartupNotice,
+                            onLongPress: _showHeartEasterEgg,
                           );
                         },
                   ),
@@ -335,12 +341,14 @@ class _InfoRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.onTap,
+    this.onLongPress,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) => ListTile(
@@ -352,7 +360,96 @@ class _InfoRow extends StatelessWidget {
         ? null
         : const Icon(Icons.chevron_right_rounded, size: 20),
     onTap: onTap,
+    onLongPress: onLongPress,
   );
+}
+
+class _HeartEasterEggDialog extends StatefulWidget {
+  const _HeartEasterEggDialog();
+
+  @override
+  State<_HeartEasterEggDialog> createState() => _HeartEasterEggDialogState();
+}
+
+class _HeartEasterEggDialogState extends State<_HeartEasterEggDialog>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 3),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Dialog(
+      key: const Key('heart-easter-egg-dialog'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 28, 20, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            SizedBox(
+              height: 120,
+              child: Stack(
+                alignment: Alignment.center,
+                children: <Widget>[
+                  for (int index = 0; index < 6; index++)
+                    AnimatedBuilder(
+                      animation: _controller,
+                      builder: (BuildContext context, Widget? child) {
+                        final double progress =
+                            (_controller.value + index / 6) % 1.0;
+                        return Transform.translate(
+                          offset: Offset(
+                            (index % 3 - 1) * 34.0,
+                            -progress * 96 + 24,
+                          ),
+                          child: Opacity(
+                            opacity: (1 - progress).clamp(0.0, 1.0),
+                            child: const Icon(
+                              Icons.favorite_rounded,
+                              color: Color(0xFFE5484D),
+                              size: 24,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  const Icon(
+                    Icons.favorite_rounded,
+                    color: Color(0xFFE5484D),
+                    size: 56,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '感谢你的陪伴',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'PackingProof ♥ 包裹留证',
+              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
+            ),
+            const SizedBox(height: 14),
+            FilledButton(
+              key: const Key('heart-easter-egg-close'),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _LinkRow extends _InfoRow {
