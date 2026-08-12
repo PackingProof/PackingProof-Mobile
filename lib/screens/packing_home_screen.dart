@@ -1138,10 +1138,12 @@ class _OperationModePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
     final bool returning = mode == RecordingOperationMode.returnGoods;
-    final Color accent = returning
-        ? const Color(0xFFFFA726)
-        : const Color(0xFF42A5F5);
+    final Color accent = returning ? const Color(0xFFFFA726) : colors.primary;
+    final Color contentColor = selected && !returning
+        ? colors.onPrimary
+        : Colors.white;
     return InkWell(
       key: Key('operation-mode-${mode.storageValue}-pill'),
       onTap: enabled ? onPressed : null,
@@ -1160,13 +1162,13 @@ class _OperationModePill extends StatelessWidget {
                       ? Icons.keyboard_return_rounded
                       : Icons.local_shipping_rounded,
                   size: 18,
-                  color: Colors.white,
+                  color: contentColor,
                 ),
                 const SizedBox(width: 7),
                 Text(
                   mode.label,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: contentColor,
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1238,21 +1240,24 @@ class _CameraLensPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
     return InkWell(
       key: Key('camera-lens-${lens.cameraId}'),
       onTap: onPressed,
       child: Ink(
-        color: selected ? const Color(0xFF42A5F5) : Colors.transparent,
+        color: selected ? colors.primary : Colors.transparent,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 48, minHeight: 40),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Text(
-              lens.label,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Text(
+                lens.label,
+                style: TextStyle(
+                  color: selected ? colors.onPrimary : Colors.white,
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                ),
               ),
             ),
           ),

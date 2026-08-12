@@ -99,8 +99,46 @@ void main() {
       find.byKey(const Key('recording-control-panel')),
     );
     expect(readyModePills.bottom, lessThanOrEqualTo(readyControlPanel.top));
+    final ColorScheme readyColors = Theme.of(
+      tester.element(find.byKey(const Key('operation-mode-shipping-pill'))),
+    ).colorScheme;
+    final Ink shippingInk = tester.widget<Ink>(
+      find.descendant(
+        of: find.byKey(const Key('operation-mode-shipping-pill')),
+        matching: find.byType(Ink),
+      ),
+    );
+    expect(
+      (shippingInk.decoration! as BoxDecoration).color,
+      readyColors.primary,
+    );
     await tester.tap(find.byKey(const Key('operation-mode-return-pill')));
     expect(selected, RecordingOperationMode.returnGoods);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.ready,
+          elapsed: Duration.zero,
+          previewOverride: const ColoredBox(color: Colors.black),
+          operationMode: selected,
+          onOperationModeChanged: (RecordingOperationMode mode) {
+            selected = mode;
+          },
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+    final Ink returnInk = tester.widget<Ink>(
+      find.descendant(
+        of: find.byKey(const Key('operation-mode-return-pill')),
+        matching: find.byType(Ink),
+      ),
+    );
+    expect(
+      (returnInk.decoration! as BoxDecoration).color,
+      const Color(0xFFFFA726),
+    );
 
     await tester.pumpWidget(
       MaterialApp(
@@ -267,6 +305,29 @@ void main() {
     expect(find.text('0.4x'), findsOneWidget);
     expect(find.text('1x'), findsOneWidget);
     expect(find.text('1.3x'), findsOneWidget);
+    final ColorScheme lensColors = Theme.of(
+      tester.element(find.byKey(const Key('camera-lens-capsule'))),
+    ).colorScheme;
+    final Ink activeLensInk = tester.widget<Ink>(
+      find.descendant(
+        of: find.byKey(const Key('camera-lens-wide')),
+        matching: find.byType(Ink),
+      ),
+    );
+    expect(
+      (activeLensInk.decoration! as BoxDecoration).color,
+      lensColors.primary,
+    );
+    final Text activeLensText = tester.widget<Text>(find.text('1x'));
+    expect(activeLensText.style?.color, lensColors.onPrimary);
+    final Rect activeLensRect = tester.getRect(
+      find.byKey(const Key('camera-lens-wide')),
+    );
+    final Rect activeLensTextRect = tester.getRect(find.text('1x'));
+    expect(
+      (activeLensRect.center - activeLensTextRect.center).distance,
+      lessThanOrEqualTo(2),
+    );
     await tester.tap(find.byKey(const Key('camera-lens-tele')));
     expect(selected, 'tele');
 
