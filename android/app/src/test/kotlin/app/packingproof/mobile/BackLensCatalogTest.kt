@@ -63,4 +63,21 @@ class BackLensCatalogTest {
         )
         assertEquals("ultra", lenses.single { it.isMain }.cameraId)
     }
+
+    @Test
+    fun `指定主摄cameraId时优先以其为1x基准`() {
+        val lenses = BackLensCatalog.build(
+            listOf(
+                "ultra" to 2.61f,
+                "wide" to 6.62f,
+                "tele" to 17.27f,
+            ),
+            mainCameraId = "wide",
+        )
+        assertEquals(listOf("ultra", "wide", "tele"), lenses.map { it.cameraId })
+        assertEquals(0.4, lenses[0].zoomRatio, 0.001)
+        assertEquals(1.0, lenses[1].zoomRatio, 0.001)
+        assertEquals(2.6, lenses[2].zoomRatio, 0.001)
+        assertEquals("wide", lenses.single { it.isMain }.cameraId)
+    }
 }

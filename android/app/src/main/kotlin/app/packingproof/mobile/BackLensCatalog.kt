@@ -18,7 +18,10 @@ object BackLensCatalog {
     const val MAIN_FOCAL_REFERENCE_MM = 4.5f
     const val DUPLICATE_FOCAL_TOLERANCE = 0.05f
 
-    fun build(entries: List<Pair<String, Float>>): List<BackLensInfo> {
+    fun build(
+        entries: List<Pair<String, Float>>,
+        mainCameraId: String? = null,
+    ): List<BackLensInfo> {
         val valid = entries.filter { it.second > 0f }
         val deduped = ArrayList<Pair<String, Float>>()
         for (entry in valid) {
@@ -31,9 +34,12 @@ object BackLensCatalog {
             }
         }
         if (deduped.isEmpty()) return emptyList()
-        val main = deduped.minByOrNull {
-            abs(it.second - MAIN_FOCAL_REFERENCE_MM)
-        } ?: return emptyList()
+        val main = mainCameraId
+            ?.let { id -> deduped.firstOrNull { it.first == id } }
+            ?: deduped.minByOrNull {
+                abs(it.second - MAIN_FOCAL_REFERENCE_MM)
+            }
+            ?: return emptyList()
         return deduped
             .sortedBy { it.second }
             .map { entry ->

@@ -438,14 +438,10 @@ class ContinuousSegmentCamera(
 
     fun currentCameraId(): String? = selectedCameraId
 
-    fun hasBackCamera(cameraId: String): Boolean =
-        cameraId in cameraManager.cameraIdList &&
-            cameraManager.getCameraCharacteristics(cameraId)
-                .get(CameraCharacteristics.LENS_FACING) ==
-            CameraCharacteristics.LENS_FACING_BACK
+    fun hasBackCamera(cameraId: String): Boolean = cameraId in allBackCameraIds()
 
     fun listCameras(): List<Map<String, Any?>> =
-        buildBackLenses().map { lens ->
+        buildBackLenses(defaultBackCameraId()).map { lens ->
             mapOf(
                 "cameraId" to lens.cameraId,
                 "focalLength" to lens.focalLength,
@@ -454,21 +450,55 @@ class ContinuousSegmentCamera(
             )
         }
 
-    private fun buildBackLenses(): List<BackLensInfo> =
-        BackLensCatalog.build(
-            cameraManager.cameraIdList.mapNotNull { id ->
-                val characteristics = cameraManager.getCameraCharacteristics(id)
-                if (characteristics.get(CameraCharacteristics.LENS_FACING) !=
-                    CameraCharacteristics.LENS_FACING_BACK
-                ) {
-                    return@mapNotNull null
+    private fun buildBackLenses(mainCameraId: String? = null): List<BackLensInfo> {
+        val logicalBack = cameraManager.cameraIdList.filter(::isBackCamera)
+        val entries = ArrayList<Pair<String, Float>>()
+        for (id in logicalBack) {
+            addBackLensEntry(entries, id)
+        }
+        for (id in logicalBack) {
+            for (physicalId in cameraManager.getCameraCharacteristics(id).physicalCameraIds) {
+                if (isBackCamera(physicalId)) {
+                    addBackLensEntry(entries, physicalId)
                 }
-                val focalLength = characteristics.get(
-                    CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS,
-                )?.firstOrNull() ?: return@mapNotNull null
-                id to focalLength
-            },
+            }
+        }
+        return BackLensCatalog.build(
+            entries,
+            mainCameraId = mainCameraId ?: logicalBack.firstOrNull(),
         )
+    }
+
+    private fun addBackLensEntry(
+        entries: MutableList<Pair<String, Float>>,
+        cameraId: String,
+    ) {
+        val focalLength = cameraManager.getCameraCharacteristics(cameraId)
+            .get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+            ?.firstOrNull() ?: return
+        entries.add(cameraId to focalLength)
+    }
+
+    private fun isBackCamera(cameraId: String): Boolean =
+        cameraManager.getCameraCharacteristics(cameraId)
+            .get(CameraCharacteristics.LENS_FACING) ==
+        CameraCharacteristics.LENS_FACING_BACK
+
+    private fun allBackCameraIds(): Set<String> {
+        val logicalBack = cameraManager.cameraIdList.filter(::isBackCamera)
+        val ids = logicalBack.toMutableSet()
+        for (id in logicalBack) {
+            for (physicalId in cameraManager.getCameraCharacteristics(id).physicalCameraIds) {
+                if (isBackCamera(physicalId)) {
+                    ids.add(physicalId)
+                }
+            }
+        }
+        return ids
+    }
+
+    private fun defaultBackCameraId(): String? =
+        cameraManager.cameraIdList.firstOrNull(::isBackCamera)
 
     fun dispose(onDisposed: (() -> Unit)? = null) {
         if (disposed) {
@@ -802,7 +832,7 @@ class ContinuousSegmentCamera(
         val configuration = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             ?: throw IllegalStateException("无法读取摄像头输出能力")
         selectedCameraId = cameraId
-        selectedZoomRatio = buildBackLenses()
+        selectedZoomRatio = buildBackLenses(defaultBackCameraId())
             .firstOrNull { it.cameraId == cameraId }
             ?.zoomRatio
             ?: 1.0
