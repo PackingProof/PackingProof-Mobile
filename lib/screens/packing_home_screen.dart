@@ -73,6 +73,12 @@ bool shouldBlockTabSwitch({
 }) => (workInProgress || busy) && to != 1;
 
 @visibleForTesting
+bool shouldHideMainBottomNavigation({
+  required bool pairingScanActive,
+  required bool working,
+}) => pairingScanActive || working;
+
+@visibleForTesting
 Future<void> showComputerPairingFailureDialog(
   BuildContext context,
   String message,
@@ -539,7 +545,11 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                 _buildRecordingsScreen(RecordingsScreenMode.settings),
               ],
             ),
-            bottomNavigationBar: _controller.pairingScanActive
+            bottomNavigationBar:
+                shouldHideMainBottomNavigation(
+                  pairingScanActive: _controller.pairingScanActive,
+                  working: _controller.isWorking,
+                )
                 ? null
                 : _PackingBottomNavigation(
                     selectedIndex: _selectedTab,
@@ -754,6 +764,8 @@ class PackingHomeView extends StatelessWidget {
   final Widget? previewOverride;
   final DateTime? watermarkTimestamp;
 
+  static const double workingBottomGap = 40;
+
   bool get _isRecording => phase == PackingSessionPhase.recording;
   bool get _isWorking =>
       phase == PackingSessionPhase.waitingForBarcode ||
@@ -772,18 +784,25 @@ class PackingHomeView extends StatelessWidget {
         bottom: false,
         child: LayoutBuilder(
           builder: (BuildContext context, BoxConstraints constraints) {
-            final double minimumPanelHeight = (constraints.maxHeight * 0.18)
-                .clamp(136.0, 156.0);
+            final double bottomInset = MediaQuery.paddingOf(context).bottom;
+            final double bottomGap = _isWorking
+                ? PackingHomeView.workingBottomGap
+                : 0;
+            final double minimumPanelHeight = _isWorking
+                ? (constraints.maxHeight * 0.14).clamp(112.0, 122.0)
+                : (constraints.maxHeight * 0.18).clamp(136.0, 156.0);
             final double previewAspectRatio = _portraitPreviewAspectRatio;
             final double cameraHeight =
                 (constraints.maxWidth / previewAspectRatio).clamp(
                   0.0,
                   constraints.maxHeight,
                 );
-            final double naturalPanelTop =
-                constraints.maxHeight - minimumPanelHeight;
-            final double panelTop = naturalPanelTop;
-            final double panelHeight = constraints.maxHeight - panelTop;
+            final double panelTop =
+                constraints.maxHeight -
+                bottomInset -
+                bottomGap -
+                minimumPanelHeight;
+            final double panelHeight = minimumPanelHeight;
             final double cameraPanelOverlap = (cameraHeight - panelTop).clamp(
               0.0,
               cameraHeight,
@@ -801,7 +820,10 @@ class PackingHomeView extends StatelessWidget {
                 ),
                 Align(
                   alignment: Alignment.bottomCenter,
-                  child: _ControlPanel(view: this, height: panelHeight),
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: bottomInset + bottomGap),
+                    child: _ControlPanel(view: this, height: panelHeight),
+                  ),
                 ),
               ],
             );
@@ -1531,14 +1553,19 @@ class _ControlPanel extends StatelessWidget {
     return PhysicalShape(
       key: const Key('recording-control-panel'),
       clipper: const _ShallowUpwardArcClipper(),
-      color: colors.surface,
+      color: colors.surface.withValues(alpha: 0.66),
       shadowColor: const Color(0x44000000),
       elevation: 10,
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
         height: height,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 17, 24, 8),
+          padding: EdgeInsets.fromLTRB(
+            24,
+            view._isWorking ? 10 : 17,
+            24,
+            view._isWorking ? 6 : 8,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
@@ -1688,6 +1715,7 @@ class _PrimaryWorkButtonState extends State<_PrimaryWorkButton>
           ? FilledButton.styleFrom(
               backgroundColor: const Color(0xFFD92D20),
               foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(54),
             )
           : null,
       child: SizedBox(

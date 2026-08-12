@@ -50,6 +50,25 @@ void main() {
     );
   });
 
+  test('工作中或配对扫码时隐藏底部导航', () {
+    expect(
+      shouldHideMainBottomNavigation(pairingScanActive: false, working: false),
+      isFalse,
+    );
+    expect(
+      shouldHideMainBottomNavigation(pairingScanActive: false, working: true),
+      isTrue,
+    );
+    expect(
+      shouldHideMainBottomNavigation(pairingScanActive: true, working: false),
+      isTrue,
+    );
+    expect(
+      shouldHideMainBottomNavigation(pairingScanActive: true, working: true),
+      isTrue,
+    );
+  });
+
   test('录像首页两秒内第二次返回才退出', () {
     expect(_resolve(now), PackingBackAction.armExit);
     expect(

@@ -50,6 +50,10 @@ void main() {
         tester.element(find.byKey(const Key('camera-preview-backing'))),
       ).colorScheme.surface,
     );
+    final PhysicalShape controlPanelShape = tester.widget<PhysicalShape>(
+      find.byKey(const Key('recording-control-panel')),
+    );
+    expect(controlPanelShape.color.a, closeTo(0.66, 0.01));
     expect(find.byType(TextField), findsNothing);
     expect(find.byKey(const Key('recording-button-shimmer')), findsNothing);
   });
@@ -359,8 +363,9 @@ void main() {
       find.byKey(const Key('recording-control-panel')),
     );
     expect(previewViewport.size.aspectRatio, closeTo(9 / 16, 0.001));
-    expect(controlPanel.height, inInclusiveRange(136, 156));
+    expect(controlPanel.height, inInclusiveRange(112, 122));
     expect(controlPanel.top, greaterThan(previewViewport.bottom - 24));
+    expect(controlPanel.bottom, lessThanOrEqualTo(844 - 36));
     expect(durationPill.bottom, lessThan(controlPanel.top));
     expect(durationPill.center.dx, closeTo(previewViewport.center.dx, 1));
     expect(
@@ -381,6 +386,10 @@ void main() {
 
     final FilledButton stopButton = tester.widget<FilledButton>(
       find.byKey(const Key('primary-work-button')),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('primary-work-button'))).height,
+      greaterThanOrEqualTo(54),
     );
     expect(
       stopButton.style?.backgroundColor?.resolve(<WidgetState>{}),
@@ -453,5 +462,6 @@ void main() {
     expect(operationModePills.bottom, lessThanOrEqualTo(controlPanel.top));
     expect(operationModePills.width, lessThanOrEqualTo(320));
     expect(operationModePills.height, greaterThanOrEqualTo(48));
+    expect(controlPanel.bottom, lessThanOrEqualTo(640 - 36));
   });
 }
