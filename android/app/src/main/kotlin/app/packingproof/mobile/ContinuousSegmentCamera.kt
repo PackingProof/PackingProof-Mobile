@@ -1162,7 +1162,7 @@ class ContinuousSegmentCamera(
 
     private fun analyzeImage(reader: ImageReader) {
         val image = reader.acquireLatestImage() ?: return
-        if ((!recordingActive && !recordingRequested && !workScanEnabled && !pairingScanEnabled) || scannerBusy || SystemClock.elapsedRealtime() - lastAnalysisElapsedMs < ANALYSIS_INTERVAL_MS) {
+        if (!previewActive || scannerBusy || SystemClock.elapsedRealtime() - lastAnalysisElapsedMs < ANALYSIS_INTERVAL_MS) {
             image.close()
             return
         }

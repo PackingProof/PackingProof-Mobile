@@ -9,8 +9,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import '../models/speech_prompt.dart';
 
 bool _isModeAnnouncement(SpeechPrompt? prompt) =>
-    prompt == SpeechPrompt.shippingMode ||
-    prompt == SpeechPrompt.returnMode;
+    prompt == SpeechPrompt.shippingMode || prompt == SpeechPrompt.returnMode;
 
 abstract interface class SpeechPromptSink {
   bool get enabled;
@@ -20,6 +19,8 @@ abstract interface class SpeechPromptSink {
   void enqueue(SpeechPrompt prompt, {String? incidentKey});
 
   Future<void> preview();
+
+  void playShortBeep();
 
   void resetIncidents();
 
@@ -72,6 +73,8 @@ abstract interface class SpeechOutput {
   Future<void> playWarningTone();
 
   Future<void> playIndustrialAlarm();
+
+  Future<void> playShortBeep();
 
   Future<void> speakSystem(String text, {bool offlineOnly = false});
 
@@ -190,6 +193,14 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
     await waitUntilIdle();
   }
 
+  @override
+  void playShortBeep() {
+    if (_disposed || !_enabled) {
+      return;
+    }
+    unawaited(_output.playShortBeep());
+  }
+
   Future<void> waitUntilIdle() async {
     while (_draining || _queue.isNotEmpty) {
       await Future<void>.delayed(const Duration(milliseconds: 1));
@@ -289,8 +300,10 @@ class DeviceSpeechOutput implements SpeechOutput {
 
   final AudioPlayer _audioPlayer;
   final FlutterTts _systemTts;
+  AudioPlayer? _beepPlayer;
   Completer<void>? _activePlayback;
   bool _audioContextConfigured = false;
+  bool _beepContextConfigured = false;
 
   @override
   Future<void> playAsset(String assetPath) => _play(AssetSource(assetPath));
@@ -304,6 +317,68 @@ class DeviceSpeechOutput implements SpeechOutput {
   @override
   Future<void> playIndustrialAlarm() =>
       _play(BytesSource(_industrialAlarmWav()));
+
+  @override
+  Future<void> playShortBeep() async {
+    final AudioPlayer player = _beepPlayer ??= AudioPlayer();
+    if (!_beepContextConfigured) {
+      await player.setAudioContext(
+        AudioContext(
+          android: const AudioContextAndroid(
+            contentType: AndroidContentType.sonification,
+            usageType: AndroidUsageType.notificationEvent,
+            audioFocus: AndroidAudioFocus.gainTransient,
+          ),
+        ),
+      );
+      _beepContextConfigured = true;
+    }
+    await player.play(BytesSource(buildShortBeepWav()));
+  }
+
+  /// 与电脑端一致的识别短滴声：1200Hz、80ms、0.55 音量单音。
+  static Uint8List buildShortBeepWav() {
+    const int sampleRate = 22050;
+    const int toneMs = 80;
+    const double volume = 0.55;
+    const int frequency = 1200;
+    final int toneSamples = sampleRate * toneMs ~/ 1000;
+    final int sampleCount = toneSamples;
+    final ByteData wav = ByteData(44 + sampleCount * 2);
+    void ascii(int offset, String value) {
+      for (int index = 0; index < value.length; index++) {
+        wav.setUint8(offset + index, value.codeUnitAt(index));
+      }
+    }
+
+    ascii(0, 'RIFF');
+    wav.setUint32(4, 36 + sampleCount * 2, Endian.little);
+    ascii(8, 'WAVE');
+    ascii(12, 'fmt ');
+    wav.setUint32(16, 16, Endian.little);
+    wav.setUint16(20, 1, Endian.little);
+    wav.setUint16(22, 1, Endian.little);
+    wav.setUint32(24, sampleRate, Endian.little);
+    wav.setUint32(28, sampleRate * 2, Endian.little);
+    wav.setUint16(32, 2, Endian.little);
+    wav.setUint16(34, 16, Endian.little);
+    ascii(36, 'data');
+    wav.setUint32(40, sampleCount * 2, Endian.little);
+    for (int index = 0; index < toneSamples; index++) {
+      final int edge = math.max(1, toneSamples ~/ 10);
+      final double envelope = index < edge
+          ? index / edge
+          : index >= toneSamples - edge
+          ? (toneSamples - index - 1) / edge
+          : 1;
+      final double value =
+          math.sin(2 * math.pi * frequency * index / sampleRate) *
+          volume *
+          envelope;
+      wav.setInt16(44 + index * 2, (value * 32767).round(), Endian.little);
+    }
+    return wav.buffer.asUint8List();
+  }
 
   static Uint8List _remarkToneWav() {
     const int sampleRate = 22050;
@@ -564,5 +639,10 @@ class DeviceSpeechOutput implements SpeechOutput {
   Future<void> dispose() async {
     await stop();
     await _audioPlayer.dispose();
+    final AudioPlayer? beepPlayer = _beepPlayer;
+    _beepPlayer = null;
+    if (beepPlayer != null) {
+      await beepPlayer.dispose();
+    }
   }
 }

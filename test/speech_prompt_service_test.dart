@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
@@ -152,6 +153,31 @@ void main() {
     expect(output.stopCount, greaterThanOrEqualTo(1));
     await service.dispose();
   });
+
+  test('识别短滴声使用电脑端同款单音波形', () {
+    final Uint8List wav = DeviceSpeechOutput.buildShortBeepWav();
+    expect(wav.length, greaterThan(44));
+    expect(wav.sublist(0, 4), <int>[82, 73, 70, 70]); // RIFF
+    expect(wav.sublist(8, 12), <int>[87, 65, 86, 69]); // WAVE
+    expect(wav.sublist(12, 16), <int>[102, 109, 116, 32]); // fmt
+    expect(wav.sublist(36, 40), <int>[100, 97, 116, 97]); // data
+    // 80ms @ 22050Hz 单声道 16bit
+    expect((wav.length - 44) ~/ 2, 22050 * 80 ~/ 1000);
+  });
+
+  test('识别短滴声跟随语音提示开关且不打断播报', () async {
+    final _InterruptibleSpeechOutput output = _InterruptibleSpeechOutput();
+    final SpeechPromptService service = SpeechPromptService(output: output);
+
+    service.playShortBeep();
+    expect(output.shortBeepCount, 1);
+    expect(output.stopCount, 0);
+
+    await service.setEnabled(false);
+    service.playShortBeep();
+    expect(output.shortBeepCount, 1);
+    await service.dispose();
+  });
 }
 
 class _FakeSpeechOutput implements SpeechOutput {
@@ -165,6 +191,7 @@ class _FakeSpeechOutput implements SpeechOutput {
   int remarkToneCount = 0;
   int warningToneCount = 0;
   int industrialAlarmCount = 0;
+  int shortBeepCount = 0;
 
   @override
   Future<void> playAsset(String assetPath) async {
@@ -183,6 +210,9 @@ class _FakeSpeechOutput implements SpeechOutput {
 
   @override
   Future<void> playIndustrialAlarm() async => industrialAlarmCount++;
+
+  @override
+  Future<void> playShortBeep() async => shortBeepCount++;
 
   @override
   Future<void> speakSystem(String text, {bool offlineOnly = false}) async {

@@ -21,6 +21,7 @@ import '../models/speech_prompt.dart';
 import '../models/storage_notice.dart';
 import '../models/work_mode.dart';
 import '../services/barcode_candidate_policy.dart';
+import '../services/barcode_recognized_beep_policy.dart';
 import '../services/barcode_stability_tracker.dart';
 import '../services/barcode_work_mode_policy.dart';
 import '../services/camera_diagnostics_service.dart';
@@ -95,8 +96,9 @@ class PackingSessionController extends ChangeNotifier {
 
   static const Duration analysisInterval = Duration(milliseconds: 200);
   static const Duration transitionSettleDelay = Duration(milliseconds: 120);
-  static const Duration initialModeAnnouncementDelay =
-      Duration(milliseconds: 250);
+  static const Duration initialModeAnnouncementDelay = Duration(
+    milliseconds: 250,
+  );
   static const int recordingFps = 30;
 
   final SessionRepository _repository;
@@ -107,6 +109,8 @@ class PackingSessionController extends ChangeNotifier {
   final OrderInfoReceiverSink _orderInfoReceiver;
   final BarcodeScanner _barcodeScanner;
   final BarcodeStabilityTracker _stabilityTracker = BarcodeStabilityTracker();
+  final BarcodeRecognizedBeepPolicy _recognizedBeepPolicy =
+      BarcodeRecognizedBeepPolicy();
   final RecordingTimeline _timeline = RecordingTimeline();
   final InitialRecordingPromptPolicy _initialPromptPolicy =
       InitialRecordingPromptPolicy();
@@ -399,13 +403,15 @@ class PackingSessionController extends ChangeNotifier {
             _codecFallbackMessage(codecFallbackReason),
             name: 'PackingProof.Codec',
           );
-          unawaited(_runtimeLog.log(
-            kind: 'codec_fallback',
-            extra: <String, Object?>{
-              'reason': codecFallbackReason,
-              'videoMime': _nativeInitialization?.videoMime,
-            },
-          ));
+          unawaited(
+            _runtimeLog.log(
+              kind: 'codec_fallback',
+              extra: <String, Object?>{
+                'reason': codecFallbackReason,
+                'videoMime': _nativeInitialization?.videoMime,
+              },
+            ),
+          );
         }
         await _refreshBackCameraLenses();
         _speechService.resetIncidents();
@@ -1428,6 +1434,17 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   void _processNativeBarcodeFrame(List<NativeBarcodeCandidate> candidates) {
+    if (_recognizedBeepPolicy.shouldBeep(
+      candidates.map((NativeBarcodeCandidate candidate) => candidate.value),
+    )) {
+      _speechService.playShortBeep();
+      unawaited(
+        _runtimeLog.log(
+          kind: 'recognized_beep',
+          extra: const <String, Object?>{},
+        ),
+      );
+    }
     if (_historyScanActive) {
       NativeBarcodeCandidate? match;
       for (final NativeBarcodeCandidate candidate in candidates) {
@@ -1500,6 +1517,13 @@ class PackingSessionController extends ChangeNotifier {
       _candidateCode = observation.candidateCode;
       notifyListeners();
     }
+  }
+
+  @visibleForTesting
+  void handleNativeBarcodeFrameForTesting(
+    List<NativeBarcodeCandidate> candidates,
+  ) {
+    _processNativeBarcodeFrame(candidates);
   }
 
   Future<void> _processFrame(CameraImage image) async {
@@ -2239,8 +2263,8 @@ class PackingSessionController extends ChangeNotifier {
       if (_disposed || !isWorking || isRecording) {
         return;
       }
-      final SpeechPrompt? prompt =
-          _initialPromptPolicy.onModeAnnouncementElapsed();
+      final SpeechPrompt? prompt = _initialPromptPolicy
+          .onModeAnnouncementElapsed();
       if (prompt != null) {
         _speechService.enqueue(prompt);
       }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
 import 'package:packing_proof_mobile/services/camera_diagnostics_service.dart';
+import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 import 'package:packing_proof_mobile/services/diagnostics_log_service.dart';
 import 'package:packing_proof_mobile/services/speech_prompt_service.dart';
 
@@ -44,6 +45,39 @@ void main() {
     expect(content, contains('"kind":"init_failed"'));
     expect(content, contains('"code":"unknown"'));
   });
+
+  test('任意状态识别条码都会触发独立滴声且同码不重复', () async {
+    final _FakeSpeechSink speech = _FakeSpeechSink();
+    final PackingSessionController controller = PackingSessionController(
+      repository: testRepository(root),
+      speechService: speech,
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(value: 'CLEAR', area: 100),
+    ]);
+    expect(speech.beepCount, 1);
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(value: 'CLEAR', area: 100),
+    ]);
+    expect(speech.beepCount, 1);
+    controller.handleNativeBarcodeFrameForTesting(
+      const <NativeBarcodeCandidate>[],
+    );
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(value: 'CLEAR', area: 100),
+    ]);
+    expect(speech.beepCount, 2);
+
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(value: 'YT123456789012', area: 200),
+    ]);
+    expect(speech.beepCount, 3);
+  });
 }
 
 Future<String> _waitForInitFailed(
@@ -65,6 +99,7 @@ Future<String> _waitForInitFailed(
 
 class _FakeSpeechSink implements SpeechPromptSink {
   final List<SpeechPrompt> prompts = <SpeechPrompt>[];
+  int beepCount = 0;
 
   @override
   bool enabled = true;
@@ -81,6 +116,13 @@ class _FakeSpeechSink implements SpeechPromptSink {
 
   @override
   Future<void> preview() async {}
+
+  @override
+  void playShortBeep() {
+    if (enabled) {
+      beepCount++;
+    }
+  }
 
   @override
   void resetIncidents() {}
