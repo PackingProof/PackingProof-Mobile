@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
+import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
 import 'package:packing_proof_mobile/services/camera_diagnostics_service.dart';
 import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
@@ -87,6 +88,54 @@ void main() {
       const NativeBarcodeCandidate(value: 'YT123456789012', area: 200),
     ]);
     expect(speech.beepCount, 3);
+  });
+
+  test('未开始工作时识别指令码立即生效且同码不重复', () async {
+    final _FakeSpeechSink speech = _FakeSpeechSink();
+    final PackingSessionController controller = PackingSessionController(
+      repository: testRepository(root),
+      speechService: speech,
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(value: 'BACK', area: 100),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.operationMode, RecordingOperationMode.returnGoods);
+    expect(speech.prompts, contains(SpeechPrompt.returnMode));
+    expect(speech.beepCount, 1);
+
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(value: 'BACK', area: 100),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+    expect(speech.beepCount, 1);
+    expect(
+      speech.prompts.where(
+        (SpeechPrompt prompt) => prompt == SpeechPrompt.returnMode,
+      ),
+      hasLength(1),
+    );
+
+    controller.handleNativeBarcodeFrameForTesting(
+      const <NativeBarcodeCandidate>[],
+    );
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(value: 'SHIP', area: 100),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.operationMode, RecordingOperationMode.shipping);
+    expect(speech.beepCount, 2);
+
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(value: 'STOP', area: 100),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.operationMode, RecordingOperationMode.shipping);
   });
 }
 

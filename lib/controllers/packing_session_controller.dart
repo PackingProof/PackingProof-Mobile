@@ -159,6 +159,7 @@ class PackingSessionController extends ChangeNotifier {
   String? _rejectedBarcodeMessage;
   String _lastRejectedBarcodeCode = '';
   DateTime? _lastRejectedBarcodeAt;
+  String? _lastTriggeredCommandCode;
   bool _processingFrame = false;
   bool _handlingBarcode = false;
   bool _disposed = false;
@@ -1445,6 +1446,39 @@ class PackingSessionController extends ChangeNotifier {
         ),
       );
     }
+    String? visibleCode;
+    for (final NativeBarcodeCandidate candidate in candidates) {
+      final String normalized = BarcodeCandidatePolicy.normalize(
+        candidate.value,
+      );
+      if (normalized.isNotEmpty) {
+        visibleCode = normalized;
+        break;
+      }
+    }
+    if (visibleCode != null) {
+      final MobileBarcodeCommand? command =
+          BarcodeCandidatePolicy.mobileCommandFor(visibleCode);
+      if (command != null) {
+        if (!_historyScanActive &&
+            !_pairingScanActive &&
+            !_handlingBarcode &&
+            visibleCode != _lastTriggeredCommandCode) {
+          _lastTriggeredCommandCode = visibleCode;
+          _handlingBarcode = true;
+          unawaited(
+            _handleMobileBarcodeCommand(command).whenComplete(() {
+              _handlingBarcode = false;
+            }),
+          );
+        }
+      } else if (_lastTriggeredCommandCode != null) {
+        // 画面换成普通码后，允许同一条指令再次触发。
+        _lastTriggeredCommandCode = null;
+      }
+    } else {
+      _lastTriggeredCommandCode = null;
+    }
     if (_historyScanActive) {
       NativeBarcodeCandidate? match;
       for (final NativeBarcodeCandidate candidate in candidates) {
@@ -1485,14 +1519,11 @@ class PackingSessionController extends ChangeNotifier {
     String? validCode;
     int largestArea = -1;
     for (final NativeBarcodeCandidate candidate in candidates) {
-      final bool isCommand =
-          BarcodeCandidatePolicy.mobileCommandFor(candidate.value) != null;
-      if ((isCommand ||
-              BarcodeCandidatePolicy.isValidForWorkScan(
-                candidate.value,
-                format: candidate.format,
-                minimumLength: _minimumBarcodeLength,
-              )) &&
+      if (BarcodeCandidatePolicy.isValidForWorkScan(
+            candidate.value,
+            format: candidate.format,
+            minimumLength: _minimumBarcodeLength,
+          ) &&
           candidate.area > largestArea) {
         largestArea = candidate.area;
         validCode = BarcodeCandidatePolicy.normalize(candidate.value);
@@ -1805,14 +1836,18 @@ class PackingSessionController extends ChangeNotifier {
       case MobileBarcodeCommand.switchShipping:
         if (_operationMode != RecordingOperationMode.shipping) {
           _operationMode = RecordingOperationMode.shipping;
-          notifyListeners();
+          if (!_disposed) {
+            notifyListeners();
+          }
           _speechService.enqueue(SpeechPrompt.shippingMode);
         }
         break;
       case MobileBarcodeCommand.switchReturn:
         if (_operationMode != RecordingOperationMode.returnGoods) {
           _operationMode = RecordingOperationMode.returnGoods;
-          notifyListeners();
+          if (!_disposed) {
+            notifyListeners();
+          }
           _speechService.enqueue(SpeechPrompt.returnMode);
         }
         break;
