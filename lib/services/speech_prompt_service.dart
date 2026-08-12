@@ -301,6 +301,7 @@ class DeviceSpeechOutput implements SpeechOutput {
   final AudioPlayer _audioPlayer;
   final FlutterTts _systemTts;
   AudioPlayer? _beepPlayer;
+  Uint8List? _shortBeepWav;
   Completer<void>? _activePlayback;
   bool _audioContextConfigured = false;
   bool _beepContextConfigured = false;
@@ -333,7 +334,7 @@ class DeviceSpeechOutput implements SpeechOutput {
       );
       _beepContextConfigured = true;
     }
-    await player.play(BytesSource(buildShortBeepWav()));
+    await player.play(BytesSource(_shortBeepWav ??= buildShortBeepWav()));
   }
 
   /// 与电脑端一致的识别短滴声：1200Hz、80ms、0.55 音量单音。
