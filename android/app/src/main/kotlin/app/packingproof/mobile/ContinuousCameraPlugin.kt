@@ -79,6 +79,25 @@ class ContinuousCameraPlugin(
             "setTorchEnabled" -> {
                 engine.setTorchEnabled(call.argument<Boolean>("enabled") == true, result)
             }
+            "listCameras" -> result.success(engine.listCameras())
+            "switchToCamera" -> {
+                val cameraId = call.argument<String>("cameraId")
+                if (cameraId.isNullOrBlank() || !engine.hasBackCamera(cameraId)) {
+                    result.error("invalid_camera", "无法识别该后置摄像头", null)
+                } else if (!engine.canSwitchNow()) {
+                    result.error("camera_busy", "当前状态不能切换摄像头", null)
+                } else {
+                    engine.dispose {
+                        engine = createEngine(preferredCameraId = cameraId)
+                        engine.initialize(
+                            result,
+                            lastVideoCodec,
+                            lastRecordingSpec,
+                            lastFallbackRecording,
+                        )
+                    }
+                }
+            }
             "switchCamera" -> {
                 if (!engine.canSwitchNow()) {
                     result.error("camera_busy", "当前状态不能切换摄像头", null)
@@ -189,8 +208,14 @@ class ContinuousCameraPlugin(
 
     private fun createEngine(
         preferredLensFacing: Int = CameraCharacteristics.LENS_FACING_BACK,
+        preferredCameraId: String? = null,
     ): ContinuousSegmentCamera =
-        ContinuousSegmentCamera(activity, textures, preferredLensFacing) { method, arguments ->
+        ContinuousSegmentCamera(
+            activity,
+            textures,
+            preferredLensFacing,
+            preferredCameraId,
+        ) { method, arguments ->
             activity.runOnUiThread { channel.invokeMethod(method, arguments) }
         }
 }

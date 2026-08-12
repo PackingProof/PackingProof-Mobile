@@ -53,6 +53,7 @@ class ContinuousSegmentCamera(
     private val activity: Activity,
     private val textures: TextureRegistry,
     private val preferredLensFacing: Int = CameraCharacteristics.LENS_FACING_BACK,
+    private val preferredCameraId: String? = null,
     private val emit: (String, Any?) -> Unit,
 ) {
     companion object {
@@ -123,6 +124,7 @@ class ContinuousSegmentCamera(
     private var analysisReader: ImageReader? = null
     @Volatile private var sensorOrientation = 90
     @Volatile private var selectedLensFacing = CameraCharacteristics.LENS_FACING_BACK
+    @Volatile private var selectedZoomRatio = 1.0
     @Volatile private var canSwitchCamera = false
     @Volatile private var videoSize = Size(
         RecordingSpecPolicy.HD.videoWidth,
@@ -433,6 +435,40 @@ class ContinuousSegmentCamera(
         !workScanEnabled
 
     fun currentLensFacing(): Int = selectedLensFacing
+
+    fun currentCameraId(): String? = selectedCameraId
+
+    fun hasBackCamera(cameraId: String): Boolean =
+        cameraId in cameraManager.cameraIdList &&
+            cameraManager.getCameraCharacteristics(cameraId)
+                .get(CameraCharacteristics.LENS_FACING) ==
+            CameraCharacteristics.LENS_FACING_BACK
+
+    fun listCameras(): List<Map<String, Any?>> =
+        buildBackLenses().map { lens ->
+            mapOf(
+                "cameraId" to lens.cameraId,
+                "focalLength" to lens.focalLength,
+                "zoomRatio" to lens.zoomRatio,
+                "isMain" to lens.isMain,
+            )
+        }
+
+    private fun buildBackLenses(): List<BackLensInfo> =
+        BackLensCatalog.build(
+            cameraManager.cameraIdList.mapNotNull { id ->
+                val characteristics = cameraManager.getCameraCharacteristics(id)
+                if (characteristics.get(CameraCharacteristics.LENS_FACING) !=
+                    CameraCharacteristics.LENS_FACING_BACK
+                ) {
+                    return@mapNotNull null
+                }
+                val focalLength = characteristics.get(
+                    CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS,
+                )?.firstOrNull() ?: return@mapNotNull null
+                id to focalLength
+            },
+        )
 
     fun dispose(onDisposed: (() -> Unit)? = null) {
         if (disposed) {
@@ -753,15 +789,23 @@ class ContinuousSegmentCamera(
         canSwitchCamera =
             CameraCharacteristics.LENS_FACING_BACK in availableFacing &&
             CameraCharacteristics.LENS_FACING_FRONT in availableFacing
-        val cameraId = cameraManager.cameraIdList.firstOrNull { id ->
-            cameraManager.getCameraCharacteristics(id)
-                .get(CameraCharacteristics.LENS_FACING) == preferredLensFacing
-        } ?: cameraManager.cameraIdList.firstOrNull()
-            ?: throw IllegalStateException("没有检测到可用摄像头")
+        val cameraId = when {
+            preferredCameraId != null &&
+                hasBackCamera(preferredCameraId) -> preferredCameraId
+            else -> cameraManager.cameraIdList.firstOrNull { id ->
+                cameraManager.getCameraCharacteristics(id)
+                    .get(CameraCharacteristics.LENS_FACING) == preferredLensFacing
+            } ?: cameraManager.cameraIdList.firstOrNull()
+                ?: throw IllegalStateException("没有检测到可用摄像头")
+        }
         val characteristics = cameraManager.getCameraCharacteristics(cameraId)
         val configuration = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             ?: throw IllegalStateException("无法读取摄像头输出能力")
         selectedCameraId = cameraId
+        selectedZoomRatio = buildBackLenses()
+            .firstOrNull { it.cameraId == cameraId }
+            ?.zoomRatio
+            ?: 1.0
         selectedCameraCharacteristics = characteristics
         selectedLensFacing = characteristics.get(CameraCharacteristics.LENS_FACING)
             ?: CameraCharacteristics.LENS_FACING_BACK
@@ -2171,6 +2215,7 @@ class ContinuousSegmentCamera(
         val state = mapOf<String, Any?>(
             "initialized" to initialized,
             "cameraId" to selectedCameraId,
+            "zoomRatio" to selectedZoomRatio,
             "lensFacing" to if (selectedLensFacing == CameraCharacteristics.LENS_FACING_FRONT) "front" else "back",
             "sensorOrientation" to sensorOrientation,
             "videoWidth" to videoSize.width,
@@ -2222,6 +2267,7 @@ class ContinuousSegmentCamera(
             "videoSizes" to supportedVideoSizes,
             "previewSizes" to supportedPreviewSizes,
             "physicalCameraIds" to physicalCameraIds,
+            "backLenses" to listCameras(),
             "fpsRanges" to fpsRanges,
         )
         result.success(
@@ -2267,6 +2313,8 @@ class ContinuousSegmentCamera(
         "previewWidth" to videoSize.width,
         "previewHeight" to videoSize.height,
         "sensorOrientation" to sensorOrientation,
+        "cameraId" to selectedCameraId,
+        "zoomRatio" to selectedZoomRatio,
         "lensDirection" to if (selectedLensFacing == CameraCharacteristics.LENS_FACING_FRONT) "front" else "back",
         "canSwitchCamera" to canSwitchCamera,
         "fps" to recordingSpec.fps,
