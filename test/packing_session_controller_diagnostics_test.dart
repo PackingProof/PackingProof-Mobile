@@ -22,8 +22,18 @@ void main() {
   });
 
   tearDown(() async {
-    if (await root.exists()) {
-      await root.delete(recursive: true);
+    if (!await root.exists()) {
+      return;
+    }
+    // Windows 上日志/诊断服务可能仍有文件句柄未释放，删除临时目录会偶发
+    // “目录不是空的”；重试几次避免打包脚本里的全量测试被误判失败。
+    for (int attempt = 0; attempt < 5; attempt++) {
+      try {
+        await root.delete(recursive: true);
+        return;
+      } on FileSystemException {
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      }
     }
   });
 
