@@ -136,6 +136,12 @@ void main() {
     ]);
     await Future<void>.delayed(Duration.zero);
     expect(controller.operationMode, RecordingOperationMode.shipping);
+
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(value: 'START', area: 100),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+    expect(speech.beepCount, 4);
   });
 }
 

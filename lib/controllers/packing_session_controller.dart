@@ -1851,8 +1851,11 @@ class PackingSessionController extends ChangeNotifier {
           _speechService.enqueue(SpeechPrompt.returnMode);
         }
         break;
-      case MobileBarcodeCommand.stopRecording:
-        if (isRecording && _timeline.isActive) {
+      case MobileBarcodeCommand.startWork:
+        await startWork();
+        break;
+      case MobileBarcodeCommand.stopWork:
+        if (isWorking) {
           await stopWork();
         }
         break;

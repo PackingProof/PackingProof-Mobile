@@ -30,8 +30,8 @@ class BarcodeCandidatePolicy {
     return (value ?? '').trim().replaceAll(' ', '').toUpperCase();
   }
 
-  /// 手机版支持的指令码：切发货、切退货、停止录制。
-  /// 手机版刻意不支持 START（扫码即自动开始）与 CLEAR（无输入框可清）。
+  /// 手机版支持的指令码：切发货、切退货、开始工作、停止工作。
+  /// 手机版刻意不支持 CLEAR（无输入框可清）。
   static MobileBarcodeCommand? mobileCommandFor(String? value) {
     final String normalized = normalize(value);
     if (normalized.isEmpty) {
@@ -47,8 +47,15 @@ class BarcodeCandidatePolicy {
         normalized.contains('TUIHUO')) {
       return MobileBarcodeCommand.switchReturn;
     }
-    if (normalized.contains('STOP') || normalized.contains('停止录制')) {
-      return MobileBarcodeCommand.stopRecording;
+    if (normalized.contains('START') ||
+        normalized.contains('开始工作') ||
+        normalized.contains('开始录制')) {
+      return MobileBarcodeCommand.startWork;
+    }
+    if (normalized.contains('STOP') ||
+        normalized.contains('停止工作') ||
+        normalized.contains('停止录制')) {
+      return MobileBarcodeCommand.stopWork;
     }
     return null;
   }
@@ -98,4 +105,4 @@ class BarcodeCandidatePolicy {
 enum WorkScanRejection { tooShort, productFormat, invalid }
 
 /// 手机版摄像头可执行的指令码动作。
-enum MobileBarcodeCommand { switchShipping, switchReturn, stopRecording }
+enum MobileBarcodeCommand { switchShipping, switchReturn, startWork, stopWork }

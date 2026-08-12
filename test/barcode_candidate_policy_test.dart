@@ -131,7 +131,7 @@ void main() {
   });
 
   group('手机版指令码', () {
-    test('切发货/切退货/停止录制被识别', () {
+    test('切发货/切退货/开始工作/停止工作被识别', () {
       expect(
         BarcodeCandidatePolicy.mobileCommandFor('SHIP'),
         MobileBarcodeCommand.switchShipping,
@@ -157,18 +157,32 @@ void main() {
         MobileBarcodeCommand.switchReturn,
       );
       expect(
+        BarcodeCandidatePolicy.mobileCommandFor('START'),
+        MobileBarcodeCommand.startWork,
+      );
+      expect(
+        BarcodeCandidatePolicy.mobileCommandFor('开始工作'),
+        MobileBarcodeCommand.startWork,
+      );
+      expect(
+        BarcodeCandidatePolicy.mobileCommandFor('开始录制'),
+        MobileBarcodeCommand.startWork,
+      );
+      expect(
         BarcodeCandidatePolicy.mobileCommandFor('STOP'),
-        MobileBarcodeCommand.stopRecording,
+        MobileBarcodeCommand.stopWork,
+      );
+      expect(
+        BarcodeCandidatePolicy.mobileCommandFor('停止工作'),
+        MobileBarcodeCommand.stopWork,
       );
       expect(
         BarcodeCandidatePolicy.mobileCommandFor('停止录制'),
-        MobileBarcodeCommand.stopRecording,
+        MobileBarcodeCommand.stopWork,
       );
     });
 
-    test('手机版不支持 START/CLEAR，普通单号不当作指令', () {
-      expect(BarcodeCandidatePolicy.mobileCommandFor('START'), isNull);
-      expect(BarcodeCandidatePolicy.mobileCommandFor('开始录制'), isNull);
+    test('手机版不支持 CLEAR，普通单号不当作指令', () {
       expect(BarcodeCandidatePolicy.mobileCommandFor('CLEAR'), isNull);
       expect(BarcodeCandidatePolicy.mobileCommandFor('清除'), isNull);
       expect(BarcodeCandidatePolicy.mobileCommandFor('YT123456789012'), isNull);
