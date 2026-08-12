@@ -38,6 +38,7 @@ class RejectedBarcodePolicy {
     }
     final bool hasValid = candidates.any(
       (RejectedBarcodeCandidate candidate) =>
+          BarcodeCandidatePolicy.mobileCommandFor(candidate.value) != null ||
           BarcodeCandidatePolicy.isValidForWorkScan(
             candidate.value,
             format: candidate.format,

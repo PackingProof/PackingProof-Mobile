@@ -1485,11 +1485,14 @@ class PackingSessionController extends ChangeNotifier {
     String? validCode;
     int largestArea = -1;
     for (final NativeBarcodeCandidate candidate in candidates) {
-      if (BarcodeCandidatePolicy.isValidForWorkScan(
-            candidate.value,
-            format: candidate.format,
-            minimumLength: _minimumBarcodeLength,
-          ) &&
+      final bool isCommand =
+          BarcodeCandidatePolicy.mobileCommandFor(candidate.value) != null;
+      if ((isCommand ||
+              BarcodeCandidatePolicy.isValidForWorkScan(
+                candidate.value,
+                format: candidate.format,
+                minimumLength: _minimumBarcodeLength,
+              )) &&
           candidate.area > largestArea) {
         largestArea = candidate.area;
         validCode = BarcodeCandidatePolicy.normalize(candidate.value);
@@ -1694,6 +1697,17 @@ class PackingSessionController extends ChangeNotifier {
     if (_handlingBarcode || !isWorking || isBusy) {
       return;
     }
+    final MobileBarcodeCommand? command =
+        BarcodeCandidatePolicy.mobileCommandFor(code);
+    if (command != null) {
+      _handlingBarcode = true;
+      try {
+        await _handleMobileBarcodeCommand(command);
+      } finally {
+        _handlingBarcode = false;
+      }
+      return;
+    }
     if (!isRecording || !_timeline.isActive) {
       _handlingBarcode = true;
       try {
@@ -1781,6 +1795,32 @@ class PackingSessionController extends ChangeNotifier {
           _handlingBarcode = false;
         }
         return;
+    }
+  }
+
+  /// 手机版指令码执行：切发货/切退货/停止录制。
+  /// 刻意不支持 START（扫码即自动开始）与 CLEAR（无输入框可清）。
+  Future<void> _handleMobileBarcodeCommand(MobileBarcodeCommand command) async {
+    switch (command) {
+      case MobileBarcodeCommand.switchShipping:
+        if (_operationMode != RecordingOperationMode.shipping) {
+          _operationMode = RecordingOperationMode.shipping;
+          notifyListeners();
+          _speechService.enqueue(SpeechPrompt.shippingMode);
+        }
+        break;
+      case MobileBarcodeCommand.switchReturn:
+        if (_operationMode != RecordingOperationMode.returnGoods) {
+          _operationMode = RecordingOperationMode.returnGoods;
+          notifyListeners();
+          _speechService.enqueue(SpeechPrompt.returnMode);
+        }
+        break;
+      case MobileBarcodeCommand.stopRecording:
+        if (isRecording && _timeline.isActive) {
+          await stopWork();
+        }
+        break;
     }
   }
 
