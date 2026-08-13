@@ -63,7 +63,9 @@ internal fun registerPigeonPlatformApis(
         PigeonBackupHostApi(lanBackupPlugin),
     )
     lanBackupPlugin.addSnapshotListener { snapshot ->
-        backupEventApi.snapshotChanged(snapshot) { }
+        backupEventApi.snapshotChanged(
+            snapshot.entries.associate { (it.key as String?) to it.value },
+        ) { }
     }
 }
 
