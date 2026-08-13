@@ -247,7 +247,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     } on Object {
       // Version checks are optional and must never block recording or backup.
     }
-    if (!Platform.isAndroid) {
+    if (!_isAndroid()) {
       notifyListeners();
       return;
     }
@@ -874,7 +874,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
 
   @override
   Future<StorageSpaceResult> checkAndReclaimStorage() async {
-    if (!Platform.isAndroid) {
+    if (!_isAndroid()) {
       return const StorageSpaceResult(
         availableBytes: 1 << 62,
         availableBytesBefore: 1 << 62,
@@ -903,7 +903,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
 
   @override
   Future<void> refresh() {
-    if (!Platform.isAndroid) {
+    if (!_isAndroid()) {
       return Future<void>.value();
     }
     final Future<void>? active = _refreshFuture;
@@ -936,7 +936,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   }
 
   void _attachNativeHandler() {
-    if (_nativeHandlerAttached || !Platform.isAndroid) return;
+    if (_nativeHandlerAttached || !_isAndroid()) return;
     _nativeHandlerAttached = true;
     _platform.setSnapshotListener(_applyNativeSnapshot);
   }
@@ -1145,7 +1145,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   Future<bool> _hasWifiConnection() async {
     final Future<bool> Function()? override = _wifiConnected;
     if (override != null) return override();
-    if (!Platform.isAndroid) return true;
+    if (!_isAndroid()) return true;
     try {
       return await _platform.isWifiConnected();
     } on PlatformException {

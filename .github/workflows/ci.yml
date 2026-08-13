@@ -22,6 +22,10 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      - name: Check Pigeon drift
+        run: |
+          dart run pigeon --input pigeons/platform.dart
+          git -c core.autocrlf=false diff --exit-code -- pigeons/platform.dart lib/platform/generated/platform_api.g.dart android/app/src/main/kotlin/app/packingproof/mobile/generated/PlatformApi.kt ios/Runner/Generated/PlatformApi.swift
       - name: Android unit tests
         working-directory: android
         run: .\gradlew.bat :app:testDebugUnitTest --no-daemon

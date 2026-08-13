@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 
 import '../platform/contracts/media_platform.dart';
@@ -30,24 +28,16 @@ class MaxVolumeService implements MaxVolumeSink {
   final AlertAudioSessionPlatform _platform;
 
   @override
-  Future<void> beginSession() async {
-    if (Platform.isAndroid) await _platform.beginSession();
-  }
+  Future<void> beginSession() => _platform.beginSession();
 
   @override
-  Future<void> endSession() async {
-    if (Platform.isAndroid) await _platform.endSession();
-  }
+  Future<void> endSession() => _platform.endSession();
 
   @override
-  Future<void> disable() async {
-    if (Platform.isAndroid) await _platform.disable();
-  }
+  Future<void> disable() => _platform.disable();
 
   @override
-  Future<void> boost() async {
-    if (Platform.isAndroid) await _platform.boost();
-  }
+  Future<void> boost() => _platform.boost();
 
   @override
   Future<void> dispose() => endSession();
