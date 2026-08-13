@@ -473,12 +473,16 @@ class ContinuousSegmentCamera(
                 }
             }
         }
-        val wideZoomRatio = logicalBack.firstNotNullOfOrNull { id ->
-            cameraManager.getCameraCharacteristics(id)
-                .get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)
-                ?.takeIf { it.lower < 1f }
-                ?.lower
-                ?.toDouble()
+        val wideZoomRatio = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            logicalBack.firstNotNullOfOrNull { id ->
+                cameraManager.getCameraCharacteristics(id)
+                    .get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)
+                    ?.takeIf { it.lower < 1f }
+                    ?.lower
+                    ?.toDouble()
+            }
+        } else {
+            null
         }
         return BackLensCatalog.build(
             entries,
@@ -869,9 +873,13 @@ class ContinuousSegmentCamera(
             ?: 1.0
         cachedBackLenses = backLenses.map(::backLensMap)
         cachedCameraIdList = cameraManager.cameraIdList.toList()
-        cachedZoomRatioRange = characteristics
-            .get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)
-            ?.let { listOf(it.lower, it.upper) }
+        cachedZoomRatioRange = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            characteristics
+                .get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE)
+                ?.let { listOf(it.lower, it.upper) }
+        } else {
+            null
+        }
         selectedLensFacing = characteristics.get(CameraCharacteristics.LENS_FACING)
             ?: CameraCharacteristics.LENS_FACING_BACK
         sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
