@@ -40,6 +40,7 @@ internal class LanBackupPlugin(
     private val store = LanBackupStateStore(context)
     private val storageManager = RecordingStorageManager(context, store)
     private val credentials = LanBackupCredentialStore(context)
+    private val snapshotListeners = mutableListOf<(Map<String, Any?>) -> Unit>()
     private val workObserver = Observer<List<WorkInfo>> {
         notifySnapshotChanged()
     }
@@ -283,13 +284,24 @@ internal class LanBackupPlugin(
     )
 
     fun notifySnapshotChanged() {
-        channel.invokeMethod("snapshotChanged", snapshot())
+        val value = snapshot()
+        channel.invokeMethod("snapshotChanged", value)
+        snapshotListeners.forEach { it(value) }
+    }
+
+    fun addSnapshotListener(listener: (Map<String, Any?>) -> Unit) {
+        snapshotListeners.add(listener)
+    }
+
+    fun removeSnapshotListener(listener: (Map<String, Any?>) -> Unit) {
+        snapshotListeners.remove(listener)
     }
 
     fun dispose() {
         WorkManager.getInstance(context)
             .getWorkInfosByTagLiveData("lan-backup")
             .removeObserver(workObserver)
+        snapshotListeners.clear()
         channel.setMethodCallHandler(null)
     }
 }

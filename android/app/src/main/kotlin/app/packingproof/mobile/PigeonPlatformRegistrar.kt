@@ -4,6 +4,8 @@ import app.packingproof.mobile.generated.ExportRequest
 import app.packingproof.mobile.generated.BarcodeCandidateDto
 import app.packingproof.mobile.generated.CameraEventApi
 import app.packingproof.mobile.generated.CameraHostApi
+import app.packingproof.mobile.generated.BackupNativeEventApi
+import app.packingproof.mobile.generated.BackupNativeHostApi
 import app.packingproof.mobile.generated.FlutterError
 import app.packingproof.mobile.generated.MediaProcessingHostApi
 import app.packingproof.mobile.generated.OrderInfoDto
@@ -19,6 +21,7 @@ internal fun registerPigeonPlatformApis(
     thumbnailPlugin: RecordingThumbnailPlugin,
     orderInfoReceiverPlugin: OrderInfoReceiverPlugin,
     continuousCameraPlugin: ContinuousCameraPlugin,
+    lanBackupPlugin: LanBackupPlugin,
 ) {
     MediaProcessingHostApi.setUp(
         messenger,
@@ -53,6 +56,14 @@ internal fun registerPigeonPlatformApis(
             "recordingFallback" ->
                 cameraEventApi.recordingFallback(arguments as Map<String?, Any?>) { }
         }
+    }
+    val backupEventApi = BackupNativeEventApi(messenger)
+    BackupNativeHostApi.setUp(
+        messenger,
+        PigeonBackupHostApi(lanBackupPlugin),
+    )
+    lanBackupPlugin.addSnapshotListener { snapshot ->
+        backupEventApi.snapshotChanged(snapshot) { }
     }
 }
 

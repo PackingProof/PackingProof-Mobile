@@ -20,6 +20,7 @@ import '../models/recording_video_codec.dart';
 import '../models/speech_prompt.dart';
 import '../models/storage_notice.dart';
 import '../models/work_mode.dart';
+import '../platform/platform_container.dart';
 import '../services/barcode_candidate_policy.dart';
 import '../services/barcode_recognized_beep_policy.dart';
 import '../services/barcode_stability_tracker.dart';
@@ -89,6 +90,7 @@ class PackingSessionController extends ChangeNotifier {
     _lanBackupService =
         lanBackupService ??
         LanBackupService(
+          platform: AppContainer.forCurrentPlatform().backup,
           logEvent: (String kind, Map<String, Object?> extra) =>
               _runtimeLog.log(kind: kind, extra: extra),
         );

@@ -2129,18 +2129,18 @@ class CameraEventApi(private val binaryMessenger: BinaryMessenger, private val m
 }
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface BackupNativeHostApi {
-  fun snapshot(): Map<String?, Any?>?
-  fun initialize(request: Map<String?, Any?>): Map<String?, Any?>?
-  fun loadAccessKey(): String?
-  fun isWifiConnected(): Boolean
-  fun saveConnection(connection: Map<String?, Any?>)
-  fun disconnect()
-  fun enqueueJob(request: Map<String?, Any?>)
-  fun requeueJob(jobId: String)
-  fun cancelJob(jobId: String)
-  fun updateRetentionSchedule(request: Map<String?, Any?>)
-  fun reclaimStorageIfNeeded(): Map<String?, Any?>
-  fun getNetworkDiagnostics(): Map<String?, Any?>?
+  fun snapshot(callback: (Result<Map<String?, Any?>?>) -> Unit)
+  fun initialize(request: Map<String?, Any?>, callback: (Result<Map<String?, Any?>?>) -> Unit)
+  fun loadAccessKey(callback: (Result<String?>) -> Unit)
+  fun isWifiConnected(callback: (Result<Boolean>) -> Unit)
+  fun saveConnection(connection: Map<String?, Any?>, callback: (Result<Unit>) -> Unit)
+  fun disconnect(callback: (Result<Unit>) -> Unit)
+  fun enqueueJob(request: Map<String?, Any?>, callback: (Result<Unit>) -> Unit)
+  fun requeueJob(jobId: String, callback: (Result<Unit>) -> Unit)
+  fun cancelJob(jobId: String, callback: (Result<Unit>) -> Unit)
+  fun updateRetentionSchedule(request: Map<String?, Any?>, callback: (Result<Unit>) -> Unit)
+  fun reclaimStorageIfNeeded(callback: (Result<Map<String?, Any?>>) -> Unit)
+  fun getNetworkDiagnostics(callback: (Result<Map<String?, Any?>?>) -> Unit)
 
   companion object {
     /** The codec used by BackupNativeHostApi. */
@@ -2155,12 +2155,15 @@ interface BackupNativeHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.snapshot$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.snapshot())
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.snapshot{ result: Result<Map<String?, Any?>?> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -2172,12 +2175,15 @@ interface BackupNativeHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val requestArg = args[0] as Map<String?, Any?>
-            val wrapped: List<Any?> = try {
-              listOf(api.initialize(requestArg))
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.initialize(requestArg) { result: Result<Map<String?, Any?>?> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -2187,12 +2193,15 @@ interface BackupNativeHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.loadAccessKey$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.loadAccessKey())
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.loadAccessKey{ result: Result<String?> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -2202,12 +2211,15 @@ interface BackupNativeHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.isWifiConnected$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.isWifiConnected())
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.isWifiConnected{ result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -2219,13 +2231,14 @@ interface BackupNativeHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val connectionArg = args[0] as Map<String?, Any?>
-            val wrapped: List<Any?> = try {
-              api.saveConnection(connectionArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.saveConnection(connectionArg) { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -2235,13 +2248,14 @@ interface BackupNativeHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.disconnect$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.disconnect()
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.disconnect{ result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -2253,13 +2267,14 @@ interface BackupNativeHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val requestArg = args[0] as Map<String?, Any?>
-            val wrapped: List<Any?> = try {
-              api.enqueueJob(requestArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.enqueueJob(requestArg) { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -2271,13 +2286,14 @@ interface BackupNativeHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val jobIdArg = args[0] as String
-            val wrapped: List<Any?> = try {
-              api.requeueJob(jobIdArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.requeueJob(jobIdArg) { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -2289,13 +2305,14 @@ interface BackupNativeHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val jobIdArg = args[0] as String
-            val wrapped: List<Any?> = try {
-              api.cancelJob(jobIdArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.cancelJob(jobIdArg) { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -2307,13 +2324,14 @@ interface BackupNativeHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val requestArg = args[0] as Map<String?, Any?>
-            val wrapped: List<Any?> = try {
-              api.updateRetentionSchedule(requestArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.updateRetentionSchedule(requestArg) { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -2323,12 +2341,15 @@ interface BackupNativeHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.reclaimStorageIfNeeded$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.reclaimStorageIfNeeded())
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.reclaimStorageIfNeeded{ result: Result<Map<String?, Any?>> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -2338,12 +2359,15 @@ interface BackupNativeHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.getNetworkDiagnostics$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.getNetworkDiagnostics())
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.getNetworkDiagnostics{ result: Result<Map<String?, Any?>?> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)

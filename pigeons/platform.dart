@@ -234,17 +234,29 @@ abstract class CameraEventApi {
 
 @HostApi()
 abstract class BackupNativeHostApi {
+  @async
   Map<String?, Object?>? snapshot();
+  @async
   Map<String?, Object?>? initialize(Map<String?, Object?> request);
+  @async
   String? loadAccessKey();
+  @async
   bool isWifiConnected();
+  @async
   void saveConnection(Map<String?, Object?> connection);
+  @async
   void disconnect();
+  @async
   void enqueueJob(Map<String?, Object?> request);
+  @async
   void requeueJob(String jobId);
+  @async
   void cancelJob(String jobId);
+  @async
   void updateRetentionSchedule(Map<String?, Object?> request);
+  @async
   Map<String?, Object?> reclaimStorageIfNeeded();
+  @async
   Map<String?, Object?>? getNetworkDiagnostics();
 }
 

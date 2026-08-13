@@ -11,6 +11,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../models/lan_backup.dart';
 import '../models/recording_session.dart';
 import '../models/backup_retention_policy.dart';
+import '../platform/adapters/legacy_backup_platform.dart';
+import '../platform/contracts/backup_platform.dart';
 import 'lan_backup_compatibility.dart';
 import 'remote_video_clip_service.dart';
 
@@ -172,13 +174,19 @@ abstract interface class LanBackupSink implements Listenable {
 class LanBackupService extends ChangeNotifier implements LanBackupSink {
   LanBackupService({
     MethodChannel? channel,
+    BackupNativePlatform? platform,
     HttpClient? httpClient,
     Future<bool> Function()? wifiConnected,
     Future<PackageInfo> Function()? packageInfoLoader,
     Future<void> Function(Duration)? retryDelay,
     Future<void> Function(String kind, Map<String, Object?> extra)? logEvent,
     bool Function()? isAndroid,
-  }) : _channel = channel ?? _defaultChannel,
+  }) : _platform =
+           platform ??
+           LegacyBackupNativePlatform(
+             channel ??
+                 const MethodChannel(LegacyBackupNativePlatform.channelName),
+           ),
        _httpClient = httpClient ?? HttpClient(),
        // Keep the public injection name readable while the stored callback remains private.
        // ignore: prefer_initializing_formals
@@ -190,11 +198,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
        _logEvent = logEvent,
        _isAndroid = isAndroid ?? (() => Platform.isAndroid);
 
-  static const MethodChannel _defaultChannel = MethodChannel(
-    'app.packingproof.mobile/lan_backup',
-  );
-
-  final MethodChannel _channel;
+  final BackupNativePlatform _platform;
   final HttpClient _httpClient;
   final Future<bool> Function()? _wifiConnected;
   final Future<PackageInfo> Function() _packageInfoLoader;
@@ -248,13 +252,12 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       return;
     }
     final Map<Object?, Object?> values =
-        (await _channel
-            .invokeMapMethod<Object?, Object?>('initialize', <String, Object?>{
-              'unbackedRetentionDays': unbackedRetention.days,
-              'backedRetentionDays': backedRetention.days,
-            })) ??
+        await _platform.initialize(<String, Object?>{
+          'unbackedRetentionDays': unbackedRetention.days,
+          'backedRetentionDays': backedRetention.days,
+        }) ??
         <Object?, Object?>{};
-    _accessKey = (await _channel.invokeMethod<String>('loadAccessKey')) ?? '';
+    _accessKey = await _platform.loadAccessKey() ?? '';
     _applyNativeSnapshot(values);
     unawaited(_refreshHostFeatures());
     _pollTimer ??= Timer.periodic(
@@ -487,7 +490,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
           candidateEndpoint: connectedEndpoint,
         );
       }
-      await _channel.invokeMethod<void>('saveConnection', <String, Object?>{
+      await _platform.saveConnection(<String, Object?>{
         'baseUrl': baseUri.toString(),
         'accessKey': deviceToken,
         'computerId': connectedEndpoint.computerId,
@@ -671,10 +674,10 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   ) async {
     final LanBackupEndpoint? endpoint = restoreSnapshot.endpoint;
     if (endpoint == null || _accessKey.isEmpty) {
-      await _channel.invokeMethod<void>('disconnect');
+      await _platform.disconnect();
       return;
     }
-    await _channel.invokeMethod<void>('saveConnection', <String, Object?>{
+    await _platform.saveConnection(<String, Object?>{
       'baseUrl': endpoint.baseUri.toString(),
       'accessKey': _accessKey,
       'computerId': endpoint.computerId,
@@ -686,7 +689,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   @override
   Future<void> disconnect() async {
     await _sendConnectionHeartbeat(connected: false);
-    await _channel.invokeMethod<void>('disconnect');
+    await _platform.disconnect();
     _snapshot = _snapshot.copyWith(
       clearEndpoint: true,
       connectionStatus: LanConnectionStatus.disconnected,
@@ -793,7 +796,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     required UnbackedRetentionPolicy unbacked,
     required BackedRetentionPolicy backed,
   }) async {
-    await _channel.invokeMethod<void>('setRetentionPolicies', <String, Object?>{
+    await _platform.updateRetentionSchedule(<String, Object?>{
       'unbackedRetentionDays': unbacked.days,
       'backedRetentionDays': backed.days,
     });
@@ -818,7 +821,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     } on FileSystemException {
       return;
     }
-    await _channel.invokeMethod<void>('enqueue', <String, Object?>{
+    await _platform.enqueueJob(<String, Object?>{
       'filePath': filePath,
       'sessions': sessions
           .map(recordingSessionBackupMap)
@@ -857,14 +860,14 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
 
   @override
   Future<void> retry(String jobId) async {
-    await _channel.invokeMethod<void>('retry', <String, Object>{'id': jobId});
+    await _platform.requeueJob(jobId);
     await refresh();
     _log('backup_retry', <String, Object?>{'jobId': jobId});
   }
 
   @override
   Future<void> cancel(String jobId) async {
-    await _channel.invokeMethod<void>('cancel', <String, Object>{'id': jobId});
+    await _platform.cancelJob(jobId);
     await refresh();
     _log('backup_cancel', <String, Object?>{'jobId': jobId});
   }
@@ -882,10 +885,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       );
     }
     final Map<Object?, Object?> values =
-        (await _channel.invokeMapMethod<Object?, Object?>(
-          'checkAndReclaimStorage',
-        )) ??
-        <Object?, Object?>{};
+        await _platform.reclaimStorageIfNeeded() ?? <Object?, Object?>{};
     await refresh();
     return StorageSpaceResult.fromMap(values);
   }
@@ -894,10 +894,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   Future<NetworkDiagnostics?> getNetworkDiagnostics() async {
     try {
       final Map<Object?, Object?> values =
-          (await _channel.invokeMapMethod<Object?, Object?>(
-            'getNetworkDiagnostics',
-          )) ??
-          <Object?, Object?>{};
+          await _platform.getNetworkDiagnostics() ?? <Object?, Object?>{};
       return NetworkDiagnostics.fromMap(values);
     } on Object {
       return null;
@@ -931,8 +928,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   Future<void> _refreshOnce() async {
     try {
       final Map<Object?, Object?> values =
-          (await _channel.invokeMapMethod<Object?, Object?>('snapshot')) ??
-          <Object?, Object?>{};
+          await _platform.snapshot() ?? <Object?, Object?>{};
       _applyNativeSnapshot(values);
     } on PlatformException {
       // A worker can briefly hold the state file while replacing it.
@@ -942,10 +938,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   void _attachNativeHandler() {
     if (_nativeHandlerAttached || !Platform.isAndroid) return;
     _nativeHandlerAttached = true;
-    _channel.setMethodCallHandler((MethodCall call) async {
-      if (call.method != 'snapshotChanged' || call.arguments is! Map) return;
-      _applyNativeSnapshot(Map<Object?, Object?>.from(call.arguments! as Map));
-    });
+    _platform.setSnapshotListener(_applyNativeSnapshot);
   }
 
   @override
@@ -1154,7 +1147,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     if (override != null) return override();
     if (!Platform.isAndroid) return true;
     try {
-      return (await _channel.invokeMethod<bool>('isWifiConnected')) == true;
+      return await _platform.isWifiConnected();
     } on PlatformException {
       return false;
     }
@@ -1326,7 +1319,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       if (assignedDisplayName.isNotEmpty &&
           assignedDisplayName != _snapshot.deviceName &&
           endpoint != null) {
-        await _channel.invokeMethod<void>('saveConnection', <String, Object?>{
+        await _platform.saveConnection(<String, Object?>{
           'baseUrl': endpoint.baseUri.toString(),
           'accessKey': _accessKey,
           'computerId': endpoint.computerId,
@@ -1427,7 +1420,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     _heartbeatTimer?.cancel();
     await _sendConnectionHeartbeat(connected: false);
     if (_nativeHandlerAttached) {
-      _channel.setMethodCallHandler(null);
+      await _platform.dispose();
       _nativeHandlerAttached = false;
     }
     _httpClient.close(force: true);

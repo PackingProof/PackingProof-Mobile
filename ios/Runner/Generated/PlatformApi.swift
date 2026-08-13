@@ -2036,18 +2036,18 @@ class CameraEventApi: CameraEventApiProtocol {
 }
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol BackupNativeHostApi {
-  func snapshot() throws -> [String?: Any?]?
-  func initialize(request: [String?: Any?]) throws -> [String?: Any?]?
-  func loadAccessKey() throws -> String?
-  func isWifiConnected() throws -> Bool
-  func saveConnection(connection: [String?: Any?]) throws
-  func disconnect() throws
-  func enqueueJob(request: [String?: Any?]) throws
-  func requeueJob(jobId: String) throws
-  func cancelJob(jobId: String) throws
-  func updateRetentionSchedule(request: [String?: Any?]) throws
-  func reclaimStorageIfNeeded() throws -> [String?: Any?]
-  func getNetworkDiagnostics() throws -> [String?: Any?]?
+  func snapshot(completion: @escaping (Result<[String?: Any?]?, Error>) -> Void)
+  func initialize(request: [String?: Any?], completion: @escaping (Result<[String?: Any?]?, Error>) -> Void)
+  func loadAccessKey(completion: @escaping (Result<String?, Error>) -> Void)
+  func isWifiConnected(completion: @escaping (Result<Bool, Error>) -> Void)
+  func saveConnection(connection: [String?: Any?], completion: @escaping (Result<Void, Error>) -> Void)
+  func disconnect(completion: @escaping (Result<Void, Error>) -> Void)
+  func enqueueJob(request: [String?: Any?], completion: @escaping (Result<Void, Error>) -> Void)
+  func requeueJob(jobId: String, completion: @escaping (Result<Void, Error>) -> Void)
+  func cancelJob(jobId: String, completion: @escaping (Result<Void, Error>) -> Void)
+  func updateRetentionSchedule(request: [String?: Any?], completion: @escaping (Result<Void, Error>) -> Void)
+  func reclaimStorageIfNeeded(completion: @escaping (Result<[String?: Any?], Error>) -> Void)
+  func getNetworkDiagnostics(completion: @escaping (Result<[String?: Any?]?, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -2059,11 +2059,13 @@ class BackupNativeHostApiSetup {
     let snapshotChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.snapshot\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       snapshotChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.snapshot()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.snapshot { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -2074,11 +2076,13 @@ class BackupNativeHostApiSetup {
       initializeChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let requestArg = args[0] as! [String?: Any?]
-        do {
-          let result = try api.initialize(request: requestArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.initialize(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -2087,11 +2091,13 @@ class BackupNativeHostApiSetup {
     let loadAccessKeyChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.loadAccessKey\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       loadAccessKeyChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.loadAccessKey()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.loadAccessKey { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -2100,11 +2106,13 @@ class BackupNativeHostApiSetup {
     let isWifiConnectedChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.isWifiConnected\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       isWifiConnectedChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.isWifiConnected()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.isWifiConnected { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -2115,11 +2123,13 @@ class BackupNativeHostApiSetup {
       saveConnectionChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let connectionArg = args[0] as! [String?: Any?]
-        do {
-          try api.saveConnection(connection: connectionArg)
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.saveConnection(connection: connectionArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -2128,11 +2138,13 @@ class BackupNativeHostApiSetup {
     let disconnectChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.disconnect\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       disconnectChannel.setMessageHandler { _, reply in
-        do {
-          try api.disconnect()
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.disconnect { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -2143,11 +2155,13 @@ class BackupNativeHostApiSetup {
       enqueueJobChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let requestArg = args[0] as! [String?: Any?]
-        do {
-          try api.enqueueJob(request: requestArg)
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.enqueueJob(request: requestArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -2158,11 +2172,13 @@ class BackupNativeHostApiSetup {
       requeueJobChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let jobIdArg = args[0] as! String
-        do {
-          try api.requeueJob(jobId: jobIdArg)
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.requeueJob(jobId: jobIdArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -2173,11 +2189,13 @@ class BackupNativeHostApiSetup {
       cancelJobChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let jobIdArg = args[0] as! String
-        do {
-          try api.cancelJob(jobId: jobIdArg)
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.cancelJob(jobId: jobIdArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -2188,11 +2206,13 @@ class BackupNativeHostApiSetup {
       updateRetentionScheduleChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let requestArg = args[0] as! [String?: Any?]
-        do {
-          try api.updateRetentionSchedule(request: requestArg)
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.updateRetentionSchedule(request: requestArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -2201,11 +2221,13 @@ class BackupNativeHostApiSetup {
     let reclaimStorageIfNeededChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.reclaimStorageIfNeeded\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       reclaimStorageIfNeededChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.reclaimStorageIfNeeded()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.reclaimStorageIfNeeded { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -2214,11 +2236,13 @@ class BackupNativeHostApiSetup {
     let getNetworkDiagnosticsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.getNetworkDiagnostics\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       getNetworkDiagnosticsChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.getNetworkDiagnostics()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.getNetworkDiagnostics { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {

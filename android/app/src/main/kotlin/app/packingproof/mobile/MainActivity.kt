@@ -54,6 +54,7 @@ class MainActivity : FlutterActivity() {
             recordingThumbnailPlugin!!,
             orderInfoReceiverPlugin!!,
             continuousCameraPlugin!!,
+            lanBackupPlugin!!,
         )
         maxVolumeController = MaxVolumeController(this)
         systemVideoPlayerPlugin = SystemVideoPlayerPlugin(
