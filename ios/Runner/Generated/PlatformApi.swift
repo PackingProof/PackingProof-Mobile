@@ -1576,20 +1576,20 @@ class OrderReceiverEventApi: OrderReceiverEventApiProtocol {
 }
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol CameraHostApi {
-  func initialize(request: CameraInitializeRequest) throws -> CameraInitializationDto
-  func ensurePermissions(recordAudio: Bool) throws -> Bool
-  func startWork(path: String, recordAudio: Bool) throws -> CameraRecordingStartDto
-  func split(nextPath: String) throws -> CameraRecordingSplitDto
-  func stopWork() throws -> CameraRecordingStopDto
-  func getDiagnostics() throws -> [String?: Any?]?
-  func setPairingScanEnabled(enabled: Bool) throws
-  func setWorkScanEnabled(enabled: Bool) throws
-  func setPreviewActive(active: Bool) throws
-  func setTorchEnabled(enabled: Bool) throws -> Bool
-  func switchCamera() throws -> CameraInitializationDto
-  func listCameras() throws -> [CameraLensDto]
-  func switchToCamera(cameraId: String) throws -> CameraInitializationDto
-  func dispose() throws
+  func initialize(request: CameraInitializeRequest, completion: @escaping (Result<CameraInitializationDto, Error>) -> Void)
+  func ensurePermissions(recordAudio: Bool, completion: @escaping (Result<Bool, Error>) -> Void)
+  func startWork(path: String, recordAudio: Bool, completion: @escaping (Result<CameraRecordingStartDto, Error>) -> Void)
+  func split(nextPath: String, completion: @escaping (Result<CameraRecordingSplitDto, Error>) -> Void)
+  func stopWork(completion: @escaping (Result<CameraRecordingStopDto, Error>) -> Void)
+  func getDiagnostics(completion: @escaping (Result<[String?: Any?]?, Error>) -> Void)
+  func setPairingScanEnabled(enabled: Bool, completion: @escaping (Result<Void, Error>) -> Void)
+  func setWorkScanEnabled(enabled: Bool, completion: @escaping (Result<Void, Error>) -> Void)
+  func setPreviewActive(active: Bool, completion: @escaping (Result<Void, Error>) -> Void)
+  func setTorchEnabled(enabled: Bool, completion: @escaping (Result<Bool, Error>) -> Void)
+  func switchCamera(completion: @escaping (Result<CameraInitializationDto, Error>) -> Void)
+  func listCameras(completion: @escaping (Result<[CameraLensDto], Error>) -> Void)
+  func switchToCamera(cameraId: String, completion: @escaping (Result<CameraInitializationDto, Error>) -> Void)
+  func dispose(completion: @escaping (Result<Void, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -1603,11 +1603,13 @@ class CameraHostApiSetup {
       initializeChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let requestArg = args[0] as! CameraInitializeRequest
-        do {
-          let result = try api.initialize(request: requestArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.initialize(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1618,11 +1620,13 @@ class CameraHostApiSetup {
       ensurePermissionsChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let recordAudioArg = args[0] as! Bool
-        do {
-          let result = try api.ensurePermissions(recordAudio: recordAudioArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.ensurePermissions(recordAudio: recordAudioArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1634,11 +1638,13 @@ class CameraHostApiSetup {
         let args = message as! [Any?]
         let pathArg = args[0] as! String
         let recordAudioArg = args[1] as! Bool
-        do {
-          let result = try api.startWork(path: pathArg, recordAudio: recordAudioArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.startWork(path: pathArg, recordAudio: recordAudioArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1649,11 +1655,13 @@ class CameraHostApiSetup {
       splitChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let nextPathArg = args[0] as! String
-        do {
-          let result = try api.split(nextPath: nextPathArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.split(nextPath: nextPathArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1662,11 +1670,13 @@ class CameraHostApiSetup {
     let stopWorkChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.stopWork\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       stopWorkChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.stopWork()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.stopWork { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1675,11 +1685,13 @@ class CameraHostApiSetup {
     let getDiagnosticsChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.getDiagnostics\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       getDiagnosticsChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.getDiagnostics()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.getDiagnostics { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1690,11 +1702,13 @@ class CameraHostApiSetup {
       setPairingScanEnabledChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let enabledArg = args[0] as! Bool
-        do {
-          try api.setPairingScanEnabled(enabled: enabledArg)
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.setPairingScanEnabled(enabled: enabledArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1705,11 +1719,13 @@ class CameraHostApiSetup {
       setWorkScanEnabledChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let enabledArg = args[0] as! Bool
-        do {
-          try api.setWorkScanEnabled(enabled: enabledArg)
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.setWorkScanEnabled(enabled: enabledArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1720,11 +1736,13 @@ class CameraHostApiSetup {
       setPreviewActiveChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let activeArg = args[0] as! Bool
-        do {
-          try api.setPreviewActive(active: activeArg)
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.setPreviewActive(active: activeArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1735,11 +1753,13 @@ class CameraHostApiSetup {
       setTorchEnabledChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let enabledArg = args[0] as! Bool
-        do {
-          let result = try api.setTorchEnabled(enabled: enabledArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.setTorchEnabled(enabled: enabledArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1748,11 +1768,13 @@ class CameraHostApiSetup {
     let switchCameraChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.switchCamera\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       switchCameraChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.switchCamera()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.switchCamera { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1761,11 +1783,13 @@ class CameraHostApiSetup {
     let listCamerasChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.listCameras\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       listCamerasChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.listCameras()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.listCameras { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1776,11 +1800,13 @@ class CameraHostApiSetup {
       switchToCameraChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let cameraIdArg = args[0] as! String
-        do {
-          let result = try api.switchToCamera(cameraId: cameraIdArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.switchToCamera(cameraId: cameraIdArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1789,11 +1815,13 @@ class CameraHostApiSetup {
     let disposeChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.dispose\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       disposeChannel.setMessageHandler { _, reply in
-        do {
-          try api.dispose()
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.dispose { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {

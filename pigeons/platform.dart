@@ -188,19 +188,33 @@ abstract class OrderReceiverEventApi {
 
 @HostApi()
 abstract class CameraHostApi {
+  @async
   CameraInitializationDto initialize(CameraInitializeRequest request);
+  @async
   bool ensurePermissions(bool recordAudio);
+  @async
   CameraRecordingStartDto startWork(String path, bool recordAudio);
+  @async
   CameraRecordingSplitDto split(String nextPath);
+  @async
   CameraRecordingStopDto stopWork();
+  @async
   Map<String?, Object?>? getDiagnostics();
+  @async
   void setPairingScanEnabled(bool enabled);
+  @async
   void setWorkScanEnabled(bool enabled);
+  @async
   void setPreviewActive(bool active);
+  @async
   bool setTorchEnabled(bool enabled);
+  @async
   CameraInitializationDto switchCamera();
+  @async
   List<CameraLensDto> listCameras();
+  @async
   CameraInitializationDto switchToCamera(String cameraId);
+  @async
   void dispose();
 }
 

@@ -1,6 +1,9 @@
 package app.packingproof.mobile
 
 import app.packingproof.mobile.generated.ExportRequest
+import app.packingproof.mobile.generated.BarcodeCandidateDto
+import app.packingproof.mobile.generated.CameraEventApi
+import app.packingproof.mobile.generated.CameraHostApi
 import app.packingproof.mobile.generated.FlutterError
 import app.packingproof.mobile.generated.MediaProcessingHostApi
 import app.packingproof.mobile.generated.OrderInfoDto
@@ -15,6 +18,7 @@ internal fun registerPigeonPlatformApis(
     messenger: BinaryMessenger,
     thumbnailPlugin: RecordingThumbnailPlugin,
     orderInfoReceiverPlugin: OrderInfoReceiverPlugin,
+    continuousCameraPlugin: ContinuousCameraPlugin,
 ) {
     MediaProcessingHostApi.setUp(
         messenger,
@@ -27,6 +31,28 @@ internal fun registerPigeonPlatformApis(
     )
     orderInfoReceiverPlugin.addOrderInfoListener { items ->
         orderReceiverEventApi.orderInfoReceived(items.map { it.toOrderInfoDto() }) { }
+    }
+    val cameraEventApi = CameraEventApi(messenger)
+    CameraHostApi.setUp(
+        messenger,
+        PigeonCameraHostApi(continuousCameraPlugin),
+    )
+    continuousCameraPlugin.addCameraEventListener { method, arguments ->
+        when (method) {
+            "barcodeFrame" -> {
+                val candidates = (arguments as? List<*>).orEmpty().map {
+                    (it as Map<*, *>).toBarcodeCandidateDto()
+                }
+                cameraEventApi.barcodeBatch(candidates) { }
+            }
+            "nativeError" ->
+                cameraEventApi.nativeError(arguments?.toString().orEmpty()) { }
+            "storageCritical" -> cameraEventApi.storageCritical { }
+            "probeFinished" ->
+                cameraEventApi.probeFinished(arguments as Map<String?, Any?>) { }
+            "recordingFallback" ->
+                cameraEventApi.recordingFallback(arguments as Map<String?, Any?>) { }
+        }
     }
 }
 
@@ -123,4 +149,11 @@ private fun orderInfoDtoFromMap(value: Map<String, Any?>): OrderInfoDto =
         refundProductInfo = value["refundProductInfo"] as? String ?: "",
         pushTimeMs = (value["pushTimeMilliseconds"] as? Number)?.toLong(),
         isTest = value["isTest"] as? Boolean ?: false,
+    )
+
+private fun Map<*, *>.toBarcodeCandidateDto(): BarcodeCandidateDto =
+    BarcodeCandidateDto(
+        value = this["value"] as String,
+        area = (this["area"] as Number).toLong(),
+        format = this["format"] as? String,
     )

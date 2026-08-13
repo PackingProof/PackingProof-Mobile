@@ -53,6 +53,7 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             recordingThumbnailPlugin!!,
             orderInfoReceiverPlugin!!,
+            continuousCameraPlugin!!,
         )
         maxVolumeController = MaxVolumeController(this)
         systemVideoPlayerPlugin = SystemVideoPlayerPlugin(

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../models/recording_spec.dart';
 import '../models/recording_video_codec.dart';
 import '../platform/contracts/camera_platform.dart';
+import '../platform/platform_container.dart';
 
 class ContinuousCameraInitialization {
   const ContinuousCameraInitialization({
@@ -266,11 +267,7 @@ class ContinuousCameraService {
           platform ??
           (channel != null
               ? _LegacyCameraPlatform(channel)
-              : _LegacyCameraPlatform(
-                  const MethodChannel(
-                    'app.packingproof.mobile/continuous_camera',
-                  ),
-                )) {
+              : AppContainer.forCurrentPlatform().camera) {
     _platform.onBarcodeBatch = (List<NativeBarcodeCandidate> candidates) {
       onBarcodeFrame?.call(candidates);
     };

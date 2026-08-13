@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCharacteristics
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.plugin.common.BinaryMessenger
@@ -22,6 +24,8 @@ class ContinuousCameraPlugin(
     }
 
     private val channel = MethodChannel(messenger, CHANNEL_NAME)
+    private val handler = Handler(Looper.getMainLooper())
+    private val eventListeners = mutableListOf<(String, Any?) -> Unit>()
     private var engine = createEngine()
     private var pendingPermissionResult: MethodChannel.Result? = null
     private var pendingPermissionRecordAudio = false
@@ -122,11 +126,19 @@ class ContinuousCameraPlugin(
                 pendingPermissionResult = null
                 pendingPermissionRecordAudio = false
                 engine.dispose()
-                engine = createEngine()
+        engine = createEngine()
                 result.success(null)
             }
             else -> result.notImplemented()
         }
+    }
+
+    internal fun addCameraEventListener(listener: (String, Any?) -> Unit) {
+        eventListeners.add(listener)
+    }
+
+    internal fun removeCameraEventListener(listener: (String, Any?) -> Unit) {
+        eventListeners.remove(listener)
     }
 
     private fun initialize(
@@ -200,6 +212,7 @@ class ContinuousCameraPlugin(
 
     fun dispose() {
         channel.setMethodCallHandler(null)
+        eventListeners.clear()
         pendingPermissionResult?.error("disposed", "页面已关闭", null)
         pendingPermissionResult = null
         pendingPermissionRecordAudio = false
@@ -216,6 +229,9 @@ class ContinuousCameraPlugin(
             preferredLensFacing,
             preferredCameraId,
         ) { method, arguments ->
-            activity.runOnUiThread { channel.invokeMethod(method, arguments) }
+            handler.post {
+                channel.invokeMethod(method, arguments)
+                eventListeners.forEach { it(method, arguments) }
+            }
         }
 }

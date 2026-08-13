@@ -1654,20 +1654,20 @@ class OrderReceiverEventApi(private val binaryMessenger: BinaryMessenger, privat
 }
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface CameraHostApi {
-  fun initialize(request: CameraInitializeRequest): CameraInitializationDto
-  fun ensurePermissions(recordAudio: Boolean): Boolean
-  fun startWork(path: String, recordAudio: Boolean): CameraRecordingStartDto
-  fun split(nextPath: String): CameraRecordingSplitDto
-  fun stopWork(): CameraRecordingStopDto
-  fun getDiagnostics(): Map<String?, Any?>?
-  fun setPairingScanEnabled(enabled: Boolean)
-  fun setWorkScanEnabled(enabled: Boolean)
-  fun setPreviewActive(active: Boolean)
-  fun setTorchEnabled(enabled: Boolean): Boolean
-  fun switchCamera(): CameraInitializationDto
-  fun listCameras(): List<CameraLensDto>
-  fun switchToCamera(cameraId: String): CameraInitializationDto
-  fun dispose()
+  fun initialize(request: CameraInitializeRequest, callback: (Result<CameraInitializationDto>) -> Unit)
+  fun ensurePermissions(recordAudio: Boolean, callback: (Result<Boolean>) -> Unit)
+  fun startWork(path: String, recordAudio: Boolean, callback: (Result<CameraRecordingStartDto>) -> Unit)
+  fun split(nextPath: String, callback: (Result<CameraRecordingSplitDto>) -> Unit)
+  fun stopWork(callback: (Result<CameraRecordingStopDto>) -> Unit)
+  fun getDiagnostics(callback: (Result<Map<String?, Any?>?>) -> Unit)
+  fun setPairingScanEnabled(enabled: Boolean, callback: (Result<Unit>) -> Unit)
+  fun setWorkScanEnabled(enabled: Boolean, callback: (Result<Unit>) -> Unit)
+  fun setPreviewActive(active: Boolean, callback: (Result<Unit>) -> Unit)
+  fun setTorchEnabled(enabled: Boolean, callback: (Result<Boolean>) -> Unit)
+  fun switchCamera(callback: (Result<CameraInitializationDto>) -> Unit)
+  fun listCameras(callback: (Result<List<CameraLensDto>>) -> Unit)
+  fun switchToCamera(cameraId: String, callback: (Result<CameraInitializationDto>) -> Unit)
+  fun dispose(callback: (Result<Unit>) -> Unit)
 
   companion object {
     /** The codec used by CameraHostApi. */
@@ -1684,12 +1684,15 @@ interface CameraHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val requestArg = args[0] as CameraInitializeRequest
-            val wrapped: List<Any?> = try {
-              listOf(api.initialize(requestArg))
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.initialize(requestArg) { result: Result<CameraInitializationDto> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1701,12 +1704,15 @@ interface CameraHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val recordAudioArg = args[0] as Boolean
-            val wrapped: List<Any?> = try {
-              listOf(api.ensurePermissions(recordAudioArg))
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.ensurePermissions(recordAudioArg) { result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1719,12 +1725,15 @@ interface CameraHostApi {
             val args = message as List<Any?>
             val pathArg = args[0] as String
             val recordAudioArg = args[1] as Boolean
-            val wrapped: List<Any?> = try {
-              listOf(api.startWork(pathArg, recordAudioArg))
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.startWork(pathArg, recordAudioArg) { result: Result<CameraRecordingStartDto> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1736,12 +1745,15 @@ interface CameraHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val nextPathArg = args[0] as String
-            val wrapped: List<Any?> = try {
-              listOf(api.split(nextPathArg))
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.split(nextPathArg) { result: Result<CameraRecordingSplitDto> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1751,12 +1763,15 @@ interface CameraHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.stopWork$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.stopWork())
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.stopWork{ result: Result<CameraRecordingStopDto> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1766,12 +1781,15 @@ interface CameraHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.getDiagnostics$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.getDiagnostics())
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.getDiagnostics{ result: Result<Map<String?, Any?>?> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1783,13 +1801,14 @@ interface CameraHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val enabledArg = args[0] as Boolean
-            val wrapped: List<Any?> = try {
-              api.setPairingScanEnabled(enabledArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.setPairingScanEnabled(enabledArg) { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1801,13 +1820,14 @@ interface CameraHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val enabledArg = args[0] as Boolean
-            val wrapped: List<Any?> = try {
-              api.setWorkScanEnabled(enabledArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.setWorkScanEnabled(enabledArg) { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1819,13 +1839,14 @@ interface CameraHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val activeArg = args[0] as Boolean
-            val wrapped: List<Any?> = try {
-              api.setPreviewActive(activeArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.setPreviewActive(activeArg) { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1837,12 +1858,15 @@ interface CameraHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val enabledArg = args[0] as Boolean
-            val wrapped: List<Any?> = try {
-              listOf(api.setTorchEnabled(enabledArg))
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.setTorchEnabled(enabledArg) { result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1852,12 +1876,15 @@ interface CameraHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.switchCamera$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.switchCamera())
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.switchCamera{ result: Result<CameraInitializationDto> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1867,12 +1894,15 @@ interface CameraHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.listCameras$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.listCameras())
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.listCameras{ result: Result<List<CameraLensDto>> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1884,12 +1914,15 @@ interface CameraHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val cameraIdArg = args[0] as String
-            val wrapped: List<Any?> = try {
-              listOf(api.switchToCamera(cameraIdArg))
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.switchToCamera(cameraIdArg) { result: Result<CameraInitializationDto> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1899,13 +1932,14 @@ interface CameraHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.dispose$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.dispose()
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.dispose{ result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
