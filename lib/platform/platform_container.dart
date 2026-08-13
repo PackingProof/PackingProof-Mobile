@@ -1,9 +1,12 @@
 import 'dart:io';
 
+import 'adapters/pigeon_camera_platform.dart';
 import 'adapters/pigeon_thumbnail_platform.dart';
 import 'adapters/pigeon_order_receiver_platform.dart';
+import 'adapters/unsupported_camera_platform.dart';
 import 'adapters/unsupported_thumbnail_platform.dart';
 import 'adapters/unsupported_order_receiver_platform.dart';
+import 'contracts/camera_platform.dart';
 import 'contracts/thumbnail_platform.dart';
 import 'contracts/order_receiver_platform.dart';
 import 'platform_capabilities.dart';
@@ -16,6 +19,7 @@ class AppContainer {
     required this.capabilities,
     required this.thumbnail,
     required this.orderReceiver,
+    required this.camera,
   });
 
   factory AppContainer.forCurrentPlatform() {
@@ -39,10 +43,14 @@ class AppContainer {
       orderReceiver: Platform.isAndroid
           ? PigeonOrderReceiverPlatform()
           : const UnsupportedOrderReceiverPlatform(),
+      camera: Platform.isAndroid
+          ? PigeonCameraPlatform()
+          : UnsupportedCameraPlatform(),
     );
   }
 
   final PlatformCapabilities capabilities;
   final ThumbnailPlatform thumbnail;
   final OrderReceiverPlatform orderReceiver;
+  final CameraPlatform camera;
 }

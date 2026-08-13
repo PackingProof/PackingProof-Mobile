@@ -101,7 +101,9 @@ void main() {
           }
           return null;
         });
-    final ContinuousCameraService service = ContinuousCameraService();
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
 
     final List<NativeCameraLens> lenses = await service.listCameras();
     final ContinuousCameraInitialization initialization = await service
@@ -133,7 +135,9 @@ void main() {
           calls.add(call);
           return null;
         });
-    final ContinuousCameraService service = ContinuousCameraService();
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
 
     await service.setWorkScanEnabled(true);
     await service.setPreviewActive(false);
@@ -163,7 +167,9 @@ void main() {
             'startedAtMs': 0,
           };
         });
-    final ContinuousCameraService service = ContinuousCameraService();
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
     addTearDown(() async {
       await service.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -250,7 +256,9 @@ void main() {
             },
           };
         });
-    final ContinuousCameraService service = ContinuousCameraService();
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
     addTearDown(() async {
       await service.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -293,7 +301,9 @@ void main() {
     const MethodChannel channel = MethodChannel(
       'app.packingproof.mobile/continuous_camera',
     );
-    final ContinuousCameraService service = ContinuousCameraService();
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
     addTearDown(() async {
       await service.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -333,7 +343,9 @@ void main() {
     const MethodChannel channel = MethodChannel(
       'app.packingproof.mobile/continuous_camera',
     );
-    final ContinuousCameraService service = ContinuousCameraService();
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
     addTearDown(() async {
       await service.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -382,7 +394,9 @@ void main() {
             'canSwitchCamera': false,
           };
         });
-    final ContinuousCameraService service = ContinuousCameraService();
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
     addTearDown(() async {
       await service.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -422,7 +436,9 @@ void main() {
             'canSwitchCamera': false,
           };
         });
-    final ContinuousCameraService service = ContinuousCameraService();
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
     addTearDown(() async {
       await service.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -458,7 +474,9 @@ void main() {
             'canSwitchCamera': false,
           };
         });
-    final ContinuousCameraService service = ContinuousCameraService();
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
     addTearDown(() async {
       await service.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -485,7 +503,9 @@ void main() {
           calls.add(call);
           return true;
         });
-    final ContinuousCameraService service = ContinuousCameraService();
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
     addTearDown(() async {
       await service.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -509,7 +529,9 @@ void main() {
           calls.add(call);
           return true;
         });
-    final ContinuousCameraService service = ContinuousCameraService();
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
     addTearDown(() async {
       await service.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

@@ -1,0 +1,83 @@
+import '../../services/continuous_camera_service.dart';
+import '../contracts/camera_platform.dart';
+import '../platform_capabilities.dart';
+import '../platform_exceptions.dart';
+
+class UnsupportedCameraPlatform implements CameraPlatform {
+  UnsupportedCameraPlatform();
+
+  @override
+  void Function(List<NativeBarcodeCandidate> candidates)? onBarcodeBatch;
+  @override
+  void Function(String message)? onError;
+  @override
+  void Function()? onStorageCritical;
+  @override
+  void Function(Map<Object?, Object?> results)? onProbeFinished;
+  @override
+  void Function(Map<Object?, Object?> info)? onRecordingFallback;
+
+  @override
+  Future<ContinuousCameraInitialization> initialize({
+    String videoCodec = 'hevc',
+    String recordingSpec = 'hd1080p30',
+    bool fallbackRecording = false,
+  }) {
+    throw const CapabilityUnavailableException(
+      PlatformCapability.continuousCameraRecording,
+      reason: '当前平台暂不支持连续录像',
+    );
+  }
+
+  @override
+  Future<bool> ensurePermissions({required bool recordAudio}) async => false;
+
+  @override
+  Future<NativeRecordingStart> startWork(
+    String path, {
+    required bool recordAudio,
+  }) {
+    throw const CapabilityUnavailableException(
+      PlatformCapability.continuousCameraRecording,
+      reason: '当前平台暂不支持连续录像',
+    );
+  }
+
+  @override
+  Future<NativeRecordingSplit> split(String nextPath) {
+    throw const CapabilityUnavailableException(
+      PlatformCapability.continuousCameraRecording,
+      reason: '当前平台暂不支持连续录像',
+    );
+  }
+
+  @override
+  Future<NativeRecordingStop> stopWork() {
+    throw const CapabilityUnavailableException(
+      PlatformCapability.continuousCameraRecording,
+      reason: '当前平台暂不支持连续录像',
+    );
+  }
+
+  @override
+  Future<CameraDiagnosticsSnapshot?> getDiagnostics() async => null;
+
+  @override
+  Future<void> setPairingScanEnabled(bool enabled) async {}
+  @override
+  Future<void> setWorkScanEnabled(bool enabled) async {}
+  @override
+  Future<void> setPreviewActive(bool active) async {}
+  @override
+  Future<bool> setTorchEnabled(bool enabled) async => false;
+  @override
+  Future<ContinuousCameraInitialization> switchCamera() => initialize();
+  @override
+  Future<List<NativeCameraLens>> listCameras() async =>
+      const <NativeCameraLens>[];
+  @override
+  Future<ContinuousCameraInitialization> switchToCamera(String cameraId) =>
+      initialize();
+  @override
+  Future<void> dispose() async {}
+}

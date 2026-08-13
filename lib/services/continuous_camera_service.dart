@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../models/recording_spec.dart';
 import '../models/recording_video_codec.dart';
+import '../platform/contracts/camera_platform.dart';
 
 class ContinuousCameraInitialization {
   const ContinuousCameraInitialization({
@@ -225,10 +226,7 @@ class CameraDiagnosticsSnapshot {
   bool get probeCached => camera['probeCached'] == true;
   List<Map<String, Object?>> get probeResults =>
       (camera['probeResults'] as List<Object?>?)
-          ?.map(
-            (Object? item) =>
-                Map<String, Object?>.from(item! as Map),
-          )
+          ?.map((Object? item) => Map<String, Object?>.from(item! as Map))
           .toList(growable: false) ??
       const <Map<String, Object?>>[];
   int? get hardwareLevel => (camera['hardwareLevel'] as num?)?.toInt();
@@ -263,13 +261,34 @@ class CameraDiagnosticsSnapshot {
 }
 
 class ContinuousCameraService {
-  static const MethodChannel _channel = MethodChannel(
-    'app.packingproof.mobile/continuous_camera',
-  );
-
-  ContinuousCameraService() {
-    _channel.setMethodCallHandler(_handleNativeCall);
+  ContinuousCameraService({CameraPlatform? platform, MethodChannel? channel})
+    : _platform =
+          platform ??
+          (channel != null
+              ? _LegacyCameraPlatform(channel)
+              : _LegacyCameraPlatform(
+                  const MethodChannel(
+                    'app.packingproof.mobile/continuous_camera',
+                  ),
+                )) {
+    _platform.onBarcodeBatch = (List<NativeBarcodeCandidate> candidates) {
+      onBarcodeFrame?.call(candidates);
+    };
+    _platform.onError = (String message) {
+      onError?.call(message);
+    };
+    _platform.onStorageCritical = () {
+      onStorageCritical?.call();
+    };
+    _platform.onProbeFinished = (Map<Object?, Object?> results) {
+      onProbeFinished?.call(results);
+    };
+    _platform.onRecordingFallback = (Map<Object?, Object?> info) {
+      onRecordingFallback?.call(info);
+    };
   }
+
+  final CameraPlatform _platform;
 
   void Function(List<NativeBarcodeCandidate> candidates)? onBarcodeFrame;
   void Function(String message)? onError;
@@ -281,17 +300,93 @@ class ContinuousCameraService {
     RecordingVideoCodec videoCodec = RecordingVideoCodec.hevc,
     RecordingSpecPreset recordingSpec = RecordingSpecPreset.hd1080p30,
     bool fallbackRecording = false,
+  }) => _platform.initialize(
+    videoCodec: videoCodec.storageValue,
+    recordingSpec: recordingSpec.storageValue,
+    fallbackRecording: fallbackRecording,
+  );
+
+  /// 请求运行所需权限；[recordAudio] 为 false 时只要求摄像头权限。
+  Future<bool> ensurePermissions({required bool recordAudio}) =>
+      _platform.ensurePermissions(recordAudio: recordAudio);
+
+  Future<NativeRecordingStart> startWork(
+    String path, {
+    required bool recordAudio,
+  }) => _platform.startWork(path, recordAudio: recordAudio);
+
+  Future<NativeRecordingSplit> split(String nextPath) =>
+      _platform.split(nextPath);
+
+  Future<NativeRecordingStop> stopWork() => _platform.stopWork();
+
+  Future<CameraDiagnosticsSnapshot?> getDiagnostics() =>
+      _platform.getDiagnostics();
+
+  Future<void> setPairingScanEnabled(bool enabled) =>
+      _platform.setPairingScanEnabled(enabled);
+
+  Future<void> setWorkScanEnabled(bool enabled) =>
+      _platform.setWorkScanEnabled(enabled);
+
+  Future<void> setPreviewActive(bool active) =>
+      _platform.setPreviewActive(active);
+
+  Future<bool> setTorchEnabled(bool enabled) =>
+      _platform.setTorchEnabled(enabled);
+
+  Future<ContinuousCameraInitialization> switchCamera() =>
+      _platform.switchCamera();
+
+  Future<List<NativeCameraLens>> listCameras() => _platform.listCameras();
+
+  Future<ContinuousCameraInitialization> switchToCamera(String cameraId) =>
+      _platform.switchToCamera(cameraId);
+
+  Future<void> dispose() async {
+    onBarcodeFrame = null;
+    onError = null;
+    onStorageCritical = null;
+    onProbeFinished = null;
+    onRecordingFallback = null;
+    await _platform.dispose();
+  }
+}
+
+class _LegacyCameraPlatform implements CameraPlatform {
+  _LegacyCameraPlatform(this._channel) {
+    _channel.setMethodCallHandler(_handleNativeCall);
+  }
+
+  final MethodChannel _channel;
+
+  @override
+  void Function(List<NativeBarcodeCandidate> candidates)? onBarcodeBatch;
+  @override
+  void Function(String message)? onError;
+  @override
+  void Function()? onStorageCritical;
+  @override
+  void Function(Map<Object?, Object?> results)? onProbeFinished;
+  @override
+  void Function(Map<Object?, Object?> info)? onRecordingFallback;
+
+  @override
+  Future<ContinuousCameraInitialization> initialize({
+    String videoCodec = 'hevc',
+    String recordingSpec = 'hd1080p30',
+    bool fallbackRecording = false,
   }) async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('initialize', <String, Object>{
-          'videoCodec': videoCodec.storageValue,
-          'recordingSpec': recordingSpec.storageValue,
+          'videoCodec': videoCodec,
+          'recordingSpec': recordingSpec,
           'fallbackRecording': fallbackRecording,
         }))!;
     return ContinuousCameraInitialization.fromMap(values);
   }
 
-  /// 请求运行所需权限；[recordAudio] 为 false 时只要求摄像头权限。
+  @override
   Future<bool> ensurePermissions({required bool recordAudio}) async {
     return (await _channel.invokeMethod<bool>(
           'ensurePermissions',
@@ -300,6 +395,7 @@ class ContinuousCameraService {
         false;
   }
 
+  @override
   Future<NativeRecordingStart> startWork(
     String path, {
     required bool recordAudio,
@@ -312,6 +408,7 @@ class ContinuousCameraService {
     return NativeRecordingStart.fromMap(values);
   }
 
+  @override
   Future<NativeRecordingSplit> split(String nextPath) async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('split', <String, Object>{
@@ -320,12 +417,14 @@ class ContinuousCameraService {
     return NativeRecordingSplit.fromMap(values);
   }
 
+  @override
   Future<NativeRecordingStop> stopWork() async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('stopWork'))!;
     return NativeRecordingStop.fromMap(values);
   }
 
+  @override
   Future<CameraDiagnosticsSnapshot?> getDiagnostics() async {
     final Map<Object?, Object?>? values = await _channel
         .invokeMethod<Map<Object?, Object?>>('getDiagnostics');
@@ -333,24 +432,28 @@ class ContinuousCameraService {
     return CameraDiagnosticsSnapshot.fromMap(values);
   }
 
+  @override
   Future<void> setPairingScanEnabled(bool enabled) async {
     await _channel.invokeMethod<void>('setPairingScanEnabled', <String, Object>{
       'enabled': enabled,
     });
   }
 
+  @override
   Future<void> setWorkScanEnabled(bool enabled) async {
     await _channel.invokeMethod<void>('setWorkScanEnabled', <String, Object>{
       'enabled': enabled,
     });
   }
 
+  @override
   Future<void> setPreviewActive(bool active) async {
     await _channel.invokeMethod<void>('setPreviewActive', <String, Object>{
       'active': active,
     });
   }
 
+  @override
   Future<bool> setTorchEnabled(bool enabled) async {
     return (await _channel.invokeMethod<bool>(
           'setTorchEnabled',
@@ -359,12 +462,14 @@ class ContinuousCameraService {
         false;
   }
 
+  @override
   Future<ContinuousCameraInitialization> switchCamera() async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('switchCamera'))!;
     return ContinuousCameraInitialization.fromMap(values);
   }
 
+  @override
   Future<List<NativeCameraLens>> listCameras() async {
     final List<Object?>? values = await _channel.invokeMethod<List<Object?>>(
       'listCameras',
@@ -379,6 +484,7 @@ class ContinuousCameraService {
         .toList(growable: false);
   }
 
+  @override
   Future<ContinuousCameraInitialization> switchToCamera(String cameraId) async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('switchToCamera', <String, Object>{
@@ -387,10 +493,8 @@ class ContinuousCameraService {
     return ContinuousCameraInitialization.fromMap(values);
   }
 
+  @override
   Future<void> dispose() async {
-    onBarcodeFrame = null;
-    onError = null;
-    onStorageCritical = null;
     _channel.setMethodCallHandler(null);
     await _channel.invokeMethod<void>('dispose');
   }
@@ -401,7 +505,7 @@ class ContinuousCameraService {
         final List<Object?> values = List<Object?>.from(
           call.arguments! as List,
         );
-        onBarcodeFrame?.call(
+        onBarcodeBatch?.call(
           values
               .map((Object? value) {
                 final Map<Object?, Object?> map = Map<Object?, Object?>.from(
