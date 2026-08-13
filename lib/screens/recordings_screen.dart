@@ -283,7 +283,7 @@ class RecordingsScreen extends StatefulWidget {
 
 class _RecordingsScreenState extends State<RecordingsScreen> {
   int _historyPageSize = 5;
-  static const RecordingThumbnailService _thumbnailService =
+  static final RecordingThumbnailService _thumbnailService =
       RecordingThumbnailService();
 
   late WorkMode _workMode;

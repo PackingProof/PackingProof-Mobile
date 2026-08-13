@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
 import '../models/order_info.dart';
+import '../platform/contracts/order_receiver_platform.dart';
+import '../platform/platform_container.dart';
+import '../platform/platform_exceptions.dart';
 
 class OrderInfoReceiverSnapshot {
   const OrderInfoReceiverSnapshot({
@@ -58,12 +59,13 @@ abstract interface class OrderInfoReceiverSink implements Listenable {
 
 class OrderInfoReceiverService extends ChangeNotifier
     implements OrderInfoReceiverSink {
-  OrderInfoReceiverService({MethodChannel? channel})
-    : _channel = channel ?? const MethodChannel(_channelName);
+  OrderInfoReceiverService({OrderReceiverPlatform? platform})
+    : _platform = platform ?? AppContainer.forCurrentPlatform().orderReceiver {
+    _platformSubscription = _platform.received.listen(_handleReceived);
+  }
 
-  static const String _channelName =
-      'app.packingproof.mobile/order_info_receiver';
-  final MethodChannel _channel;
+  final OrderReceiverPlatform _platform;
+  StreamSubscription<OrderInfo>? _platformSubscription;
   final StreamController<OrderInfo> _received =
       StreamController<OrderInfo>.broadcast();
   OrderInfoReceiverSnapshot _snapshot = const OrderInfoReceiverSnapshot();
@@ -77,66 +79,59 @@ class OrderInfoReceiverService extends ChangeNotifier
 
   @override
   Future<void> initialize() async {
-    if (!Platform.isAndroid || _disposed) return;
-    _channel.setMethodCallHandler(_handleNativeCall);
-    await _applyStatus(
-      await _channel.invokeMapMethod<Object?, Object?>('start'),
-    );
+    if (_disposed) return;
+    try {
+      await _applyStatus(await _platform.start(backgroundDelivery: false));
+    } on CapabilityUnavailableException {
+      // 非 Android 平台保持现有静默行为。
+    }
   }
 
   @override
   Future<void> retry() async {
-    if (!Platform.isAndroid || _disposed) return;
-    await _applyStatus(
-      await _channel.invokeMapMethod<Object?, Object?>('retry'),
-    );
+    if (_disposed) return;
+    try {
+      await _applyStatus(await _platform.start(backgroundDelivery: false));
+    } on CapabilityUnavailableException {
+      // 非 Android 平台保持现有静默行为。
+    }
   }
 
   @override
   Future<OrderInfo?> lookup(String trackingNumber) async {
-    if (!Platform.isAndroid || _disposed || trackingNumber.trim().isEmpty) {
+    if (_disposed || trackingNumber.trim().isEmpty) return null;
+    try {
+      return await _platform.lookup(trackingNumber.trim());
+    } on CapabilityUnavailableException {
       return null;
     }
-    final Map<Object?, Object?>? value = await _channel
-        .invokeMapMethod<Object?, Object?>('lookup', <String, Object>{
-          'trackingNumber': trackingNumber.trim(),
-        });
-    return value == null ? null : OrderInfo.fromMap(value);
   }
 
   @override
   Future<void> setBackgroundKeepAlive(bool enabled) async {
-    if (!Platform.isAndroid || _disposed) return;
-    await _channel.invokeMethod<void>(
-      'setBackgroundKeepAlive',
-      <String, Object>{'enabled': enabled},
-    );
-  }
-
-  Future<void> _handleNativeCall(MethodCall call) async {
-    if (call.method != 'orderInfoReceived' || _disposed) return;
-    final List<Object?> values = List<Object?>.from(call.arguments as List);
-    final List<OrderInfo> items = values
-        .whereType<Map>()
-        .map(
-          (Map value) => OrderInfo.fromMap(Map<Object?, Object?>.from(value)),
-        )
-        .toList(growable: false);
-    _snapshot = _snapshot.copyWith(lastReceivedAt: DateTime.now());
-    notifyListeners();
-    for (final OrderInfo item in items) {
-      _received.add(item);
+    if (_disposed) return;
+    try {
+      await _platform.updateBackgroundDelivery(enabled);
+    } on CapabilityUnavailableException {
+      // 非 Android 平台保持现有静默行为。
     }
   }
 
-  Future<void> _applyStatus(Map<Object?, Object?>? value) async {
+  void _handleReceived(OrderInfo item) {
+    if (_disposed) return;
+    _snapshot = _snapshot.copyWith(lastReceivedAt: DateTime.now());
+    notifyListeners();
+    if (!_received.isClosed) _received.add(item);
+  }
+
+  Future<void> _applyStatus(OrderReceiverPlatformSnapshot? value) async {
     if (value == null || _disposed) return;
     _snapshot = OrderInfoReceiverSnapshot(
-      running: value['running'] == true,
-      ipAddress: '${value['ipAddress'] ?? ''}',
-      url: '${value['url'] ?? ''}',
-      port: (value['port'] as num?)?.toInt() ?? 5280,
-      errorMessage: '${value['errorMessage'] ?? ''}',
+      running: value.running,
+      ipAddress: value.ipAddress,
+      url: value.url,
+      port: value.port,
+      errorMessage: value.errorMessage,
       lastReceivedAt: _snapshot.lastReceivedAt,
     );
     notifyListeners();
@@ -146,7 +141,8 @@ class OrderInfoReceiverService extends ChangeNotifier
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    _channel.setMethodCallHandler(null);
+    await _platformSubscription?.cancel();
+    await _platform.dispose();
     await _received.close();
     super.dispose();
   }

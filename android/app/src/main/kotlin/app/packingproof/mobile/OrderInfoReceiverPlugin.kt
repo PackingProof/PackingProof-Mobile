@@ -16,19 +16,46 @@ internal class OrderInfoReceiverPlugin(
     private val handler = Handler(Looper.getMainLooper())
     private var keepAliveInBackground = false
     private var hostForeground = true
-    private val listener: (List<OrderInfoRecord>) -> Unit = { items ->
-        handler.post {
-            channel.invokeMethod(
-                "orderInfoReceived",
-                items.map(OrderInfoRecord::toMap),
-            )
-        }
-    }
+    private val listeners = mutableListOf<(List<OrderInfoRecord>) -> Unit>()
 
     init {
         channel.setMethodCallHandler(this)
-        OrderInfoReceiverRuntime.addListener(listener)
+        addOrderInfoListener { items ->
+            channel.invokeMethod("orderInfoReceived", items.map(OrderInfoRecord::toMap))
+        }
         OrderInfoReceiverRuntime.start(activity.applicationContext)
+    }
+
+    internal fun addOrderInfoListener(listener: (List<OrderInfoRecord>) -> Unit) {
+        listeners.add(listener)
+        OrderInfoReceiverRuntime.addListener(listener)
+    }
+
+    internal fun removeOrderInfoListener(listener: (List<OrderInfoRecord>) -> Unit) {
+        listeners.remove(listener)
+        OrderInfoReceiverRuntime.removeListener(listener)
+    }
+
+    internal fun startReceiver(backgroundDelivery: Boolean): Map<String, Any?> {
+        keepAliveInBackground = backgroundDelivery
+        applyHostState()
+        return OrderInfoReceiverRuntime.start(activity.applicationContext)
+    }
+
+    internal fun receiverStatus(): Map<String, Any?> = OrderInfoReceiverRuntime.status()
+
+    internal fun lookupOrder(trackingNumber: String): Map<String, Any?>? =
+        OrderInfoReceiverRuntime.lookup(trackingNumber)
+
+    internal fun updateBackgroundDelivery(enabled: Boolean) {
+        keepAliveInBackground = enabled
+        applyHostState()
+    }
+
+    internal fun stopReceiver() {
+        keepAliveInBackground = false
+        stopForegroundService()
+        OrderInfoReceiverRuntime.stop()
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -81,7 +108,8 @@ internal class OrderInfoReceiverPlugin(
 
     fun dispose() {
         channel.setMethodCallHandler(null)
-        OrderInfoReceiverRuntime.removeListener(listener)
+        listeners.forEach(OrderInfoReceiverRuntime::removeListener)
+        listeners.clear()
         if (!keepAliveInBackground) OrderInfoReceiverRuntime.stop()
     }
 

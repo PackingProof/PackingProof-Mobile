@@ -26,10 +26,20 @@ internal class RecordingThumbnailPlugin(
             return
         }
         val path = call.argument<String>("path").orEmpty()
+        generateThumbnail(path) { generated ->
+            if (generated == null) {
+                result.error("thumbnail_failed", "无法生成录像预览图", null)
+            } else {
+                result.success(generated)
+            }
+        }
+    }
+
+    internal fun generateThumbnail(path: String, callback: (String?) -> Unit) {
         executor.execute {
             runCatching { generate(path) }
-                .onSuccess { context.mainExecutor.execute { result.success(it) } }
-                .onFailure { context.mainExecutor.execute { result.error("thumbnail_failed", "无法生成录像预览图", null) } }
+                .onSuccess { context.mainExecutor.execute { callback(it) } }
+                .onFailure { context.mainExecutor.execute { callback(null) } }
         }
     }
 
