@@ -20,6 +20,7 @@ import '../models/recording_video_codec.dart';
 import '../models/speech_prompt.dart';
 import '../models/storage_notice.dart';
 import '../models/work_mode.dart';
+import '../platform/platform_capabilities.dart';
 import '../platform/platform_container.dart';
 import '../services/barcode_candidate_policy.dart';
 import '../services/barcode_recognized_beep_policy.dart';
@@ -76,12 +77,15 @@ class PackingSessionController extends ChangeNotifier {
     OrderInfoReceiverSink? orderInfoReceiver,
     DiagnosticsLogService? runtimeLog,
     CameraDiagnosticsService? cameraDiagnostics,
+    PlatformCapabilities? capabilities,
   }) : _repository = repository ?? SessionRepository(),
        _speechService = speechService ?? SpeechPromptService(),
        _maxVolumeService = maxVolumeService ?? MaxVolumeService(),
        _videoWatermarkService =
            videoWatermarkService ?? VideoWatermarkService(),
        _orderInfoReceiver = orderInfoReceiver ?? OrderInfoReceiverService(),
+       _capabilities =
+           capabilities ?? AppContainer.forCurrentPlatform().capabilities,
        _barcodeScanner = BarcodeScanner(
          formats: const <BarcodeFormat>[BarcodeFormat.all],
        ) {
@@ -108,6 +112,7 @@ class PackingSessionController extends ChangeNotifier {
   final MaxVolumeSink _maxVolumeService;
   late final LanBackupSink _lanBackupService;
   final VideoWatermarkSink _videoWatermarkService;
+  final PlatformCapabilities _capabilities;
   final OrderInfoReceiverSink _orderInfoReceiver;
   final BarcodeScanner _barcodeScanner;
   final BarcodeStabilityTracker _stabilityTracker = BarcodeStabilityTracker();
@@ -240,20 +245,22 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   bool get historyScanActive => _historyScanActive;
-  bool get flashAvailable => Platform.isAndroid
+  bool get flashAvailable => _supportsNativeCamera
       ? _nativeInitialization?.flashAvailable == true
       : _cameraController?.value.isInitialized == true;
   bool get torchEnabled => _torchEnabled;
   bool get cameraSwitchAvailable =>
-      Platform.isAndroid &&
+      _supportsNativeCamera &&
       _nativeInitialization?.canSwitchCamera == true &&
       !_pairingScanActive &&
       !_historyScanActive;
   List<NativeCameraLens> get backCameraLenses => _backCameraLenses;
   bool get multiBackCameraAvailable => _backCameraLenses.length >= 2;
+  bool get _supportsNativeCamera =>
+      _capabilities.supports(PlatformCapability.continuousCameraRecording);
   String? get activeCameraId => _nativeInitialization?.cameraId;
   bool get frontCameraActive =>
-      Platform.isAndroid && _nativeInitialization?.isFrontCamera == true;
+      _supportsNativeCamera && _nativeInitialization?.isFrontCamera == true;
   String? get historyScanResult => _historyScanResult;
   String? get errorMessage => _errorMessage;
 
@@ -284,7 +291,7 @@ class PackingSessionController extends ChangeNotifier {
       _phase == PackingSessionPhase.starting ||
       _phase == PackingSessionPhase.saving;
   bool get isCameraReady =>
-      (Platform.isAndroid
+      (_supportsNativeCamera
           ? _nativeInitialization != null
           : _cameraController?.value.isInitialized == true) &&
       _phase != PackingSessionPhase.error;
@@ -367,7 +374,7 @@ class PackingSessionController extends ChangeNotifier {
           // Order push can be retried from settings after recording is ready.
         }
       }
-      if (Platform.isAndroid) {
+      if (_supportsNativeCamera) {
         final ContinuousCameraService nativeCamera = ContinuousCameraService();
         nativeCamera.onBarcodeFrame = _processNativeBarcodeFrame;
         nativeCamera.onError = (String message) {
@@ -436,7 +443,7 @@ class PackingSessionController extends ChangeNotifier {
         ResolutionPreset.veryHigh,
         enableAudio: _recordAudioEnabled,
         fps: recordingFps,
-        imageFormatGroup: Platform.isAndroid
+        imageFormatGroup: _supportsNativeCamera
             ? ImageFormatGroup.nv21
             : ImageFormatGroup.bgra8888,
       );
@@ -526,7 +533,7 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   void _startCameraDiagnosticsTimer() {
-    if (!Platform.isAndroid || _diagnosticsTimer != null) return;
+    if (!_supportsNativeCamera || _diagnosticsTimer != null) return;
     _diagnosticsTimer = Timer.periodic(
       CameraDiagnosticsService.heartbeatInterval,
       (_) => unawaited(_captureCameraDiagnosticsSnapshot('heartbeat')),
@@ -534,7 +541,7 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   Future<void> _captureCameraDiagnosticsSnapshot(String trigger) async {
-    if (!Platform.isAndroid || _disposed || _nativeCamera == null) return;
+    if (!_supportsNativeCamera || _disposed || _nativeCamera == null) return;
     try {
       final CameraDiagnosticsSnapshot? snapshot = await _nativeCamera!
           .getDiagnostics();
@@ -552,7 +559,7 @@ class PackingSessionController extends ChangeNotifier {
     if (!flashAvailable || isBusy) return;
     final bool enabled = !_torchEnabled;
     try {
-      if (Platform.isAndroid) {
+      if (_supportsNativeCamera) {
         _torchEnabled = await _nativeCamera!.setTorchEnabled(enabled);
       } else {
         await _cameraController!.setFlashMode(
@@ -636,7 +643,7 @@ class PackingSessionController extends ChangeNotifier {
 
   Future<void> startWork() async {
     final CameraController? camera = _cameraController;
-    final bool cameraUnavailable = Platform.isAndroid
+    final bool cameraUnavailable = _supportsNativeCamera
         ? _nativeInitialization == null
         : camera == null || !camera.value.isInitialized;
     if (cameraUnavailable || isBusy || isWorking) {
@@ -719,7 +726,7 @@ class PackingSessionController extends ChangeNotifier {
     final bool silentStorageStop = _storageStopRequested;
     final CameraController? camera = _cameraController;
     final DateTime? startedAt = _timeline.recordingStartedAt;
-    final bool recordingUnavailable = Platform.isAndroid
+    final bool recordingUnavailable = _supportsNativeCamera
         ? _nativeCamera == null
         : camera == null || !camera.value.isRecordingVideo;
     if (startedAt == null) {
@@ -746,7 +753,7 @@ class PackingSessionController extends ChangeNotifier {
     await WidgetsBinding.instance.endOfFrame;
 
     try {
-      final List<RecordingSession> savedSessions = Platform.isAndroid
+      final List<RecordingSession> savedSessions = _supportsNativeCamera
           ? await _finishNativeRecording()
           : await _finishRecording();
       unawaited(_captureCameraDiagnosticsSnapshot('stop_work'));
@@ -985,7 +992,7 @@ class PackingSessionController extends ChangeNotifier {
     _preferredVideoCodec = codec;
     notifyListeners();
     await _repository.savePreferredVideoCodec(codec);
-    if (Platform.isAndroid && _phase != PackingSessionPhase.saving) {
+    if (_supportsNativeCamera && _phase != PackingSessionPhase.saving) {
       // 编码器在相机初始化时创建，切换后必须重建相机才会生效；
       // 若正在工作，先安全结束当前工作（正在录的片段会正常保存）。
       if (isWorking) {
@@ -1002,7 +1009,7 @@ class PackingSessionController extends ChangeNotifier {
     _recordingSpec = spec;
     notifyListeners();
     await _repository.saveRecordingSpec(spec);
-    if (Platform.isAndroid && _phase != PackingSessionPhase.saving) {
+    if (_supportsNativeCamera && _phase != PackingSessionPhase.saving) {
       // 编码器在相机初始化时创建，切换规格后必须重建相机才会生效；
       // 若正在工作，先安全结束当前工作（正在录的片段会正常保存）。
       if (isWorking) {
@@ -1152,7 +1159,7 @@ class PackingSessionController extends ChangeNotifier {
   Future<void> previewSpeech() => _speechService.preview();
 
   Future<void> _startRecording() async {
-    if (Platform.isAndroid) {
+    if (_supportsNativeCamera) {
       await _startNativeRecording();
       return;
     }
@@ -1345,7 +1352,7 @@ class PackingSessionController extends ChangeNotifier {
     if (isWorking) {
       await _beginMaxVolumeIfNeeded();
     }
-    final bool needsInitialization = Platform.isAndroid
+    final bool needsInitialization = _supportsNativeCamera
         ? _nativeInitialization == null
         : _cameraController?.value.isInitialized != true;
     if (needsInitialization && _phase != PackingSessionPhase.saving) {
@@ -1365,7 +1372,7 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   Future<void> setPreviewActive(bool active) async {
-    if (!Platform.isAndroid) return;
+    if (!_supportsNativeCamera) return;
     try {
       await _nativeCamera?.setPreviewActive(active);
     } on Object {
@@ -1374,7 +1381,7 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   Future<void> _setNativeWorkScanEnabled(bool enabled) async {
-    if (!Platform.isAndroid) return;
+    if (!_supportsNativeCamera) return;
     try {
       await _nativeCamera?.setWorkScanEnabled(enabled);
     } on Object {
@@ -1587,7 +1594,7 @@ class PackingSessionController extends ChangeNotifier {
         return;
       }
       List<Barcode> barcodes = await _barcodeScanner.processImage(inputImage);
-      if (barcodes.isEmpty && Platform.isAndroid) {
+      if (barcodes.isEmpty && _supportsNativeCamera) {
         final InputImage? croppedInput = _toCroppedInputImage(
           image,
           rotation: rotation,
@@ -1667,7 +1674,7 @@ class PackingSessionController extends ChangeNotifier {
       metadata: InputImageMetadata(
         size: Size(image.width.toDouble(), image.height.toDouble()),
         rotation: rotation,
-        format: Platform.isAndroid
+        format: _supportsNativeCamera
             ? InputImageFormat.nv21
             : InputImageFormat.bgra8888,
         bytesPerRow: plane.bytesPerRow,
@@ -1707,7 +1714,7 @@ class PackingSessionController extends ChangeNotifier {
     CameraDescription camera,
     DeviceOrientation orientation,
   ) {
-    if (Platform.isIOS) {
+    if (!_supportsNativeCamera) {
       return InputImageRotationValue.fromRawValue(camera.sensorOrientation);
     }
 
@@ -1801,7 +1808,7 @@ class PackingSessionController extends ChangeNotifier {
             _showMarkerFeedback(marker);
           }
 
-          final BarcodeMarker? marker = Platform.isAndroid
+          final BarcodeMarker? marker = _supportsNativeCamera
               ? await _splitNativeRecording(
                   code,
                   nextOrderInfo: nextOrderInfo,
@@ -1873,7 +1880,7 @@ class PackingSessionController extends ChangeNotifier {
     _setPhase(PackingSessionPhase.saving);
     await WidgetsBinding.instance.endOfFrame;
     try {
-      final List<RecordingSession> savedSessions = Platform.isAndroid
+      final List<RecordingSession> savedSessions = _supportsNativeCamera
           ? await _finishNativeRecording()
           : await _finishRecording();
       _candidateCode = '';
@@ -2479,7 +2486,7 @@ class PackingSessionController extends ChangeNotifier {
 
   Future<void> _disposeCamera() async {
     _cancelInitialPromptFlow();
-    if (Platform.isAndroid) {
+    if (_supportsNativeCamera) {
       final ContinuousCameraService? nativeCamera = _nativeCamera;
       _nativeCamera = null;
       _nativeInitialization = null;
