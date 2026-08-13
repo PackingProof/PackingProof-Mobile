@@ -1,11 +1,14 @@
 import 'dart:io';
 
 import 'adapters/pigeon_camera_platform.dart';
+import 'adapters/pigeon_backup_platform.dart';
 import 'adapters/pigeon_thumbnail_platform.dart';
 import 'adapters/pigeon_order_receiver_platform.dart';
 import 'adapters/unsupported_camera_platform.dart';
+import 'adapters/unsupported_backup_platform.dart';
 import 'adapters/unsupported_thumbnail_platform.dart';
 import 'adapters/unsupported_order_receiver_platform.dart';
+import 'contracts/backup_platform.dart';
 import 'contracts/camera_platform.dart';
 import 'contracts/thumbnail_platform.dart';
 import 'contracts/order_receiver_platform.dart';
@@ -20,6 +23,7 @@ class AppContainer {
     required this.thumbnail,
     required this.orderReceiver,
     required this.camera,
+    required this.backup,
   });
 
   factory AppContainer.forCurrentPlatform() {
@@ -46,6 +50,9 @@ class AppContainer {
       camera: Platform.isAndroid
           ? PigeonCameraPlatform()
           : UnsupportedCameraPlatform(),
+      backup: Platform.isAndroid
+          ? PigeonBackupNativePlatform()
+          : const UnsupportedBackupNativePlatform(),
     );
   }
 
@@ -53,4 +60,5 @@ class AppContainer {
   final ThumbnailPlatform thumbnail;
   final OrderReceiverPlatform orderReceiver;
   final CameraPlatform camera;
+  final BackupNativePlatform backup;
 }
