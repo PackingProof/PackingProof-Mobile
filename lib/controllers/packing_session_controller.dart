@@ -268,7 +268,8 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   String? get scanWarningMessage =>
-      _storageWarningMessage ?? _cameraNotice ?? _scanWarningMessage;
+      _storageWarningMessage ?? _scanWarningMessage;
+  String? get cameraNotice => _cameraNotice;
   String? get rejectedBarcodeMessage => _rejectedBarcodeMessage;
   int get storageNoticeRevision => _storageNoticeRevision;
   bool get isRecording => _phase == PackingSessionPhase.recording;
@@ -499,17 +500,12 @@ class PackingSessionController extends ChangeNotifier {
       ),
     );
     final String mode = '${info['mode'] ?? ''}';
-    final String phase = '${info['phase'] ?? ''}';
     if (mode == 'encoder_analysis' && !_nativeRecordingFallback) {
       _nativeRecordingFallback = true;
       unawaited(_repository.saveNativeRecordingFallback(true));
     }
     _showCameraNotice(
-      mode == 'encoder_analysis'
-          ? (phase == 'stall_during_recording'
-                ? '当前设备录像时画面会暂停，已切换兼容模式，请停止后重新开始工作'
-                : '当前设备录像时预览画面暂停，识别与录制正常')
-          : '已切换录像兼容模式',
+      mode == 'encoder_analysis' ? '受硬件限制，录像时预览画面会暂停，扫码和录像不受影响' : '已切换录像兼容模式',
     );
   }
 
@@ -1558,6 +1554,11 @@ class PackingSessionController extends ChangeNotifier {
     List<NativeBarcodeCandidate> candidates,
   ) {
     _processNativeBarcodeFrame(candidates);
+  }
+
+  @visibleForTesting
+  void handleNativeRecordingFallbackForTesting(Map<Object?, Object?> info) {
+    _handleNativeRecordingFallback(info);
   }
 
   Future<void> _processFrame(CameraImage image) async {

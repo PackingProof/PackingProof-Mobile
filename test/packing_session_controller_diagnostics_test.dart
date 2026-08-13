@@ -143,6 +143,40 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(speech.beepCount, 4);
   });
+
+  testWidgets('录像兼容提示 5 秒独立计时且新事件重新计时', (WidgetTester tester) async {
+    const String notice = '受硬件限制，录像时预览画面会暂停，扫码和录像不受影响';
+    final PackingSessionController controller = PackingSessionController(
+      repository: testRepository(root),
+      speechService: _FakeSpeechSink(),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+    controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
+      'mode': 'encoder_analysis',
+    });
+    expect(controller.cameraNotice, notice);
+
+    await tester.pump(const Duration(seconds: 3));
+    expect(controller.cameraNotice, notice);
+
+    await tester.pump(const Duration(seconds: 2));
+    expect(controller.cameraNotice, isNull);
+
+    controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
+      'mode': 'encoder_analysis',
+      'phase': 'stall_during_recording',
+    });
+    expect(controller.cameraNotice, notice);
+
+    await tester.pump(const Duration(seconds: 3));
+    expect(controller.cameraNotice, notice);
+
+    await tester.pump(const Duration(seconds: 2));
+    expect(controller.cameraNotice, isNull);
+  });
 }
 
 Future<String> _waitForInitFailed(

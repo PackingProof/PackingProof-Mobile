@@ -527,6 +527,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                   operationMode: _controller.operationMode,
                   errorMessage: _controller.errorMessage,
                   scanWarningMessage: _controller.scanWarningMessage,
+                  cameraNotice: _controller.cameraNotice,
                   rejectedBarcodeMessage: _controller.rejectedBarcodeMessage,
                   pairingScanActive: _controller.pairingScanActive,
                   pairingMessage: _controller.pairingMessage,
@@ -719,6 +720,7 @@ class PackingHomeView extends StatelessWidget {
     this.operationMode = RecordingOperationMode.shipping,
     this.errorMessage,
     this.scanWarningMessage,
+    this.cameraNotice,
     this.rejectedBarcodeMessage,
     this.pairingScanActive = false,
     this.pairingMessage,
@@ -753,6 +755,7 @@ class PackingHomeView extends StatelessWidget {
   final RecordingOperationMode operationMode;
   final String? errorMessage;
   final String? scanWarningMessage;
+  final String? cameraNotice;
   final String? rejectedBarcodeMessage;
   final bool pairingScanActive;
   final String? pairingMessage;
@@ -968,6 +971,13 @@ class _CameraArea extends StatelessWidget {
               right: 18,
               bottom: lowerOverlayInset + 54,
               child: _ScanWarningToast(message: view.scanWarningMessage!),
+            )
+          else if (view.cameraNotice != null)
+            Positioned(
+              left: 18,
+              right: 18,
+              bottom: lowerOverlayInset + 54,
+              child: _CameraNoticeBanner(message: view.cameraNotice!),
             )
           else if (view.lastMarker != null)
             Positioned(
@@ -1643,6 +1653,46 @@ class _ScanWarningToast extends StatelessWidget {
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CameraNoticeBanner extends StatelessWidget {
+  const _CameraNoticeBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('camera-notice-banner'),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xE6323940),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x44000000),
+            blurRadius: 20,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.info_outline_rounded, color: Colors.white),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),

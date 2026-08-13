@@ -45,6 +45,63 @@ void main() {
     expect(find.text('警告：重复单号，请确认'), findsOneWidget);
   });
 
+  testWidgets('相机兼容提示显示中性信息横幅', (WidgetTester tester) async {
+    const String notice = '受硬件限制，录像时预览画面会暂停，扫码和录像不受影响';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 5),
+          cameraNotice: notice,
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('camera-notice-banner')), findsOneWidget);
+    expect(find.text(notice), findsOneWidget);
+    expect(find.byKey(const Key('scan-warning-toast')), findsNothing);
+  });
+
+  testWidgets('只有扫描警告时不渲染相机提示横幅', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 5),
+          scanWarningMessage: '警告：重复单号，请确认',
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('scan-warning-toast')), findsOneWidget);
+    expect(find.byKey(const Key('camera-notice-banner')), findsNothing);
+  });
+
+  testWidgets('扫描警告与相机提示并存时红色警告优先', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 5),
+          scanWarningMessage: '警告：重复单号，请确认',
+          cameraNotice: '受硬件限制，录像时预览画面会暂停，扫码和录像不受影响',
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('scan-warning-toast')), findsOneWidget);
+    expect(find.byKey(const Key('camera-notice-banner')), findsNothing);
+  });
+
   testWidgets('无效条码 Toast 不覆盖已识别反馈', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
