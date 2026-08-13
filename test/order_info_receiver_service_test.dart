@@ -8,11 +8,9 @@ import 'package:packing_proof_mobile/services/order_info_receiver_service.dart';
 class _FakeOrderReceiverPlatform implements OrderReceiverPlatform {
   _FakeOrderReceiverPlatform({
     this.statusResult = const OrderReceiverPlatformSnapshot(),
-    this.lookupResult,
   });
 
   final OrderReceiverPlatformSnapshot statusResult;
-  final OrderInfo? lookupResult;
   final StreamController<OrderInfo> _controller =
       StreamController<OrderInfo>.broadcast();
 
@@ -30,7 +28,7 @@ class _FakeOrderReceiverPlatform implements OrderReceiverPlatform {
   Future<OrderReceiverPlatformSnapshot> status() async => statusResult;
 
   @override
-  Future<OrderInfo?> lookup(String trackingNumber) async => lookupResult;
+  Future<OrderInfo?> lookup(String trackingNumber) async => null;
 
   @override
   Future<void> updateBackgroundDelivery(bool enabled) async {}
