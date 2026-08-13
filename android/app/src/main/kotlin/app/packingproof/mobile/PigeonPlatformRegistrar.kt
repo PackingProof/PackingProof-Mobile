@@ -166,7 +166,9 @@ private class PigeonSystemMediaPresenterHostApi(
         callback: (Result<String?>) -> Unit,
     ) {
         invokePlugin(
-            plugin::onMethodCall,
+            { method, arguments, result ->
+                plugin.onMethodCall(MethodCall(method, arguments), result)
+            },
             "getVideoTrackMime",
             mapOf("path" to path),
             callback,
@@ -176,7 +178,14 @@ private class PigeonSystemMediaPresenterHostApi(
     override fun getVideoDecodeSupport(
         callback: (Result<VideoDecodeSupportDto?>) -> Unit,
     ) {
-        invokePlugin(plugin::onMethodCall, "getVideoDecodeSupport", null, callback) { value ->
+        invokePlugin(
+            { method, arguments, result ->
+                plugin.onMethodCall(MethodCall(method, arguments), result)
+            },
+            "getVideoDecodeSupport",
+            null,
+            callback,
+        ) { value ->
             (value as? Map<*, *>)?.let(::videoDecodeSupportDto)
         }
     }
@@ -186,7 +195,9 @@ private class PigeonSystemMediaPresenterHostApi(
         callback: (Result<Unit>) -> Unit,
     ) {
         invokePlugin(
-            plugin::onMethodCall,
+            { method, arguments, result ->
+                plugin.onMethodCall(MethodCall(method, arguments), result)
+            },
             "openWithSystemPlayer",
             mapOf("path" to path),
             callback,
@@ -231,14 +242,19 @@ private fun videoDecodeSupportDto(value: Map<*, *>): VideoDecodeSupportDto =
     )
 
 private fun <T> invokePlugin(
-    plugin: (MethodCall, MethodChannel.Result) -> Unit,
+    plugin: (
+        String,
+        Map<String, Any?>?,
+        MethodChannel.Result,
+    ) -> Unit,
     method: String,
     arguments: Map<String, Any?>?,
     callback: (Result<T>) -> Unit,
     transform: (Any?) -> T,
 ) {
     plugin(
-        MethodCall(method, arguments),
+        method,
+        arguments,
         RawMethodResult { reply ->
             when (reply) {
                 is RawMethodReply.Success ->
