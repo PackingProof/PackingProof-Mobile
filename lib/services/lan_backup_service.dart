@@ -15,10 +15,12 @@ import 'lan_backup_compatibility.dart';
 import 'remote_video_clip_service.dart';
 
 class LanBackupUnsupportedException implements Exception {
-  const LanBackupUnsupportedException();
+  const LanBackupUnsupportedException([this.message = '电脑端版本暂不支持录像备份']);
+
+  final String message;
 
   @override
-  String toString() => '电脑端版本暂不支持录像备份';
+  String toString() => message;
 }
 
 class LanBackupHostUpgradeRequiredException implements Exception {
@@ -175,6 +177,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     Future<PackageInfo> Function()? packageInfoLoader,
     Future<void> Function(Duration)? retryDelay,
     Future<void> Function(String kind, Map<String, Object?> extra)? logEvent,
+    bool Function()? isAndroid,
   }) : _channel = channel ?? _defaultChannel,
        _httpClient = httpClient ?? HttpClient(),
        // Keep the public injection name readable while the stored callback remains private.
@@ -184,7 +187,8 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
        _retryDelay = retryDelay ?? Future<void>.delayed,
        // Keep the public injection name readable while the stored callback remains private.
        // ignore: prefer_initializing_formals
-       _logEvent = logEvent;
+       _logEvent = logEvent,
+       _isAndroid = isAndroid ?? (() => Platform.isAndroid);
 
   static const MethodChannel _defaultChannel = MethodChannel(
     'app.packingproof.mobile/lan_backup',
@@ -197,6 +201,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   final Future<void> Function(Duration) _retryDelay;
   final Future<void> Function(String kind, Map<String, Object?> extra)?
   _logEvent;
+  final bool Function() _isAndroid;
   Timer? _pollTimer;
   Timer? _heartbeatTimer;
   Future<void>? _refreshFuture;
@@ -302,6 +307,15 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     Uri baseUri, {
     LanBackupPairingConfirmation? replacementConfirmation,
   }) async {
+    if (!_isAndroid()) {
+      const String message = '当前设备暂不支持电脑备份，请使用 Android 手机';
+      _snapshot = _snapshot.copyWith(
+        connectionStatus: LanConnectionStatus.offline,
+        message: message,
+      );
+      notifyListeners();
+      throw const LanBackupUnsupportedException(message);
+    }
     await _ensureWifiConnected();
     final LanBackupEndpoint candidateEndpoint;
     try {
