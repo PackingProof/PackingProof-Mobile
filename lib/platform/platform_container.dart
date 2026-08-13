@@ -4,14 +4,17 @@ import 'adapters/pigeon_camera_platform.dart';
 import 'adapters/pigeon_backup_platform.dart';
 import 'adapters/pigeon_thumbnail_platform.dart';
 import 'adapters/pigeon_order_receiver_platform.dart';
+import 'adapters/pigeon_media_platforms.dart';
 import 'adapters/unsupported_camera_platform.dart';
 import 'adapters/unsupported_backup_platform.dart';
 import 'adapters/unsupported_thumbnail_platform.dart';
 import 'adapters/unsupported_order_receiver_platform.dart';
+import 'adapters/unsupported_media_platforms.dart';
 import 'contracts/backup_platform.dart';
 import 'contracts/camera_platform.dart';
 import 'contracts/thumbnail_platform.dart';
 import 'contracts/order_receiver_platform.dart';
+import 'contracts/media_platform.dart';
 import 'platform_capabilities.dart';
 
 /// 应用启动时创建一次的平台实现容器。
@@ -24,6 +27,9 @@ class AppContainer {
     required this.orderReceiver,
     required this.camera,
     required this.backup,
+    required this.mediaProcessing,
+    required this.systemMediaPresenter,
+    required this.alertAudioSession,
   });
 
   factory AppContainer.forCurrentPlatform() {
@@ -53,6 +59,15 @@ class AppContainer {
       backup: Platform.isAndroid
           ? PigeonBackupNativePlatform()
           : const UnsupportedBackupNativePlatform(),
+      mediaProcessing: Platform.isAndroid
+          ? PigeonMediaProcessingPlatform()
+          : const UnsupportedMediaProcessingPlatform(),
+      systemMediaPresenter: Platform.isAndroid
+          ? PigeonSystemMediaPresenter()
+          : const UnsupportedSystemMediaPresenter(),
+      alertAudioSession: Platform.isAndroid
+          ? PigeonAlertAudioSessionPlatform()
+          : const UnsupportedAlertAudioSessionPlatform(),
     );
   }
 
@@ -61,4 +76,7 @@ class AppContainer {
   final OrderReceiverPlatform orderReceiver;
   final CameraPlatform camera;
   final BackupNativePlatform backup;
+  final MediaProcessingPlatform mediaProcessing;
+  final SystemMediaPresenter systemMediaPresenter;
+  final AlertAudioSessionPlatform alertAudioSession;
 }

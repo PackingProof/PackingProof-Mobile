@@ -39,6 +39,22 @@ class VideoExportPlugin(
         }
     }
 
+    internal fun invoke(
+        method: String,
+        arguments: Map<String, Any?>?,
+        result: MethodChannel.Result,
+    ) {
+        when (method) {
+            "export" -> export(arguments, result)
+            "progress" -> reportProgress(result)
+            "cancel" -> {
+                cancel()
+                result.success(null)
+            }
+            else -> result.notImplemented()
+        }
+    }
+
     private fun export(arguments: Map<*, *>?, result: MethodChannel.Result) {
         if (pendingResult != null) {
             result.error("export_busy", "已有分享视频正在生成", null)

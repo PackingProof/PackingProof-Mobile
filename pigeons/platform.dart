@@ -152,23 +152,33 @@ class CameraSessionFailedDto {
 abstract class MediaProcessingHostApi {
   @async
   String? generateThumbnail(ThumbnailRequest request);
+  @async
   String applyWatermark(WatermarkRequest request);
+  @async
   String exportRange(ExportRequest request);
+  @async
   int exportProgress();
 }
 
 @HostApi()
 abstract class SystemMediaPresenterHostApi {
+  @async
   String? getVideoTrackMime(String path);
+  @async
   VideoDecodeSupportDto? getVideoDecodeSupport();
+  @async
   void openWithSystemPlayer(String path);
 }
 
 @HostApi()
 abstract class AlertAudioSessionHostApi {
+  @async
   void beginSession();
+  @async
   void endSession();
+  @async
   void disable();
+  @async
   void boost();
 }
 

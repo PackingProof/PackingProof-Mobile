@@ -174,12 +174,12 @@ internal class PigeonCameraHostApi(
     }
 }
 
-private sealed interface RawMethodReply {
+internal sealed interface RawMethodReply {
     data class Success(val value: Any?) : RawMethodReply
     data class Error(val error: FlutterError) : RawMethodReply
 }
 
-private class RawMethodResult(
+internal class RawMethodResult(
     private val callback: (RawMethodReply) -> Unit,
 ) : MethodChannel.Result {
     override fun success(result: Any?) = callback(RawMethodReply.Success(result))

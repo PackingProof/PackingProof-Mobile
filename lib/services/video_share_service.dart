@@ -7,6 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../platform/contracts/media_platform.dart';
+import '../platform/platform_container.dart';
+
 typedef VideoShareProgress = void Function(double progress, String message);
 
 class VideoShareService {
@@ -14,17 +17,21 @@ class VideoShareService {
     MethodChannel? channel,
     Directory? cacheDirectory,
     bool? nativeExportSupported,
-  }) : _channel = channel ?? const MethodChannel(_channelName),
-       _providedCacheDirectory = cacheDirectory,
-       _nativeExportSupported = nativeExportSupported ?? Platform.isAndroid;
+    MediaProcessingPlatform? platform,
+  }) : _providedCacheDirectory = cacheDirectory,
+       _nativeExportSupported = nativeExportSupported ?? Platform.isAndroid,
+       _platform =
+           platform ??
+           (channel != null
+               ? _LegacyVideoExportPlatform(channel)
+               : AppContainer.forCurrentPlatform().mediaProcessing);
 
-  static const String _channelName = 'app.packingproof.mobile/video_export';
   static const Duration _maximumAge = Duration(hours: 24);
   static const int _maximumBytes = 512 * 1024 * 1024;
 
-  final MethodChannel _channel;
   final Directory? _providedCacheDirectory;
   final bool _nativeExportSupported;
+  final MediaProcessingPlatform _platform;
 
   Future<File> prepare({
     required String sourcePath,
@@ -83,14 +90,14 @@ class VideoShareService {
       (_) => unawaited(_reportNativeProgress(onProgress)),
     );
     try {
-      final String? exported = await _channel.invokeMethod<String>('export', {
-        'inputPath': source.path,
-        'outputPath': output.path,
-        'startMs': mediaStart.inMilliseconds,
-        'endMs': mediaEnd.inMilliseconds,
-      });
+      final String exported = await _platform.exportRange(
+        inputPath: source.path,
+        outputPath: output.path,
+        startMs: mediaStart.inMilliseconds,
+        endMs: mediaEnd.inMilliseconds,
+      );
       completed = true;
-      final File result = File(exported ?? output.path);
+      final File result = File(exported.isEmpty ? output.path : exported);
       if (!await result.exists() || await result.length() == 0) {
         throw StateError('分享视频生成失败');
       }
@@ -107,7 +114,7 @@ class VideoShareService {
   Future<void> _reportNativeProgress(VideoShareProgress? callback) async {
     if (callback == null) return;
     try {
-      final int value = await _channel.invokeMethod<int>('progress') ?? 0;
+      final int value = await _platform.exportProgress();
       callback(0.5 + value.clamp(0, 100) / 200, '正在生成分享视频');
     } on PlatformException {
       // Export completion or cancellation can race with the final progress poll.
@@ -197,4 +204,41 @@ class VideoShareService {
       total -= entry.stat.size;
     }
   }
+}
+
+class _LegacyVideoExportPlatform implements MediaProcessingPlatform {
+  const _LegacyVideoExportPlatform(this.channel);
+
+  final MethodChannel channel;
+
+  @override
+  Future<String> applyWatermark({
+    required String inputPath,
+    required String outputPath,
+    required int startedAtMs,
+    required String trackingNumber,
+    required String videoCodec,
+  }) {
+    throw UnsupportedError('导出通道不支持水印');
+  }
+
+  @override
+  Future<String> exportRange({
+    required String inputPath,
+    required String outputPath,
+    required int startMs,
+    required int endMs,
+  }) async {
+    final String? exported = await channel.invokeMethod<String>('export', {
+      'inputPath': inputPath,
+      'outputPath': outputPath,
+      'startMs': startMs,
+      'endMs': endMs,
+    });
+    return exported ?? '';
+  }
+
+  @override
+  Future<int> exportProgress() async =>
+      await channel.invokeMethod<int>('progress') ?? 0;
 }

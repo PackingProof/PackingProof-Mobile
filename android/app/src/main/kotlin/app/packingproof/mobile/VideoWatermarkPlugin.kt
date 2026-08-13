@@ -49,6 +49,17 @@ class VideoWatermarkPlugin(
         }
     }
 
+    internal fun invoke(
+        method: String,
+        arguments: Map<String, Any?>?,
+        result: MethodChannel.Result,
+    ) {
+        when (method) {
+            "apply" -> apply(arguments, result)
+            else -> result.notImplemented()
+        }
+    }
+
     private fun apply(arguments: Map<*, *>?, result: MethodChannel.Result) {
         if (pendingResult != null) {
             result.error("watermark_busy", "正在保存上一段录像", null)

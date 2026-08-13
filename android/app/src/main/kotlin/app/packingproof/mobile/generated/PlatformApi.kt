@@ -1287,9 +1287,9 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface MediaProcessingHostApi {
   fun generateThumbnail(request: ThumbnailRequest, callback: (Result<String?>) -> Unit)
-  fun applyWatermark(request: WatermarkRequest): String
-  fun exportRange(request: ExportRequest): String
-  fun exportProgress(): Long
+  fun applyWatermark(request: WatermarkRequest, callback: (Result<String>) -> Unit)
+  fun exportRange(request: ExportRequest, callback: (Result<String>) -> Unit)
+  fun exportProgress(callback: (Result<Long>) -> Unit)
 
   companion object {
     /** The codec used by MediaProcessingHostApi. */
@@ -1326,12 +1326,15 @@ interface MediaProcessingHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val requestArg = args[0] as WatermarkRequest
-            val wrapped: List<Any?> = try {
-              listOf(api.applyWatermark(requestArg))
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.applyWatermark(requestArg) { result: Result<String> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1343,12 +1346,15 @@ interface MediaProcessingHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val requestArg = args[0] as ExportRequest
-            val wrapped: List<Any?> = try {
-              listOf(api.exportRange(requestArg))
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.exportRange(requestArg) { result: Result<String> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1358,12 +1364,15 @@ interface MediaProcessingHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.exportProgress$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.exportProgress())
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.exportProgress{ result: Result<Long> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1374,9 +1383,9 @@ interface MediaProcessingHostApi {
 }
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface SystemMediaPresenterHostApi {
-  fun getVideoTrackMime(path: String): String?
-  fun getVideoDecodeSupport(): VideoDecodeSupportDto?
-  fun openWithSystemPlayer(path: String)
+  fun getVideoTrackMime(path: String, callback: (Result<String?>) -> Unit)
+  fun getVideoDecodeSupport(callback: (Result<VideoDecodeSupportDto?>) -> Unit)
+  fun openWithSystemPlayer(path: String, callback: (Result<Unit>) -> Unit)
 
   companion object {
     /** The codec used by SystemMediaPresenterHostApi. */
@@ -1393,12 +1402,15 @@ interface SystemMediaPresenterHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val pathArg = args[0] as String
-            val wrapped: List<Any?> = try {
-              listOf(api.getVideoTrackMime(pathArg))
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.getVideoTrackMime(pathArg) { result: Result<String?> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1408,12 +1420,15 @@ interface SystemMediaPresenterHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.getVideoDecodeSupport$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.getVideoDecodeSupport())
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.getVideoDecodeSupport{ result: Result<VideoDecodeSupportDto?> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1425,13 +1440,14 @@ interface SystemMediaPresenterHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val pathArg = args[0] as String
-            val wrapped: List<Any?> = try {
-              api.openWithSystemPlayer(pathArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.openWithSystemPlayer(pathArg) { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1442,10 +1458,10 @@ interface SystemMediaPresenterHostApi {
 }
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface AlertAudioSessionHostApi {
-  fun beginSession()
-  fun endSession()
-  fun disable()
-  fun boost()
+  fun beginSession(callback: (Result<Unit>) -> Unit)
+  fun endSession(callback: (Result<Unit>) -> Unit)
+  fun disable(callback: (Result<Unit>) -> Unit)
+  fun boost(callback: (Result<Unit>) -> Unit)
 
   companion object {
     /** The codec used by AlertAudioSessionHostApi. */
@@ -1460,13 +1476,14 @@ interface AlertAudioSessionHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.beginSession$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.beginSession()
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.beginSession{ result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1476,13 +1493,14 @@ interface AlertAudioSessionHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.endSession$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.endSession()
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.endSession{ result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1492,13 +1510,14 @@ interface AlertAudioSessionHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.disable$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.disable()
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.disable{ result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -1508,13 +1527,14 @@ interface AlertAudioSessionHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.boost$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              api.boost()
-              listOf(null)
-            } catch (exception: Throwable) {
-              PlatformApiPigeonUtils.wrapError(exception)
+            api.boost{ result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)

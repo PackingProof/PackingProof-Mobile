@@ -49,17 +49,21 @@ class MainActivity : FlutterActivity() {
             this,
             flutterEngine.dartExecutor.binaryMessenger,
         )
+        maxVolumeController = MaxVolumeController(this)
+        systemVideoPlayerPlugin = SystemVideoPlayerPlugin(
+            this,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
         registerPigeonPlatformApis(
             flutterEngine.dartExecutor.binaryMessenger,
             recordingThumbnailPlugin!!,
             orderInfoReceiverPlugin!!,
             continuousCameraPlugin!!,
             lanBackupPlugin!!,
-        )
-        maxVolumeController = MaxVolumeController(this)
-        systemVideoPlayerPlugin = SystemVideoPlayerPlugin(
-            this,
-            flutterEngine.dartExecutor.binaryMessenger,
+            videoWatermarkPlugin!!,
+            videoExportPlugin!!,
+            systemVideoPlayerPlugin!!,
+            maxVolumeController!!,
         )
         maxVolumeChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,

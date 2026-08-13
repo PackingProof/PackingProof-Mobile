@@ -1253,9 +1253,9 @@ class PlatformApiPigeonCodec: FlutterStandardMessageCodec, @unchecked Sendable {
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol MediaProcessingHostApi {
   func generateThumbnail(request: ThumbnailRequest, completion: @escaping (Result<String?, Error>) -> Void)
-  func applyWatermark(request: WatermarkRequest) throws -> String
-  func exportRange(request: ExportRequest) throws -> String
-  func exportProgress() throws -> Int64
+  func applyWatermark(request: WatermarkRequest, completion: @escaping (Result<String, Error>) -> Void)
+  func exportRange(request: ExportRequest, completion: @escaping (Result<String, Error>) -> Void)
+  func exportProgress(completion: @escaping (Result<Int64, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -1286,11 +1286,13 @@ class MediaProcessingHostApiSetup {
       applyWatermarkChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let requestArg = args[0] as! WatermarkRequest
-        do {
-          let result = try api.applyWatermark(request: requestArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.applyWatermark(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1301,11 +1303,13 @@ class MediaProcessingHostApiSetup {
       exportRangeChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let requestArg = args[0] as! ExportRequest
-        do {
-          let result = try api.exportRange(request: requestArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.exportRange(request: requestArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1314,11 +1318,13 @@ class MediaProcessingHostApiSetup {
     let exportProgressChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.exportProgress\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       exportProgressChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.exportProgress()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.exportProgress { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1328,9 +1334,9 @@ class MediaProcessingHostApiSetup {
 }
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol SystemMediaPresenterHostApi {
-  func getVideoTrackMime(path: String) throws -> String?
-  func getVideoDecodeSupport() throws -> VideoDecodeSupportDto?
-  func openWithSystemPlayer(path: String) throws
+  func getVideoTrackMime(path: String, completion: @escaping (Result<String?, Error>) -> Void)
+  func getVideoDecodeSupport(completion: @escaping (Result<VideoDecodeSupportDto?, Error>) -> Void)
+  func openWithSystemPlayer(path: String, completion: @escaping (Result<Void, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -1344,11 +1350,13 @@ class SystemMediaPresenterHostApiSetup {
       getVideoTrackMimeChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let pathArg = args[0] as! String
-        do {
-          let result = try api.getVideoTrackMime(path: pathArg)
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.getVideoTrackMime(path: pathArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1357,11 +1365,13 @@ class SystemMediaPresenterHostApiSetup {
     let getVideoDecodeSupportChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.getVideoDecodeSupport\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       getVideoDecodeSupportChannel.setMessageHandler { _, reply in
-        do {
-          let result = try api.getVideoDecodeSupport()
-          reply(wrapResult(result))
-        } catch {
-          reply(wrapError(error))
+        api.getVideoDecodeSupport { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1372,11 +1382,13 @@ class SystemMediaPresenterHostApiSetup {
       openWithSystemPlayerChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let pathArg = args[0] as! String
-        do {
-          try api.openWithSystemPlayer(path: pathArg)
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.openWithSystemPlayer(path: pathArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1386,10 +1398,10 @@ class SystemMediaPresenterHostApiSetup {
 }
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol AlertAudioSessionHostApi {
-  func beginSession() throws
-  func endSession() throws
-  func disable() throws
-  func boost() throws
+  func beginSession(completion: @escaping (Result<Void, Error>) -> Void)
+  func endSession(completion: @escaping (Result<Void, Error>) -> Void)
+  func disable(completion: @escaping (Result<Void, Error>) -> Void)
+  func boost(completion: @escaping (Result<Void, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -1401,11 +1413,13 @@ class AlertAudioSessionHostApiSetup {
     let beginSessionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.beginSession\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       beginSessionChannel.setMessageHandler { _, reply in
-        do {
-          try api.beginSession()
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.beginSession { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1414,11 +1428,13 @@ class AlertAudioSessionHostApiSetup {
     let endSessionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.endSession\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       endSessionChannel.setMessageHandler { _, reply in
-        do {
-          try api.endSession()
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.endSession { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1427,11 +1443,13 @@ class AlertAudioSessionHostApiSetup {
     let disableChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.disable\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       disableChannel.setMessageHandler { _, reply in
-        do {
-          try api.disable()
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.disable { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {
@@ -1440,11 +1458,13 @@ class AlertAudioSessionHostApiSetup {
     let boostChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.boost\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       boostChannel.setMessageHandler { _, reply in
-        do {
-          try api.boost()
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
+        api.boost { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
         }
       }
     } else {

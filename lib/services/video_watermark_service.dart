@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import '../models/recording_video_codec.dart';
+import '../platform/contracts/media_platform.dart';
+import '../platform/platform_container.dart';
 
 abstract interface class VideoWatermarkSink {
   Future<String> apply({
@@ -15,13 +17,18 @@ abstract interface class VideoWatermarkSink {
 }
 
 class VideoWatermarkService implements VideoWatermarkSink {
-  VideoWatermarkService({MethodChannel? channel, bool? isAndroid})
-    : _channel =
-          channel ??
-          const MethodChannel('app.packingproof.mobile/video_watermark'),
-      _isAndroid = isAndroid ?? Platform.isAndroid;
+  VideoWatermarkService({
+    MethodChannel? channel,
+    bool? isAndroid,
+    MediaProcessingPlatform? platform,
+  }) : _platform =
+           platform ??
+           (channel != null
+               ? _LegacyVideoWatermarkPlatform(channel)
+               : AppContainer.forCurrentPlatform().mediaProcessing),
+       _isAndroid = isAndroid ?? Platform.isAndroid;
 
-  final MethodChannel _channel;
+  final MediaProcessingPlatform _platform;
   final bool _isAndroid;
   Future<void> _tail = Future<void>.value();
 
@@ -61,16 +68,53 @@ class VideoWatermarkService implements VideoWatermarkSink {
     final String outputPath = dot > 0
         ? '${inputPath.substring(0, dot)}_watermarked.mp4'
         : '${inputPath}_watermarked.mp4';
-    final String? result = await _channel.invokeMethod<String>('apply', {
-      'inputPath': inputPath,
-      'outputPath': outputPath,
-      'startedAtMs': startedAt.millisecondsSinceEpoch,
-      'trackingNumber': trackingNumber,
-      'videoCodec': videoCodec.storageValue,
-    });
-    if (result == null || result.isEmpty || !await File(result).exists()) {
+    final String result = await _platform.applyWatermark(
+      inputPath: inputPath,
+      outputPath: outputPath,
+      startedAtMs: startedAt.millisecondsSinceEpoch,
+      trackingNumber: trackingNumber,
+      videoCodec: videoCodec.storageValue,
+    );
+    if (result.isEmpty || !await File(result).exists()) {
       throw StateError('水印视频生成失败');
     }
     return result;
   }
+}
+
+class _LegacyVideoWatermarkPlatform implements MediaProcessingPlatform {
+  const _LegacyVideoWatermarkPlatform(this.channel);
+
+  final MethodChannel channel;
+
+  @override
+  Future<String> applyWatermark({
+    required String inputPath,
+    required String outputPath,
+    required int startedAtMs,
+    required String trackingNumber,
+    required String videoCodec,
+  }) async {
+    final String? result = await channel.invokeMethod<String>('apply', {
+      'inputPath': inputPath,
+      'outputPath': outputPath,
+      'startedAtMs': startedAtMs,
+      'trackingNumber': trackingNumber,
+      'videoCodec': videoCodec,
+    });
+    return result ?? '';
+  }
+
+  @override
+  Future<String> exportRange({
+    required String inputPath,
+    required String outputPath,
+    required int startMs,
+    required int endMs,
+  }) {
+    throw UnsupportedError('水印通道不支持导出');
+  }
+
+  @override
+  Future<int> exportProgress() async => 100;
 }

@@ -7,14 +7,19 @@ import app.packingproof.mobile.generated.CameraHostApi
 import app.packingproof.mobile.generated.BackupNativeEventApi
 import app.packingproof.mobile.generated.BackupNativeHostApi
 import app.packingproof.mobile.generated.FlutterError
+import app.packingproof.mobile.generated.AlertAudioSessionHostApi
 import app.packingproof.mobile.generated.MediaProcessingHostApi
 import app.packingproof.mobile.generated.OrderInfoDto
 import app.packingproof.mobile.generated.OrderReceiverEventApi
 import app.packingproof.mobile.generated.OrderReceiverHostApi
 import app.packingproof.mobile.generated.OrderReceiverStatusDto
+import app.packingproof.mobile.generated.SystemMediaPresenterHostApi
 import app.packingproof.mobile.generated.ThumbnailRequest
+import app.packingproof.mobile.generated.VideoDecodeSupportDto
 import app.packingproof.mobile.generated.WatermarkRequest
 import io.flutter.plugin.common.BinaryMessenger
+import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.MethodChannel
 
 internal fun registerPigeonPlatformApis(
     messenger: BinaryMessenger,
@@ -22,10 +27,26 @@ internal fun registerPigeonPlatformApis(
     orderInfoReceiverPlugin: OrderInfoReceiverPlugin,
     continuousCameraPlugin: ContinuousCameraPlugin,
     lanBackupPlugin: LanBackupPlugin,
+    videoWatermarkPlugin: VideoWatermarkPlugin,
+    videoExportPlugin: VideoExportPlugin,
+    systemVideoPlayerPlugin: SystemVideoPlayerPlugin,
+    maxVolumeController: MaxVolumeController,
 ) {
     MediaProcessingHostApi.setUp(
         messenger,
-        PigeonMediaProcessingHostApi(thumbnailPlugin),
+        PigeonMediaProcessingHostApi(
+            thumbnailPlugin,
+            videoWatermarkPlugin,
+            videoExportPlugin,
+        ),
+    )
+    SystemMediaPresenterHostApi.setUp(
+        messenger,
+        PigeonSystemMediaPresenterHostApi(systemVideoPlayerPlugin),
+    )
+    AlertAudioSessionHostApi.setUp(
+        messenger,
+        PigeonAlertAudioSessionHostApi(maxVolumeController),
     )
     val orderReceiverEventApi = OrderReceiverEventApi(messenger)
     OrderReceiverHostApi.setUp(
@@ -71,6 +92,8 @@ internal fun registerPigeonPlatformApis(
 
 private class PigeonMediaProcessingHostApi(
     private val thumbnailPlugin: RecordingThumbnailPlugin,
+    private val watermarkPlugin: VideoWatermarkPlugin,
+    private val exportPlugin: VideoExportPlugin,
 ) : MediaProcessingHostApi {
     override fun generateThumbnail(
         request: ThumbnailRequest,
@@ -93,14 +116,138 @@ private class PigeonMediaProcessingHostApi(
         }
     }
 
-    override fun applyWatermark(request: WatermarkRequest): String =
-        throw FlutterError("not_implemented", "水印平台适配器尚未接入", null)
+    override fun applyWatermark(
+        request: WatermarkRequest,
+        callback: (Result<String>) -> Unit,
+    ) {
+        invokePlugin(
+            watermarkPlugin::invoke,
+            "apply",
+            mapOf(
+                "inputPath" to request.inputPath,
+                "outputPath" to request.outputPath,
+                "startedAtMs" to request.startedAtMs,
+                "trackingNumber" to request.trackingNumber,
+                "videoCodec" to request.videoCodec,
+            ),
+            callback,
+        ) { it as String }
+    }
 
-    override fun exportRange(request: ExportRequest): String =
-        throw FlutterError("not_implemented", "导出平台适配器尚未接入", null)
+    override fun exportRange(
+        request: ExportRequest,
+        callback: (Result<String>) -> Unit,
+    ) {
+        invokePlugin(
+            exportPlugin::invoke,
+            "export",
+            mapOf(
+                "inputPath" to request.inputPath,
+                "outputPath" to request.outputPath,
+                "startMs" to request.startMs,
+                "endMs" to request.endMs,
+            ),
+            callback,
+        ) { it as String }
+    }
 
-    override fun exportProgress(): Long =
-        throw FlutterError("not_implemented", "导出平台适配器尚未接入", null)
+    override fun exportProgress(callback: (Result<Long>) -> Unit) {
+        invokePlugin(exportPlugin::invoke, "progress", null, callback) {
+            (it as Number).toLong()
+        }
+    }
+}
+
+private class PigeonSystemMediaPresenterHostApi(
+    private val plugin: SystemVideoPlayerPlugin,
+) : SystemMediaPresenterHostApi {
+    override fun getVideoTrackMime(
+        path: String,
+        callback: (Result<String?>) -> Unit,
+    ) {
+        invokePlugin(
+            plugin::onMethodCall,
+            "getVideoTrackMime",
+            mapOf("path" to path),
+            callback,
+        ) { it as? String }
+    }
+
+    override fun getVideoDecodeSupport(
+        callback: (Result<VideoDecodeSupportDto?>) -> Unit,
+    ) {
+        invokePlugin(plugin::onMethodCall, "getVideoDecodeSupport", null, callback) { value ->
+            (value as? Map<*, *>)?.let(::videoDecodeSupportDto)
+        }
+    }
+
+    override fun openWithSystemPlayer(
+        path: String,
+        callback: (Result<Unit>) -> Unit,
+    ) {
+        invokePlugin(
+            plugin::onMethodCall,
+            "openWithSystemPlayer",
+            mapOf("path" to path),
+            callback,
+        ) { }
+    }
+}
+
+private class PigeonAlertAudioSessionHostApi(
+    private val controller: MaxVolumeController,
+) : AlertAudioSessionHostApi {
+    override fun beginSession(callback: (Result<Unit>) -> Unit) {
+        controller.enable()
+        callback(Result.success(Unit))
+    }
+
+    override fun endSession(callback: (Result<Unit>) -> Unit) {
+        controller.pauseSession()
+        callback(Result.success(Unit))
+    }
+
+    override fun disable(callback: (Result<Unit>) -> Unit) {
+        controller.disable()
+        callback(Result.success(Unit))
+    }
+
+    override fun boost(callback: (Result<Unit>) -> Unit) {
+        controller.boost()
+        callback(Result.success(Unit))
+    }
+}
+
+private fun videoDecodeSupportDto(value: Map<*, *>): VideoDecodeSupportDto =
+    VideoDecodeSupportDto(
+        manufacturer = value["manufacturer"] as? String ?: "",
+        brand = value["brand"] as? String ?: "",
+        model = value["model"] as? String ?: "",
+        sdkInt = (value["sdkInt"] as? Number)?.toLong() ?: 0L,
+        release = value["release"] as? String ?: "",
+        hasHevcDecoder = value["hasHevcDecoder"] as? Boolean ?: false,
+        hasAvcDecoder = value["hasAvcDecoder"] as? Boolean ?: false,
+        forceSoftwareDecode = value["forceSoftwareDecode"] as? Boolean ?: false,
+    )
+
+private fun <T> invokePlugin(
+    plugin: (MethodCall, MethodChannel.Result) -> Unit,
+    method: String,
+    arguments: Map<String, Any?>?,
+    callback: (Result<T>) -> Unit,
+    transform: (Any?) -> T,
+) {
+    plugin(
+        MethodCall(method, arguments),
+        RawMethodResult { reply ->
+            when (reply) {
+                is RawMethodReply.Success ->
+                    callback(Result.success(transform(reply.value)))
+                is RawMethodReply.Error ->
+                    callback(Result.failure(reply.error))
+            }
+        },
+    )
 }
 
 private class PigeonOrderReceiverHostApi(
