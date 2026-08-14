@@ -119,9 +119,11 @@ class RemoteVideoClipService implements RemoteVideoClipSink {
   }) async {
     final request = await _client.getUrl(uri);
     accessHeaders.forEach(request.headers.set);
+    requestAuthorizer?.call(request, const <int>[], 'GET', uri.path);
     final response = await request.close();
     if (response.statusCode != HttpStatus.ok) {
-      throw HttpException('剪辑文件下载失败（${response.statusCode}）');
+      final String body = await utf8.decoder.bind(response).join();
+      throw HttpException(_downloadErrorMessage(response.statusCode, body));
     }
     final directory = Directory(
       p.join((await getTemporaryDirectory()).path, 'remote_clips'),
@@ -146,6 +148,20 @@ class RemoteVideoClipService implements RemoteVideoClipSink {
       await sink.close();
     }
     return file;
+  }
+
+  String _downloadErrorMessage(int statusCode, String body) {
+    try {
+      final Object? decoded = body.isEmpty ? null : jsonDecode(body);
+      if (decoded is Map) {
+        final String message = '${decoded['error'] ?? decoded['message'] ?? ''}'
+            .trim();
+        if (message.isNotEmpty) return message;
+      }
+    } on FormatException {
+      // 非 JSON 响应体使用通用文案。
+    }
+    return '剪辑文件下载失败（$statusCode）';
   }
 
   Future<Map<String, Object?>> _json(

@@ -495,21 +495,65 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
       _shareMessage = widget.remoteUri == null ? '正在准备分享' : '正在下载电脑录像';
     });
     try {
-      final File file = await _shareService.prepare(
-        sourcePath: _session.filePath,
-        remoteUri: widget.remoteUri,
-        remoteHeaders: widget.remoteHeaders,
-        mediaStart: _playbackStart,
-        mediaEnd: _playbackEnd,
-        sourceDuration: _video.value.duration,
-        onProgress: (double progress, String message) {
-          if (!mounted) return;
-          setState(() {
-            _shareProgress = progress;
-            _shareMessage = message;
-          });
-        },
-      );
+      final Duration total = _video.value.duration;
+      final bool fullRange =
+          _playbackStart <= const Duration(milliseconds: 50) &&
+          _playbackEnd >= total - const Duration(milliseconds: 50);
+      final File file;
+      if (widget.remoteUri != null) {
+        final RemoteVideoClipSink? service = widget.remoteClipService;
+        if (service == null) {
+          file = await _shareService.prepare(
+            sourcePath: _session.filePath,
+            remoteUri: widget.remoteUri,
+            remoteHeaders: widget.remoteHeaders,
+            mediaStart: _playbackStart,
+            mediaEnd: _playbackEnd,
+            sourceDuration: total,
+            onProgress: (double progress, String message) {
+              if (!mounted) return;
+              setState(() {
+                _shareProgress = progress;
+                _shareMessage = message;
+              });
+            },
+          );
+        } else if (!fullRange) {
+          file = await _prepareRemoteClip(
+            start: _playbackStart,
+            end: _playbackEnd,
+            total: total,
+          );
+        } else {
+          setState(() => _shareMessage = '正在下载电脑录像');
+          file = await service.download(
+            widget.remoteUri!,
+            onProgress: (double progress) {
+              if (!mounted) return;
+              setState(() {
+                _shareProgress = progress * 0.9;
+                _shareMessage = '正在下载电脑录像';
+              });
+            },
+          );
+        }
+      } else {
+        file = await _shareService.prepare(
+          sourcePath: _session.filePath,
+          remoteUri: widget.remoteUri,
+          remoteHeaders: widget.remoteHeaders,
+          mediaStart: _playbackStart,
+          mediaEnd: _playbackEnd,
+          sourceDuration: total,
+          onProgress: (double progress, String message) {
+            if (!mounted) return;
+            setState(() {
+              _shareProgress = progress;
+              _shareMessage = message;
+            });
+          },
+        );
+      }
       await SharePlus.instance.share(
         ShareParams(
           title: _session.displayCode,
@@ -517,6 +561,16 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         ),
       );
     } on Object catch (error) {
+      unawaited(
+        DiagnosticsLogService().log(
+          kind: 'share_failed',
+          extra: <String, Object?>{
+            'source': widget.remoteUri == null ? 'local' : 'remote',
+            'sessionId': _session.id,
+            'error': error.toString(),
+          },
+        ),
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -535,6 +589,70 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         });
       }
     }
+  }
+
+  Future<File> _prepareRemoteClip({
+    required Duration start,
+    required Duration end,
+    required Duration total,
+  }) async {
+    final RemoteVideoClipSink? service = widget.remoteClipService;
+    final int? videoId = widget.remoteVideoId;
+    final Uri? remoteUri = widget.remoteUri;
+    if (service == null || videoId == null || remoteUri == null) {
+      throw StateError('电脑剪辑服务不可用');
+    }
+    final double totalSeconds = total.inMilliseconds <= 0
+        ? 1
+        : total.inMilliseconds / 1000;
+    final double startSeconds = (start.inMilliseconds / 1000).clamp(
+      0,
+      totalSeconds,
+    );
+    final double endSeconds = (end.inMilliseconds / 1000).clamp(
+      startSeconds,
+      totalSeconds,
+    );
+    if (endSeconds - startSeconds < 0.05) {
+      throw StateError('分享范围过短');
+    }
+    final String taskId = await service.start(
+      videoId,
+      startSeconds,
+      endSeconds,
+    );
+    while (mounted) {
+      final Map<String, Object?> task = await service.task(taskId);
+      final String status = '${task['status'] ?? ''}';
+      if (status == 'completed') {
+        final Uri uri = remoteUri.resolve('${task['downloadUrl'] ?? ''}');
+        if (mounted) {
+          setState(() {
+            _shareProgress = 0.85;
+            _shareMessage = '正在下载剪辑';
+          });
+        }
+        return await service.download(
+          uri,
+          onProgress: (double progress) {
+            if (mounted) {
+              setState(() {
+                _shareProgress = 0.85 + progress * 0.15;
+                _shareMessage = '正在下载剪辑';
+              });
+            }
+          },
+        );
+      }
+      if (status == 'failed' || status == 'canceled' || status == 'not_found') {
+        throw StateError('${task['message'] ?? '电脑剪辑生成失败'}');
+      }
+      if (mounted) {
+        setState(() => _shareMessage = '${task['message'] ?? '电脑正在生成剪辑'}');
+      }
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    throw StateError('电脑剪辑生成失败');
   }
 
   Future<void> _deleteLocalRecording() async {
@@ -609,7 +727,17 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     try {
       final File file = await service.download(remote);
       await SystemVideoPlayerService().openWithSystemPlayer(file.path);
-    } on Object {
+    } on Object catch (error) {
+      unawaited(
+        DiagnosticsLogService().log(
+          kind: 'share_failed',
+          extra: <String, Object?>{
+            'source': 'remote-download-play',
+            'sessionId': _session.id,
+            'error': error.toString(),
+          },
+        ),
+      );
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -635,7 +763,17 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
           files: <XFile>[XFile(file.path, mimeType: 'video/mp4')],
         ),
       );
-    } on Object {
+    } on Object catch (error) {
+      unawaited(
+        DiagnosticsLogService().log(
+          kind: 'share_failed',
+          extra: <String, Object?>{
+            'source': 'remote-download-share',
+            'sessionId': _session.id,
+            'error': error.toString(),
+          },
+        ),
+      );
       if (mounted) {
         ScaffoldMessenger.of(
           context,

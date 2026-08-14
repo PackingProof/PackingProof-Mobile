@@ -60,4 +60,54 @@ void main() {
       'POST /api/mobile-backup/clip-tasks/task-1/cancel false',
     ]);
   });
+
+  test('剪辑下载逐请求签名并透出主机错误文案', () async {
+    final HttpServer server = await HttpServer.bind(
+      InternetAddress.loopbackIPv4,
+      0,
+    );
+    final List<String> requests = <String>[];
+    final Future<void> serving = server.forEach((HttpRequest request) async {
+      await utf8.decoder.bind(request).join();
+      requests.add(
+        '${request.method} ${request.uri.path} ${request.headers.value('x-test-auth')}',
+      );
+      request.response.statusCode = HttpStatus.forbidden;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write(
+        '{"errorCode":"clip_ticket_invalid","error":"剪辑文件链接已过期，请重新生成"}',
+      );
+      await request.response.close();
+    });
+    final RemoteVideoClipService service = RemoteVideoClipService(
+      baseUri: Uri.parse('http://127.0.0.1:${server.port}'),
+      accessHeaders: const <String, String>{},
+      deviceScoped: true,
+      requestAuthorizer: (request, body, method, path) {
+        request.headers.set('X-Test-Auth', 'signed');
+      },
+    );
+
+    await expectLater(
+      service.download(
+        Uri.parse(
+          'http://127.0.0.1:${server.port}'
+          '/api/mobile-backup/clips/result.mp4?ticket=expired',
+        ),
+      ),
+      throwsA(
+        isA<HttpException>().having(
+          (HttpException error) => error.message,
+          'message',
+          '剪辑文件链接已过期，请重新生成',
+        ),
+      ),
+    );
+    await server.close(force: true);
+    await serving;
+
+    expect(requests, <String>[
+      'GET /api/mobile-backup/clips/result.mp4 signed',
+    ]);
+  });
 }
