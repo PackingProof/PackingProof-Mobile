@@ -1,7 +1,9 @@
 import AVFoundation
 import AVKit
+import CoreImage
 import Flutter
 import ImageIO
+import QuartzCore
 import UIKit
 import UniformTypeIdentifiers
 
@@ -76,7 +78,122 @@ private final class IosMediaProcessingHostApi: MediaProcessingHostApi {
     request: WatermarkRequest,
     completion: @escaping (Result<String, Error>) -> Void
   ) {
-    completion(.failure(pigeonError("iOS 水印移植尚未完成")))
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        let input = URL(fileURLWithPath: request.inputPath)
+        let output = URL(fileURLWithPath: request.outputPath)
+        try? FileManager.default.removeItem(at: output)
+        let asset = AVAsset(url: input)
+        let composition = AVMutableComposition()
+        guard
+          let sourceVideo = asset.tracks(withMediaType: .video).first,
+          let compositionVideo = composition.addMutableTrack(
+            withMediaType: .video,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+          )
+        else {
+          throw pigeonError("无法读取录像视频轨道")
+        }
+        try compositionVideo.insertTimeRange(
+          CMTimeRange(start: .zero, duration: asset.duration),
+          of: sourceVideo,
+          at: .zero
+        )
+        compositionVideo.preferredTransform = sourceVideo.preferredTransform
+
+        if let sourceAudio = asset.tracks(withMediaType: .audio).first,
+          let compositionAudio = composition.addMutableTrack(
+            withMediaType: .audio,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+          )
+        {
+          try compositionAudio.insertTimeRange(
+            CMTimeRange(start: .zero, duration: asset.duration),
+            of: sourceAudio,
+            at: .zero
+          )
+        }
+
+        let size = sourceVideo.naturalSize.applying(
+          sourceVideo.preferredTransform
+        )
+        let width = abs(size.width).rounded(.up)
+        let height = abs(size.height).rounded(.up)
+        let videoComposition = AVMutableVideoComposition()
+        videoComposition.renderSize = CGSize(width: width, height: height)
+        videoComposition.frameDuration = CMTime(value: 1, timescale: 30)
+
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(
+          start: .zero,
+          duration: asset.duration
+        )
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(
+          assetTrack: compositionVideo
+        )
+        layerInstruction.setTransform(
+          sourceVideo.preferredTransform,
+          at: .zero
+        )
+        instruction.layerInstructions = [layerInstruction]
+        videoComposition.instructions = [instruction]
+
+        let parentLayer = CALayer()
+        parentLayer.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        let videoLayer = CALayer()
+        videoLayer.frame = parentLayer.bounds
+        parentLayer.addSublayer(videoLayer)
+
+        let text = CATextLayer()
+        let started = Date(timeIntervalSince1970: Double(request.startedAtMs) / 1000)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy/MM/dd HH:mm:ss"
+        text.string = request.trackingNumber.isEmpty
+          ? formatter.string(from: started)
+          : "\(formatter.string(from: started)) Order:\(request.trackingNumber)"
+        text.fontSize = max(24, min(46, height * 0.03))
+        text.foregroundColor = UIColor.white.cgColor
+        text.backgroundColor = UIColor.black.withAlphaComponent(0.45).cgColor
+        text.alignmentMode = .right
+        text.contentsScale = UIScreen.main.scale
+        let textSize = text.preferredFrameSize()
+        text.frame = CGRect(
+          x: width - textSize.width - 18,
+          y: height - textSize.height - 18,
+          width: textSize.width,
+          height: textSize.height
+        )
+        parentLayer.addSublayer(text)
+        videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
+          postProcessingAsVideoLayer: videoLayer,
+          in: parentLayer
+        )
+
+        guard
+          let session = AVAssetExportSession(
+            asset: composition,
+            presetName: AVAssetExportPresetHighestQuality
+          )
+        else {
+          throw pigeonError("无法创建水印导出会话")
+        }
+        session.outputURL = output
+        session.outputFileType = .mp4
+        session.videoComposition = videoComposition
+        session.exportAsynchronously {
+          switch session.status {
+          case .completed:
+            completion(.success(output.path))
+          case .failed:
+            completion(.failure(session.error ?? pigeonError("水印视频生成失败")))
+          default:
+            completion(.failure(pigeonError("水印视频生成失败")))
+          }
+        }
+      } catch {
+        completion(.failure(error))
+      }
+    }
   }
 
   func exportRange(
