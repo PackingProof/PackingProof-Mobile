@@ -20,6 +20,7 @@ import '../platform/platform_capabilities.dart';
 import '../widgets/about_settings.dart';
 import '../widgets/two_button_confirm_dialog.dart';
 import '../services/recording_thumbnail_service.dart';
+import '../services/camera_capability_policy.dart';
 import '../services/recording_database.dart';
 import '../services/remote_playback_compat.dart';
 import '../services/remote_video_clip_service.dart';
@@ -175,6 +176,10 @@ class RecordingsScreen extends StatefulWidget {
     this.onRetryBackup,
     this.onRefreshHistory,
     this.onManagingChanged,
+    this.capabilityMode,
+    this.capabilityStatusText,
+    this.capabilityProbedAtMs = 0,
+    this.onRetryCapabilityProbe,
     this.unbackedRetention = UnbackedRetentionPolicy.days30,
     this.backedRetention = BackedRetentionPolicy.days7,
     this.onBackupRetentionChanged,
@@ -235,6 +240,10 @@ class RecordingsScreen extends StatefulWidget {
   final Future<void> Function(String jobId)? onRetryBackup;
   final Future<void> Function()? onRefreshHistory;
   final ValueChanged<bool>? onManagingChanged;
+  final CameraCapabilityMode? capabilityMode;
+  final String? capabilityStatusText;
+  final int capabilityProbedAtMs;
+  final VoidCallback? onRetryCapabilityProbe;
   final UnbackedRetentionPolicy unbackedRetention;
   final BackedRetentionPolicy backedRetention;
   final Future<void> Function({
@@ -1618,6 +1627,20 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   ],
                 ],
               ),
+              if (widget.capabilityMode != null) ...<Widget>[
+                const SizedBox(height: 12),
+                _SettingsCard(
+                  key: const Key('camera-capability-settings-card'),
+                  children: <Widget>[
+                    _CameraCapabilitySettings(
+                      mode: widget.capabilityMode!,
+                      statusText: widget.capabilityStatusText ?? '',
+                      probedAtMs: widget.capabilityProbedAtMs,
+                      onRetry: widget.onRetryCapabilityProbe,
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 12),
               _SettingsCard(
                 key: const Key('recording-settings-card'),
@@ -3092,6 +3115,70 @@ class _SettingsCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(children: children),
+    );
+  }
+}
+
+class _CameraCapabilitySettings extends StatelessWidget {
+  const _CameraCapabilitySettings({
+    required this.mode,
+    required this.statusText,
+    required this.probedAtMs,
+    required this.onRetry,
+  });
+
+  final CameraCapabilityMode mode;
+  final String statusText;
+  final int probedAtMs;
+  final VoidCallback? onRetry;
+
+  String get _probedTimeText {
+    if (probedAtMs <= 0) return '尚未检测';
+    return '检测于 ${DateTime.fromMillisecondsSinceEpoch(probedAtMs).toString().substring(0, 16).replaceFirst('T', ' ')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Text(
+                '摄像头能力',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                key: const Key('retry-camera-capability-button'),
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('重新检测'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            statusText,
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _probedTimeText,
+            style: TextStyle(
+              color: colors.outline,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -26,15 +26,18 @@ internal enum class CameraProbeOutcome(val wire: String) {
 /** 纯 JVM 可测的失败分类：只做“能力证据 / 探针异常”的机械映射。 */
 internal object CameraProbeOutcomePolicy {
     fun cameraOpenError(error: Throwable): CameraProbeOutcome = when (error) {
-        is CameraAccessException ->
-            if (error.reason == CameraAccessException.CAMERA_DISABLED) {
-                CameraProbeOutcome.CAMERA_DISABLED
-            } else {
-                CameraProbeOutcome.CAMERA_ACCESS_ERROR
-            }
+        is CameraAccessException -> cameraOpenErrorReason(error.reason)
         is SecurityException -> CameraProbeOutcome.CAMERA_ACCESS_ERROR
         else -> CameraProbeOutcome.INTERNAL_ERROR
     }
+
+    /** 纯 JVM 可测：按 Camera2 访问错误码分类，不依赖 android.jar 桩构造器。 */
+    fun cameraOpenErrorReason(reason: Int): CameraProbeOutcome =
+        if (reason == CameraAccessException.CAMERA_DISABLED) {
+            CameraProbeOutcome.CAMERA_DISABLED
+        } else {
+            CameraProbeOutcome.CAMERA_ACCESS_ERROR
+        }
 
     fun cameraStateError(errorCode: Int): CameraProbeOutcome =
         if (errorCode == android.hardware.camera2.CameraDevice.StateCallback.ERROR_CAMERA_DISABLED) {

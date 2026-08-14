@@ -2446,11 +2446,11 @@ class ContinuousSegmentCamera(
             return
         }
         if (normalized !in CAPABILITY_PROBE_SEQUENCES) {
-            replyError(result, "invalid_sequence", "无法识别的摄像头能力探测序列", null)
+            replyError(result, "invalid_sequence", "无法识别的摄像头能力探测序列")
             return
         }
         if (capabilityProbeActive) {
-            replyError(result, "probe_pending", "摄像头能力检测正在进行", null)
+            replyError(result, "probe_pending", "摄像头能力检测正在进行")
             return
         }
         val mux = muxHandler
@@ -2644,9 +2644,7 @@ class ContinuousSegmentCamera(
                 previewSurface = it
             }
 
-            val configTimeout = Runnable {
-                finish(CameraProbeOutcome.CONFIGURE_TIMEOUT.wire, null)
-            }
+            lateinit var configTimeout: Runnable
 
             fun cleanup() {
                 // 固定顺序：session → camera → reader → encoder → surface。
@@ -2697,6 +2695,9 @@ class ContinuousSegmentCamera(
                 attempt(index + 1, nextOutcome, nextDetail)
             }
 
+            configTimeout = Runnable {
+                finish(CameraProbeOutcome.CONFIGURE_TIMEOUT.wire, null)
+            }
             handler.postDelayed(configTimeout, CAPABILITY_PROBE_CONFIG_TIMEOUT_MS)
             try {
                 if (kind.includeAnalysis) {

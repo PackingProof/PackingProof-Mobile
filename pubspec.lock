@@ -972,7 +972,7 @@ packages:
     source: hosted
     version: "1.7.0"
   wakelock_plus_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: wakelock_plus_platform_interface
       sha256: "0618d1799f0b28bcf98255b4ee8313e6fc4d38589dc4ee5fe5840d57d1aff6da"

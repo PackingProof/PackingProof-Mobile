@@ -12,6 +12,7 @@ import '../controllers/packing_session_controller.dart';
 import '../models/barcode_marker.dart';
 import '../models/recording_operation_mode.dart';
 import '../models/work_mode.dart';
+import '../platform/platform_capabilities.dart';
 import '../models/order_info.dart';
 import '../models/storage_notice.dart';
 import '../models/lan_backup.dart';
@@ -19,6 +20,7 @@ import '../services/preview_cover_transform.dart';
 import '../services/lan_backup_discovery_service.dart';
 import '../services/lan_backup_host_file_cache.dart';
 import '../services/continuous_camera_service.dart';
+import '../services/camera_capability_policy.dart';
 import '../services/session_repository.dart';
 import '../services/speech_prompt_service.dart';
 import '../widgets/order_info_sheet.dart';
@@ -217,6 +219,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   String _handledMobileUpdateSignature = '';
   bool _mobileUpdateNoticeScheduled = false;
   int _handledStorageNoticeRevision = 0;
+  bool _capabilityNoticeDialogShown = false;
   int _transientReturnTab = 1;
   DateTime? _exitArmedAt;
   Timer? _watermarkClock;
@@ -229,6 +232,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       repository: widget.repository,
       speechService: SpeechPromptService(),
     );
+    _controller.addListener(_handleControllerChanged);
     _backupHostDiscovery = LanBackupHostDiscoveryService(
       cache: LanBackupHostFileCache(),
     );
@@ -255,10 +259,37 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _controller.removeListener(_handleControllerChanged);
     _watermarkClock?.cancel();
     _controller.dispose();
     _backupHostDiscovery.dispose();
     super.dispose();
+  }
+
+  void _handleControllerChanged() {
+    if (!mounted || _capabilityNoticeDialogShown) return;
+    final String? notice = _controller.takeCapabilityNoticeForDisplay();
+    if (notice == null || _controller.phase != PackingSessionPhase.ready) {
+      return;
+    }
+    _capabilityNoticeDialogShown = true;
+    unawaited(_showCapabilityNoticeDialog(notice));
+  }
+
+  Future<void> _showCapabilityNoticeDialog(String notice) {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('摄像头兼容模式'),
+        content: Text(notice),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _toggleWork() async {
@@ -525,6 +556,9 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                   orderInfo: _controller.activeOrderInfo,
                   workMode: _controller.workMode,
                   operationMode: _controller.operationMode,
+                  capabilityMode: _controller.capabilityMode,
+                  capabilityProbeMessage: _controller.capabilityProbeMessage,
+                  canFinishCurrentOrder: _controller.canFinishCurrentOrder,
                   errorMessage: _controller.errorMessage,
                   scanWarningMessage: _controller.scanWarningMessage,
                   cameraNotice: _controller.cameraNotice,
@@ -544,6 +578,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                   onTorchPressed: _controller.toggleTorch,
                   onCameraSwitchPressed: _controller.switchCamera,
                   onOperationModeChanged: _controller.setOperationMode,
+                  onFinishOrder: _controller.finishCurrentOrder,
                   onPrimaryPressed: _toggleWork,
                   onRetryPressed: _controller.retryInitialize,
                 ),
@@ -630,6 +665,14 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       onManagingChanged: (bool managing) {
         if (mounted) setState(() => _historyManaging = managing);
       },
+      capabilityMode: _controller.capabilities.supports(
+        PlatformCapability.continuousCameraRecording,
+      )
+          ? _controller.capabilityMode
+          : null,
+      capabilityStatusText: _controller.capabilityStatusText,
+      capabilityProbedAtMs: _controller.capabilityProbedAtMs,
+      onRetryCapabilityProbe: _controller.retryCapabilityProbe,
       onLoadRemoteRecordings: _controller.fetchRemoteRecordings,
       onLoadLocalRecordings: _controller.loadLocalRecordings,
       onLoadRemoteRecordingStatuses: _controller.fetchRemoteRecordingStatuses,
@@ -719,6 +762,9 @@ class PackingHomeView extends StatelessWidget {
     this.orderInfo,
     this.workMode = WorkMode.continuousScan,
     this.operationMode = RecordingOperationMode.shipping,
+    this.capabilityMode,
+    this.capabilityProbeMessage,
+    this.canFinishCurrentOrder = false,
     this.errorMessage,
     this.scanWarningMessage,
     this.cameraNotice,
@@ -738,6 +784,7 @@ class PackingHomeView extends StatelessWidget {
     this.onTorchPressed,
     this.onCameraSwitchPressed,
     this.onOperationModeChanged,
+    this.onFinishOrder,
     this.previewOverride,
     this.watermarkTimestamp,
     super.key,
@@ -754,6 +801,9 @@ class PackingHomeView extends StatelessWidget {
   final OrderInfo? orderInfo;
   final WorkMode workMode;
   final RecordingOperationMode operationMode;
+  final CameraCapabilityMode? capabilityMode;
+  final String? capabilityProbeMessage;
+  final bool canFinishCurrentOrder;
   final String? errorMessage;
   final String? scanWarningMessage;
   final String? cameraNotice;
@@ -773,6 +823,7 @@ class PackingHomeView extends StatelessWidget {
   final VoidCallback? onTorchPressed;
   final VoidCallback? onCameraSwitchPressed;
   final ValueChanged<RecordingOperationMode>? onOperationModeChanged;
+  final VoidCallback? onFinishOrder;
   final VoidCallback onPrimaryPressed;
   final VoidCallback onRetryPressed;
   final Widget? previewOverride;
@@ -790,6 +841,9 @@ class PackingHomeView extends StatelessWidget {
       phase == PackingSessionPhase.initializing ||
       phase == PackingSessionPhase.starting ||
       phase == PackingSessionPhase.saving;
+  bool get _alternatingRecording =>
+      capabilityMode == CameraCapabilityMode.alternating &&
+      _isRecording;
 
   @override
   Widget build(BuildContext context) {
@@ -948,11 +1002,29 @@ class _CameraArea extends StatelessWidget {
               bottom: lowerOverlayInset,
               child: Align(
                 alignment: Alignment.bottomCenter,
-                child: _OperationModePills(
-                  mode: view.operationMode,
-                  working: view._isWorking,
-                  enabled: !view._isBusy,
-                  onChanged: view.onOperationModeChanged,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    _OperationModePills(
+                      mode: view.operationMode,
+                      working: view._isWorking,
+                      enabled: !view._isBusy,
+                      onChanged: view.onOperationModeChanged,
+                    ),
+                    if (view.canFinishCurrentOrder) ...<Widget>[
+                      const SizedBox(width: 10),
+                      FilledButton.icon(
+                        key: const Key('finish-current-order-button'),
+                        onPressed: view.onFinishOrder,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFFFA726),
+                          foregroundColor: const Color(0xFF3E2723),
+                        ),
+                        icon: const Icon(Icons.check_circle_outline_rounded),
+                        label: const Text('完成本单'),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -965,6 +1037,13 @@ class _CameraArea extends StatelessWidget {
                 alignment: Alignment.topCenter,
                 child: _RecordingDurationPill(elapsed: view.elapsed),
               ),
+            ),
+          if (view._alternatingRecording)
+            const Positioned(
+              left: 18,
+              right: 18,
+              top: 72,
+              child: _AlternatingBanner(),
             ),
           if (view.scanWarningMessage != null)
             Positioned(
@@ -1803,6 +1882,37 @@ class _ControlPanel extends StatelessWidget {
   }
 }
 
+class _AlternatingBanner extends StatelessWidget {
+  const _AlternatingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      key: const Key('alternating-recording-banner'),
+      color: const Color(0xE6000000),
+      borderRadius: BorderRadius.circular(16),
+      child: const Padding(
+        padding: EdgeInsets.fromLTRB(14, 10, 14, 10),
+        child: Row(
+          children: <Widget>[
+            Icon(Icons.swap_horiz_rounded, color: Colors.white),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '轮换模式：录完请点「完成本单」恢复扫码',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ShallowUpwardArcClipper extends CustomClipper<Path> {
   const _ShallowUpwardArcClipper();
 
@@ -1936,7 +2046,7 @@ class _PrimaryWorkButtonState extends State<_PrimaryWorkButton>
                 const SizedBox(width: 8),
                 Text(
                   view.phase == PackingSessionPhase.initializing
-                      ? '正在准备摄像头'
+                      ? (view.capabilityProbeMessage ?? '正在准备摄像头')
                       : view.phase == PackingSessionPhase.starting
                       ? '正在启动录像'
                       : view.phase == PackingSessionPhase.saving

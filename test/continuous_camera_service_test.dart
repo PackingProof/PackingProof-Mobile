@@ -412,7 +412,7 @@ void main() {
     expect(calls.single.arguments, <String, Object>{
       'videoCodec': 'h264',
       'recordingSpec': 'smooth720p30',
-      'fallbackRecording': false,
+      'capabilityMode': 'unverified',
     });
   });
 
@@ -445,12 +445,12 @@ void main() {
           .setMockMethodCallHandler(channel, null);
     });
 
-    await service.initialize(fallbackRecording: true);
+    await service.initialize(capabilityMode: 'encoder_analysis');
 
     expect(calls.single.arguments, <String, Object>{
       'videoCodec': 'hevc',
       'recordingSpec': 'hd1080p30',
-      'fallbackRecording': true,
+      'capabilityMode': 'encoder_analysis',
     });
   });
 
@@ -489,7 +489,7 @@ void main() {
     expect(calls.single.arguments, <String, Object>{
       'videoCodec': 'hevc',
       'recordingSpec': 'hd1080p30',
-      'fallbackRecording': false,
+      'capabilityMode': 'unverified',
     });
   });
 

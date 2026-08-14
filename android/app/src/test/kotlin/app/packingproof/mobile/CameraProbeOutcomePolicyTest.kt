@@ -8,19 +8,21 @@ import org.junit.Test
 class CameraProbeOutcomePolicyTest {
     @Test
     fun `camera disabled is classified as infra`() {
-        val error = CameraAccessException(CameraAccessException.CAMERA_DISABLED)
         assertEquals(
             CameraProbeOutcome.CAMERA_DISABLED,
-            CameraProbeOutcomePolicy.cameraOpenError(error),
+            CameraProbeOutcomePolicy.cameraOpenErrorReason(
+                CameraAccessException.CAMERA_DISABLED,
+            ),
         )
     }
 
     @Test
     fun `camera in use is classified as infra`() {
-        val error = CameraAccessException(CameraAccessException.MAX_CAMERAS_IN_USE)
         assertEquals(
             CameraProbeOutcome.CAMERA_ACCESS_ERROR,
-            CameraProbeOutcomePolicy.cameraOpenError(error),
+            CameraProbeOutcomePolicy.cameraOpenErrorReason(
+                CameraAccessException.MAX_CAMERAS_IN_USE,
+            ),
         )
     }
 
