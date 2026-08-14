@@ -180,7 +180,6 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     Future<PackageInfo> Function()? packageInfoLoader,
     Future<void> Function(Duration)? retryDelay,
     Future<void> Function(String kind, Map<String, Object?> extra)? logEvent,
-    bool Function()? isAndroid,
   }) : _platform =
            platform ??
            LegacyBackupNativePlatform(
@@ -195,8 +194,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
        _retryDelay = retryDelay ?? Future<void>.delayed,
        // Keep the public injection name readable while the stored callback remains private.
        // ignore: prefer_initializing_formals
-       _logEvent = logEvent,
-       _isAndroid = isAndroid ?? (() => Platform.isAndroid);
+       _logEvent = logEvent;
 
   final BackupNativePlatform _platform;
   final HttpClient _httpClient;
@@ -205,7 +203,6 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   final Future<void> Function(Duration) _retryDelay;
   final Future<void> Function(String kind, Map<String, Object?> extra)?
   _logEvent;
-  final bool Function() _isAndroid;
   Timer? _pollTimer;
   Timer? _heartbeatTimer;
   Future<void>? _refreshFuture;
@@ -246,10 +243,6 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       _appBuildNumber = int.tryParse(packageInfo.buildNumber) ?? 0;
     } on Object {
       // Version checks are optional and must never block recording or backup.
-    }
-    if (!_isAndroid()) {
-      notifyListeners();
-      return;
     }
     final Map<Object?, Object?> values =
         await _platform.initialize(<String, Object?>{
@@ -310,15 +303,6 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     Uri baseUri, {
     LanBackupPairingConfirmation? replacementConfirmation,
   }) async {
-    if (!_isAndroid()) {
-      const String message = '当前设备暂不支持电脑备份，请使用 Android 手机';
-      _snapshot = _snapshot.copyWith(
-        connectionStatus: LanConnectionStatus.offline,
-        message: message,
-      );
-      notifyListeners();
-      throw const LanBackupUnsupportedException(message);
-    }
     await _ensureWifiConnected();
     final LanBackupEndpoint candidateEndpoint;
     try {
@@ -874,16 +858,6 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
 
   @override
   Future<StorageSpaceResult> checkAndReclaimStorage() async {
-    if (!_isAndroid()) {
-      return const StorageSpaceResult(
-        availableBytes: 1 << 62,
-        availableBytesBefore: 1 << 62,
-        freedBytes: 0,
-        deletedCount: 0,
-        warning: false,
-        insufficient: false,
-      );
-    }
     final Map<Object?, Object?> values =
         await _platform.reclaimStorageIfNeeded() ?? <Object?, Object?>{};
     await refresh();
@@ -903,9 +877,6 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
 
   @override
   Future<void> refresh() {
-    if (!_isAndroid()) {
-      return Future<void>.value();
-    }
     final Future<void>? active = _refreshFuture;
     if (active != null) {
       _refreshAgain = true;
@@ -936,7 +907,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   }
 
   void _attachNativeHandler() {
-    if (_nativeHandlerAttached || !_isAndroid()) return;
+    if (_nativeHandlerAttached) return;
     _nativeHandlerAttached = true;
     _platform.setSnapshotListener(_applyNativeSnapshot);
   }
@@ -1145,7 +1116,6 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   Future<bool> _hasWifiConnection() async {
     final Future<bool> Function()? override = _wifiConnected;
     if (override != null) return override();
-    if (!_isAndroid()) return true;
     try {
       return await _platform.isWifiConnected();
     } on PlatformException {

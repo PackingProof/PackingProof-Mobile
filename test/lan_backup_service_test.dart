@@ -227,7 +227,6 @@ void main() {
   test('未连接 Wi-Fi 时扫码给出友好提示且不发起网络请求', () async {
     final _UnexpectedHttpClient httpClient = _UnexpectedHttpClient();
     final LanBackupService service = LanBackupService(
-      isAndroid: () => true,
       httpClient: httpClient,
       wifiConnected: () async => false,
     );
@@ -246,33 +245,8 @@ void main() {
     expect(httpClient.requested, isFalse);
   });
 
-  test('非 Android 设备不向电脑发起申请并给出明确提示', () async {
-    final _UnexpectedHttpClient httpClient = _UnexpectedHttpClient();
-    final LanBackupService service = LanBackupService(
-      isAndroid: () => false,
-      httpClient: httpClient,
-      wifiConnected: () async => true,
-    );
-    addTearDown(service.dispose);
-
-    await expectLater(
-      service.connectToHost(Uri.parse('http://192.168.1.20:5280')),
-      throwsA(
-        isA<LanBackupUnsupportedException>().having(
-          (LanBackupUnsupportedException error) => error.message,
-          'message',
-          '当前设备暂不支持电脑备份，请使用 Android 手机',
-        ),
-      ),
-    );
-    expect(httpClient.requested, isFalse);
-    expect(service.snapshot.connectionStatus, LanConnectionStatus.offline);
-    expect(service.snapshot.message, '当前设备暂不支持电脑备份，请使用 Android 手机');
-  });
-
   test('连接到非备份用途电脑时要求重新扫码而不是更新电脑端', () async {
     final LanBackupService service = LanBackupService(
-      isAndroid: () => true,
       httpClient: _SequenceHttpClient(<_StreamHttpResponse>[
         _StreamHttpResponse(
           HttpStatus.ok,
@@ -343,10 +317,7 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
     });
-    final LanBackupService service = LanBackupService(
-      channel: channel,
-      isAndroid: () => true,
-    );
+    final LanBackupService service = LanBackupService(channel: channel);
     addTearDown(service.dispose);
     final DateTime startedAt = DateTime.utc(2026, 7, 19, 10);
 
@@ -387,7 +358,6 @@ void main() {
         <({String kind, Map<String, Object?> extra})>[];
     final LanBackupService service = LanBackupService(
       channel: channel,
-      isAndroid: () => true,
       logEvent: (String kind, Map<String, Object?> extra) async {
         events.add((kind: kind, extra: extra));
       },
@@ -441,10 +411,7 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
     });
-    final LanBackupService service = LanBackupService(
-      channel: channel,
-      isAndroid: () => true,
-    );
+    final LanBackupService service = LanBackupService(channel: channel);
     addTearDown(service.dispose);
     final DateTime startedAt = DateTime.utc(2026, 7, 24, 10);
 
@@ -478,10 +445,7 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
     });
-    final LanBackupService service = LanBackupService(
-      channel: channel,
-      isAndroid: () => true,
-    );
+    final LanBackupService service = LanBackupService(channel: channel);
     addTearDown(service.dispose);
 
     final NetworkDiagnostics? diagnostics = await service
@@ -508,10 +472,7 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
     });
-    final LanBackupService service = LanBackupService(
-      channel: channel,
-      isAndroid: () => true,
-    );
+    final LanBackupService service = LanBackupService(channel: channel);
     addTearDown(service.dispose);
 
     final NetworkDiagnostics? diagnostics = await service
@@ -546,7 +507,6 @@ void main() {
         ]);
     final LanBackupService service = LanBackupService(
       channel: channel,
-      isAndroid: () => true,
       httpClient: httpClient,
       wifiConnected: () async => true,
     );
@@ -585,10 +545,7 @@ void main() {
       () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null),
     );
-    final LanBackupService service = LanBackupService(
-      channel: channel,
-      isAndroid: () => true,
-    );
+    final LanBackupService service = LanBackupService(channel: channel);
     addTearDown(service.dispose);
     service.debugSetSnapshotForTesting(
       LanBackupSnapshot(
@@ -626,7 +583,6 @@ void main() {
     );
     final LanBackupService service = LanBackupService(
       channel: channel,
-      isAndroid: () => true,
       httpClient: _SequenceHttpClient(<_StreamHttpResponse>[
         _nodeInfo('computer-1', '仓库电脑'),
         _StreamHttpResponse(
@@ -653,7 +609,6 @@ void main() {
 
   test('重新申请被拒绝时保留原电脑和待备份任务', () async {
     final LanBackupService service = LanBackupService(
-      isAndroid: () => true,
       httpClient: _SequenceHttpClient(<_StreamHttpResponse>[
         _nodeInfo('computer-1', '仓库电脑'),
         _StreamHttpResponse(
@@ -707,7 +662,6 @@ void main() {
       enrollment,
     );
     final LanBackupService service = LanBackupService(
-      isAndroid: () => true,
       httpClient: client,
       wifiConnected: () async => true,
     );
@@ -747,7 +701,6 @@ void main() {
           ),
         ]) {
       final LanBackupService service = LanBackupService(
-        isAndroid: () => true,
         httpClient: _SequenceHttpClient(<_StreamHttpResponse>[
           _nodeInfo('computer-1', '仓库电脑'),
           _StreamHttpResponse(sample.status, sample.body),
@@ -783,7 +736,6 @@ void main() {
     late final LanBackupService service;
     service = LanBackupService(
       channel: channel,
-      isAndroid: () => true,
       httpClient: _SequenceHttpClient(<_StreamHttpResponse>[
         _nodeInfo('computer-1', '仓库电脑'),
         _StreamHttpResponse(
@@ -822,7 +774,6 @@ void main() {
           _enrollment('old-computer', '旧电脑', 'a' * 64),
         ]);
     final LanBackupService service = LanBackupService(
-      isAndroid: () => true,
       httpClient: client,
       wifiConnected: () async => true,
     );
@@ -852,7 +803,6 @@ void main() {
     );
     final LanBackupService service = LanBackupService(
       channel: channel,
-      isAndroid: () => true,
       httpClient: _SequenceHttpClient(<_StreamHttpResponse>[
         _nodeInfo('computer-1', '仓库电脑'),
         _StreamHttpResponse(
@@ -875,7 +825,6 @@ void main() {
 
   test('主机返回空白 426 时仍使用手机版本升级提示', () async {
     final LanBackupService service = LanBackupService(
-      isAndroid: () => true,
       httpClient: _SequenceHttpClient(<_StreamHttpResponse>[
         _nodeInfo('computer-1', '仓库电脑'),
         _StreamHttpResponse(426, 'Proxy rejected request'),
@@ -894,7 +843,6 @@ void main() {
 
   test('当前主机存在时更换主机要先确认且确认前不申请令牌', () async {
     final LanBackupService service = LanBackupService(
-      isAndroid: () => true,
       httpClient: _SequenceHttpClient(<_StreamHttpResponse>[
         _nodeInfo('computer-2', '新电脑'),
       ]),
@@ -946,7 +894,6 @@ void main() {
     );
     final LanBackupService service = LanBackupService(
       channel: channel,
-      isAndroid: () => true,
       httpClient: _SequenceHttpClient(<_StreamHttpResponse>[
         _nodeInfo('computer-2', '新电脑'),
         _enrollment('computer-2', '新电脑', 'a' * 64),
