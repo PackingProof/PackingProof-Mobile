@@ -48,7 +48,6 @@ class AppContainer {
               PlatformCapability.alertVolumeBoost,
             })
           : const PlatformCapabilities(<PlatformCapability>{
-              PlatformCapability.cameraBarcodeScanning,
               PlatformCapability.lanBackup,
               PlatformCapability.videoWatermark,
               PlatformCapability.videoExport,
