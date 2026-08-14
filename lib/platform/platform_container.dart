@@ -37,7 +37,6 @@ class AppContainer {
       capabilities: Platform.isAndroid
           ? const PlatformCapabilities(<PlatformCapability>{
               PlatformCapability.continuousCameraRecording,
-              PlatformCapability.cameraBarcodeScanning,
               PlatformCapability.lanBackup,
               PlatformCapability.orderInfoReceiver,
               PlatformCapability.videoWatermark,
