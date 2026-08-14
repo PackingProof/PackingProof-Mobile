@@ -110,3 +110,10 @@ pwsh -NoProfile -File Tools\Publish-Android.ps1 `
 - Avoid broad formatting, generated-file churn, dependency upgrades, or platform changes unless required.
 - Inspect `git status`, the relevant diff, and the staged diff before committing.
 - Do not commit build outputs, local recordings, caches, logs, credentials, or machine-specific configuration.
+
+## 分支整合与同步
+
+- 分支整合优先使用 rebase，保持主线直线历史；不把多个提交压缩成一个，原来有几个就保留几个。
+- 不主动生成 merge 提交；merge 仅用于：分支已推送且多人共用、需要保留整个功能分支的整合入口、发布分支或长期分支之间互相同步，或平台/保护分支强制要求时。
+- 已推送给他人使用的分支不随意 rebase 改写历史；如需线性化，先确认无人基于该分支工作。
+- Mac 与 Windows 双机同步：本机提交后，通过 bundle、patch 或远端推送让另一台 rebase 同步，禁止在本地生成 merge 提交。
