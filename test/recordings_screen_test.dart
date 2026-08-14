@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:packing_proof_mobile/app/packing_proof_theme.dart';
 import 'package:packing_proof_mobile/models/barcode_marker.dart';
 import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
@@ -4065,6 +4066,37 @@ void main() {
     expect(find.text('本机今日'), findsNothing);
     expect(find.text('电脑备份'), findsNothing);
     expect(find.text('A-1111'), findsOneWidget);
+  });
+
+  testWidgets('应用主题下进入管理模式不触发无界宽度布局异常', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: PackingProofTheme.light(),
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+    expect(find.byKey(const Key('finish-managing-button')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('嵌入父页面时管理模式顶部与底部都有退出按钮', (WidgetTester tester) async {
