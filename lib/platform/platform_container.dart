@@ -46,7 +46,15 @@ class AppContainer {
               PlatformCapability.systemVideoPlayer,
               PlatformCapability.alertAudioSession,
             })
-          : const PlatformCapabilities(<PlatformCapability>{}),
+          : const PlatformCapabilities(<PlatformCapability>{
+              PlatformCapability.cameraBarcodeScanning,
+              PlatformCapability.lanBackup,
+              PlatformCapability.videoWatermark,
+              PlatformCapability.videoExport,
+              PlatformCapability.recordingThumbnail,
+              PlatformCapability.systemVideoPlayer,
+              PlatformCapability.alertAudioSession,
+            }),
       thumbnail: Platform.isAndroid
           ? PigeonThumbnailPlatform()
           : const UnsupportedThumbnailPlatform(),
