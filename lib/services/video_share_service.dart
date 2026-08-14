@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../platform/contracts/media_platform.dart';
+import '../platform/platform_capabilities.dart';
 import '../platform/platform_container.dart';
 
 typedef VideoShareProgress = void Function(double progress, String message);
@@ -19,7 +20,11 @@ class VideoShareService {
     bool? nativeExportSupported,
     MediaProcessingPlatform? platform,
   }) : _providedCacheDirectory = cacheDirectory,
-       _nativeExportSupported = nativeExportSupported ?? Platform.isAndroid,
+       _nativeExportSupported =
+           nativeExportSupported ??
+           AppContainer.forCurrentPlatform().capabilities.supports(
+             PlatformCapability.videoExport,
+           ),
        _platform =
            platform ??
            (channel != null
