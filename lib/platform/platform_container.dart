@@ -47,6 +47,7 @@ class AppContainer {
               PlatformCapability.alertVolumeBoost,
             })
           : const PlatformCapabilities(<PlatformCapability>{
+              PlatformCapability.continuousCameraRecording,
               PlatformCapability.lanBackup,
               PlatformCapability.videoWatermark,
               PlatformCapability.videoExport,
@@ -60,7 +61,7 @@ class AppContainer {
       orderReceiver: Platform.isAndroid
           ? PigeonOrderReceiverPlatform()
           : const UnsupportedOrderReceiverPlatform(),
-      camera: Platform.isAndroid
+      camera: Platform.isAndroid || Platform.isIOS
           ? PigeonCameraPlatform()
           : UnsupportedCameraPlatform(),
       backup: Platform.isAndroid || Platform.isIOS
