@@ -71,6 +71,17 @@ class ContinuousSegmentCamera(
             "摄像头被系统或设备策略禁用，请检查摄像头访问开关"
         private const val PROBE_TIMEOUT_MS = 2_500L
         private const val START_STALL_FALLBACK_THRESHOLD_MS = 2_500L
+        private const val CAPABILITY_PROBE_PHASE_WINDOW_MS = 1_200L
+        private const val CAPABILITY_PROBE_CONFIG_TIMEOUT_MS = 2_500L
+        private const val CAPABILITY_PROBE_PHASE_BUDGET_MS = 4_500L
+        private const val CAPABILITY_PROBE_MAX_CANDIDATES = 4
+        private const val CAPABILITY_PROBE_SCHEMA_VERSION = 1
+        private const val CAMERA_PIPELINE_VERSION = 1
+        private val CAPABILITY_PROBE_SEQUENCES = setOf(
+            "full",
+            "encoder_analysis",
+            "alternating",
+        )
         private val PROBE_TRIGGER_STAGES = setOf(
             "camera_open",
             "camera_error",
@@ -152,7 +163,10 @@ class ContinuousSegmentCamera(
     @Volatile private var sessionHasAnalysis = false
     @Volatile private var startFallbackTried = false
     @Volatile private var recordingFallbackMode: String? = null
-    @Volatile private var preferEncoderAnalysisRecording = false
+    @Volatile private var capabilityMode = CameraCapabilityMode.UNVERIFIED
+    @Volatile private var sessionFallbackEncoderAnalysis = false
+    @Volatile private var capabilityProbeActive = false
+    private var probeRestoreCallback: ((Throwable?) -> Unit)? = null
     @Volatile private var probeResults: List<Map<String, Any?>> = emptyList()
     @Volatile private var probeInProgress = false
     @Volatile private var probeGeneration = 0
@@ -214,7 +228,7 @@ class ContinuousSegmentCamera(
         result: MethodChannel.Result,
         videoCodec: String? = null,
         recordingSpecName: String? = null,
-        fallbackRecording: Boolean = false,
+        capabilityModeName: String? = null,
     ) {
         if (disposed) {
             result.error("disposed", "摄像头已经关闭", null)
@@ -253,7 +267,8 @@ class ContinuousSegmentCamera(
         sessionHasAnalysis = false
         startFallbackTried = false
         recordingFallbackMode = null
-        preferEncoderAnalysisRecording = fallbackRecording
+        capabilityMode = CameraCapabilityMode.fromWire(capabilityModeName)
+        sessionFallbackEncoderAnalysis = false
         preferredVideoMime = if (videoCodec == "h264") {
             MediaFormat.MIMETYPE_VIDEO_AVC
         } else {
@@ -310,30 +325,43 @@ class ContinuousSegmentCamera(
             if (recordAudio) {
                 startAudioPipeline()
             }
-            if (preferEncoderAnalysisRecording) {
-                // 本机已保存兼容模式：直接以“编码器 + 识别”两路会话开始，
-                // 不再先尝试三路，避免每次启动都经历停摆重试。
-                recreateEncoderAnalysisSession(
-                    onError = { message ->
-                        muxHandler?.post { failPendingStart("session_config", message) }
-                    },
-                )
-            } else {
-                // 后置摄像头在运行中的重复请求上增删录像目标会冻结预览；
-                // 与 camera_android 一致：开始工作时重建会话，让预览+识别+编码
-                // 目标从会话配置起保持固定。
-                recreateCaptureSession(
-                    onConfigured = {
-                        muxHandler?.post {
-                            if (startResult != null && recordingRequested) {
-                                requestSyncFrame()
+            when (effectiveRecordingMode()) {
+                CameraCapabilityMode.UNSUPPORTED -> {
+                    failPendingStart("capability_unsupported", "此设备不支持持续录像")
+                }
+                CameraCapabilityMode.ENCODER_ANALYSIS -> {
+                    // 本机已保存兼容模式：直接以“编码器 + 识别”两路会话开始，
+                    // 不再先尝试三路，避免每次启动都经历停摆重试。
+                    recreateEncoderAnalysisSession(
+                        onError = { message ->
+                            muxHandler?.post { failPendingStart("session_config", message) }
+                        },
+                    )
+                }
+                CameraCapabilityMode.ALTERNATING -> {
+                    recreateAlternatingRecordingSession(
+                        onError = { message ->
+                            muxHandler?.post { failPendingStart("session_config", message) }
+                        },
+                    )
+                }
+                CameraCapabilityMode.FULL, CameraCapabilityMode.UNVERIFIED -> {
+                    // 后置摄像头在运行中的重复请求上增删录像目标会冻结预览；
+                    // 与 camera_android 一致：开始工作时重建会话，让预览+识别+编码
+                    // 目标从会话配置起保持固定。
+                    recreateCaptureSession(
+                        onConfigured = {
+                            muxHandler?.post {
+                                if (startResult != null && recordingRequested) {
+                                    requestSyncFrame()
+                                }
                             }
-                        }
-                    },
-                    onError = { message ->
-                        muxHandler?.post { failPendingStart("session_config", message) }
-                    },
-                )
+                        },
+                        onError = { message ->
+                            muxHandler?.post { failPendingStart("session_config", message) }
+                        },
+                    )
+                }
             }
             handler.postDelayed({
                 if (startResult === result) {
@@ -442,6 +470,29 @@ class ContinuousSegmentCamera(
     fun currentCameraId(): String? = selectedCameraId
 
     fun hasBackCamera(cameraId: String): Boolean = cameraId in allBackCameraIds()
+
+    /** 探测完成后由 Dart 设置最终工作模式，并清除上一次的临时降级。 */
+    fun setCapabilityMode(modeName: String?) {
+        capabilityMode = CameraCapabilityMode.fromWire(modeName)
+        sessionFallbackEncoderAnalysis = false
+        Log.i(CAMERA_LOG_TAG, "capabilityMode=${capabilityMode.name.lowercase()}")
+    }
+
+    /**
+     * 当前实际使用的录像模式：UNVERIFIED 或 FULL 发生运行时停摆降级时，
+     * 当前工作会话临时按 ENCODER_ANALYSIS 运行，但持久结论不被改写。
+     */
+    private fun effectiveRecordingMode(): CameraCapabilityMode =
+        if (sessionFallbackEncoderAnalysis &&
+            capabilityMode in setOf(
+                CameraCapabilityMode.FULL,
+                CameraCapabilityMode.UNVERIFIED,
+            )
+        ) {
+            CameraCapabilityMode.ENCODER_ANALYSIS
+        } else {
+            capabilityMode
+        }
 
     fun listCameras(): List<Map<String, Any?>> {
         val cached = cachedBackLenses
@@ -693,8 +744,12 @@ class ContinuousSegmentCamera(
         throw IllegalStateException("设备没有可用的 H.265 或 H.264 编码器", lastError)
     }
 
-    private fun createEncoderFormat(mime: String): MediaFormat =
-        MediaFormat.createVideoFormat(mime, videoSize.width, videoSize.height).apply {
+    private fun createEncoderFormat(
+        mime: String,
+        width: Int = videoSize.width,
+        height: Int = videoSize.height,
+    ): MediaFormat =
+        MediaFormat.createVideoFormat(mime, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(
                 MediaFormat.KEY_BIT_RATE,
@@ -941,6 +996,9 @@ class ContinuousSegmentCamera(
                     val result = initializeResult
                     initializeResult = null
                     if (result != null) replySuccess(result, initializationMap())
+                    val restoreCallback = probeRestoreCallback
+                    probeRestoreCallback = null
+                    restoreCallback?.invoke(null)
                 } catch (error: Throwable) {
                     failInitialization("capture_request", "摄像头预览启动失败", error)
                 }
@@ -1285,10 +1343,10 @@ class ContinuousSegmentCamera(
                 now - last > START_STALL_FALLBACK_THRESHOLD_MS
             ) {
                 if (recordingActive) {
-                    // 录像已开始但管线停摆：立即保存兼容模式并提示用户，
-                    // 下次开始工作直接走两路会话，不再重试三路。
+                    // 录像已开始但管线停摆：当前工作会话降级为两路并提示用户；
+                    // 已探明能力的模式不被永久改写，下次工作仍按探测结果开始。
                     startFallbackTried = true
-                    preferEncoderAnalysisRecording = true
+                    sessionFallbackEncoderAnalysis = true
                     Log.w(
                         CAMERA_LOG_TAG,
                         "recording stall while active; save encoder+analysis mode for next start",
@@ -1372,6 +1430,82 @@ class ContinuousSegmentCamera(
     }
 
     /**
+     * 轮换模式录像会话：“预览 + 编码器”两路，彻底移除识别 surface。
+     * 预览画面保持可见，条码识别关闭；录完一单后由 stopWork 重建
+     * “预览 + 识别”会话恢复扫码，编码器保持长驻不销毁。
+     */
+    private fun recreateAlternatingRecordingSession(
+        onConfigured: (() -> Unit)? = null,
+        onError: ((String) -> Unit)? = null,
+    ) {
+        val mux = muxHandler ?: return
+        val cam = cameraHandler ?: return
+        mux.post {
+            if (disposed || !recordingRequested || recordingActive || startResult == null) {
+                onError?.invoke("摄像头尚未就绪")
+                return@post
+            }
+            cam.post {
+                if (disposed || !recordingRequested || recordingActive || startResult == null) {
+                    onError?.invoke("摄像头尚未就绪")
+                    return@post
+                }
+                val camera = cameraDevice ?: return@post
+                val characteristics = selectedCameraCharacteristics ?: return@post
+                val encoder = videoInputSurface ?: return@post
+                val preview = previewSurface ?: return@post
+                val oldSession = captureSession
+                captureSession = null
+                sessionHasPreview = false
+                sessionHasEncoder = false
+                sessionHasAnalysis = false
+                try {
+                    oldSession?.close()
+                } catch (error: Throwable) {
+                    notifyNativeError("摄像头轮换会话关闭失败", error)
+                    onError?.invoke(error.message ?: "摄像头轮换会话关闭失败")
+                    return@post
+                }
+                submitCaptureSession(
+                    camera = camera,
+                    surfaces = listOf(preview, encoder),
+                    onConfigured = { session ->
+                        captureSession = session
+                        sessionHasPreview = true
+                        sessionHasEncoder = true
+                        sessionHasAnalysis = false
+                        recordingFallbackMode = "alternating"
+                        try {
+                            applyCaptureRequest(session, camera, characteristics)
+                            Log.w(
+                                CAMERA_LOG_TAG,
+                                "alternating recording session configured preview+encoder",
+                            )
+                            mux.post {
+                                if (startResult != null && recordingRequested) {
+                                    requestSyncFrame()
+                                }
+                                onConfigured?.invoke()
+                            }
+                        } catch (error: Throwable) {
+                            notifyNativeError("摄像头轮换会话启动失败", error)
+                            onError?.invoke(error.message ?: "摄像头轮换会话启动失败")
+                        }
+                    },
+                    onConfigureFailed = {
+                        notifyNativeError("此设备无法启动轮换录像", null)
+                        onError?.invoke("此设备无法启动轮换录像")
+                    },
+                    onCreateFailed = { error ->
+                        notifyNativeError("摄像头轮换会话创建失败", error)
+                        onError?.invoke(error.message ?: "摄像头轮换会话创建失败")
+                    },
+                )
+            }
+        }
+    }
+
+    /**
      * 重建为“编码器 + 识别”两路会话：录像与条码识别继续工作，预览画面暂停。
      * 用于启动阶段三路停摆后的自动降级，以及已保存兼容模式的直接开始。
      */
@@ -1416,7 +1550,7 @@ class ContinuousSegmentCamera(
                         sessionHasAnalysis = true
                         sessionHasPreview = false
                         recordingFallbackMode = "encoder_analysis"
-                        preferEncoderAnalysisRecording = true
+                        sessionFallbackEncoderAnalysis = true
                         try {
                             applyCaptureRequest(session, camera, characteristics)
                             Log.w(
@@ -1992,6 +2126,9 @@ class ContinuousSegmentCamera(
         closeCameraResourcesForRetry()
         if (result != null) replyError(result, code, error?.let { "$message：${it.message}" } ?: message)
         else notifyNativeError(message, error)
+        val restoreCallback = probeRestoreCallback
+        probeRestoreCallback = null
+        restoreCallback?.invoke(error)
         runInitProbesIfNeeded()
     }
 
@@ -2018,6 +2155,30 @@ class ContinuousSegmentCamera(
         val videoSize: Size,
         val analysisSize: Size?,
         val includeEncoder: Boolean,
+    )
+
+    private enum class ProbePhaseKind(
+        val includePreview: Boolean,
+        val includeAnalysis: Boolean,
+        val includeEncoder: Boolean,
+    ) {
+        IDLE(true, true, false),
+        RECORD_FULL(true, true, true),
+        RECORD_ENCODER_ANALYSIS(false, true, true),
+        RECORD_ALTERNATING(true, false, true),
+    }
+
+    private data class ProbeStreamConfig(
+        val videoWidth: Int,
+        val videoHeight: Int,
+        val analysisWidth: Int?,
+        val analysisHeight: Int?,
+        val candidateLabel: String,
+    )
+
+    private data class ProbeCodecHandle(
+        val codec: MediaCodec,
+        val surface: Surface,
     )
 
     private fun runInitProbesIfNeeded() {
@@ -2260,6 +2421,624 @@ class ContinuousSegmentCamera(
         )
     }
 
+    /**
+     * 持续出帧能力探针。由 Dart 按 FULL → ENCODER_ANALYSIS → ALTERNATING
+     * 顺序逐条调用，每条序列执行 idle → record → idle → record → idle，
+     * 每个阶段统计真实预览帧、识别帧与编码输出 buffer，不写盘、不建 muxer。
+     *
+     * 阶段只上报“是否配置成功 + 原始计数”，通过/失败阈值与模式决策全部
+     * 留在 Dart 的 CameraCapabilityPolicy，避免两端策略漂移。
+     */
+    fun probeSequence(sequence: String, budgetMs: Int, result: MethodChannel.Result) {
+        val normalized = sequence.trim().lowercase()
+        if (disposed) {
+            replyError(result, "disposed", "摄像头已经关闭")
+            return
+        }
+        if (!initialized) {
+            replyError(result, "camera_not_ready", "摄像头尚未准备完成")
+            return
+        }
+        if (recordingRequested || recordingActive ||
+            startResult != null || stopResult != null || splitResult != null
+        ) {
+            replyError(result, "camera_busy", "录像进行中不能检测摄像头能力")
+            return
+        }
+        if (normalized !in CAPABILITY_PROBE_SEQUENCES) {
+            replyError(result, "invalid_sequence", "无法识别的摄像头能力探测序列", null)
+            return
+        }
+        if (capabilityProbeActive) {
+            replyError(result, "probe_pending", "摄像头能力检测正在进行", null)
+            return
+        }
+        val mux = muxHandler
+        val cam = cameraHandler
+        if (mux == null || cam == null) {
+            replyError(result, "camera_not_ready", "摄像头尚未准备完成")
+            return
+        }
+        capabilityProbeActive = true
+        probeInProgress = true
+        probeGeneration++
+        val generation = probeGeneration
+        val deadline = SystemClock.uptimeMillis() + budgetMs.coerceIn(1_000, 30_000)
+        mux.post {
+            if (disposed || generation != probeGeneration) {
+                finishCapabilityProbe(normalized, result, "error", "cancelled", emptyList())
+                return@post
+            }
+            // 探针使用独立临时编码器：先释放长驻编码器，结束后确定性恢复，
+            // 正式 preferredVideoMime / selectedVideoMime / codecFallbackReason
+            // 均由同一确定性输入重建，与探测前一致。
+            releaseVideoEncoder()
+            cam.post {
+                if (disposed || generation != probeGeneration) {
+                    finishCapabilityProbe(normalized, result, "error", "cancelled", emptyList())
+                    return@post
+                }
+                runCatching { captureSession?.close() }
+                captureSession = null
+                sessionHasPreview = false
+                sessionHasEncoder = false
+                sessionHasAnalysis = false
+                runCatching { cameraDevice?.close() }
+                cameraDevice = null
+                runCapabilityProbeSequence(
+                    normalized,
+                    generation,
+                    deadline,
+                    result,
+                    mutableListOf(),
+                )
+            }
+        }
+    }
+
+    private fun runCapabilityProbeSequence(
+        sequence: String,
+        generation: Int,
+        deadline: Long,
+        result: MethodChannel.Result,
+        phases: MutableList<Map<String, Any?>>,
+    ) {
+        val specs = capabilityProbeSpecs(sequence)
+        fun step(index: Int) {
+            if (disposed || generation != probeGeneration) {
+                finishCapabilityProbe(sequence, result, "error", "cancelled", phases)
+                return
+            }
+            if (SystemClock.uptimeMillis() + CAPABILITY_PROBE_PHASE_BUDGET_MS > deadline) {
+                finishCapabilityProbe(sequence, result, "budget_exceeded", "检测时间预算不足", phases)
+                return
+            }
+            if (index >= specs.size) {
+                finishCapabilityProbe(sequence, result, "ok", null, phases)
+                return
+            }
+            val (label, kind) = specs[index]
+            runCapabilityProbePhase(label, kind, deadline) { phaseResult ->
+                phases += phaseResult
+                when (phaseResult["outcome"]) {
+                    "configured" -> step(index + 1)
+                    // 能力性失败（全部候选都无法配置）：该序列已不可能通过，
+                    // 立即停止，由 Dart 按失败处理。
+                    "configure_failed", "unsupported_combination",
+                    "codec_missing", "codec_config_failed",
+                    -> finishCapabilityProbe(sequence, result, "ok", null, phases)
+                    // 探针基础设施异常：整体返回 error_infra。
+                    else -> finishCapabilityProbe(
+                        sequence,
+                        result,
+                        "error",
+                        "${phaseResult["outcome"]}:${phaseResult["detail"] ?: ""}",
+                        phases,
+                    )
+                }
+            }
+        }
+        step(0)
+    }
+
+    private fun runCapabilityProbePhase(
+        label: String,
+        kind: ProbePhaseKind,
+        deadline: Long,
+        onDone: (Map<String, Any?>) -> Unit,
+    ) {
+        val handler = cameraHandler ?: return
+        val configs = capabilityProbeConfigs(kind)
+        if (configs.isEmpty()) {
+            onDone(
+                mapOf(
+                    "phase" to label,
+                    "candidate" to null,
+                    "outcome" to "internal_error",
+                    "detail" to "没有可用的候选组合",
+                    "previewFrames" to 0,
+                    "analysisFrames" to 0,
+                    "encoderBuffers" to 0,
+                    "durationMs" to 0,
+                ),
+            )
+            return
+        }
+        fun attempt(index: Int, lastOutcome: String, lastDetail: String?) {
+            if (disposed) {
+                onDone(
+                    capabilityProbePhaseResult(
+                        label,
+                        null,
+                        "internal_error",
+                        "摄像头已关闭",
+                        0,
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+                return
+            }
+            if (SystemClock.uptimeMillis() + CAPABILITY_PROBE_PHASE_BUDGET_MS > deadline) {
+                onDone(
+                    capabilityProbePhaseResult(
+                        label,
+                        null,
+                        "budget_exceeded",
+                        "检测时间预算不足",
+                        0,
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+                return
+            }
+            if (index >= configs.size) {
+                onDone(
+                    capabilityProbePhaseResult(
+                        label,
+                        null,
+                        lastOutcome,
+                        lastDetail,
+                        0,
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+                return
+            }
+            val cameraId = selectedCameraId
+            val characteristics = selectedCameraCharacteristics
+            val entry = textureEntry
+            if (cameraId == null || characteristics == null || entry == null) {
+                onDone(
+                    capabilityProbePhaseResult(
+                        label,
+                        null,
+                        "internal_error",
+                        "摄像头尚未准备完成",
+                        0,
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+                return
+            }
+            val config = configs[index]
+            var phaseCamera: CameraDevice? = null
+            var phaseSession: CameraCaptureSession? = null
+            var phaseReader: ImageReader? = null
+            var phaseCodec: MediaCodec? = null
+            var phaseCodecSurface: Surface? = null
+            var codecFailed = false
+            var finished = false
+            val startedAtMs = SystemClock.uptimeMillis()
+            var previewFrames = 0
+            var analysisFrames = 0
+            var encoderBuffers = 0
+            val preview = previewSurface ?: Surface(entry.surfaceTexture()).also {
+                previewSurface = it
+            }
+
+            val configTimeout = Runnable {
+                finish(CameraProbeOutcome.CONFIGURE_TIMEOUT.wire, null)
+            }
+
+            fun cleanup() {
+                // 固定顺序：session → camera → reader → encoder → surface。
+                runCatching { phaseSession?.close() }
+                phaseSession = null
+                runCatching { phaseCamera?.close() }
+                if (phaseCamera === cameraDevice) cameraDevice = null
+                phaseCamera = null
+                runCatching { phaseReader?.close() }
+                phaseReader = null
+                runCatching { phaseCodec?.stop() }
+                runCatching { phaseCodec?.release() }
+                phaseCodec = null
+                runCatching { phaseCodecSurface?.release() }
+                phaseCodecSurface = null
+                runCatching {
+                    entry.surfaceTexture().setDefaultBufferSize(
+                        videoSize.width,
+                        videoSize.height,
+                    )
+                }
+            }
+
+            fun finish(outcome: String, detail: String?) {
+                if (finished) return
+                finished = true
+                handler.removeCallbacks(configTimeout)
+                cleanup()
+                onDone(
+                    capabilityProbePhaseResult(
+                        label,
+                        config.candidateLabel,
+                        outcome,
+                        detail,
+                        previewFrames,
+                        analysisFrames,
+                        encoderBuffers,
+                        (SystemClock.uptimeMillis() - startedAtMs).toInt(),
+                    ),
+                )
+            }
+
+            fun retry(nextOutcome: String, nextDetail: String?) {
+                if (finished) return
+                finished = true
+                handler.removeCallbacks(configTimeout)
+                cleanup()
+                attempt(index + 1, nextOutcome, nextDetail)
+            }
+
+            handler.postDelayed(configTimeout, CAPABILITY_PROBE_CONFIG_TIMEOUT_MS)
+            try {
+                if (kind.includeAnalysis) {
+                    phaseReader = ImageReader.newInstance(
+                        config.analysisWidth ?: analysisSize.width,
+                        config.analysisHeight ?: analysisSize.height,
+                        ImageFormat.YUV_420_888,
+                        2,
+                    ).also { reader ->
+                        reader.setOnImageAvailableListener({ source ->
+                            analysisFrames++
+                            runCatching { source.acquireLatestImage()?.close() }
+                        }, handler)
+                    }
+                }
+                if (kind.includeEncoder) {
+                    try {
+                        val codecResult = createCapabilityProbeCodec(
+                            config.videoWidth,
+                            config.videoHeight,
+                            handler,
+                            onEncoderFrame = { encoderBuffers++ },
+                            onCodecError = { codecFailed = true },
+                        )
+                        phaseCodec = codecResult.codec
+                        phaseCodecSurface = codecResult.surface
+                    } catch (error: Throwable) {
+                        val outcome = when (error) {
+                            is IllegalArgumentException ->
+                                CameraProbeOutcome.CODEC_MISSING
+                            is IllegalStateException,
+                            is MediaCodec.CodecException,
+                            -> CameraProbeOutcome.CODEC_CONFIG_FAILED
+                            else -> CameraProbeOutcome.INTERNAL_ERROR
+                        }
+                        if (outcome == CameraProbeOutcome.INTERNAL_ERROR) {
+                            finish(outcome.wire, error.message ?: outcome.wire)
+                        } else {
+                            retry(outcome.wire, error.message ?: outcome.wire)
+                        }
+                        return
+                    }
+                }
+                val surfaces = buildList {
+                    if (kind.includePreview) add(preview)
+                    if (kind.includeAnalysis) phaseReader?.surface?.let(::add)
+                    if (kind.includeEncoder) phaseCodecSurface?.let(::add)
+                }
+                val expected = (if (kind.includePreview) 1 else 0) +
+                    (if (kind.includeAnalysis) 1 else 0) +
+                    (if (kind.includeEncoder) 1 else 0)
+                if (surfaces.size < expected) {
+                    finish(CameraProbeOutcome.SURFACE_MISSING.wire, "摄像头输出表面创建失败")
+                    return@attempt
+                }
+                cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                    override fun onOpened(camera: CameraDevice) {
+                        if (disposed) {
+                            runCatching { camera.close() }
+                            finish(CameraProbeOutcome.INTERNAL_ERROR.wire, "摄像头已关闭")
+                            return
+                        }
+                        phaseCamera = camera
+                        cameraDevice = camera
+                        try {
+                            camera.createCaptureSession(
+                                surfaces,
+                                object : CameraCaptureSession.StateCallback() {
+                                    override fun onConfigured(session: CameraCaptureSession) {
+                                        if (disposed) {
+                                            runCatching { session.close() }
+                                            finish(CameraProbeOutcome.INTERNAL_ERROR.wire, "摄像头已关闭")
+                                            return
+                                        }
+                                        handler.removeCallbacks(configTimeout)
+                                        phaseSession = session
+                                        try {
+                                            val request = camera.createCaptureRequest(
+                                                if (kind.includeEncoder) {
+                                                    CameraDevice.TEMPLATE_RECORD
+                                                } else {
+                                                    CameraDevice.TEMPLATE_PREVIEW
+                                                },
+                                            ).apply {
+                                                if (kind.includePreview) previewSurface?.let(::addTarget)
+                                                if (kind.includeAnalysis) {
+                                                    phaseReader?.surface?.let(::addTarget)
+                                                }
+                                                if (kind.includeEncoder) {
+                                                    phaseCodecSurface?.let(::addTarget)
+                                                }
+                                                applyAutomaticCameraControls(this, characteristics)
+                                            }.build()
+                                            session.setRepeatingRequest(
+                                                request,
+                                                object : CameraCaptureSession.CaptureCallback() {
+                                                    override fun onCaptureCompleted(
+                                                        session: CameraCaptureSession,
+                                                        request: CaptureRequest,
+                                                        result: TotalCaptureResult,
+                                                    ) {
+                                                        previewFrames++
+                                                    }
+                                                },
+                                                handler,
+                                            )
+                                        } catch (error: Throwable) {
+                                            finish(
+                                                CameraProbeOutcome.INTERNAL_ERROR.wire,
+                                                error.message ?: "探针重复请求提交失败",
+                                            )
+                                            return
+                                        }
+                                        val window = Runnable {
+                                            finish(
+                                                if (codecFailed) {
+                                                    CameraProbeOutcome.INTERNAL_ERROR.wire
+                                                } else {
+                                                    CameraProbeOutcome.CONFIGURED.wire
+                                                },
+                                                null,
+                                            )
+                                        }
+                                        handler.postDelayed(window, CAPABILITY_PROBE_PHASE_WINDOW_MS)
+                                    }
+
+                                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                                        runCatching { session.close() }
+                                        retry(CameraProbeOutcome.CONFIGURE_FAILED.wire, null)
+                                    }
+                                },
+                                handler,
+                            )
+                        } catch (error: Throwable) {
+                            val outcome = CameraProbeOutcomePolicy.sessionCreateError(error)
+                            if (outcome == CameraProbeOutcome.UNSUPPORTED_COMBINATION) {
+                                retry(outcome.wire, error.message ?: outcome.wire)
+                            } else {
+                                finish(outcome.wire, error.message ?: outcome.wire)
+                            }
+                        }
+                    }
+
+                    override fun onDisconnected(camera: CameraDevice) {
+                        runCatching { camera.close() }
+                        if (camera === cameraDevice) cameraDevice = null
+                        finish(CameraProbeOutcome.CAMERA_DISCONNECTED.wire, null)
+                    }
+
+                    override fun onError(camera: CameraDevice, error: Int) {
+                        runCatching { camera.close() }
+                        if (camera === cameraDevice) cameraDevice = null
+                        val outcome = CameraProbeOutcomePolicy.cameraStateError(error)
+                        finish(outcome.wire, "camera_error_$error")
+                    }
+                }, handler)
+            } catch (error: Throwable) {
+                val outcome = CameraProbeOutcomePolicy.cameraOpenError(error)
+                finish(outcome.wire, error.message ?: outcome.wire)
+            }
+        }
+        attempt(0, CameraProbeOutcome.CONFIGURE_FAILED.wire, null)
+    }
+
+    private fun capabilityProbePhaseResult(
+        label: String,
+        candidate: String?,
+        outcome: String,
+        detail: String?,
+        previewFrames: Int,
+        analysisFrames: Int,
+        encoderBuffers: Int,
+        durationMs: Int,
+    ): Map<String, Any?> = mapOf(
+        "phase" to label,
+        "candidate" to candidate,
+        "outcome" to outcome,
+        "detail" to detail,
+        "previewFrames" to previewFrames,
+        "analysisFrames" to analysisFrames,
+        "encoderBuffers" to encoderBuffers,
+        "durationMs" to durationMs,
+    )
+
+    private fun capabilityProbeSpecs(sequence: String): List<Pair<String, ProbePhaseKind>> {
+        val record = when (sequence) {
+            "full" -> ProbePhaseKind.RECORD_FULL
+            "encoder_analysis" -> ProbePhaseKind.RECORD_ENCODER_ANALYSIS
+            else -> ProbePhaseKind.RECORD_ALTERNATING
+        }
+        return listOf(
+            "idle" to ProbePhaseKind.IDLE,
+            "record" to record,
+            "idle" to ProbePhaseKind.IDLE,
+            "record" to record,
+            "idle" to ProbePhaseKind.IDLE,
+        )
+    }
+
+    private fun capabilityProbeConfigs(kind: ProbePhaseKind): List<ProbeStreamConfig> {
+        val videos = videoCandidates.map { StreamSize(it.width, it.height) }
+        val analyses = analysisCandidates.map { StreamSize(it.width, it.height) }
+        val candidates = when (kind) {
+            ProbePhaseKind.IDLE -> streamConfigPolicy.initializationCandidates(videos, analyses)
+            ProbePhaseKind.RECORD_FULL, ProbePhaseKind.RECORD_ENCODER_ANALYSIS ->
+                streamConfigPolicy.threeSurfaceCandidates(videos, analyses)
+            ProbePhaseKind.RECORD_ALTERNATING -> videos.take(2).map { video ->
+                StreamConfig(
+                    videoWidth = video.width,
+                    videoHeight = video.height,
+                    analysisWidth = analysisSize.width,
+                    analysisHeight = analysisSize.height,
+                    includeEncoder = true,
+                )
+            }
+        }
+        return candidates.take(CAPABILITY_PROBE_MAX_CANDIDATES).map { config ->
+            ProbeStreamConfig(
+                videoWidth = config.videoWidth,
+                videoHeight = config.videoHeight,
+                analysisWidth = if (kind.includeAnalysis) config.analysisWidth else null,
+                analysisHeight = if (kind.includeAnalysis) config.analysisHeight else null,
+                candidateLabel = if (kind == ProbePhaseKind.RECORD_ALTERNATING) {
+                    "${config.videoWidth}x${config.videoHeight}"
+                } else {
+                    config.label
+                },
+            )
+        }
+    }
+
+    private fun createCapabilityProbeCodec(
+        width: Int,
+        height: Int,
+        handler: Handler,
+        onEncoderFrame: () -> Unit,
+        onCodecError: () -> Unit,
+    ): ProbeCodecHandle {
+        val mime = selectedVideoMime
+        val codec = MediaCodec.createEncoderByType(mime)
+        codec.setCallback(
+            object : MediaCodec.Callback() {
+                override fun onInputBufferAvailable(codec: MediaCodec, index: Int) = Unit
+
+                override fun onOutputBufferAvailable(
+                    codec: MediaCodec,
+                    index: Int,
+                    info: MediaCodec.BufferInfo,
+                ) {
+                    if (info.size > 0 &&
+                        info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0
+                    ) {
+                        onEncoderFrame()
+                    }
+                    runCatching { codec.releaseOutputBuffer(index, false) }
+                }
+
+                override fun onError(codec: MediaCodec, error: MediaCodec.CodecException) {
+                    onCodecError()
+                }
+
+                override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) = Unit
+            },
+            handler,
+        )
+        codec.configure(createEncoderFormat(mime, width, height), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        val surface = codec.createInputSurface()
+        codec.start()
+        return ProbeCodecHandle(codec, surface)
+    }
+
+    private fun finishCapabilityProbe(
+        sequence: String,
+        result: MethodChannel.Result,
+        status: String,
+        reason: String?,
+        phases: List<Map<String, Any?>>,
+    ) {
+        capabilityProbeActive = false
+        probeInProgress = false
+        val payload = mapOf<String, Any?>(
+            "sequence" to sequence,
+            "status" to status,
+            "probeErrorReason" to reason,
+            "phases" to phases,
+            "identity" to capabilityProbeIdentity(),
+        )
+        if (disposed) {
+            replySuccess(result, payload)
+            return
+        }
+        val mux = muxHandler
+        val cam = cameraHandler
+        if (mux == null || cam == null) {
+            replySuccess(result, payload)
+            return
+        }
+        mux.post {
+            if (!disposed) {
+                try {
+                    prepareVideoEncoder()
+                    setVideoSuspended(true)
+                } catch (error: Throwable) {
+                    notifyNativeError("摄像头能力检测后编码器恢复失败", error)
+                }
+            }
+            cam.post {
+                if (disposed) {
+                    replySuccess(result, payload)
+                    return@post
+                }
+                textureEntry?.surfaceTexture()?.setDefaultBufferSize(
+                    videoSize.width,
+                    videoSize.height,
+                )
+                probeRestoreCallback = { restoreError ->
+                    replySuccess(
+                        result,
+                        if (restoreError == null) {
+                            payload
+                        } else {
+                            payload + (
+                                "restoreError" to (restoreError.message ?: "摄像头会话恢复失败")
+                            )
+                        },
+                    )
+                }
+                openCamera()
+            }
+        }
+    }
+
+    private fun capabilityProbeIdentity(): Map<String, Any?> = mapOf(
+        "cameraId" to (selectedCameraId ?: ""),
+        "videoSize" to "${videoSize.width}x${videoSize.height}",
+        "analysisSize" to "${analysisSize.width}x${analysisSize.height}",
+        "codec" to (if (selectedVideoMime == MediaFormat.MIMETYPE_VIDEO_AVC) "h264" else "hevc"),
+        "spec" to recordingSpecName,
+        "probeSchemaVersion" to CAPABILITY_PROBE_SCHEMA_VERSION,
+        "cameraPipelineVersion" to CAMERA_PIPELINE_VERSION,
+    )
+
     private fun sizeLabel(size: Size): String = "${size.width}x${size.height}"
 
     private fun capabilityName(capability: Int): String = when (capability) {
@@ -2330,7 +3109,11 @@ class ContinuousSegmentCamera(
             "startFailureStage" to startFailureStage,
             "startFailureDetail" to startFailureDetail,
             "recordingFallbackMode" to recordingFallbackMode,
-            "preferEncoderAnalysisRecording" to preferEncoderAnalysisRecording,
+            "capabilityMode" to capabilityMode.name.lowercase(),
+            "preferEncoderAnalysisRecording" to (
+                capabilityMode == CameraCapabilityMode.ENCODER_ANALYSIS ||
+                    sessionFallbackEncoderAnalysis
+            ),
             "sessionSurfaces" to
                 "preview=$sessionHasPreview encoder=$sessionHasEncoder analysis=$sessionHasAnalysis",
             "probeResults" to probeResults,

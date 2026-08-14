@@ -542,44 +542,44 @@ struct OrderReceiverStatusDto: Hashable, CustomStringConvertible {
 struct CameraInitializeRequest: Hashable, CustomStringConvertible {
   var videoCodec: String
   var recordingSpec: String
-  var fallbackRecording: Bool
+  var capabilityMode: String
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
   static func fromList(_ pigeonVar_list: [Any?]) -> CameraInitializeRequest? {
     let videoCodec = pigeonVar_list[0] as! String
     let recordingSpec = pigeonVar_list[1] as! String
-    let fallbackRecording = pigeonVar_list[2] as! Bool
+    let capabilityMode = pigeonVar_list[2] as! String
 
     return CameraInitializeRequest(
       videoCodec: videoCodec,
       recordingSpec: recordingSpec,
-      fallbackRecording: fallbackRecording
+      capabilityMode: capabilityMode
     )
   }
   func toList() -> [Any?] {
     return [
       videoCodec,
       recordingSpec,
-      fallbackRecording,
+      capabilityMode,
     ]
   }
   static func == (lhs: CameraInitializeRequest, rhs: CameraInitializeRequest) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return PlatformApiPigeonInternal.deepEquals(lhs.videoCodec, rhs.videoCodec) && PlatformApiPigeonInternal.deepEquals(lhs.recordingSpec, rhs.recordingSpec) && PlatformApiPigeonInternal.deepEquals(lhs.fallbackRecording, rhs.fallbackRecording)
+    return PlatformApiPigeonInternal.deepEquals(lhs.videoCodec, rhs.videoCodec) && PlatformApiPigeonInternal.deepEquals(lhs.recordingSpec, rhs.recordingSpec) && PlatformApiPigeonInternal.deepEquals(lhs.capabilityMode, rhs.capabilityMode)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("CameraInitializeRequest")
     PlatformApiPigeonInternal.deepHash(value: videoCodec, hasher: &hasher)
     PlatformApiPigeonInternal.deepHash(value: recordingSpec, hasher: &hasher)
-    PlatformApiPigeonInternal.deepHash(value: fallbackRecording, hasher: &hasher)
+    PlatformApiPigeonInternal.deepHash(value: capabilityMode, hasher: &hasher)
   }
 
   public var description: String {
-    return "CameraInitializeRequest(videoCodec: \(String(describing: videoCodec)), recordingSpec: \(String(describing: recordingSpec)), fallbackRecording: \(String(describing: fallbackRecording)))"
+    return "CameraInitializeRequest(videoCodec: \(String(describing: videoCodec)), recordingSpec: \(String(describing: recordingSpec)), capabilityMode: \(String(describing: capabilityMode)))"
   }
 }
 
@@ -1609,6 +1609,8 @@ protocol CameraHostApi {
   func switchCamera(completion: @escaping (Result<CameraInitializationDto, Error>) -> Void)
   func listCameras(completion: @escaping (Result<[CameraLensDto], Error>) -> Void)
   func switchToCamera(cameraId: String, completion: @escaping (Result<CameraInitializationDto, Error>) -> Void)
+  func probeSequence(sequence: String, budgetMs: Int64, completion: @escaping (Result<[String?: Any?]?, Error>) -> Void)
+  func setCapabilityMode(mode: String) throws
   func dispose(completion: @escaping (Result<Void, Error>) -> Void)
 }
 
@@ -1831,6 +1833,39 @@ class CameraHostApiSetup {
       }
     } else {
       switchToCameraChannel.setMessageHandler(nil)
+    }
+    let probeSequenceChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.probeSequence\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      probeSequenceChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let sequenceArg = args[0] as! String
+        let budgetMsArg = args[1] as! Int64
+        api.probeSequence(sequence: sequenceArg, budgetMs: budgetMsArg) { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      probeSequenceChannel.setMessageHandler(nil)
+    }
+    let setCapabilityModeChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setCapabilityMode\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      setCapabilityModeChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let modeArg = args[0] as! String
+        do {
+          try api.setCapabilityMode(mode: modeArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      setCapabilityModeChannel.setMessageHandler(nil)
     }
     let disposeChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.dispose\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

@@ -23,7 +23,7 @@ internal class PigeonCameraHostApi(
             mapOf(
                 "videoCodec" to request.videoCodec,
                 "recordingSpec" to request.recordingSpec,
-                "fallbackRecording" to request.fallbackRecording,
+                "capabilityMode" to request.capabilityMode,
             ),
             callback,
         ) { value -> (value as Map<*, *>).toCameraInitializationDto() }
@@ -148,6 +148,29 @@ internal class PigeonCameraHostApi(
             mapOf("cameraId" to cameraId),
             callback,
         ) { value -> (value as Map<*, *>).toCameraInitializationDto() }
+    }
+
+    override fun probeSequence(
+        sequence: String,
+        budgetMs: Long,
+        callback: (Result<Map<String?, Any?>?>) -> Unit,
+    ) {
+        invokeCamera(
+            "probeSequence",
+            mapOf("sequence" to sequence, "budgetMs" to budgetMs.toInt()),
+            callback,
+        ) { value ->
+            (value as? Map<*, *>)?.entries?.associate {
+                (it.key as? String) to it.value
+            }
+        }
+    }
+
+    override fun setCapabilityMode(mode: String) {
+        plugin.onMethodCall(
+            MethodCall("setCapabilityMode", mapOf("mode" to mode)),
+            RawMethodResult { },
+        )
     }
 
     override fun dispose(callback: (Result<Unit>) -> Unit) {

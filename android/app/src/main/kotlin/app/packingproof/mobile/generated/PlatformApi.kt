@@ -533,22 +533,22 @@ data class OrderReceiverStatusDto (
 data class CameraInitializeRequest (
   val videoCodec: String,
   val recordingSpec: String,
-  val fallbackRecording: Boolean
+  val capabilityMode: String
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): CameraInitializeRequest {
       val videoCodec = pigeonVar_list[0] as String
       val recordingSpec = pigeonVar_list[1] as String
-      val fallbackRecording = pigeonVar_list[2] as Boolean
-      return CameraInitializeRequest(videoCodec, recordingSpec, fallbackRecording)
+      val capabilityMode = pigeonVar_list[2] as String
+      return CameraInitializeRequest(videoCodec, recordingSpec, capabilityMode)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       videoCodec,
       recordingSpec,
-      fallbackRecording,
+      capabilityMode,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -559,18 +559,18 @@ data class CameraInitializeRequest (
       return true
     }
     val other = other as CameraInitializeRequest
-    return PlatformApiPigeonUtils.deepEquals(this.videoCodec, other.videoCodec) && PlatformApiPigeonUtils.deepEquals(this.recordingSpec, other.recordingSpec) && PlatformApiPigeonUtils.deepEquals(this.fallbackRecording, other.fallbackRecording)
+    return PlatformApiPigeonUtils.deepEquals(this.videoCodec, other.videoCodec) && PlatformApiPigeonUtils.deepEquals(this.recordingSpec, other.recordingSpec) && PlatformApiPigeonUtils.deepEquals(this.capabilityMode, other.capabilityMode)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.videoCodec)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.recordingSpec)
-    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.fallbackRecording)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.capabilityMode)
     return result
   }
   override fun toString(): String {
-    return "CameraInitializeRequest(videoCodec=$videoCodec, recordingSpec=$recordingSpec, fallbackRecording=$fallbackRecording)"
+    return "CameraInitializeRequest(videoCodec=$videoCodec, recordingSpec=$recordingSpec, capabilityMode=$capabilityMode)"
   }
 }
 
@@ -1687,6 +1687,8 @@ interface CameraHostApi {
   fun switchCamera(callback: (Result<CameraInitializationDto>) -> Unit)
   fun listCameras(callback: (Result<List<CameraLensDto>>) -> Unit)
   fun switchToCamera(cameraId: String, callback: (Result<CameraInitializationDto>) -> Unit)
+  fun probeSequence(sequence: String, budgetMs: Long, callback: (Result<Map<String?, Any?>?>) -> Unit)
+  fun setCapabilityMode(mode: String)
   fun dispose(callback: (Result<Unit>) -> Unit)
 
   companion object {
@@ -1943,6 +1945,45 @@ interface CameraHostApi {
                 reply.reply(PlatformApiPigeonUtils.wrapResult(data))
               }
             }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.probeSequence$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val sequenceArg = args[0] as String
+            val budgetMsArg = args[1] as Long
+            api.probeSequence(sequenceArg, budgetMsArg) { result: Result<Map<String?, Any?>?> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setCapabilityMode$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val modeArg = args[0] as String
+            val wrapped: List<Any?> = try {
+              api.setCapabilityMode(modeArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              PlatformApiPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)

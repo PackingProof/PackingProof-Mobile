@@ -521,20 +521,20 @@ class CameraInitializeRequest {
   CameraInitializeRequest({
     required this.videoCodec,
     required this.recordingSpec,
-    required this.fallbackRecording,
+    required this.capabilityMode,
   });
 
   String videoCodec;
 
   String recordingSpec;
 
-  bool fallbackRecording;
+  String capabilityMode;
 
   List<Object?> _toList() {
     return <Object?>[
       videoCodec,
       recordingSpec,
-      fallbackRecording,
+      capabilityMode,
     ];
   }
 
@@ -546,7 +546,7 @@ class CameraInitializeRequest {
     return CameraInitializeRequest(
       videoCodec: result[0]! as String,
       recordingSpec: result[1]! as String,
-      fallbackRecording: result[2]! as bool,
+      capabilityMode: result[2]! as String,
     );
   }
 
@@ -559,7 +559,7 @@ class CameraInitializeRequest {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(videoCodec, other.videoCodec) && _deepEquals(recordingSpec, other.recordingSpec) && _deepEquals(fallbackRecording, other.fallbackRecording);
+    return _deepEquals(videoCodec, other.videoCodec) && _deepEquals(recordingSpec, other.recordingSpec) && _deepEquals(capabilityMode, other.capabilityMode);
   }
 
   @override
@@ -568,7 +568,7 @@ class CameraInitializeRequest {
 
   @override
   String toString() {
-    return 'CameraInitializeRequest(videoCodec: $videoCodec, recordingSpec: $recordingSpec, fallbackRecording: $fallbackRecording)';
+    return 'CameraInitializeRequest(videoCodec: $videoCodec, recordingSpec: $recordingSpec, capabilityMode: $capabilityMode)';
   }
 }
 
@@ -1978,6 +1978,43 @@ class CameraHostApi {
     )
     ;
     return pigeonVar_replyValue! as CameraInitializationDto;
+  }
+
+  Future<Map<String?, Object?>?> probeSequence(String sequence, int budgetMs) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.probeSequence$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[sequence, budgetMs]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
+    return (pigeonVar_replyValue as Map<Object?, Object?>?)?.cast<String?, Object?>();
+  }
+
+  Future<void> setCapabilityMode(String mode) async {
+    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setCapabilityMode$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode]);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+        pigeonVar_replyList,
+        pigeonVar_channelName,
+        isNullValid: true,
+    )
+    ;
   }
 
   Future<void> dispose() async {

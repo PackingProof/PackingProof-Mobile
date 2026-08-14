@@ -69,7 +69,7 @@ class OrderReceiverStatusDto {
 class CameraInitializeRequest {
   String videoCodec;
   String recordingSpec;
-  bool fallbackRecording;
+  String capabilityMode;
 }
 
 class CameraInitializationDto {
@@ -224,6 +224,9 @@ abstract class CameraHostApi {
   List<CameraLensDto> listCameras();
   @async
   CameraInitializationDto switchToCamera(String cameraId);
+  @async
+  Map<String?, Object?>? probeSequence(String sequence, int budgetMs);
+  void setCapabilityMode(String mode);
   @async
   void dispose();
 }

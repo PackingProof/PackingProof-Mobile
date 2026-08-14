@@ -31,7 +31,7 @@ class ContinuousCameraPlugin(
     private var pendingPermissionRecordAudio = false
     private var lastVideoCodec: String? = null
     private var lastRecordingSpec: String? = null
-    private var lastFallbackRecording = false
+    private var lastCapabilityMode: String? = null
 
     init {
         channel.setMethodCallHandler(this)
@@ -43,7 +43,7 @@ class ContinuousCameraPlugin(
                 result,
                 call.argument<String>("videoCodec"),
                 call.argument<String>("recordingSpec"),
-                call.argument<Boolean>("fallbackRecording") == true,
+                call.argument<String>("capabilityMode"),
             )
             "ensurePermissions" -> ensurePermissions(
                 call.argument<Boolean>("recordAudio") == true,
@@ -67,6 +67,19 @@ class ContinuousCameraPlugin(
                 }
             }
             "stopWork" -> engine.stopWork(result)
+            "probeSequence" -> {
+                val sequence = call.argument<String>("sequence")
+                val budgetMs = call.argument<Int>("budgetMs") ?: 25_000
+                if (sequence.isNullOrBlank()) {
+                    result.error("invalid_sequence", "无法识别的摄像头能力探测序列", null)
+                } else {
+                    engine.probeSequence(sequence, budgetMs, result)
+                }
+            }
+            "setCapabilityMode" -> {
+                engine.setCapabilityMode(call.argument<String>("mode"))
+                result.success(null)
+            }
             "getDiagnostics" -> engine.getDiagnostics(result)
             "setPairingScanEnabled" -> {
                 engine.setPairingScanEnabled(call.argument<Boolean>("enabled") == true)
@@ -97,7 +110,7 @@ class ContinuousCameraPlugin(
                             result,
                             lastVideoCodec,
                             lastRecordingSpec,
-                            lastFallbackRecording,
+                            lastCapabilityMode,
                         )
                     }
                 }
@@ -116,7 +129,7 @@ class ContinuousCameraPlugin(
                             result,
                             lastVideoCodec,
                             lastRecordingSpec,
-                            lastFallbackRecording,
+                            lastCapabilityMode,
                         )
                     }
                 }
@@ -145,15 +158,15 @@ class ContinuousCameraPlugin(
         result: MethodChannel.Result,
         videoCodec: String?,
         recordingSpec: String?,
-        fallbackRecording: Boolean,
+        capabilityMode: String?,
     ) {
         if (ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
         ) {
             lastVideoCodec = videoCodec
             lastRecordingSpec = recordingSpec
-            lastFallbackRecording = fallbackRecording
-            engine.initialize(result, videoCodec, recordingSpec, fallbackRecording)
+            lastCapabilityMode = capabilityMode
+            engine.initialize(result, videoCodec, recordingSpec, capabilityMode)
             return
         }
         result.error("permission_denied", "需要摄像头权限才能工作", null)
