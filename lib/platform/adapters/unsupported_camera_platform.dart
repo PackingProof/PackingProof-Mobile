@@ -21,7 +21,7 @@ class UnsupportedCameraPlatform implements CameraPlatform {
   Future<ContinuousCameraInitialization> initialize({
     String videoCodec = 'hevc',
     String recordingSpec = 'hd1080p30',
-    bool fallbackRecording = false,
+    String capabilityMode = 'unverified',
   }) {
     throw const CapabilityUnavailableException(
       PlatformCapability.continuousCameraRecording,
@@ -78,6 +78,13 @@ class UnsupportedCameraPlatform implements CameraPlatform {
   @override
   Future<ContinuousCameraInitialization> switchToCamera(String cameraId) =>
       initialize();
+  @override
+  Future<Map<Object?, Object?>?> probeSequence(
+    String sequence, {
+    required int budgetMs,
+  }) async => null;
+  @override
+  Future<void> setCapabilityMode(String mode) async {}
   @override
   Future<void> dispose() async {}
 }

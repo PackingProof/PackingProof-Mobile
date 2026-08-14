@@ -577,6 +577,13 @@ class SessionRepository {
     (AppSettings value) => value.copyWith(nativeRecordingFallback: enabled),
   );
 
+  Future<void> saveCameraCapabilityState(Map<String, Object?> state) =>
+      _updateSettings(
+        (AppSettings value) => value.copyWith(
+          cameraCapabilityState: Map<String, Object?>.of(state),
+        ),
+      );
+
   Future<void> savePreferredVideoCodec(RecordingVideoCodec codec) =>
       _updateSettings(
         (AppSettings value) => value.copyWith(preferredVideoCodec: codec),

@@ -18,6 +18,7 @@ class AppSettings {
     this.maxVolumeEnabled = true,
     this.recordAudioEnabled = true,
     this.nativeRecordingFallback = false,
+    this.cameraCapabilityState,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.startupNoticeVersion = 0,
@@ -40,6 +41,7 @@ class AppSettings {
       ..remove('orderSpeechEnabled')
       ..remove('maxVolumeEnabled')
       ..remove('nativeRecordingFallback')
+      ..remove('cameraCapabilityState')
       ..remove('preferredVideoCodec')
       ..remove('recordingSpec')
       ..remove('startupNoticeVersion')
@@ -75,6 +77,11 @@ class AppSettings {
       nativeRecordingFallback: json['nativeRecordingFallback'] is bool
           ? json['nativeRecordingFallback']! as bool
           : false,
+      cameraCapabilityState: json['cameraCapabilityState'] is Map
+          ? Map<String, Object?>.from(
+              json['cameraCapabilityState']! as Map<Object?, Object?>,
+            )
+          : null,
       preferredVideoCodec: recordingVideoCodecFromStorage(
         json['preferredVideoCodec'],
       ),
@@ -138,6 +145,7 @@ class AppSettings {
   final bool maxVolumeEnabled;
   final bool recordAudioEnabled;
   final bool nativeRecordingFallback;
+  final Map<String, Object?>? cameraCapabilityState;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
   final int startupNoticeVersion;
@@ -159,6 +167,7 @@ class AppSettings {
     bool? maxVolumeEnabled,
     bool? recordAudioEnabled,
     bool? nativeRecordingFallback,
+    Map<String, Object?>? cameraCapabilityState,
     RecordingVideoCodec? preferredVideoCodec,
     RecordingSpecPreset? recordingSpec,
     int? startupNoticeVersion,
@@ -180,6 +189,8 @@ class AppSettings {
       recordAudioEnabled: recordAudioEnabled ?? this.recordAudioEnabled,
       nativeRecordingFallback:
           nativeRecordingFallback ?? this.nativeRecordingFallback,
+      cameraCapabilityState:
+          cameraCapabilityState ?? this.cameraCapabilityState,
       preferredVideoCodec: preferredVideoCodec ?? this.preferredVideoCodec,
       recordingSpec: recordingSpec ?? this.recordingSpec,
       startupNoticeVersion: startupNoticeVersion ?? this.startupNoticeVersion,
@@ -207,6 +218,7 @@ class AppSettings {
     'maxVolumeEnabled': maxVolumeEnabled,
     'recordAudioEnabled': recordAudioEnabled,
     'nativeRecordingFallback': nativeRecordingFallback,
+    'cameraCapabilityState': cameraCapabilityState,
     'preferredVideoCodec': preferredVideoCodec.storageValue,
     'recordingSpec': recordingSpec.storageValue,
     'startupNoticeVersion': startupNoticeVersion,

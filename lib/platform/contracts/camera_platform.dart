@@ -10,7 +10,7 @@ abstract interface class CameraPlatform {
   Future<ContinuousCameraInitialization> initialize({
     String videoCodec,
     String recordingSpec,
-    bool fallbackRecording,
+    String capabilityMode,
   });
 
   Future<bool> ensurePermissions({required bool recordAudio});
@@ -39,6 +39,13 @@ abstract interface class CameraPlatform {
   Future<List<NativeCameraLens>> listCameras();
 
   Future<ContinuousCameraInitialization> switchToCamera(String cameraId);
+
+  Future<Map<Object?, Object?>?> probeSequence(
+    String sequence, {
+    required int budgetMs,
+  });
+
+  Future<void> setCapabilityMode(String mode);
 
   Future<void> dispose();
 }

@@ -296,11 +296,11 @@ class ContinuousCameraService {
   Future<ContinuousCameraInitialization> initialize({
     RecordingVideoCodec videoCodec = RecordingVideoCodec.hevc,
     RecordingSpecPreset recordingSpec = RecordingSpecPreset.hd1080p30,
-    bool fallbackRecording = false,
+    String capabilityMode = 'unverified',
   }) => _platform.initialize(
     videoCodec: videoCodec.storageValue,
     recordingSpec: recordingSpec.storageValue,
-    fallbackRecording: fallbackRecording,
+    capabilityMode: capabilityMode,
   );
 
   /// 请求运行所需权限；[recordAudio] 为 false 时只要求摄像头权限。
@@ -340,6 +340,14 @@ class ContinuousCameraService {
   Future<ContinuousCameraInitialization> switchToCamera(String cameraId) =>
       _platform.switchToCamera(cameraId);
 
+  Future<Map<Object?, Object?>?> probeSequence(
+    String sequence, {
+    required int budgetMs,
+  }) => _platform.probeSequence(sequence, budgetMs: budgetMs);
+
+  Future<void> setCapabilityMode(String mode) =>
+      _platform.setCapabilityMode(mode);
+
   Future<void> dispose() async {
     onBarcodeFrame = null;
     onError = null;
@@ -372,13 +380,13 @@ class _LegacyCameraPlatform implements CameraPlatform {
   Future<ContinuousCameraInitialization> initialize({
     String videoCodec = 'hevc',
     String recordingSpec = 'hd1080p30',
-    bool fallbackRecording = false,
+    String capabilityMode = 'unverified',
   }) async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('initialize', <String, Object>{
           'videoCodec': videoCodec,
           'recordingSpec': recordingSpec,
-          'fallbackRecording': fallbackRecording,
+          'capabilityMode': capabilityMode,
         }))!;
     return ContinuousCameraInitialization.fromMap(values);
   }
@@ -488,6 +496,26 @@ class _LegacyCameraPlatform implements CameraPlatform {
           'cameraId': cameraId,
         }))!;
     return ContinuousCameraInitialization.fromMap(values);
+  }
+
+  @override
+  Future<Map<Object?, Object?>?> probeSequence(
+    String sequence, {
+    required int budgetMs,
+  }) async {
+    final Map<Object?, Object?>? values = await _channel
+        .invokeMethod<Map<Object?, Object?>>('probeSequence', <String, Object>{
+          'sequence': sequence,
+          'budgetMs': budgetMs,
+        });
+    return values;
+  }
+
+  @override
+  Future<void> setCapabilityMode(String mode) async {
+    await _channel.invokeMethod<void>('setCapabilityMode', <String, Object>{
+      'mode': mode,
+    });
   }
 
   @override

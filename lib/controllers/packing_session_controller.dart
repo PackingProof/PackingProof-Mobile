@@ -27,6 +27,7 @@ import '../services/barcode_recognized_beep_policy.dart';
 import '../services/barcode_stability_tracker.dart';
 import '../services/barcode_work_mode_policy.dart';
 import '../services/camera_diagnostics_service.dart';
+import '../services/camera_capability_policy.dart';
 import '../services/continuous_camera_service.dart';
 import '../services/diagnostics_log_service.dart';
 import '../services/initial_recording_prompt_policy.dart';
@@ -78,6 +79,7 @@ class PackingSessionController extends ChangeNotifier {
     DiagnosticsLogService? runtimeLog,
     CameraDiagnosticsService? cameraDiagnostics,
     PlatformCapabilities? capabilities,
+    ContinuousCameraService? cameraService,
   }) : _repository = repository ?? SessionRepository(),
        _speechService = speechService ?? SpeechPromptService(),
        _maxVolumeService = maxVolumeService ?? MaxVolumeService(),
@@ -86,6 +88,7 @@ class PackingSessionController extends ChangeNotifier {
        _orderInfoReceiver = orderInfoReceiver ?? OrderInfoReceiverService(),
        _capabilities =
            capabilities ?? AppContainer.forCurrentPlatform().capabilities,
+       _nativeCamera = cameraService,
        _barcodeScanner = BarcodeScanner(
          formats: const <BarcodeFormat>[BarcodeFormat.all],
        ) {
@@ -154,6 +157,13 @@ class PackingSessionController extends ChangeNotifier {
   bool _maxVolumeEnabled = true;
   bool _recordAudioEnabled = true;
   bool _nativeRecordingFallback = false;
+  CameraCapabilityMode _capabilityMode = CameraCapabilityMode.unverified;
+  Map<String, Object?>? _capabilityState;
+  bool _capabilityProbeRunning = false;
+  String? _capabilityProbeMessage;
+  String? _capabilityNoticeMessage;
+  String? _alternatingLastCompletedCode;
+  DateTime? _alternatingNoCodeSince;
   RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
   RecordingSpecPreset _recordingSpec = RecordingSpecPreset.hd1080p30;
   int _minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength;
@@ -220,6 +230,28 @@ class PackingSessionController extends ChangeNotifier {
   OrderInfoReceiverSnapshot get orderReceiverSnapshot =>
       _orderInfoReceiver.snapshot;
   bool get maxVolumeEnabled => _maxVolumeEnabled;
+  CameraCapabilityMode get capabilityMode => _capabilityMode;
+  bool get capabilityProbeRunning => _capabilityProbeRunning;
+  String? get capabilityProbeMessage => _capabilityProbeMessage;
+  bool get alternatingRecording =>
+      _capabilityMode == CameraCapabilityMode.alternating && isRecording;
+  bool get canFinishCurrentOrder =>
+      alternatingRecording && !isBusy && _nativeCamera != null;
+  String get capabilityStatusText {
+    final String base = '${_capabilityMode.label}：${_capabilityMode.description}';
+    if (_capabilityMode == CameraCapabilityMode.unverified) {
+      final String? reason = _capabilityState?['probeErrorReason'] as String?;
+      if (reason != null && reason.trim().isNotEmpty) {
+        return '$_capabilityMode.label（${reason.trim()}）';
+      }
+    }
+    return base;
+  }
+
+  int get capabilityProbedAtMs =>
+      (_capabilityState?['probedAtMs'] as num?)?.toInt() ??
+      (_capabilityState?['lastProbeErrorAtMs'] as num?)?.toInt() ??
+      0;
   UnbackedRetentionPolicy get unbackedRetention => _unbackedRetention;
   BackedRetentionPolicy get backedRetention => _backedRetention;
   bool get recordAudioEnabled => _recordAudioEnabled;
@@ -265,6 +297,13 @@ class PackingSessionController extends ChangeNotifier {
       _supportsNativeCamera && _nativeInitialization?.isFrontCamera == true;
   String? get historyScanResult => _historyScanResult;
   String? get errorMessage => _errorMessage;
+
+  /// 探测完成后的一次性能力说明（取走即消费）。
+  String? takeCapabilityNoticeForDisplay() {
+    final String? message = _capabilityNoticeMessage;
+    _capabilityNoticeMessage = null;
+    return message;
+  }
 
   String? takePairingFailureForDisplay() {
     final String? message = _pairingFailureMessage;
@@ -333,6 +372,7 @@ class PackingSessionController extends ChangeNotifier {
       _backedRetention = settings.backedRetention;
       _recordAudioEnabled = settings.recordAudioEnabled;
       _nativeRecordingFallback = settings.nativeRecordingFallback;
+      _capabilityState = settings.cameraCapabilityState;
       _preferredVideoCodec = settings.preferredVideoCodec;
       _recordingSpec = settings.recordingSpec;
       _minimumBarcodeLength = settings.minimumBarcodeLength;
@@ -377,7 +417,8 @@ class PackingSessionController extends ChangeNotifier {
         }
       }
       if (_supportsNativeCamera) {
-        final ContinuousCameraService nativeCamera = ContinuousCameraService();
+        final ContinuousCameraService nativeCamera =
+            _nativeCamera ?? ContinuousCameraService();
         nativeCamera.onBarcodeFrame = _processNativeBarcodeFrame;
         nativeCamera.onError = (String message) {
           _errorMessage = message;
@@ -403,7 +444,7 @@ class PackingSessionController extends ChangeNotifier {
             .initialize(
               videoCodec: _preferredVideoCodec,
               recordingSpec: _recordingSpec,
-              fallbackRecording: _nativeRecordingFallback,
+              capabilityMode: _provisionalCapabilityMode().wireValue,
             )
             .timeout(
               const Duration(seconds: 15),
@@ -427,6 +468,10 @@ class PackingSessionController extends ChangeNotifier {
           );
         }
         await _refreshBackCameraLenses();
+        await _resolveCameraCapability();
+        if (_phase == PackingSessionPhase.error) {
+          return;
+        }
         _speechService.resetIncidents();
         _setPhase(PackingSessionPhase.ready);
         return;
@@ -484,6 +529,26 @@ class PackingSessionController extends ChangeNotifier {
     await initialize(force: true);
   }
 
+  /// 设置页「重新检测」：仅空闲时可用，探测期间阻塞开始工作。
+  Future<void> retryCapabilityProbe() async {
+    if (_disposed || !_supportsNativeCamera || _nativeCamera == null) return;
+    if (isWorking || isBusy || _capabilityProbeRunning) return;
+    _errorMessage = null;
+    _setPhase(PackingSessionPhase.initializing);
+    _capabilityProbeMessage = '正在重新检测摄像头能力';
+    notifyListeners();
+    final Map<String, Object?> identity = await _currentCameraIdentity();
+    await _runCapabilityProbe(
+      identity.isEmpty ? const <String, Object?>{} : identity,
+      message: '正在重新检测摄像头能力',
+    );
+    if (_disposed) return;
+    if (_phase != PackingSessionPhase.error) {
+      _setPhase(PackingSessionPhase.ready);
+    }
+    notifyListeners();
+  }
+
   void _handleNativeProbeFinished(Map<Object?, Object?> results) {
     unawaited(
       _cameraDiagnostics.recordEvent(
@@ -511,13 +576,329 @@ class PackingSessionController extends ChangeNotifier {
       ),
     );
     final String mode = '${info['mode'] ?? ''}';
-    if (mode == 'encoder_analysis' && !_nativeRecordingFallback) {
-      _nativeRecordingFallback = true;
-      unawaited(_repository.saveNativeRecordingFallback(true));
+    if (mode == 'encoder_analysis') {
+      if (_capabilityMode == CameraCapabilityMode.unverified) {
+        // 未完成探测的设备保留旧版持久化降级，兼容现有用户。
+        if (!_nativeRecordingFallback) {
+          _nativeRecordingFallback = true;
+          unawaited(_repository.saveNativeRecordingFallback(true));
+        }
+      } else {
+        // 已探明能力的模式只做当前会话降级，按同一配置累计嫌疑，
+        // 达到阈值才标记缓存失效、下次启动重测。
+        unawaited(_recordCapabilitySuspicion(info));
+      }
     }
     _showCameraNotice(
       mode == 'encoder_analysis' ? '受硬件限制，录像时预览画面会暂停，扫码和录像不受影响' : '已切换录像兼容模式',
     );
+  }
+
+  CameraCapabilityMode _provisionalCapabilityMode() {
+    final Map<String, Object?>? state = _capabilityState;
+    if (state != null) {
+      final CameraCapabilityMode mode = CameraCapabilityMode.fromWire(
+        state['mode'],
+      );
+      if (mode != CameraCapabilityMode.unverified &&
+          mode != CameraCapabilityMode.unsupported) {
+        return mode;
+      }
+    }
+    return _nativeRecordingFallback
+        ? CameraCapabilityMode.encoderAnalysis
+        : CameraCapabilityMode.unverified;
+  }
+
+  Future<void> _resolveCameraCapability() async {
+    if (_disposed || !_supportsNativeCamera || _nativeCamera == null) return;
+    final Map<String, Object?> identity = await _currentCameraIdentity();
+    if (identity.isEmpty) return;
+    final Map<String, Object?>? cached = _capabilityState;
+    final Map<String, Object?>? cachedIdentity = _identityMap(
+      cached?['identity'],
+    );
+    final bool cacheValid = _identityMatches(cachedIdentity, identity) &&
+        _capabilityState?['stale'] != true;
+    if (cacheValid) {
+      final CameraCapabilityMode mode = CameraCapabilityMode.fromWire(
+        cached?['mode'],
+      );
+      if (mode != CameraCapabilityMode.unverified &&
+          mode != CameraCapabilityMode.unsupported) {
+        _capabilityMode = mode;
+        await _nativeCamera!.setCapabilityMode(mode.wireValue);
+        return;
+      }
+      if (mode == CameraCapabilityMode.unsupported) {
+        _capabilityMode = mode;
+        _errorMessage = '此设备无法同时提供预览和识别，暂时无法进行打包录像';
+        _setPhase(PackingSessionPhase.error);
+        return;
+      }
+    }
+    if (!_shouldAutoProbe(cached)) return;
+    await _runCapabilityProbe(identity);
+  }
+
+  Future<Map<String, Object?>> _currentCameraIdentity() async {
+    final ContinuousCameraService? camera = _nativeCamera;
+    if (camera == null) return const <String, Object?>{};
+    final CameraDiagnosticsSnapshot? snapshot = await camera.getDiagnostics();
+    if (snapshot == null) return const <String, Object?>{};
+    final Map<String, Object?> cameraState = snapshot.camera;
+    final String videoMime = '${cameraState['videoMime'] ?? ''}';
+    return <String, Object?>{
+      'cameraId': '${cameraState['cameraId'] ?? ''}',
+      'videoSize':
+          '${cameraState['videoWidth'] ?? 0}x${cameraState['videoHeight'] ?? 0}',
+      'analysisSize':
+          '${cameraState['analysisWidth'] ?? 0}x${cameraState['analysisHeight'] ?? 0}',
+      'codec': videoMime.toLowerCase().contains('avc') ? 'h264' : 'hevc',
+      'spec': '${cameraState['recordingSpec'] ?? _recordingSpec.storageValue}',
+      'probeSchemaVersion': CameraCapabilityPolicy.probeSchemaVersion,
+      'cameraPipelineVersion': CameraCapabilityPolicy.cameraPipelineVersion,
+    };
+  }
+
+  Map<String, Object?>? _identityMap(Object? value) {
+    if (value is! Map) return null;
+    return Map<String, Object?>.from(value);
+  }
+
+  bool _identityMatches(
+    Map<String, Object?>? cached,
+    Map<String, Object?> current,
+  ) {
+    if (cached == null) return false;
+    for (final String key in current.keys) {
+      if ('${cached[key]}' != '${current[key]}') return false;
+    }
+    return true;
+  }
+
+  bool _shouldAutoProbe(Map<String, Object?>? state) {
+    if (state?['mode'] != CameraCapabilityMode.unverified.wireValue) {
+      return true;
+    }
+    final int lastErrorAtMs = (state?['lastProbeErrorAtMs'] as num?)?.toInt() ?? 0;
+    if (lastErrorAtMs <= 0) return true;
+    return DateTime.now().millisecondsSinceEpoch - lastErrorAtMs >=
+        const Duration(hours: 24).inMilliseconds;
+  }
+
+  Future<void> _runCapabilityProbe(
+    Map<String, Object?> identity, {
+    String message = '正在检测摄像头能力',
+  }) async {
+    if (_capabilityProbeRunning) return;
+    _capabilityProbeRunning = true;
+    _capabilityProbeMessage = message;
+    notifyListeners();
+    final Stopwatch stopwatch = Stopwatch()..start();
+    final Map<String, List<CameraProbePhase>> results =
+        <String, List<CameraProbePhase>>{};
+    String? infraReason;
+    Map<String, Object?>? probedIdentity = identity;
+    try {
+      for (final String sequence in CameraCapabilityPolicy.sequenceOrder) {
+        final int remaining = 30000 - stopwatch.elapsedMilliseconds;
+        if (remaining < 10000) {
+          infraReason = '检测时间预算不足';
+          break;
+        }
+        final int budgetMs = remaining.clamp(10000, 25000);
+        final Map<Object?, Object?>? raw = await _nativeCamera!.probeSequence(
+          sequence,
+          budgetMs: budgetMs,
+        );
+        if (raw == null) {
+          infraReason = '原生探针没有返回结果';
+          break;
+        }
+        probedIdentity = _identityMap(raw['identity']) ?? probedIdentity;
+        final String status = '${raw['status'] ?? 'error'}';
+        if (status == 'error' || status == 'budget_exceeded') {
+          infraReason = '${raw['probeErrorReason'] ?? status}';
+          break;
+        }
+        final List<Object?> phaseList =
+            List<Object?>.from(raw['phases'] as List? ?? const <Object?>[]);
+        final List<CameraProbePhase> phases = phaseList
+            .map(
+              (Object? item) => CameraProbePhase.fromMap(
+                Map<Object?, Object?>.from(item! as Map),
+              ),
+            )
+            .toList(growable: false);
+        results[sequence] = phases;
+        final CameraSequenceVerdict verdict =
+            CameraCapabilityPolicy.evaluateSequence(
+              sequence,
+              phases,
+              fps: _recordingSpec.fps,
+            );
+        if (verdict == CameraSequenceVerdict.errorInfra) {
+          infraReason = '$sequence 探测阶段发生异常';
+          break;
+        }
+        if (verdict == CameraSequenceVerdict.passed) break;
+      }
+    } on Object catch (error) {
+      infraReason = '$error';
+    } finally {
+      _capabilityProbeRunning = false;
+      _capabilityProbeMessage = null;
+    }
+    final CameraCapabilityDecision decision = infraReason != null
+        ? CameraCapabilityDecision.unverified(infraReason)
+        : CameraCapabilityPolicy.decide(results, fps: _recordingSpec.fps);
+    await _applyCapabilityDecision(
+      decision,
+      identity: probedIdentity,
+      phases: <Map<String, Object?>>[
+        for (final String sequence in results.keys)
+          <String, Object?>{
+            'sequence': sequence,
+            'phases': results[sequence]!
+                .map(
+                  (CameraProbePhase phase) => <String, Object?>{
+                    'phase': phase.phase,
+                    'candidate': phase.candidate,
+                    'outcome': phase.outcome,
+                    'detail': phase.detail,
+                    'previewFrames': phase.previewFrames,
+                    'analysisFrames': phase.analysisFrames,
+                    'encoderBuffers': phase.encoderBuffers,
+                    'durationMs': phase.durationMs,
+                  },
+                )
+                .toList(growable: false),
+          },
+      ],
+    );
+  }
+
+  Future<void> _applyCapabilityDecision(
+    CameraCapabilityDecision decision, {
+    required Map<String, Object?>? identity,
+    required List<Map<String, Object?>> phases,
+  }) async {
+    if (decision.mode == CameraCapabilityMode.unverified) {
+      _capabilityMode = _nativeRecordingFallback
+          ? CameraCapabilityMode.encoderAnalysis
+          : CameraCapabilityMode.unverified;
+      try {
+        await _nativeCamera?.setCapabilityMode(_capabilityMode.wireValue);
+      } on Object {
+        // 下发失败不影响回退到常规路径。
+      }
+      final Map<String, Object?> state = <String, Object?>{
+        'mode': CameraCapabilityMode.unverified.wireValue,
+        'identity': identity,
+        'lastProbeErrorAtMs': DateTime.now().millisecondsSinceEpoch,
+        'probeErrorReason': decision.infraReason ?? '未知错误',
+        'probePhases': phases,
+      };
+      _capabilityState = state;
+      await _repository.saveCameraCapabilityState(state);
+      unawaited(
+        _cameraDiagnostics.recordEvent(
+          kind: 'probe_infra_error',
+          extra: <String, Object?>{
+            'reason': decision.infraReason ?? '',
+            'phases': phases,
+          },
+        ),
+      );
+      notifyListeners();
+      return;
+    }
+    _capabilityMode = decision.mode;
+    try {
+      await _nativeCamera?.setCapabilityMode(decision.mode.wireValue);
+    } on Object {
+      // 模式下发失败时继续沿用常规路径，不阻塞工作。
+      _capabilityMode = CameraCapabilityMode.unverified;
+    }
+    final Map<String, Object?> state = <String, Object?>{
+      'mode': _capabilityMode.wireValue,
+      'identity': identity,
+      'probedAtMs': DateTime.now().millisecondsSinceEpoch,
+      'probePhases': phases,
+    };
+    _capabilityState = state;
+    await _repository.saveCameraCapabilityState(state);
+    unawaited(
+      _cameraDiagnostics.recordEvent(
+        kind: 'capability_probed',
+        extra: <String, Object?>{
+          'mode': _capabilityMode.wireValue,
+          'identity': identity ?? const <String, Object?>{},
+        },
+      ),
+    );
+    if (decision.mode == CameraCapabilityMode.unsupported) {
+      _errorMessage = '此设备无法同时提供预览和识别，暂时无法进行打包录像';
+      _setPhase(PackingSessionPhase.error);
+    } else if (decision.mode != CameraCapabilityMode.full) {
+      _capabilityNoticeMessage =
+          '该设备无法同时预览、识别和录像，已启用${decision.mode.label}：${decision.mode.description}';
+    }
+    notifyListeners();
+  }
+
+  Future<void> _recordCapabilitySuspicion(Map<Object?, Object?> info) async {
+    final String cameraId = _nativeInitialization?.cameraId ?? '';
+    String sessionConfigStage = '';
+    try {
+      final CameraDiagnosticsSnapshot? snapshot =
+          await _nativeCamera?.getDiagnostics();
+      sessionConfigStage =
+          '${snapshot?.camera['sessionConfigStage'] ?? ''}';
+    } on Object {
+      // 诊断失败不影响降级安全网。
+    }
+    final String key = <String>[
+      cameraId,
+      _capabilityMode.wireValue,
+      sessionConfigStage,
+      '${info['phase'] ?? ''}',
+      '${info['mode'] ?? ''}',
+    ].join('|');
+    final Map<String, Object?>? state = _capabilityState;
+    final List<Object?> existing =
+        List<Object?>.from(state?['suspicions'] as List? ?? const <Object?>[]);
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final List<Map<String, Object?>> suspicions = existing
+        .map(
+          (Object? item) =>
+              Map<String, Object?>.from(item! as Map),
+        )
+        .where(
+          (Map<String, Object?> item) =>
+              (item['key'] == key) &&
+              now - ((item['atMs'] as num?)?.toInt() ?? 0) <
+                  const Duration(hours: 24).inMilliseconds,
+        )
+        .toList(growable: true);
+    suspicions.add(<String, Object?>{'key': key, 'atMs': now});
+    final bool thresholdReached = suspicions.length >= 2;
+    final Map<String, Object?> updated = <String, Object?>{
+      ...?_capabilityState,
+      'suspicions': suspicions,
+      if (thresholdReached) 'stale': true,
+    };
+    _capabilityState = updated;
+    unawaited(_repository.saveCameraCapabilityState(updated));
+    if (thresholdReached) {
+      unawaited(
+        _cameraDiagnostics.recordEvent(
+          kind: 'capability_suspicion_threshold',
+          extra: <String, Object?>{'key': key},
+        ),
+      );
+    }
   }
 
   void _showCameraNotice(String message) {
@@ -587,6 +968,8 @@ class PackingSessionController extends ChangeNotifier {
       _setPhase(PackingSessionPhase.initializing);
       _nativeInitialization = await _nativeCamera!.switchCamera();
       await _refreshBackCameraLenses();
+      await _resolveCameraCapability();
+      if (_phase == PackingSessionPhase.error) return;
       _setPhase(PackingSessionPhase.ready);
       unawaited(_captureCameraDiagnosticsSnapshot('switch_camera'));
     } on Object {
@@ -618,6 +1001,8 @@ class PackingSessionController extends ChangeNotifier {
       _setPhase(PackingSessionPhase.initializing);
       _nativeInitialization = await nativeCamera.switchToCamera(cameraId);
       await _refreshBackCameraLenses();
+      await _resolveCameraCapability();
+      if (_phase == PackingSessionPhase.error) return;
       _setPhase(PackingSessionPhase.ready);
       unawaited(_captureCameraDiagnosticsSnapshot('switch_lens'));
     } on Object {
@@ -659,9 +1044,12 @@ class PackingSessionController extends ChangeNotifier {
           'recordingSpec': _recordingSpec.storageValue,
           'videoCodec': _preferredVideoCodec.storageValue,
           'nativeRecordingFallback': _nativeRecordingFallback,
+          'capabilityMode': _capabilityMode.wireValue,
         },
       ),
     );
+    _alternatingLastCompletedCode = null;
+    _alternatingNoCodeSince = null;
     _queuedStorageNoticePriority = -1;
     _storageWarningMessage = null;
     final StorageSpaceResult storage = await _checkAndHandleStorage(
@@ -762,6 +1150,8 @@ class PackingSessionController extends ChangeNotifier {
       _candidateCode = '';
       _stabilityTracker.reset();
       _workActive = false;
+      _alternatingLastCompletedCode = null;
+      _alternatingNoCodeSince = null;
       _stopStorageMonitor();
       await WakelockPlus.disable();
       await _endMaxVolumeSession();
@@ -777,6 +1167,8 @@ class PackingSessionController extends ChangeNotifier {
     } on Object catch (error) {
       _timeline.reset();
       _workActive = false;
+      _alternatingLastCompletedCode = null;
+      _alternatingNoCodeSince = null;
       _stopStorageMonitor();
       await WakelockPlus.disable();
       await _endMaxVolumeSession();
@@ -786,6 +1178,40 @@ class PackingSessionController extends ChangeNotifier {
         _speakErrorMessage(error.toString());
       }
       return null;
+    }
+  }
+
+  /// 轮换模式：完成当前订单的录像并回到扫码，工作会话继续。
+  ///
+  /// 只复用录像 finalize 链（原生 stopWork + 入库/水印/备份），
+  /// 不复用「结束工作」的 controller 收尾：Wakelock、最大音量会话、
+  /// 存储监控与 _workActive 都保持不变。
+  Future<void> finishCurrentOrder() async {
+    if (!canFinishCurrentOrder || _nativeCamera == null) return;
+    final String completedCode = _timeline.currentCode;
+    _cancelInitialPromptFlow();
+    _setPhase(PackingSessionPhase.saving);
+    await WidgetsBinding.instance.endOfFrame;
+    try {
+      final List<RecordingSession> saved = await _finishNativeRecording();
+      unawaited(_captureCameraDiagnosticsSnapshot('finish_order'));
+      _alternatingLastCompletedCode = completedCode.isEmpty ? null : completedCode;
+      _alternatingNoCodeSince = null;
+      _lastMarker = null;
+      _candidateCode = '';
+      _elapsed = Duration.zero;
+      _setActiveOrderInfo(null, announce: false);
+      _setPhase(PackingSessionPhase.waitingForBarcode);
+      _speechService.enqueue(SpeechPrompt.recordingStopped);
+      if (saved.isNotEmpty) {
+        _showCameraNotice('本单已完成，请扫描下一张面单');
+      }
+      notifyListeners();
+    } on Object catch (error) {
+      _timeline.reset();
+      _errorMessage = '本单录像保存失败，请保留应用并重试\n$error';
+      _setPhase(PackingSessionPhase.error);
+      _speakErrorMessage(error.toString());
     }
   }
 
@@ -1537,6 +1963,14 @@ class PackingSessionController extends ChangeNotifier {
       }
     }
     final DateTime now = DateTime.now();
+    if (_capabilityMode == CameraCapabilityMode.alternating &&
+        _alternatingLastCompletedCode != null) {
+      if (validCode == null) {
+        _alternatingNoCodeSince ??= now;
+      } else {
+        _alternatingNoCodeSince = null;
+      }
+    }
     final RejectedBarcodeDecision? rejected = RejectedBarcodePolicy.decide(
       candidates: rejectedCandidates,
       minimumLength: _minimumBarcodeLength,
@@ -1751,6 +2185,24 @@ class PackingSessionController extends ChangeNotifier {
       }
       return;
     }
+    if (_capabilityMode == CameraCapabilityMode.alternating &&
+        !isRecording &&
+        _alternatingLastCompletedCode != null &&
+        shouldSuppressAlternatingSameCode(
+          lastCompletedCode: _alternatingLastCompletedCode!,
+          noCodeSince: _alternatingNoCodeSince,
+          code: code,
+          now: now,
+        )) {
+      _showCameraNotice('该面单已录制，请扫描下一张');
+      return;
+    }
+    if (_capabilityMode == CameraCapabilityMode.alternating &&
+        !isRecording &&
+        _alternatingLastCompletedCode != null &&
+        code == _alternatingLastCompletedCode) {
+      _alternatingLastCompletedCode = null;
+    }
     if (!isRecording || !_timeline.isActive) {
       _handlingBarcode = true;
       try {
@@ -1759,6 +2211,10 @@ class PackingSessionController extends ChangeNotifier {
         _setActiveOrderInfo(orderInfo, announce: false);
         await _startRecording();
         _bindCurrentCode(code, _timeline.segmentStartedAt ?? now);
+        if (_capabilityMode == CameraCapabilityMode.alternating) {
+          _alternatingLastCompletedCode = null;
+          _alternatingNoCodeSince = null;
+        }
         if (duplicate) _showDuplicateOrderWarning(code);
         _announceOrderInfo(orderInfo);
       } on Object catch (error) {

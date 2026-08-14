@@ -31,14 +31,14 @@ class PigeonCameraPlatform implements CameraPlatform {
   Future<ContinuousCameraInitialization> initialize({
     String videoCodec = 'hevc',
     String recordingSpec = 'hd1080p30',
-    bool fallbackRecording = false,
+    String capabilityMode = 'unverified',
   }) async {
     return _initializationFromDto(
       await _hostApi.initialize(
         CameraInitializeRequest(
           videoCodec: videoCodec,
           recordingSpec: recordingSpec,
-          fallbackRecording: fallbackRecording,
+          capabilityMode: capabilityMode,
         ),
       ),
     );
@@ -123,6 +123,23 @@ class PigeonCameraPlatform implements CameraPlatform {
   Future<ContinuousCameraInitialization> switchToCamera(
     String cameraId,
   ) async => _initializationFromDto(await _hostApi.switchToCamera(cameraId));
+
+  @override
+  Future<Map<Object?, Object?>?> probeSequence(
+    String sequence, {
+    required int budgetMs,
+  }) async {
+    final Map<String?, Object?>? values = await _hostApi.probeSequence(
+      sequence,
+      budgetMs,
+    );
+    if (values == null) return null;
+    return Map<Object?, Object?>.from(values);
+  }
+
+  @override
+  Future<void> setCapabilityMode(String mode) =>
+      _hostApi.setCapabilityMode(mode);
 
   @override
   Future<void> dispose() async {
