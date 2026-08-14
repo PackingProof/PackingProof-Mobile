@@ -126,6 +126,8 @@ class PackingSessionController extends ChangeNotifier {
   Future<void> _cameraInitializeTail = Future<void>.value();
   bool _appStartLogged = false;
 
+  PlatformCapabilities get capabilities => _capabilities;
+
   CameraController? _cameraController;
   ContinuousCameraService? _nativeCamera;
   ContinuousCameraInitialization? _nativeInitialization;

@@ -12,6 +12,7 @@ import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/models/recording_spec.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/work_mode.dart';
+import 'package:packing_proof_mobile/platform/platform_capabilities.dart';
 import 'package:packing_proof_mobile/screens/recordings_screen.dart';
 import 'package:packing_proof_mobile/services/recording_database.dart';
 import 'package:packing_proof_mobile/services/order_info_receiver_service.dart';
@@ -542,6 +543,31 @@ void main() {
     await tester.tap(find.byKey(const Key('max-volume-enabled-switch')));
     await tester.pump();
     expect(enabled, isFalse);
+  });
+
+  testWidgets('平台不支持音量提升时隐藏最大音量设置', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          capabilities: const PlatformCapabilities(<PlatformCapability>{
+            PlatformCapability.alertAudioSession,
+          }),
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('max-volume-settings')), findsNothing);
   });
 
   testWidgets('录制声音默认开启且可关闭', (WidgetTester tester) async {

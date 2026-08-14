@@ -13,6 +13,7 @@ enum PlatformCapability {
   recordingThumbnail,
   systemVideoPlayer,
   alertAudioSession,
+  alertVolumeBoost,
 }
 
 /// 当前运行平台的能力描述。

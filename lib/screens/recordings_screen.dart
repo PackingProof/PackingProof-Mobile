@@ -16,6 +16,7 @@ import '../services/order_info_receiver_service.dart';
 import '../services/lan_backup_discovery_service.dart';
 import '../services/lan_backup_service.dart';
 import '../models/work_mode.dart';
+import '../platform/platform_capabilities.dart';
 import '../widgets/about_settings.dart';
 import '../widgets/two_button_confirm_dialog.dart';
 import '../services/recording_thumbnail_service.dart';
@@ -195,6 +196,7 @@ class RecordingsScreen extends StatefulWidget {
     this.externalSearchQuery = '',
     this.active = true,
     this.focusBackupRevision = 0,
+    this.capabilities,
     super.key,
   });
 
@@ -276,6 +278,7 @@ class RecordingsScreen extends StatefulWidget {
   final String externalSearchQuery;
   final bool active;
   final int focusBackupRevision;
+  final PlatformCapabilities? capabilities;
 
   @override
   State<RecordingsScreen> createState() => _RecordingsScreenState();
@@ -366,6 +369,10 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     (_RecordingListItem item) =>
         item.remote != null && !_isRemoteFromThisDevice(item.remote!),
   );
+
+  bool get _maxVolumeSupported =>
+      widget.capabilities?.supports(PlatformCapability.alertVolumeBoost) ??
+      true;
 
   @override
   void initState() {
@@ -1664,15 +1671,17 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                     onChanged: _setSpeechEnabled,
                     onPreview: widget.onSpeechPreview,
                   ),
-                  Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: colors.outlineVariant,
-                  ),
-                  _MaxVolumeSettings(
-                    enabled: _maxVolumeEnabled,
-                    onChanged: _setMaxVolumeEnabled,
-                  ),
+                  if (_maxVolumeSupported) ...<Widget>[
+                    Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: colors.outlineVariant,
+                    ),
+                    _MaxVolumeSettings(
+                      enabled: _maxVolumeEnabled,
+                      onChanged: _setMaxVolumeEnabled,
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 12),

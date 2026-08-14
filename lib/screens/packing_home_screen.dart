@@ -593,6 +593,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       externalSearchQuery: mode == RecordingsScreenMode.history
           ? _historySearchQuery
           : '',
+      capabilities: _controller.capabilities,
       sessions: _controller.sessions,
       workMode: _controller.workMode,
       speechEnabled: _controller.speechEnabled,

@@ -45,6 +45,7 @@ class AppContainer {
               PlatformCapability.recordingThumbnail,
               PlatformCapability.systemVideoPlayer,
               PlatformCapability.alertAudioSession,
+              PlatformCapability.alertVolumeBoost,
             })
           : const PlatformCapabilities(<PlatformCapability>{
               PlatformCapability.cameraBarcodeScanning,
