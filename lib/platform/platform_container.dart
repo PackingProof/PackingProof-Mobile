@@ -55,7 +55,7 @@ class AppContainer {
               PlatformCapability.systemVideoPlayer,
               PlatformCapability.alertAudioSession,
             }),
-      thumbnail: Platform.isAndroid
+      thumbnail: Platform.isAndroid || Platform.isIOS
           ? PigeonThumbnailPlatform()
           : const UnsupportedThumbnailPlatform(),
       orderReceiver: Platform.isAndroid
@@ -67,13 +67,13 @@ class AppContainer {
       backup: Platform.isAndroid || Platform.isIOS
           ? PigeonBackupNativePlatform()
           : const UnsupportedBackupNativePlatform(),
-      mediaProcessing: Platform.isAndroid
+      mediaProcessing: Platform.isAndroid || Platform.isIOS
           ? PigeonMediaProcessingPlatform()
           : const UnsupportedMediaProcessingPlatform(),
-      systemMediaPresenter: Platform.isAndroid
+      systemMediaPresenter: Platform.isAndroid || Platform.isIOS
           ? PigeonSystemMediaPresenter()
           : const UnsupportedSystemMediaPresenter(),
-      alertAudioSession: Platform.isAndroid
+      alertAudioSession: Platform.isAndroid || Platform.isIOS
           ? PigeonAlertAudioSessionPlatform()
           : const UnsupportedAlertAudioSessionPlatform(),
     );
