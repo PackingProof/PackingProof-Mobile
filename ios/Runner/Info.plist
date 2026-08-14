@@ -20,6 +20,13 @@
 	<string>用于识别快递面单并连续录制打包过程</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>用于在录像中保留打包现场声音</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>用于在局域网中发现并连接保存主机，完成订单接收与录像备份</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
