@@ -1,6 +1,7 @@
 import AVFoundation
 import AVKit
 import CoreImage
+import CryptoKit
 import Flutter
 import ImageIO
 import QuartzCore
@@ -412,6 +413,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     job.removeValue(forKey: "errorMessage")
     job.removeValue(forKey: "failureKind")
     upsert(job)
+    startUpload(job)
     emitSnapshot()
     completion(.success(()))
   }
@@ -424,6 +426,9 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       job["state"] = "pending"
       job.removeValue(forKey: "errorMessage")
       job.removeValue(forKey: "failureKind")
+    }
+    if let job = jobs().first(where: { $0["id"] as? String == jobId }) {
+      startUpload(job)
     }
     emitSnapshot()
     completion(.success(()))
@@ -533,5 +538,221 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       result[key] = item
     }
     return result
+  }
+
+  private func startUpload(_ job: [String: Any]) {
+    Task.detached { [weak self] in
+      await self?.upload(job: job)
+    }
+  }
+
+  private func upload(job: [String: Any]) async {
+    guard
+      let connection = defaults.dictionary(forKey: keys.connection),
+      let baseUrl = connection["baseUrl"] as? String,
+      let accessKey = defaults.string(forKey: keys.accessKey),
+      let path = job["filePath"] as? String,
+      let jobId = job["id"] as? String
+    else {
+      return
+    }
+    let url = URL(fileURLWithPath: path)
+    guard let data = try? Data(contentsOf: url) else { return }
+    let fileSha256 = SHA256.hash(data: data).map {
+      String(format: "%02x", $0)
+    }.joined()
+
+    do {
+      let create = try await uploadJson(
+        baseUrl: baseUrl,
+        path: "/api/mobile-backup/uploads",
+        body: [
+          "fileSha256": fileSha256,
+          "totalBytes": data.count,
+          "mimeType": "video/mp4",
+        ],
+        accessKey: accessKey,
+        deviceId: deviceId()
+      )
+      guard
+        let uploadId = create["uploadId"] as? String,
+        let rawOffset = create["offset"] as? NSNumber,
+        let rawChunkSize = create["chunkSize"] as? NSNumber
+      else {
+        throw pigeonError("电脑返回的上传会话无效")
+      }
+      let chunkSize = min(
+        max(rawChunkSize.intValue, 256 * 1024),
+        8 * 1024 * 1024
+      )
+      var offset = min(max(rawOffset.intValue, 0), data.count)
+      let uploadIdEncoded = uploadId.addingPercentEncoding(
+        withAllowedCharacters: .urlPathAllowed
+      ) ?? uploadId
+      while offset < data.count {
+        let end = min(offset + chunkSize, data.count)
+        let chunk = data.subdata(in: offset..<end)
+        let result = try await uploadChunk(
+          baseUrl: baseUrl,
+          path: "/api/mobile-backup/uploads/\(uploadIdEncoded)/chunks",
+          chunk: chunk,
+          offset: offset,
+          total: data.count,
+          accessKey: accessKey,
+          deviceId: deviceId()
+        )
+        guard let next = result["offset"] as? NSNumber else {
+          throw pigeonError("电脑返回的上传进度无效")
+        }
+        offset = next.intValue
+        updateJob(jobId) { current in
+          current["state"] = "uploading"
+          current["uploadedBytes"] = offset
+        }
+        emitSnapshot()
+      }
+
+      let complete = try await uploadJson(
+        baseUrl: baseUrl,
+        path: "/api/mobile-backup/uploads/\(uploadIdEncoded)/complete",
+        body: [
+          "fileSha256": fileSha256,
+          "sourceDeviceId": deviceId(),
+          "sourceDeviceName": deviceName(),
+          "sessions": job["sessions"] as? [Any] ?? [],
+        ],
+        accessKey: accessKey,
+        deviceId: deviceId()
+      )
+      guard complete["status"] as? String == "verified" else {
+        throw pigeonError("电脑未确认录像校验结果")
+      }
+      updateJob(jobId) { current in
+        current["state"] = "completed"
+        current["uploadedBytes"] = data.count
+        current["contentSha256"] = fileSha256
+        current["remoteRecordIds"] = complete["recordIds"] as? [Any] ?? []
+      }
+      emitSnapshot()
+    } catch {
+      updateJob(jobId) { current in
+        current["state"] = "paused"
+        current["errorMessage"] = error.localizedDescription
+      }
+      emitSnapshot()
+    }
+  }
+
+  private func uploadJson(
+    baseUrl: String,
+    path: String,
+    body: [String: Any],
+    accessKey: String,
+    deviceId: String
+  ) async throws -> [String: Any] {
+    let data = try JSONSerialization.data(withJSONObject: body)
+    var request = URLRequest(url: URL(string: baseUrl + path)!)
+    request.httpMethod = "POST"
+    request.httpBody = data
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    applySignature(
+      to: &request,
+      method: "POST",
+      path: path,
+      body: data,
+      accessKey: accessKey,
+      deviceId: deviceId
+    )
+    let (responseData, response) = try await URLSession.shared.data(
+      for: request
+    )
+    guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode
+    else {
+      throw pigeonError("电脑备份请求失败")
+    }
+    return (try JSONSerialization.jsonObject(with: responseData) as? [String: Any]) ?? [:]
+  }
+
+  private func uploadChunk(
+    baseUrl: String,
+    path: String,
+    chunk: Data,
+    offset: Int,
+    total: Int,
+    accessKey: String,
+    deviceId: String
+  ) async throws -> [String: Any] {
+    var request = URLRequest(url: URL(string: baseUrl + path)!)
+    request.httpMethod = "PUT"
+    request.httpBody = chunk
+    request.setValue(
+      "bytes \(offset)-\(offset + chunk.count - 1)/\(total)",
+      forHTTPHeaderField: "Content-Range"
+    )
+    request.setValue(
+      SHA256.hash(data: chunk).map { String(format: "%02x", $0) }.joined(),
+      forHTTPHeaderField: "X-Chunk-SHA256"
+    )
+    applySignature(
+      to: &request,
+      method: "PUT",
+      path: path,
+      body: chunk,
+      accessKey: accessKey,
+      deviceId: deviceId
+    )
+    let (data, response) = try await URLSession.shared.data(for: request)
+    guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode
+    else {
+      throw pigeonError("电脑备份分块失败")
+    }
+    return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+  }
+
+  private func applySignature(
+    to request: inout URLRequest,
+    method: String,
+    path: String,
+    body: Data,
+    accessKey: String,
+    deviceId: String
+  ) {
+    let timestamp = Int(Date().timeIntervalSince1970)
+    let nonce = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+    let contentHash = SHA256.hash(data: body).map {
+      String(format: "%02x", $0)
+    }.joined()
+    let canonical = "\(method.uppercased())\n\(path)\n\(timestamp)\n\(nonce)\n\(contentHash)\n\(deviceId.lowercased())"
+    let key = SymmetricKey(data: secretData(accessKey))
+    let signature = HMAC<SHA256>.authenticationCode(
+      for: Data(canonical.utf8),
+      using: key
+    ).map { String(format: "%02x", $0) }.joined()
+    request.setValue("3", forHTTPHeaderField: "X-EPM-Auth-Version")
+    request.setValue("\(timestamp)", forHTTPHeaderField: "X-EPM-Timestamp")
+    request.setValue(nonce, forHTTPHeaderField: "X-EPM-Nonce")
+    request.setValue(contentHash, forHTTPHeaderField: "X-EPM-Content-SHA256")
+    request.setValue(signature, forHTTPHeaderField: "X-EPM-Signature")
+    request.setValue(deviceId, forHTTPHeaderField: "X-EPM-Device-Id")
+    request.setValue("mobile", forHTTPHeaderField: "X-EPM-Device-Kind")
+  }
+
+  private func secretData(_ value: String) -> Data {
+    let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if normalized.count >= 32, normalized.count.isMultiple(of: 2) {
+      var bytes: [UInt8] = []
+      var index = normalized.startIndex
+      while index < normalized.endIndex {
+        let next = normalized.index(index, offsetBy: 2)
+        if let byte = UInt8(normalized[index..<next], radix: 16) {
+          bytes.append(byte)
+        } else {
+          return Data(normalized.utf8)
+        }
+        index = next
+      }
+      return Data(bytes)
+    }
+    return Data(normalized.utf8)
   }
 }
