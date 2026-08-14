@@ -32,6 +32,12 @@ PackingProof-Mobile is a Flutter app for continuous package-recording and shippi
 - Keep at least 2 GB free for recording. Storage-pressure cleanup may remove only computer-verified backups, must reuse guarded file deletion, and must never remove unbacked recordings. Storage notices remain silent and modal reminders are deferred until work ends, at most twice per local day.
 - 用户可见文案整段结尾不使用句号（。）；多句提示内部可保留句号分隔。
 
+## 平台能力与实现纪律
+
+- 平台适配器禁止“伪成功、空实现、硬编码占位”：能力要么真实实现，要么不声明并隐藏 UI 入口；不支持的调用必须抛出类型化异常，不得静默返回假数据。
+- `PlatformCapabilities` 声明、平台适配器和 UI 入口必须三者一致；新增平台边界时同时核对这三处并补充测试。
+- 现有 iOS 占位实现（存储回收、Wi-Fi 检测、网络诊断、解码能力探测等）按审计清单逐步替换为真实现，禁止再新增同类占位。
+
 ## Development Commands
 
 Run commands from the repository root:
@@ -56,6 +62,11 @@ Format only files changed for the current task:
 ```powershell
 dart format <changed-files>
 ```
+
+## 本地开发与测试环境
+
+- 日常构建测试优先使用本机或局域网编译机，不依赖 GitHub CI；具体机器地址、账号和连接方式只记录在本机本地笔记，禁止提交仓库或推送到远端。
+- Mac 负责 iOS/Xcode 构建；双机同步走 rebase（见“分支整合与同步”），不产生 merge 提交。
 
 ## Testing
 
