@@ -1814,7 +1814,11 @@ class PackingSessionController extends ChangeNotifier {
                   nextOrderInfo: nextOrderInfo,
                   onSegmentStarted: announceSegmentStarted,
                 )
-              : _startNextTimelineSegment(code, now);
+              : await _splitCameraRecording(
+                  code,
+                  nextOrderInfo: nextOrderInfo,
+                  onSegmentStarted: announceSegmentStarted,
+                );
           if (marker != null && !announced) {
             _setActiveOrderInfo(nextOrderInfo, announce: false);
             announceSegmentStarted(marker);
@@ -1956,15 +1960,71 @@ class PackingSessionController extends ChangeNotifier {
     return transition.marker;
   }
 
-  BarcodeMarker? _startNextTimelineSegment(String code, DateTime boundaryAt) {
+  Future<BarcodeMarker?> _splitCameraRecording(
+    String code, {
+    required OrderInfo? nextOrderInfo,
+    required void Function(BarcodeMarker marker) onSegmentStarted,
+  }) async {
+    final CameraController? camera = _cameraController;
+    if (camera == null ||
+        !camera.value.isRecordingVideo ||
+        !_timeline.isActive) {
+      return null;
+    }
+    final DateTime boundaryAt = DateTime.now();
     final RecordingSegmentTransition? transition = _timeline.startNext(
       code,
       boundaryAt,
     );
-    if (transition != null) {
+    if (transition == null) return null;
+
+    try {
+      final XFile captured = await camera.stopVideoRecording();
+      final DateTime endedAt = DateTime.now();
+      final String completedId = _sessionId(transition.completed.startedAt);
+      final String savedPath = await _repository.finalizeVideo(
+        sourcePath: captured.path,
+        sessionId: completedId,
+        startedAt: transition.completed.startedAt,
+        trackingNumber: transition.completed.markers.isEmpty
+            ? ''
+            : transition.completed.markers.first.code,
+        operationMode: _operationMode,
+      );
+      final RecordingSession completed = _standaloneSession(
+        id: completedId,
+        path: savedPath,
+        draft: RecordingSegmentDraft(
+          startedAt: transition.completed.startedAt,
+          endedAt: endedAt,
+          markers: transition.completed.markers,
+        ),
+        orderInfo: _activeOrderInfo,
+      );
+      _sessions = await _repository.addSession(completed);
+      unawaited(_watermarkAndBackup(savedPath, completed));
+
+      _timeline.reset();
+      _timeline.start(boundaryAt);
+      await camera.startVideoRecording(
+        onAvailable: _processFrame,
+        enablePersistentRecording: true,
+      );
       _resetSegmentElapsed();
+      _setPhase(PackingSessionPhase.recording);
+      onSegmentStarted(transition.marker);
+      return transition.marker;
+    } on Object catch (error) {
+      _timeline.reset();
+      _workActive = false;
+      await WakelockPlus.disable();
+      await _endMaxVolumeSession();
+      _errorMessage = '录像分段保存失败\n$error';
+      _setPhase(PackingSessionPhase.error);
+      _speechService.enqueue(SpeechPrompt.segmentSaveFailed);
+      if (!_disposed) notifyListeners();
+      return null;
     }
-    return transition?.marker;
   }
 
   void _resetSegmentElapsed() {
