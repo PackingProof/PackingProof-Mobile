@@ -366,6 +366,8 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   private let networkMonitor = NWPathMonitor()
   private let networkQueue = DispatchQueue(label: "ios.backup.network")
   private var lastLanReachable = false
+  private let uploadsLock = NSLock()
+  private var activeUploads: [String: Task<Void, Never>] = [:]
   private let keys = (
     deviceId: "ios_backup_device_id",
     deviceName: "ios_backup_device_name",
@@ -452,6 +454,10 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     jobId: String,
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
+    uploadsLock.lock()
+    activeUploads[jobId]?.cancel()
+    activeUploads.removeValue(forKey: jobId)
+    uploadsLock.unlock()
     updateJob(jobId) { job in
       job["state"] = "pending"
       job.removeValue(forKey: "errorMessage")
@@ -468,6 +474,10 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     jobId: String,
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
+    uploadsLock.lock()
+    activeUploads[jobId]?.cancel()
+    activeUploads.removeValue(forKey: jobId)
+    uploadsLock.unlock()
     updateJob(jobId) { job in
       job["state"] = "paused"
     }
@@ -486,18 +496,91 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   func reclaimStorageIfNeeded(
     completion: @escaping (Result<[String?: Any?], Error>) -> Void
   ) {
+    let minimumBytes: Int64 = 2 * 1024 * 1024 * 1024
+    let targetBytes: Int64 = 3 * 1024 * 1024 * 1024
+    let before = availableStorageBytes()
+    var current = before
+    var deletedCount = 0
+    var freedBytes: Int64 = 0
+    if current < minimumBytes {
+      let recordingsRoot = recordingsDirectory().path + "/"
+      for var job in jobs() where current < targetBytes {
+        guard
+          job["state"] as? String == "completed",
+          let remoteIds = job["remoteRecordIds"] as? [Any], !remoteIds.isEmpty,
+          let path = job["filePath"] as? String,
+          path.hasPrefix(recordingsRoot)
+        else {
+          continue
+        }
+        let file = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: path) else { continue }
+        if let expected = job["contentSha256"] as? String, !expected.isEmpty {
+          if sha256(file: file) != expected {
+            job["errorMessage"] = "录像文件已被替换，已取消空间清理"
+            upsert(job)
+            continue
+          }
+        }
+        let size = Int64(
+          (try? FileManager.default.attributesOfItem(
+            atPath: path
+          )[.size] as? Int64) ?? 0
+        )
+        do {
+          try FileManager.default.removeItem(at: file)
+          deletedCount += 1
+          freedBytes += size
+          job["localDeletedAt"] = ISO8601DateFormatter().string(from: Date())
+          job["cleanupReason"] = "storage_reclaim"
+          upsert(job)
+        } catch {
+          job["errorMessage"] = "空间清理失败，已保留本机录像"
+          upsert(job)
+        }
+        current = availableStorageBytes()
+      }
+    }
+    emitSnapshot()
     completion(
       .success(
         [
-          "availableBytes": 1 << 62,
-          "availableBytesBefore": 1 << 62,
-          "freedBytes": 0,
-          "deletedCount": 0,
-          "warning": false,
-          "insufficient": false,
+          "availableBytes": current,
+          "availableBytesBefore": before,
+          "freedBytes": freedBytes,
+          "deletedCount": deletedCount,
+          "warning": current < targetBytes,
+          "insufficient": current < minimumBytes,
         ]
       )
     )
+  }
+
+  private func recordingsDirectory() -> URL {
+    let root = FileManager.default.urls(
+      for: .documentDirectory,
+      in: .userDomainMask
+    ).first ?? FileManager.default.temporaryDirectory
+    return root.appendingPathComponent("recordings", isDirectory: true)
+  }
+
+  private func availableStorageBytes() -> Int64 {
+    let values = try? FileManager.default.attributesOfFileSystem(
+      forPath: recordingsDirectory().path
+    )
+    return (values?[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
+  }
+
+  private func sha256(file: URL) -> String? {
+    guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+    defer { try? handle.close() }
+    var hasher = SHA256()
+    while true {
+      let data = handle.readData(ofLength: 1024 * 1024)
+      if data.isEmpty { break }
+      hasher.update(data: data)
+    }
+    return hasher.finalize().map { String(format: "%02x", $0) }.joined()
   }
 
   func getNetworkDiagnostics(
@@ -571,9 +654,14 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   private func startUpload(_ job: [String: Any]) {
-    Task.detached { [weak self] in
-      await self?.upload(job: job)
+    guard let jobId = job["id"] as? String else { return }
+    uploadsLock.lock()
+    activeUploads[jobId]?.cancel()
+    let task = Task.detached { [weak self] in
+      if let self { await self.upload(job: job) }
     }
+    activeUploads[jobId] = task
+    uploadsLock.unlock()
   }
 
   private func upload(job: [String: Any]) async {
@@ -585,6 +673,11 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       let jobId = job["id"] as? String
     else {
       return
+    }
+    defer {
+      uploadsLock.lock()
+      activeUploads.removeValue(forKey: jobId)
+      uploadsLock.unlock()
     }
     let url = URL(fileURLWithPath: path)
     guard let data = try? Data(contentsOf: url) else { return }
@@ -620,6 +713,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         withAllowedCharacters: .urlPathAllowed
       ) ?? uploadId
       while offset < data.count {
+        try Task.checkCancellation()
         let end = min(offset + chunkSize, data.count)
         let chunk = data.subdata(in: offset..<end)
         let result = try await uploadChunk(
@@ -642,6 +736,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         emitSnapshot()
       }
 
+      try Task.checkCancellation()
       let complete = try await uploadJson(
         baseUrl: baseUrl,
         path: "/api/mobile-backup/uploads/\(uploadIdEncoded)/complete",
