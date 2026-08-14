@@ -26,6 +26,11 @@ final class PigeonPlatform {
       binaryMessenger: messenger,
       api: IosAlertAudioSessionHostApi()
     )
+    let backupEvents = BackupNativeEventApi(binaryMessenger: messenger)
+    BackupNativeHostApiSetup.setUp(
+      binaryMessenger: messenger,
+      api: IosBackupHostApi(eventApi: backupEvents)
+    )
   }
 }
 
@@ -216,5 +221,200 @@ private final class IosAlertAudioSessionHostApi: AlertAudioSessionHostApi {
 
   func boost(completion: @escaping (Result<Void, Error>) -> Void) {
     completion(.success(()))
+  }
+}
+
+private final class IosBackupHostApi: BackupNativeHostApi {
+  private let defaults = UserDefaults.standard
+  private let eventApi: BackupNativeEventApi
+  private let keys = (
+    deviceId: "ios_backup_device_id",
+    deviceName: "ios_backup_device_name",
+    connection: "ios_backup_connection",
+    accessKey: "ios_backup_access_key",
+    jobs: "ios_backup_jobs",
+    retention: "ios_backup_retention"
+  )
+
+  init(eventApi: BackupNativeEventApi) {
+    self.eventApi = eventApi
+  }
+
+  func snapshot(completion: @escaping (Result<[String?: Any?]?, Error>) -> Void) {
+    completion(.success(currentSnapshot()))
+  }
+
+  func initialize(
+    request: [String?: Any?],
+    completion: @escaping (Result<[String?: Any?]?, Error>) -> Void
+  ) {
+    defaults.set(request["unbackedRetentionDays"], forKey: keys.retention)
+    completion(.success(currentSnapshot()))
+  }
+
+  func loadAccessKey(completion: @escaping (Result<String?, Error>) -> Void) {
+    completion(.success(defaults.string(forKey: keys.accessKey)))
+  }
+
+  func isWifiConnected(completion: @escaping (Result<Bool, Error>) -> Void) {
+    completion(.success(true))
+  }
+
+  func saveConnection(
+    connection: [String?: Any?],
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    defaults.set(normalized(connection), forKey: keys.connection)
+    defaults.set(connection["accessKey"] as? String, forKey: keys.accessKey)
+    defaults.set(connection["deviceName"] as? String, forKey: keys.deviceName)
+    emitSnapshot()
+    completion(.success(()))
+  }
+
+  func disconnect(completion: @escaping (Result<Void, Error>) -> Void) {
+    defaults.removeObject(forKey: keys.connection)
+    defaults.removeObject(forKey: keys.accessKey)
+    emitSnapshot()
+    completion(.success(()))
+  }
+
+  func enqueueJob(
+    request: [String?: Any?],
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    var job = normalized(request)
+    let path = request["filePath"] as? String ?? ""
+    let id = request["id"] as? String ?? stableId(path)
+    let fileSize = (try? FileManager.default.attributesOfItem(
+      atPath: path
+    )[.size] as? Int64) ?? 0
+    job["id"] = id
+    job["state"] = "pending"
+    job["uploadedBytes"] = 0
+    job["totalBytes"] = fileSize
+    job.removeValue(forKey: "errorMessage")
+    job.removeValue(forKey: "failureKind")
+    upsert(job)
+    emitSnapshot()
+    completion(.success(()))
+  }
+
+  func requeueJob(
+    jobId: String,
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    updateJob(jobId) { job in
+      job["state"] = "pending"
+      job.removeValue(forKey: "errorMessage")
+      job.removeValue(forKey: "failureKind")
+    }
+    emitSnapshot()
+    completion(.success(()))
+  }
+
+  func cancelJob(
+    jobId: String,
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    updateJob(jobId) { job in
+      job["state"] = "paused"
+    }
+    emitSnapshot()
+    completion(.success(()))
+  }
+
+  func updateRetentionSchedule(
+    request: [String?: Any?],
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    defaults.set(normalized(request), forKey: keys.retention)
+    completion(.success(()))
+  }
+
+  func reclaimStorageIfNeeded(
+    completion: @escaping (Result<[String?: Any?], Error>) -> Void
+  ) {
+    completion(
+      .success(
+        [
+          "availableBytes": 1 << 62,
+          "availableBytesBefore": 1 << 62,
+          "freedBytes": 0,
+          "deletedCount": 0,
+          "warning": false,
+          "insufficient": false,
+        ]
+      )
+    )
+  }
+
+  func getNetworkDiagnostics(
+    completion: @escaping (Result<[String?: Any?]?, Error>) -> Void
+  ) {
+    completion(.success(["wifiConnected": true]))
+  }
+
+  private func currentSnapshot() -> [String?: Any?] {
+    [
+      "deviceId": deviceId(),
+      "deviceName": deviceName(),
+      "connection": defaults.dictionary(forKey: keys.connection),
+      "jobs": jobs(),
+    ]
+  }
+
+  private func deviceId() -> String {
+    if let value = defaults.string(forKey: keys.deviceId) { return value }
+    let value = UUID().uuidString
+    defaults.set(value, forKey: keys.deviceId)
+    return value
+  }
+
+  private func deviceName() -> String {
+    defaults.string(forKey: keys.deviceName) ?? "iOS 设备"
+  }
+
+  private func jobs() -> [[String: Any]] {
+    (defaults.array(forKey: keys.jobs) as? [[String: Any]]) ?? []
+  }
+
+  private func upsert(_ job: [String: Any]) {
+    let id = job["id"] as? String ?? ""
+    var all = jobs().filter { $0["id"] as? String != id }
+    all.append(job)
+    defaults.set(all, forKey: keys.jobs)
+  }
+
+  private func updateJob(_ id: String, mutate: (inout [String: Any]) -> Void) {
+    var all = jobs()
+    guard let index = all.firstIndex(where: { $0["id"] as? String == id }) else {
+      return
+    }
+    var job = all[index]
+    mutate(&job)
+    all[index] = job
+    defaults.set(all, forKey: keys.jobs)
+  }
+
+  private func emitSnapshot() {
+    eventApi.snapshotChanged(snapshot: currentSnapshot()) { _ in }
+  }
+
+  private func stableId(_ path: String) -> String {
+    var hash: UInt64 = 1469598103934665603
+    for byte in path.utf8 {
+      hash ^= UInt64(byte)
+      hash &*= 1099511628211
+    }
+    return String(format: "%016llx", hash)
+  }
+
+  private func normalized(_ value: [String?: Any?]) -> [String: Any] {
+    var result: [String: Any] = [:]
+    for (key, item) in value {
+      guard let key = key, let item = item else { continue }
+      result[key] = item
+    }
+    return result
   }
 }
