@@ -6,6 +6,7 @@ import 'adapters/pigeon_thumbnail_platform.dart';
 import 'adapters/pigeon_order_receiver_platform.dart';
 import 'adapters/pigeon_media_platforms.dart';
 import 'adapters/unsupported_camera_platform.dart';
+import 'adapters/unsupported_backup_platform.dart';
 import 'adapters/unsupported_thumbnail_platform.dart';
 import 'adapters/unsupported_order_receiver_platform.dart';
 import 'adapters/unsupported_media_platforms.dart';
@@ -63,9 +64,9 @@ class AppContainer {
       camera: Platform.isAndroid
           ? PigeonCameraPlatform()
           : UnsupportedCameraPlatform(),
-      backup: Platform.isAndroid
+      backup: Platform.isAndroid || Platform.isIOS
           ? PigeonBackupNativePlatform()
-          : PigeonBackupNativePlatform(),
+          : const UnsupportedBackupNativePlatform(),
       mediaProcessing: Platform.isAndroid
           ? PigeonMediaProcessingPlatform()
           : const UnsupportedMediaProcessingPlatform(),
