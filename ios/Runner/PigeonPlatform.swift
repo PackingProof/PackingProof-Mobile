@@ -1027,13 +1027,15 @@ private final class IosCameraHostApi:
       let boundaryAt = Int64(Date().timeIntervalSince1970 * 1000)
       self.finishCurrentWriter { [weak self] in
         guard let self else { return }
-        do {
-          try self.startWriter(path: nextPath)
-        } catch {
-          self.eventApi.nativeError(
-            message: "切换录像文件失败：\(error.localizedDescription)",
-            completion: { _ in }
-          )
+        self.sessionQueue.async {
+          do {
+            try self.startWriter(path: nextPath)
+          } catch {
+            self.eventApi.nativeError(
+              message: "切换录像文件失败：\(error.localizedDescription)",
+              completion: { _ in }
+            )
+          }
         }
       }
       completion(.success(CameraRecordingSplitDto(
@@ -1275,12 +1277,14 @@ private final class IosCameraHostApi:
       if self.session.canAddOutput(metadataOutput) {
         self.session.addOutput(metadataOutput)
         metadataOutput.setMetadataObjectsDelegate(self, queue: self.sessionQueue)
-        metadataOutput.metadataObjectTypes = Self.supportedMetadataTypes
+        let availableTypes = metadataOutput.availableMetadataObjectTypes
+        metadataOutput.metadataObjectTypes = Self.supportedMetadataTypes.filter {
+          availableTypes.contains($0)
+        }
         self.metadataOutput = metadataOutput
       }
 
       self.session.commitConfiguration()
-      self.session.startRunning()
     }
   }
 
