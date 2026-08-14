@@ -4,9 +4,11 @@ import CoreImage
 import CryptoKit
 import Flutter
 import ImageIO
+import Network
 import QuartzCore
 import UIKit
 import UniformTypeIdentifiers
+import VideoToolbox
 
 final class PigeonPlatform {
   static func register(with registry: FlutterPluginRegistry) {
@@ -42,6 +44,9 @@ private func pigeonError(_ message: String) -> PigeonError {
 }
 
 private final class IosMediaProcessingHostApi: MediaProcessingHostApi {
+  private let exportLock = NSLock()
+  private var activeExportSessions: [String: AVAssetExportSession] = [:]
+
   func generateThumbnail(
     request: ThumbnailRequest,
     completion: @escaping (Result<String?, Error>) -> Void
@@ -221,7 +226,15 @@ private final class IosMediaProcessingHostApi: MediaProcessingHostApi {
           timescale: 1000
         )
       )
+      self.exportLock.lock()
+      self.activeExportSessions[request.outputPath] = session
+      self.exportLock.unlock()
       session.exportAsynchronously {
+        defer {
+          self.exportLock.lock()
+          self.activeExportSessions.removeValue(forKey: request.outputPath)
+          self.exportLock.unlock()
+        }
         switch session.status {
         case .completed:
           completion(.success(output.path))
@@ -235,7 +248,10 @@ private final class IosMediaProcessingHostApi: MediaProcessingHostApi {
   }
 
   func exportProgress(completion: @escaping (Result<Int64, Error>) -> Void) {
-    completion(.success(100))
+    exportLock.lock()
+    let progress = activeExportSessions.values.map { $0.progress }.max() ?? 1
+    exportLock.unlock()
+    completion(.success(Int64((progress * 100).rounded())))
   }
 }
 
@@ -266,6 +282,8 @@ private final class IosSystemMediaPresenterHostApi: SystemMediaPresenterHostApi 
   func getVideoDecodeSupport(
     completion: @escaping (Result<VideoDecodeSupportDto?, Error>) -> Void
   ) {
+    let hasHevc = VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
+    let hasAvc = VTIsHardwareDecodeSupported(kCMVideoCodecType_H264)
     completion(
       .success(
         VideoDecodeSupportDto(
@@ -274,8 +292,8 @@ private final class IosSystemMediaPresenterHostApi: SystemMediaPresenterHostApi 
           model: UIDevice.current.model,
           sdkInt: 0,
           release: UIDevice.current.systemVersion,
-          hasHevcDecoder: true,
-          hasAvcDecoder: true,
+          hasHevcDecoder: hasHevc,
+          hasAvcDecoder: hasAvc,
           forceSoftwareDecode: false
         )
       )
@@ -334,17 +352,20 @@ private final class IosAlertAudioSessionHostApi: AlertAudioSessionHostApi {
   }
 
   func disable(completion: @escaping (Result<Void, Error>) -> Void) {
-    completion(.success(()))
+    completion(.failure(pigeonError("当前平台不支持提示音量控制")))
   }
 
   func boost(completion: @escaping (Result<Void, Error>) -> Void) {
-    completion(.success(()))
+    completion(.failure(pigeonError("当前平台不支持提升提示音量")))
   }
 }
 
 private final class IosBackupHostApi: BackupNativeHostApi {
   private let defaults = UserDefaults.standard
   private let eventApi: BackupNativeEventApi
+  private let networkMonitor = NWPathMonitor()
+  private let networkQueue = DispatchQueue(label: "ios.backup.network")
+  private var lastLanReachable = false
   private let keys = (
     deviceId: "ios_backup_device_id",
     deviceName: "ios_backup_device_name",
@@ -356,6 +377,15 @@ private final class IosBackupHostApi: BackupNativeHostApi {
 
   init(eventApi: BackupNativeEventApi) {
     self.eventApi = eventApi
+    networkMonitor.pathUpdateHandler = { [weak self] path in
+      self?.lastLanReachable =
+        path.status == .satisfied && !path.usesInterfaceType(.cellular)
+    }
+    networkMonitor.start(queue: networkQueue)
+  }
+
+  deinit {
+    networkMonitor.cancel()
   }
 
   func snapshot(completion: @escaping (Result<[String?: Any?]?, Error>) -> Void) {
@@ -375,7 +405,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   func isWifiConnected(completion: @escaping (Result<Bool, Error>) -> Void) {
-    completion(.success(true))
+    completion(.success(lastLanReachable))
   }
 
   func saveConnection(
@@ -473,7 +503,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   func getNetworkDiagnostics(
     completion: @escaping (Result<[String?: Any?]?, Error>) -> Void
   ) {
-    completion(.success(["wifiConnected": true]))
+    completion(.success(["wifiConnected": lastLanReachable]))
   }
 
   private func currentSnapshot() -> [String?: Any?] {
@@ -487,7 +517,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
 
   private func deviceId() -> String {
     if let value = defaults.string(forKey: keys.deviceId) { return value }
-    let value = UUID().uuidString
+    let value = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
     defaults.set(value, forKey: keys.deviceId)
     return value
   }
