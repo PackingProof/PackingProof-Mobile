@@ -613,7 +613,16 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   private func deviceName() -> String {
-    defaults.string(forKey: keys.deviceName) ?? "iOS 设备"
+    if let savedName = defaults.string(forKey: keys.deviceName)?
+      .trimmingCharacters(in: .whitespacesAndNewlines),
+      !savedName.isEmpty {
+      return savedName
+    }
+    let normalizedId = deviceId()
+      .filter { $0.isLetter || $0.isNumber }
+      .uppercased()
+    let suffix = String(normalizedId.suffix(6))
+    return suffix.isEmpty ? "iOS 设备" : "设备 \(suffix)"
   }
 
   private func jobs() -> [[String: Any]] {
