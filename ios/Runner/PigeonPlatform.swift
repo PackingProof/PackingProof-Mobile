@@ -1759,7 +1759,10 @@ private final class IosOrderReceiverHostApi: OrderReceiverHostApi {
       }
       storeLock.unlock()
       if !items.isEmpty {
-        eventApi.orderInfoReceived(items: items) { _ in }
+        let eventApi = eventApi
+        DispatchQueue.main.async {
+          eventApi.orderInfoReceived(items: items) { _ in }
+        }
       }
       let storedCount = items.filter { !$0.isTest }.count
       writeJSON(client, status: 200, body: [
