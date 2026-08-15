@@ -672,6 +672,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
           : null,
       capabilityStatusText: _controller.capabilityStatusText,
       capabilityProbedAtMs: _controller.capabilityProbedAtMs,
+      showCameraCapabilityCard: _controller.showCameraCapabilityCard,
       onRetryCapabilityProbe: _controller.retryCapabilityProbe,
       onLoadRemoteRecordings: _controller.fetchRemoteRecordings,
       onLoadLocalRecordings: _controller.loadLocalRecordings,

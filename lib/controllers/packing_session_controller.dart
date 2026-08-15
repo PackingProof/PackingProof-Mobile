@@ -233,6 +233,10 @@ class PackingSessionController extends ChangeNotifier {
   CameraCapabilityMode get capabilityMode => _capabilityMode;
   bool get capabilityProbeRunning => _capabilityProbeRunning;
   String? get capabilityProbeMessage => _capabilityProbeMessage;
+  bool get showCameraCapabilityCard =>
+      (_capabilityMode != CameraCapabilityMode.unverified &&
+          _capabilityMode != CameraCapabilityMode.full) ||
+      _nativeRecordingFallback;
   bool get alternatingRecording =>
       _capabilityMode == CameraCapabilityMode.alternating && isRecording;
   bool get canFinishCurrentOrder =>
@@ -577,18 +581,14 @@ class PackingSessionController extends ChangeNotifier {
     );
     final String mode = '${info['mode'] ?? ''}';
     if (mode == 'encoder_analysis') {
-      if (_capabilityMode == CameraCapabilityMode.unverified) {
-        // 未完成探测的设备保留旧版持久化降级，兼容现有用户。
-        if (!_nativeRecordingFallback) {
-          _nativeRecordingFallback = true;
-          unawaited(_repository.saveNativeRecordingFallback(true));
-        }
-      } else {
-        // 已探明能力的模式只做当前会话降级，按同一配置累计嫌疑，
-        // 达到阈值才标记缓存失效、下次启动重测。
-        unawaited(_recordCapabilitySuspicion(info));
+      _capabilityMode = CameraCapabilityMode.encoderAnalysis;
+      if (!_nativeRecordingFallback) {
+        _nativeRecordingFallback = true;
+        unawaited(_repository.saveNativeRecordingFallback(true));
       }
+      unawaited(_recordCapabilitySuspicion(info));
     }
+    notifyListeners();
     _showCameraNotice(
       mode == 'encoder_analysis' ? '受硬件限制，录像时预览画面会暂停，扫码和录像不受影响' : '已切换录像兼容模式',
     );

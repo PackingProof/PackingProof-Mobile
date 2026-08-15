@@ -179,6 +179,7 @@ class RecordingsScreen extends StatefulWidget {
     this.capabilityMode,
     this.capabilityStatusText,
     this.capabilityProbedAtMs = 0,
+    this.showCameraCapabilityCard = false,
     this.onRetryCapabilityProbe,
     this.unbackedRetention = UnbackedRetentionPolicy.days30,
     this.backedRetention = BackedRetentionPolicy.days7,
@@ -243,6 +244,7 @@ class RecordingsScreen extends StatefulWidget {
   final CameraCapabilityMode? capabilityMode;
   final String? capabilityStatusText;
   final int capabilityProbedAtMs;
+  final bool showCameraCapabilityCard;
   final VoidCallback? onRetryCapabilityProbe;
   final UnbackedRetentionPolicy unbackedRetention;
   final BackedRetentionPolicy backedRetention;
@@ -1627,7 +1629,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   ],
                 ],
               ),
-              if (widget.capabilityMode != null) ...<Widget>[
+              if (widget.showCameraCapabilityCard &&
+                  widget.capabilityMode != null) ...<Widget>[
                 const SizedBox(height: 12),
                 _SettingsCard(
                   key: const Key('camera-capability-settings-card'),
@@ -1635,7 +1638,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                     _CameraCapabilitySettings(
                       mode: widget.capabilityMode!,
                       statusText: widget.capabilityStatusText ?? '',
-                      probedAtMs: widget.capabilityProbedAtMs,
                       onRetry: widget.onRetryCapabilityProbe,
                     ),
                   ],
@@ -3123,61 +3125,37 @@ class _CameraCapabilitySettings extends StatelessWidget {
   const _CameraCapabilitySettings({
     required this.mode,
     required this.statusText,
-    required this.probedAtMs,
     required this.onRetry,
   });
 
   final CameraCapabilityMode mode;
   final String statusText;
-  final int probedAtMs;
   final VoidCallback? onRetry;
-
-  String get _probedTimeText {
-    if (probedAtMs <= 0) return '尚未检测';
-    return '检测于 ${DateTime.fromMillisecondsSinceEpoch(probedAtMs).toString().substring(0, 16).replaceFirst('T', ' ')}';
-  }
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Text(
-                '摄像头能力',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                key: const Key('retry-camera-capability-button'),
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('重新检测'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            statusText,
-            style: TextStyle(
-              color: colors.onSurfaceVariant,
-              fontSize: 13,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _probedTimeText,
-            style: TextStyle(
-              color: colors.outline,
-              fontSize: 12,
-            ),
-          ),
-        ],
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: colors.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colors.outlineVariant),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Icon(
+          Icons.videocam_outlined,
+          color: colors.primary,
+        ),
+        title: const Text('摄像头能力'),
+        subtitle: Text(statusText),
+        trailing: TextButton(
+          key: const Key('retry-camera-capability-button'),
+          onPressed: onRetry,
+          child: const Text('重新检测'),
+        ),
       ),
     );
   }
