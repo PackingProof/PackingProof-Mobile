@@ -42,3 +42,21 @@ jobs:
       - run: flutter pub get
       - name: Build iOS without codesigning
         run: flutter build ios --no-codesign
+
+  ios-tests:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.1'
+          cache: true
+      - run: flutter pub get
+      - name: Run iOS native tests
+        run: |
+          xcodebuild test \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            -quiet
