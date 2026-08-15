@@ -27,6 +27,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.os.StatFs
+import android.os.Debug
 import android.util.Log
 import android.util.Range
 import android.util.Size
@@ -38,6 +39,8 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
+import java.io.File
+import java.lang.management.ManagementFactory
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
@@ -3138,8 +3141,23 @@ class ContinuousSegmentCamera(
                     "release" to Build.VERSION.RELEASE,
                 ),
                 "camera" to state,
+                "process" to mapOf(
+                    "javaHeapUsedBytes" to (
+                        Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
+                    ),
+                    "javaHeapMaxBytes" to Runtime.getRuntime().maxMemory(),
+                    "nativeHeapAllocatedBytes" to Debug.getNativeHeapAllocatedSize(),
+                    "threadCount" to ManagementFactory.getThreadMXBean().threadCount,
+                    "openFdCount" to openFileDescriptorCount(),
+                ),
             ),
         )
+    }
+
+    private fun openFileDescriptorCount(): Int {
+        return runCatching {
+            File("/proc/self/fd").listFiles()?.size ?: -1
+        }.getOrDefault(-1)
     }
 
     private fun notifyNativeError(message: String, error: Throwable?) {

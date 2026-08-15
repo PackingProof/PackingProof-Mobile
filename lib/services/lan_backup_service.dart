@@ -831,6 +831,10 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
           .putIfAbsent(session.filePath, () => <RecordingSession>[])
           .add(session);
     }
+    _log('backup_all_batch', <String, Object?>{
+      'fileCount': grouped.length,
+      'sessionCount': sessions.length,
+    });
     for (final MapEntry<String, List<RecordingSession>> entry
         in grouped.entries) {
       await _enqueue(

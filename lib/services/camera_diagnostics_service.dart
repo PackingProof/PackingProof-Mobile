@@ -54,6 +54,9 @@ class CameraDiagnosticsService {
       ...current.camera.map(
         (String key, Object? value) => MapEntry<String, Object?>(key, value),
       ),
+      ...current.process.map(
+        (String key, Object? value) => MapEntry<String, Object?>('process.$key', value),
+      ),
     });
   }
 

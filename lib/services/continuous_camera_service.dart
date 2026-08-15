@@ -191,10 +191,15 @@ class NativeBarcodeCandidate {
 
 /// 原生相机与预览心跳的诊断快照。
 class CameraDiagnosticsSnapshot {
-  const CameraDiagnosticsSnapshot({required this.device, required this.camera});
+  const CameraDiagnosticsSnapshot({
+    required this.device,
+    required this.camera,
+    this.process = const <String, Object?>{},
+  });
 
   final Map<String, Object?> device;
   final Map<String, Object?> camera;
+  final Map<String, Object?> process;
 
   bool get initialized => camera['initialized'] == true;
   int get previewFrameCount =>
@@ -257,6 +262,9 @@ class CameraDiagnosticsSnapshot {
     return CameraDiagnosticsSnapshot(
       device: Map<String, Object?>.from(map['device']! as Map),
       camera: Map<String, Object?>.from(map['camera']! as Map),
+      process: map['process'] is Map
+          ? Map<String, Object?>.from(map['process']! as Map)
+          : const <String, Object?>{},
     );
   }
 }
