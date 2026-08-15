@@ -40,8 +40,6 @@ import com.google.mlkit.vision.common.InputImage
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
 import java.io.File
-import java.lang.management.ManagementFactory
-import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -3147,7 +3145,7 @@ class ContinuousSegmentCamera(
                     ),
                     "javaHeapMaxBytes" to Runtime.getRuntime().maxMemory(),
                     "nativeHeapAllocatedBytes" to Debug.getNativeHeapAllocatedSize(),
-                    "threadCount" to ManagementFactory.getThreadMXBean().threadCount,
+                    "threadCount" to Thread.getAllStackTraces().size,
                     "openFdCount" to openFileDescriptorCount(),
                 ),
             ),
