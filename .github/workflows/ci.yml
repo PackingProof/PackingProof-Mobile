@@ -53,6 +53,8 @@ jobs:
           flutter-version: '3.44.1'
           cache: true
       - run: flutter pub get
+      - name: Build iOS simulator app
+        run: flutter build ios --simulator
       - name: Run iOS native tests
         run: |
           xcodebuild test \
