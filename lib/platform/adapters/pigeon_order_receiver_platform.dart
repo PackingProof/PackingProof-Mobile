@@ -5,19 +5,20 @@ import '../contracts/order_receiver_platform.dart';
 import '../generated/platform_api.g.dart';
 
 class PigeonOrderReceiverPlatform implements OrderReceiverPlatform {
+  static final StreamController<OrderInfo> _sharedController =
+      StreamController<OrderInfo>.broadcast();
+
   PigeonOrderReceiverPlatform({OrderReceiverHostApi? hostApi})
     : _hostApi = hostApi ?? OrderReceiverHostApi() {
-    _eventSink = _OrderReceiverEventSink(_controller);
+    _eventSink = _OrderReceiverEventSink(_sharedController);
     OrderReceiverEventApi.setUp(_eventSink);
   }
 
   final OrderReceiverHostApi _hostApi;
-  final StreamController<OrderInfo> _controller =
-      StreamController<OrderInfo>.broadcast();
   late final _OrderReceiverEventSink _eventSink;
 
   @override
-  Stream<OrderInfo> get received => _controller.stream;
+  Stream<OrderInfo> get received => _sharedController.stream;
 
   @override
   Future<OrderReceiverPlatformSnapshot> start({
@@ -48,7 +49,6 @@ class PigeonOrderReceiverPlatform implements OrderReceiverPlatform {
   @override
   Future<void> dispose() async {
     OrderReceiverEventApi.setUp(null);
-    await _controller.close();
   }
 }
 
@@ -60,8 +60,8 @@ class _OrderReceiverEventSink extends OrderReceiverEventApi {
   @override
   void orderInfoReceived(List<OrderInfoDto> items) {
     for (final OrderInfoDto item in items) {
-      if (!_controller.isClosed) {
-        _controller.add(_orderInfoFromDto(item));
+      if (!PigeonOrderReceiverPlatform._sharedController.isClosed) {
+        PigeonOrderReceiverPlatform._sharedController.add(_orderInfoFromDto(item));
       }
     }
   }
