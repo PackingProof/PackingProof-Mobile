@@ -637,8 +637,9 @@ class PackingSessionController extends ChangeNotifier {
         return;
       }
     }
-    if (!_shouldAutoProbe(cached)) return;
-    await _runCapabilityProbe(identity);
+    // 0.5.21 回归修复：首次启动不再自动阻塞式探测并持久化模式。
+    // 保留手动“重新检测”入口；平时按旧版逻辑先尝试完整三路，
+    // 只有真正发生停摆时才由原生 recordingFallback 降级。
   }
 
   Future<Map<String, Object?>> _currentCameraIdentity() async {
@@ -675,16 +676,6 @@ class PackingSessionController extends ChangeNotifier {
       if ('${cached[key]}' != '${current[key]}') return false;
     }
     return true;
-  }
-
-  bool _shouldAutoProbe(Map<String, Object?>? state) {
-    if (state?['mode'] != CameraCapabilityMode.unverified.wireValue) {
-      return true;
-    }
-    final int lastErrorAtMs = (state?['lastProbeErrorAtMs'] as num?)?.toInt() ?? 0;
-    if (lastErrorAtMs <= 0) return true;
-    return DateTime.now().millisecondsSinceEpoch - lastErrorAtMs >=
-        const Duration(hours: 24).inMilliseconds;
   }
 
   Future<void> _runCapabilityProbe(
