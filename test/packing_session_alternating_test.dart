@@ -283,6 +283,9 @@ void main() {
 
   test('首次探测锁定轮换模式并下发原生模式与一次性说明', () async {
     await controller.initialize();
+    expect(controller.capabilityMode, CameraCapabilityMode.unverified);
+
+    await controller.retryCapabilityProbe();
 
     expect(controller.capabilityMode, CameraCapabilityMode.alternating);
     expect(controller.phase, PackingSessionPhase.ready);
@@ -299,6 +302,7 @@ void main() {
 
   test('缓存命中时不再重复探测', () async {
     await controller.initialize();
+    await controller.retryCapabilityProbe();
     expect(controller.capabilityMode, CameraCapabilityMode.alternating);
     final int firstProbedAtMs = controller.capabilityProbedAtMs;
 
