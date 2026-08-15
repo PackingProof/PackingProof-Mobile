@@ -63,10 +63,10 @@ class LanBackupDeviceIdTest {
     @Test
     fun deviceDisplayNameUsesStableShortId() {
         assertEquals(
-            "设备 A1B2C3",
+            "本机",
             LanBackupStateStore.deviceDisplayName("android-1234567890a1b2c3"),
         )
-        assertEquals("设备 PHONE1", LanBackupStateStore.deviceDisplayName("phone-1"))
-        assertEquals("设备", LanBackupStateStore.deviceDisplayName("---"))
+        assertEquals("本机", LanBackupStateStore.deviceDisplayName("phone-1"))
+        assertEquals("本机", LanBackupStateStore.deviceDisplayName("---"))
     }
 }

@@ -54,9 +54,7 @@ internal class LanBackupStateStore(private val context: Context) {
         }
 
         fun deviceDisplayName(deviceId: String): String {
-            val normalizedId = deviceId.filter(Char::isLetterOrDigit).uppercase()
-            val suffix = if (normalizedId.length <= 6) normalizedId else normalizedId.takeLast(6)
-            return if (suffix.isBlank()) "设备" else "设备 $suffix"
+            return "本机"
         }
 
         fun <T> withJobLock(action: () -> T): T = synchronized(jobIoLock, action)
