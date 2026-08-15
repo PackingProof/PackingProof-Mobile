@@ -49,6 +49,7 @@ class AppContainer {
           : const PlatformCapabilities(<PlatformCapability>{
               PlatformCapability.continuousCameraRecording,
               PlatformCapability.lanBackup,
+              PlatformCapability.orderInfoReceiver,
               PlatformCapability.videoWatermark,
               PlatformCapability.videoExport,
               PlatformCapability.recordingThumbnail,
@@ -58,7 +59,7 @@ class AppContainer {
       thumbnail: Platform.isAndroid || Platform.isIOS
           ? PigeonThumbnailPlatform()
           : const UnsupportedThumbnailPlatform(),
-      orderReceiver: Platform.isAndroid
+      orderReceiver: Platform.isAndroid || Platform.isIOS
           ? PigeonOrderReceiverPlatform()
           : const UnsupportedOrderReceiverPlatform(),
       camera: Platform.isAndroid || Platform.isIOS
