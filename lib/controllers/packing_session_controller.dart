@@ -595,15 +595,9 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   CameraCapabilityMode _provisionalCapabilityMode() {
-    final Map<String, Object?>? state = _capabilityState;
-    if (state != null) {
-      final CameraCapabilityMode mode = CameraCapabilityMode.fromWire(
-        state['mode'],
-      );
-      if (mode != CameraCapabilityMode.unverified &&
-          mode != CameraCapabilityMode.unsupported) {
-        return mode;
-      }
+    if (_capabilityMode != CameraCapabilityMode.unverified &&
+        _capabilityMode != CameraCapabilityMode.unsupported) {
+      return _capabilityMode;
     }
     return _nativeRecordingFallback
         ? CameraCapabilityMode.encoderAnalysis
