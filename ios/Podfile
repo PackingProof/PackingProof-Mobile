@@ -26,10 +26,11 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_ios_podfile_setup
 
-require File.expand_path(
+apple_silicon_simulator_patch = File.expand_path(
   '.symlinks/plugins/google_mlkit_commons/ios/scripts/apple_silicon_simulator',
   __dir__,
 )
+require apple_silicon_simulator_patch if File.exist?(apple_silicon_simulator_patch + '.rb')
 
 target 'Runner' do
   use_frameworks!
@@ -44,5 +45,7 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
   end
-  mlkit_apple_silicon_simulator_patch(installer)
+  if defined?(mlkit_apple_silicon_simulator_patch)
+    mlkit_apple_silicon_simulator_patch(installer)
+  end
 end
