@@ -10,7 +10,7 @@ class PigeonOrderReceiverPlatform implements OrderReceiverPlatform {
 
   PigeonOrderReceiverPlatform({OrderReceiverHostApi? hostApi})
     : _hostApi = hostApi ?? OrderReceiverHostApi() {
-    _eventSink = _OrderReceiverEventSink(_sharedController);
+    _eventSink = _OrderReceiverEventSink();
     OrderReceiverEventApi.setUp(_eventSink);
   }
 
@@ -53,9 +53,7 @@ class PigeonOrderReceiverPlatform implements OrderReceiverPlatform {
 }
 
 class _OrderReceiverEventSink extends OrderReceiverEventApi {
-  _OrderReceiverEventSink(this._controller);
-
-  final StreamController<OrderInfo> _controller;
+  _OrderReceiverEventSink();
 
   @override
   void orderInfoReceived(List<OrderInfoDto> items) {
