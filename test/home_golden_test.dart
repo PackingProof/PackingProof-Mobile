@@ -132,7 +132,7 @@ void main() {
       find.byType(PackingHomeView),
       matchesGoldenFile('goldens/home_ready.png'),
     );
-  });
+  }, skip: Platform.isWindows);
 
   testWidgets('390x844 录像中压缩半透明面板视觉基线', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -175,5 +175,5 @@ void main() {
       find.byType(PackingHomeView),
       matchesGoldenFile('goldens/home_working.png'),
     );
-  });
+  }, skip: Platform.isWindows);
 }
