@@ -383,6 +383,9 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   private let uploadsLock = NSLock()
   private var activeUploads: [String: Task<Void, Never>] = [:]
   private var uploadTail: Task<Void, Never> = Task { }
+  private let cleanupLock = NSLock()
+  private var cleanupRunning = false
+  private var lastCleanupAt = Date.distantPast
   private let keys = (
     deviceId: "ios_backup_device_id",
     deviceName: "ios_backup_device_name",
@@ -391,6 +394,27 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     jobs: "ios_backup_jobs",
     retention: "ios_backup_retention"
   )
+
+  private static let verificationVersion = 3
+  private static let retentionConfirmationGrace: TimeInterval = 24 * 60 * 60
+  private static let storageAttestationFreshness: TimeInterval = 5 * 60
+  private static let cleanupThrottle: TimeInterval = 60
+  private static let isoFormatter = ISO8601DateFormatter()
+
+  private enum AttestationResult {
+    case confirmed
+    case missing
+    case unauthorized
+    case notReady
+    case unreachable
+  }
+
+  private enum FileCleanupResult {
+    case deleted
+    case missing
+    case stale
+    case failed
+  }
 
   init(eventApi: BackupNativeEventApi) {
     self.eventApi = eventApi
@@ -406,6 +430,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   func snapshot(completion: @escaping (Result<[String?: Any?]?, Error>) -> Void) {
+    triggerCleanupIfDue()
     completion(.success(currentSnapshot()))
   }
 
@@ -413,11 +438,12 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     request: [String?: Any?],
     completion: @escaping (Result<[String?: Any?]?, Error>) -> Void
   ) {
-    if let days = request["unbackedRetentionDays"] as? Int {
-      defaults.set(days, forKey: keys.retention)
-    } else {
-      defaults.removeObject(forKey: keys.retention)
-    }
+    saveRetentionDays(
+      unbacked: (request["unbackedRetentionDays"] as? Int) ?? -1,
+      backed: (request["backedRetentionDays"] as? Int) ?? -1
+    )
+    migrateExistingJobs()
+    triggerCleanup()
     completion(.success(currentSnapshot()))
   }
 
@@ -508,7 +534,11 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     request: [String?: Any?],
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
-    defaults.set(normalized(request), forKey: keys.retention)
+    saveRetentionDays(
+      unbacked: (request["unbackedRetentionDays"] as? Int) ?? -1,
+      backed: (request["backedRetentionDays"] as? Int) ?? -1
+    )
+    triggerCleanup()
     completion(.success(()))
   }
 
@@ -526,7 +556,11 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       for var job in jobs() where current < targetBytes {
         guard
           job["state"] as? String == "completed",
+          (job["verificationVersion"] as? Int ?? 0) >= Self.verificationVersion,
           let remoteIds = job["remoteRecordIds"] as? [Any], !remoteIds.isEmpty,
+          let lastAttested = job["lastAttestedAt"] as? String,
+          let attestedDate = Self.isoFormatter.date(from: lastAttested),
+          Date().timeIntervalSince(attestedDate) <= Self.storageAttestationFreshness,
           let path = job["filePath"] as? String,
           path.hasPrefix(recordingsRoot)
         else {
@@ -551,7 +585,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
           deletedCount += 1
           freedBytes += size
           job["localDeletedAt"] = ISO8601DateFormatter().string(from: Date())
-          job["cleanupReason"] = "storage_reclaim"
+          job["cleanupReason"] = "存储空间不足提前清理"
           upsert(job)
         } catch {
           job["errorMessage"] = "空间清理失败，已保留本机录像"
@@ -633,14 +667,64 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     return "本机"
   }
 
+  private func saveRetentionDays(unbacked: Int, backed: Int) {
+    defaults.set(
+      ["unbackedRetentionDays": unbacked, "backedRetentionDays": backed],
+      forKey: keys.retention
+    )
+  }
+
+  private func unbackedRetentionDays() -> Int {
+    let values = defaults.dictionary(forKey: keys.retention)
+    return (values?["unbackedRetentionDays"] as? Int) ?? 30
+  }
+
+  private func backedRetentionDays() -> Int {
+    let values = defaults.dictionary(forKey: keys.retention)
+    return (values?["backedRetentionDays"] as? Int) ?? 7
+  }
+
+  /// 旧版本任务字段补齐：fileCreatedAt 用文件 lastModified（与 Android 一致），
+  /// 其余用文件元数据或默认值回填，避免旧任务被误判为未备份/可清理。
+  private func migratedJob(_ job: [String: Any]) -> [String: Any] {
+    var result = job
+    let path = job["filePath"] as? String ?? ""
+    let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+    let modified = attributes?[.modificationDate] as? Date
+    let size = (attributes?[.size] as? NSNumber)?.int64Value
+
+    if result["fileCreatedAt"] == nil, let modified {
+      result["fileCreatedAt"] = Self.isoFormatter.string(from: modified)
+    }
+    if result["lastModified"] == nil, let modified {
+      result["lastModified"] = Int64(modified.timeIntervalSince1970 * 1000)
+    }
+    if (result["totalBytes"] as? Int64 ?? 0) <= 0, let size {
+      result["totalBytes"] = size
+    }
+    if result["generation"] == nil {
+      result["generation"] = UUID().uuidString
+    }
+    if result["verificationVersion"] == nil {
+      result["verificationVersion"] = 0
+    }
+    return result
+  }
+
+  private func migrateExistingJobs() {
+    let migrated = jobs().map(migratedJob)
+    defaults.set(migrated, forKey: keys.jobs)
+  }
+
   private func jobs() -> [[String: Any]] {
     (defaults.array(forKey: keys.jobs) as? [[String: Any]]) ?? []
   }
 
   private func upsert(_ job: [String: Any]) {
-    let id = job["id"] as? String ?? ""
+    let migrated = migratedJob(job)
+    let id = migrated["id"] as? String ?? ""
     var all = jobs().filter { $0["id"] as? String != id }
-    all.append(job)
+    all.append(migrated)
     defaults.set(all, forKey: keys.jobs)
   }
 
@@ -780,13 +864,22 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       guard complete["status"] as? String == "verified" else {
         throw pigeonError("电脑未确认录像校验结果")
       }
+      let verificationVersion =
+        (complete["authVersion"] as? NSNumber)?.intValue ?? 0
+      let completedAt = Self.isoFormatter.string(from: Date())
       updateJob(jobId) { current in
         current["state"] = "completed"
         current["uploadedBytes"] = data.count
         current["contentSha256"] = fileSha256
         current["remoteRecordIds"] = complete["recordIds"] as? [Any] ?? []
+        current["backupCompletedAt"] = completedAt
+        current["verificationVersion"] = verificationVersion
+        if verificationVersion > 0 {
+          current["lastAttestedAt"] = completedAt
+        }
       }
       emitSnapshot()
+      triggerCleanup()
     } catch {
       updateJob(jobId) { current in
         current["state"] = "paused"
@@ -907,6 +1000,376 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       return Data(bytes)
     }
     return Data(normalized.utf8)
+  }
+
+  // MARK: - 保留策略清理
+
+  private func readJobById(_ id: String) -> [String: Any]? {
+    jobs().first(where: { $0["id"] as? String == id })
+  }
+
+  private func dueAt(_ job: [String: Any]) -> Date? {
+    let state = job["state"] as? String ?? ""
+    let completedAt = job["backupCompletedAt"] as? String
+    // 旧版本“已完成但缺 backupCompletedAt”的录像按 legacy 保留，不参与清理。
+    if state == "completed" && completedAt == nil {
+      return nil
+    }
+    let days: Int
+    let base: String?
+    if let completedAt {
+      days = backedRetentionDays()
+      base = completedAt
+    } else {
+      days = unbackedRetentionDays()
+      base = job["fileCreatedAt"] as? String
+    }
+    guard days >= 0, let base, let baseDate = Self.isoFormatter.date(from: base) else {
+      return nil
+    }
+    return baseDate.addingTimeInterval(Double(days) * 24 * 60 * 60)
+  }
+
+  private func isConfirmationFresh(_ lastAttestedAt: String?, now: Date) -> Bool {
+    guard let lastAttestedAt,
+          let attested = Self.isoFormatter.date(from: lastAttestedAt) else {
+      return false
+    }
+    return now.timeIntervalSince(attested) <= Self.retentionConfirmationGrace
+  }
+
+  private func triggerCleanup() {
+    cleanupLock.lock()
+    guard !cleanupRunning else {
+      cleanupLock.unlock()
+      return
+    }
+    cleanupRunning = true
+    lastCleanupAt = Date()
+    cleanupLock.unlock()
+
+    Task.detached { [weak self] in
+      guard let self else { return }
+      await self.performCleanup()
+      self.cleanupLock.lock()
+      self.cleanupRunning = false
+      self.cleanupLock.unlock()
+    }
+  }
+
+  private func triggerCleanupIfDue() {
+    cleanupLock.lock()
+    let due = Date().timeIntervalSince(lastCleanupAt) >= Self.cleanupThrottle
+    cleanupLock.unlock()
+    if due {
+      triggerCleanup()
+    }
+  }
+
+  private func performCleanup() async {
+    let root = recordingsDirectory().path + "/"
+    let now = Date()
+    var changed = false
+
+    for job in jobs() {
+      guard
+        let id = job["id"] as? String,
+        let path = job["filePath"] as? String,
+        path.hasPrefix(root)
+      else { continue }
+      if job["localDeletedAt"] as? String != nil { continue }
+      let state = job["state"] as? String ?? ""
+      if state == "pending" || state == "uploading" { continue }
+      guard let due = dueAt(job), now >= due else { continue }
+
+      let completedAt = job["backupCompletedAt"] as? String
+      var unconfirmedCleanup = false
+      var baseJob = job
+
+      if completedAt != nil {
+        let contentSha256 = job["contentSha256"] as? String
+        let version = job["verificationVersion"] as? Int ?? 0
+        let recordIds = job["remoteRecordIds"] as? [Any]
+        let sessions = job["sessions"] as? [Any]
+        let totalBytes = job["totalBytes"] as? Int64 ?? -1
+        let hasEvidence =
+          version >= Self.verificationVersion &&
+          contentSha256?.count == 64 &&
+          totalBytes > 0 &&
+          !(recordIds?.isEmpty ?? true) &&
+          !(sessions?.isEmpty ?? true)
+
+        if !hasEvidence {
+          baseJob["waitingCleanup"] = false
+          baseJob["errorMessage"] = "备份记录缺少安全校验信息，需重新备份后才能自动清理"
+          upsert(baseJob)
+          changed = true
+          continue
+        }
+
+        let attestation: AttestationResult
+        if isConfirmationFresh(job["lastAttestedAt"] as? String, now: now) {
+          attestation = .confirmed
+        } else {
+          attestation = await attestBackedJob(
+            job,
+            contentSha256: contentSha256 ?? "",
+            totalBytes: totalBytes
+          )
+        }
+
+        // 远端确认期间任务可能被重新上传，重新读取并校验代次后再落地。
+        guard
+          let current = readJobById(id),
+          (current["generation"] as? String) == (job["generation"] as? String),
+          (current["backupCompletedAt"] as? String) == completedAt,
+          current["localDeletedAt"] as? String == nil
+        else { continue }
+        baseJob = current
+
+        switch attestation {
+        case .confirmed:
+          baseJob["lastAttestedAt"] = Self.isoFormatter.string(from: now)
+        case .missing:
+          baseJob["waitingCleanup"] = false
+          baseJob["errorMessage"] = "远端缺失，待重新备份"
+          upsert(baseJob)
+          changed = true
+          continue
+        case .unauthorized:
+          baseJob["waitingCleanup"] = false
+          baseJob["errorMessage"] = "需要重新扫码授权"
+          upsert(baseJob)
+          changed = true
+          continue
+        case .notReady:
+          baseJob["waitingCleanup"] = true
+          baseJob["errorMessage"] = "电脑端尚未完成校验"
+          upsert(baseJob)
+          changed = true
+          continue
+        case .unreachable:
+          unconfirmedCleanup = true
+        }
+      }
+
+      let file = URL(fileURLWithPath: path)
+      switch deleteExpected(
+        file: file,
+        expectedBytes: baseJob["totalBytes"] as? Int64 ?? -1,
+        expectedLastModified: baseJob["lastModified"] as? Int64 ?? -1,
+        expectedSha256: baseJob["contentSha256"] as? String
+      ) {
+      case .stale:
+        baseJob["waitingCleanup"] = false
+        baseJob["errorMessage"] = "录像文件已被替换，已取消本次自动清理"
+        upsert(baseJob)
+        changed = true
+        continue
+      case .failed:
+        baseJob["waitingCleanup"] = true
+        upsert(baseJob)
+        changed = true
+        continue
+      case .deleted, .missing:
+        break
+      }
+
+      baseJob["localDeletedAt"] = Self.isoFormatter.string(from: now)
+      baseJob["scheduledCleanupAt"] = nil
+      baseJob["waitingCleanup"] = false
+      if completedAt == nil {
+        baseJob["cleanupReason"] = "未备份录像保留策略清理"
+        baseJob["state"] = "expired"
+        baseJob["errorMessage"] = "未备份录像已按保留策略清理"
+      } else if unconfirmedCleanup {
+        baseJob["cleanupReason"] = "已备份未确认清理（电脑离线）"
+      } else {
+        baseJob["cleanupReason"] = "已备份录像保留策略清理"
+      }
+      upsert(baseJob)
+      changed = true
+    }
+
+    if changed {
+      emitSnapshot()
+    }
+  }
+
+  private func attestBackedJob(
+    _ job: [String: Any],
+    contentSha256: String,
+    totalBytes: Int64
+  ) async -> AttestationResult {
+    guard
+      let connection = defaults.dictionary(forKey: keys.connection),
+      let baseUrl = connection["baseUrl"] as? String,
+      let accessKey = defaults.string(forKey: keys.accessKey),
+      let recordIds = job["remoteRecordIds"] as? [Any],
+      let recordId = recordIds.first as? NSNumber,
+      let sessions = job["sessions"] as? [Any],
+      let session = sessions.first as? [String: Any],
+      let sessionId = session["id"] as? String
+    else {
+      return .unreachable
+    }
+    return await attestRemoteRecord(
+      baseUrl: baseUrl,
+      recordId: recordId.int64Value,
+      accessKey: accessKey,
+      deviceId: deviceId(),
+      sessionId: sessionId,
+      fileSha256: contentSha256,
+      fileSizeBytes: totalBytes,
+      computerId: connection["computerId"] as? String ?? ""
+    )
+  }
+
+  private func attestRemoteRecord(
+    baseUrl: String,
+    recordId: Int64,
+    accessKey: String,
+    deviceId: String,
+    sessionId: String,
+    fileSha256: String,
+    fileSizeBytes: Int64,
+    computerId: String
+  ) async -> AttestationResult {
+    let path = "/api/mobile-backup/records/\(recordId)/attestation"
+    guard let url = URL(string: baseUrl + path) else { return .unreachable }
+    var request = URLRequest(url: url)
+    request.httpMethod = "GET"
+    applySignature(
+      to: &request,
+      method: "GET",
+      path: path,
+      body: Data(),
+      accessKey: accessKey,
+      deviceId: deviceId
+    )
+    do {
+      let (data, response) = try await URLSession.shared.data(for: request)
+      guard let http = response as? HTTPURLResponse else { return .unreachable }
+      switch http.statusCode {
+      case 200:
+        let json =
+          (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        guard json["status"] as? String == "verified" else { return .notReady }
+        return verifyAttestationReceipt(
+          json,
+          accessKey: accessKey,
+          deviceId: deviceId,
+          computerId: computerId,
+          sessionId: sessionId,
+          fileSha256: fileSha256,
+          fileSizeBytes: fileSizeBytes,
+          recordId: recordId
+        ) ? .confirmed : .notReady
+      case 404:
+        return .missing
+      case 403:
+        return .unauthorized
+      case 409:
+        return .notReady
+      default:
+        return .unreachable
+      }
+    } catch {
+      return .unreachable
+    }
+  }
+
+  private func verifyAttestationReceipt(
+    _ response: [String: Any],
+    accessKey: String,
+    deviceId: String,
+    computerId: String,
+    sessionId: String,
+    fileSha256: String,
+    fileSizeBytes: Int64,
+    recordId: Int64
+  ) -> Bool {
+    guard (response["authVersion"] as? Int) == Self.verificationVersion else {
+      return false
+    }
+    let verifiedAt = response["verifiedAtUnixSeconds"] as? Int64 ?? 0
+    let now = Int64(Date().timeIntervalSince1970)
+    guard abs(now - verifiedAt) <= 300 else { return false }
+    guard
+      let hostNodeId = response["hostNodeId"] as? String,
+      let sourceDeviceId = response["sourceDeviceId"] as? String,
+      let sourceSessionId = response["sourceSessionId"] as? String,
+      let responseSha256 = response["fileSha256"] as? String,
+      let responseFileSize = response["fileSizeBytes"] as? Int64,
+      let responseRecordId = response["recordId"] as? Int64,
+      let receiptSignature = response["receiptSignature"] as? String
+    else { return false }
+    guard
+      hostNodeId.lowercased() == computerId.lowercased(),
+      sourceDeviceId.lowercased() == deviceId.lowercased(),
+      sourceSessionId == sessionId,
+      responseSha256.lowercased() == fileSha256.lowercased(),
+      responseFileSize == fileSizeBytes,
+      responseRecordId == recordId
+    else { return false }
+    let canonical = [
+      "packingproof-verified-receipt-v3",
+      hostNodeId.trimmingCharacters(in: .whitespaces).lowercased(),
+      sourceDeviceId.trimmingCharacters(in: .whitespaces).lowercased(),
+      sourceSessionId.trimmingCharacters(in: .whitespaces),
+      fileSha256.trimmingCharacters(in: .whitespaces).lowercased(),
+      String(fileSizeBytes),
+      String(recordId),
+      String(verifiedAt),
+    ].joined(separator: "\n")
+    let expected = hmacHex(key: secretData(accessKey), message: canonical)
+    return constantTimeEquals(expected, receiptSignature)
+  }
+
+  private func hmacHex(key: Data, message: String) -> String {
+    let symmetricKey = SymmetricKey(data: key)
+    let code = HMAC<SHA256>.authenticationCode(
+      for: Data(message.utf8),
+      using: symmetricKey
+    )
+    return code.map { String(format: "%02x", $0) }.joined()
+  }
+
+  private func constantTimeEquals(_ left: String, _ right: String) -> Bool {
+    let a = Array(left.lowercased().utf8)
+    let b = Array(right.lowercased().utf8)
+    guard a.count == b.count else { return false }
+    var result: UInt8 = 0
+    for index in 0..<a.count {
+      result |= a[index] ^ b[index]
+    }
+    return result == 0
+  }
+
+  private func deleteExpected(
+    file: URL,
+    expectedBytes: Int64,
+    expectedLastModified: Int64,
+    expectedSha256: String?
+  ) -> FileCleanupResult {
+    guard FileManager.default.fileExists(atPath: file.path) else { return .missing }
+    let attributes = try? FileManager.default.attributesOfItem(atPath: file.path)
+    let size = (attributes?[.size] as? NSNumber)?.int64Value ?? -1
+    let modified = attributes?[.modificationDate] as? Date
+    let modifiedMs = modified.map { Int64($0.timeIntervalSince1970 * 1000) } ?? -1
+    if expectedBytes > 0 && size != expectedBytes { return .stale }
+    if expectedLastModified > 0 && modifiedMs != expectedLastModified {
+      return .stale
+    }
+    if let expectedSha256, !expectedSha256.isEmpty, sha256(file: file) != expectedSha256 {
+      return .stale
+    }
+    do {
+      try FileManager.default.removeItem(at: file)
+      return .deleted
+    } catch {
+      return .failed
+    }
   }
 }
 
