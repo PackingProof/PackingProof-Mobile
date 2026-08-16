@@ -203,6 +203,50 @@ void main() {
     expect(output.shortBeepCount, 1);
     await service.dispose();
   });
+
+  test('clear 清空积压并打断当前播放', () async {
+    final _BlockingSpeechOutput output = _BlockingSpeechOutput();
+    final SpeechPromptService service = SpeechPromptService(output: output);
+
+    service.enqueue(SpeechPrompt.recordingFailed);
+    while (output.assetPaths.isEmpty) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    service.enqueue(SpeechPrompt.recordingFailed);
+
+    await service.clear();
+    await service.waitUntilIdle();
+
+    expect(output.assetPaths, <String>['audio/tts/recording_failed.mp3']);
+    expect(output.stopCount, greaterThanOrEqualTo(1));
+    await service.dispose();
+  });
+
+  test('clear 后可继续播放新语音', () async {
+    final _FakeSpeechOutput output = _FakeSpeechOutput();
+    final SpeechPromptService service = SpeechPromptService(output: output);
+
+    await service.clear();
+    service.enqueue(SpeechPrompt.recordingFailed);
+    await service.waitUntilIdle();
+
+    expect(output.assetPaths, <String>['audio/tts/recording_failed.mp3']);
+    await service.dispose();
+  });
+
+  test('连续 clear 复用同一个清理流程', () async {
+    final _DelayedStopOutput output = _DelayedStopOutput();
+    final SpeechPromptService service = SpeechPromptService(output: output);
+
+    final Future<void> first = service.clear();
+    final Future<void> second = service.clear();
+
+    output.unblockStop();
+    await Future.wait(<Future<void>>[first, second]);
+
+    expect(output.stopCount, 1);
+    await service.dispose();
+  });
 }
 
 class _FakeSpeechOutput implements SpeechOutput {
@@ -268,5 +312,41 @@ class _InterruptibleSpeechOutput extends _FakeSpeechOutput {
   Future<void> stop() async {
     stopCount++;
     if (!_modePlayback.isCompleted) _modePlayback.complete();
+  }
+}
+
+class _BlockingSpeechOutput extends _FakeSpeechOutput {
+  final Completer<void> _blocker = Completer<void>();
+  int stopCount = 0;
+
+  @override
+  Future<void> playAsset(String assetPath) async {
+    await super.playAsset(assetPath);
+    await _blocker.future;
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount++;
+    if (!_blocker.isCompleted) {
+      _blocker.complete();
+    }
+  }
+}
+
+class _DelayedStopOutput extends _FakeSpeechOutput {
+  final Completer<void> _stopBlocker = Completer<void>();
+  int stopCount = 0;
+
+  @override
+  Future<void> stop() async {
+    stopCount++;
+    await _stopBlocker.future;
+  }
+
+  void unblockStop() {
+    if (!_stopBlocker.isCompleted) {
+      _stopBlocker.complete();
+    }
   }
 }

@@ -192,6 +192,8 @@ class _FakeSpeechSink implements SpeechPromptSink {
   @override
   void resolveIncident(String incidentKey) {}
   @override
+  Future<void> clear() async {}
+  @override
   Future<void> dispose() async {}
 }
 
@@ -253,9 +255,7 @@ void main() {
 
   setUp(() async {
     WakelockPlusPlatformInterface.instance = _FakeWakelock();
-    root = await Directory.systemTemp.createTemp(
-      'packing-proof-alternating-',
-    );
+    root = await Directory.systemTemp.createTemp('packing-proof-alternating-');
     camera = _FakeCameraPlatform();
     controller = PackingSessionController(
       repository: testRepository(root),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:developer' as developer;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -25,6 +26,8 @@ abstract interface class SpeechPromptSink {
   void resetIncidents();
 
   void resolveIncident(String incidentKey);
+
+  Future<void> clear();
 
   Future<void> dispose();
 }
@@ -96,6 +99,8 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
   bool _draining = false;
   bool _disposed = false;
   _QueuedSpeechPrompt? _activePrompt;
+  int _generation = 0;
+  Future<void>? _clearing;
 
   @override
   bool get enabled => _enabled;
@@ -215,13 +220,51 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
     _activeIncidents.remove(incidentKey);
   }
 
+  @override
+  Future<void> clear() {
+    if (_disposed) {
+      return Future<void>.value();
+    }
+    final Future<void>? clearing = _clearing;
+    if (clearing != null) {
+      return clearing;
+    }
+    final Future<void> future = _clearImpl();
+    _clearing = future;
+    return future.whenComplete(() {
+      if (identical(_clearing, future)) {
+        _clearing = null;
+      }
+    });
+  }
+
+  Future<void> _clearImpl() async {
+    _generation++;
+    _queue.clear();
+    _activePrompt = null;
+    _activeIncidents.clear();
+    await _stopOutputBounded();
+  }
+
+  Future<void> _stopOutputBounded() async {
+    try {
+      await _output.stop().timeout(const Duration(seconds: 2));
+    } on Object {
+      // Best-effort stop; a hung player must not block the speech workflow.
+    }
+  }
+
   Future<void> _drain() async {
     if (_draining || _disposed || !_enabled) {
       return;
     }
     _draining = true;
+    final int generation = _generation;
     try {
-      while (_queue.isNotEmpty && !_disposed && _enabled) {
+      while (generation == _generation &&
+          _queue.isNotEmpty &&
+          !_disposed &&
+          _enabled) {
         final _QueuedSpeechPrompt prompt = _queue.removeFirst();
         _activePrompt = prompt;
         try {
@@ -261,13 +304,28 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
       }
     }
     final SpeechPrompt? prompt = item.prompt;
+    bool assetFailed = false;
     if (prompt != null) {
       try {
         await _output.playAsset(prompt.audioPlayerAssetPath);
         return;
-      } on Object {
+      } on TimeoutException {
+        developer.log(
+          'asset_play_timeout: ${prompt.name}',
+          name: 'speech_prompt',
+        );
+        assetFailed = true;
+      } on Object catch (error) {
+        developer.log(
+          'asset_play_exception: ${prompt.name}: $error',
+          name: 'speech_prompt',
+        );
         // A missing or damaged bundled prompt falls back to offline system TTS.
+        assetFailed = true;
       }
+    }
+    if (assetFailed) {
+      developer.log('tts_fallback: ${item.text}', name: 'speech_prompt');
     }
     try {
       await _output.speakSystem(item.text, offlineOnly: true);
@@ -301,6 +359,7 @@ class DeviceSpeechOutput implements SpeechOutput {
   final AudioPlayer _audioPlayer;
   final FlutterTts _systemTts;
   AudioPlayer? _beepPlayer;
+  Future<void>? _beepInFlight;
   Uint8List? _shortBeepWav;
   Completer<void>? _activePlayback;
   bool _audioContextConfigured = false;
@@ -320,21 +379,59 @@ class DeviceSpeechOutput implements SpeechOutput {
       _play(BytesSource(_industrialAlarmWav()));
 
   @override
-  Future<void> playShortBeep() async {
-    final AudioPlayer player = _beepPlayer ??= AudioPlayer();
-    if (!_beepContextConfigured) {
-      await player.setAudioContext(
-        AudioContext(
-          android: const AudioContextAndroid(
-            contentType: AndroidContentType.sonification,
-            usageType: AndroidUsageType.notificationEvent,
-            audioFocus: AndroidAudioFocus.none,
-          ),
-        ),
-      );
-      _beepContextConfigured = true;
+  Future<void> playShortBeep() {
+    if (_beepInFlight != null) {
+      return Future<void>.value();
     }
-    await player.play(BytesSource(_shortBeepWav ??= buildShortBeepWav()));
+    final Future<void> future = _playBeepOnce();
+    _beepInFlight = future;
+    return future.whenComplete(() {
+      if (identical(_beepInFlight, future)) {
+        _beepInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _playBeepOnce() async {
+    final AudioPlayer player = _beepPlayer ??= AudioPlayer();
+    try {
+      if (!_beepContextConfigured) {
+        await player.setAudioContext(
+          AudioContext(
+            android: const AudioContextAndroid(
+              contentType: AndroidContentType.sonification,
+              usageType: AndroidUsageType.notificationEvent,
+              audioFocus: AndroidAudioFocus.none,
+            ),
+          ),
+        );
+        _beepContextConfigured = true;
+      }
+      await player
+          .play(BytesSource(_shortBeepWav ??= buildShortBeepWav()))
+          .timeout(const Duration(seconds: 3));
+    } on Object {
+      await _resetBeepPlayer();
+    }
+  }
+
+  Future<void> _resetBeepPlayer() async {
+    final AudioPlayer? player = _beepPlayer;
+    _beepPlayer = null;
+    _beepContextConfigured = false;
+    if (player == null) {
+      return;
+    }
+    try {
+      await player.stop().timeout(const Duration(seconds: 2));
+    } on Object {
+      // Best-effort stop.
+    }
+    try {
+      await player.dispose();
+    } on Object {
+      // Best-effort dispose.
+    }
   }
 
   /// 与电脑端一致的识别短滴声：1200Hz、80ms、0.55 音量单音。
@@ -545,13 +642,24 @@ class DeviceSpeechOutput implements SpeechOutput {
     final StreamSubscription<void> subscription = _audioPlayer.onPlayerComplete
         .listen((_) => _completePlayback());
     try {
-      await _audioPlayer.play(source);
+      await _audioPlayer.play(source).timeout(const Duration(seconds: 10));
       await completion.future.timeout(const Duration(seconds: 30));
+    } on Object {
+      await _stopAudioPlayerBounded();
+      rethrow;
     } finally {
       await subscription.cancel();
       if (identical(_activePlayback, completion)) {
         _activePlayback = null;
       }
+    }
+  }
+
+  Future<void> _stopAudioPlayerBounded() async {
+    try {
+      await _audioPlayer.stop().timeout(const Duration(seconds: 2));
+    } on Object {
+      // Best-effort stop; a hung player must not block the speech workflow.
     }
   }
 

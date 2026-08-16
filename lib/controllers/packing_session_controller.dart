@@ -1218,7 +1218,7 @@ class PackingSessionController extends ChangeNotifier {
       await _endMaxVolumeSession();
       await Future<void>.delayed(transitionSettleDelay);
       _setPhase(PackingSessionPhase.ready);
-      _speechService.resetIncidents();
+      await _speechService.clear();
       if (!silentStorageStop) {
         _speechService.enqueue(SpeechPrompt.recordingStopped);
       }
@@ -1280,6 +1280,7 @@ class PackingSessionController extends ChangeNotifier {
       _elapsed = Duration.zero;
       _setActiveOrderInfo(null, announce: false);
       _setPhase(PackingSessionPhase.waitingForBarcode);
+      await _speechService.clear();
       _speechService.enqueue(SpeechPrompt.recordingStopped);
       if (saved.isNotEmpty) {
         _showCameraNotice('本单已完成，请扫描下一张面单');
@@ -2470,7 +2471,7 @@ class PackingSessionController extends ChangeNotifier {
       _elapsed = Duration.zero;
       await Future<void>.delayed(transitionSettleDelay);
       _setPhase(PackingSessionPhase.waitingForBarcode);
-      _speechService.resetIncidents();
+      await _speechService.clear();
       _speechService.enqueue(SpeechPrompt.recordingStopped);
       _setActiveOrderInfo(null, announce: false);
       return savedSessions.isEmpty ? null : savedSessions.last;

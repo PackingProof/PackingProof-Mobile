@@ -111,6 +111,7 @@ class _FakeMaxVolumeSink implements MaxVolumeSink {
 class _FakeSpeechSink implements SpeechPromptSink {
   final List<SpeechPrompt> prompts = <SpeechPrompt>[];
   int beepCount = 0;
+  int clearCount = 0;
 
   @override
   bool enabled = true;
@@ -140,6 +141,11 @@ class _FakeSpeechSink implements SpeechPromptSink {
 
   @override
   void resolveIncident(String incidentKey) {}
+
+  @override
+  Future<void> clear() async {
+    clearCount++;
+  }
 
   @override
   Future<void> dispose() async {}
