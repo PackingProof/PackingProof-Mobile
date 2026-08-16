@@ -397,7 +397,7 @@ class DeviceSpeechOutput implements SpeechOutput {
               AudioContext(
                 android: const AudioContextAndroid(
                   contentType: AndroidContentType.sonification,
-                  usageType: AndroidUsageType.assistanceSonification,
+                  usageType: AndroidUsageType.media,
                   audioFocus: AndroidAudioFocus.none,
                 ),
               ),
