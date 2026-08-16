@@ -345,7 +345,7 @@ private final class IosAlertAudioSessionHostApi: AlertAudioSessionHostApi {
   func beginSession(completion: @escaping (Result<Void, Error>) -> Void) {
     do {
       try AVAudioSession.sharedInstance().setCategory(
-        .playback,
+        .playAndRecord,
         mode: .spokenAudio,
         options: [.duckOthers]
       )
@@ -935,6 +935,8 @@ private final class IosCameraHostApi:
   private var pairingScanEnabled = false
   private var workScanEnabled = false
   private var disposed = false
+  private var recoveryRuntimeError = false
+  private var runtimeErrorObserver: NSObjectProtocol?
 
   private var writer: AVAssetWriter?
   private var videoInput: AVAssetWriterInput?
@@ -954,10 +956,21 @@ private final class IosCameraHostApi:
     self.textures = textures
     super.init()
     textureId = textures.register(self)
+    runtimeErrorObserver = NotificationCenter.default.addObserver(
+      forName: .AVCaptureSessionRuntimeError,
+      object: session,
+      queue: .main
+    ) { [weak self] _ in
+      self?.recoveryRuntimeError = true
+    }
     configureSession()
   }
 
   deinit {
+    if let observer = runtimeErrorObserver {
+      NotificationCenter.default.removeObserver(observer)
+    }
+    runtimeErrorObserver = nil
     // 引擎销毁阶段调用 FlutterTextureRegistry 会触发 SIGSEGV，
     // 纹理由 dispose() 正常路径反注册，App 终止时由引擎统一回收。
   }
@@ -975,22 +988,22 @@ private final class IosCameraHostApi:
         completion(.failure(pigeonError("摄像头已经关闭")))
         return
       }
+      self.configureRecordingAudioSession()
       if self.disposed {
-        // 后台切回或初始化重试时允许恢复：重新注册纹理并重启会话。
-        self.textureId = self.textures.register(self)
-        self.disposed = false
+        self.recoverCamera { recovered in
+          if recovered {
+            self.disposed = false
+            self.finishInitialize(completion)
+          } else {
+            completion(.failure(pigeonError("摄像头恢复失败")))
+          }
+        }
+      } else {
+        if !self.session.isRunning {
+          self.session.startRunning()
+        }
+        self.finishInitialize(completion)
       }
-      if !self.session.isRunning {
-        self.session.startRunning()
-      }
-      self.eventApi.sessionStarted(
-        event: CameraSessionStartedDto(
-          sessionId: self.sessionId,
-          startedAtMs: Int64(Date().timeIntervalSince1970 * 1000)
-        ),
-        completion: { _ in }
-      )
-      completion(.success(self.initializationDto()))
     }
   }
 
@@ -1204,9 +1217,7 @@ private final class IosCameraHostApi:
     disposed = true
     // 先移除采样回调，避免 App 终止时 AVCaptureSession 再回调到已释放的
     // self，触发 use-after-free（SIGSEGV）。
-    videoOutput?.setSampleBufferDelegate(nil, queue: nil)
-    audioOutput?.setSampleBufferDelegate(nil, queue: nil)
-    metadataOutput?.setMetadataObjectsDelegate(nil, queue: nil)
+    clearOutputDelegates()
     sessionQueue.async { [weak self] in
       guard let self else {
         completion(.success(()))
@@ -1309,7 +1320,6 @@ private final class IosCameraHostApi:
       ]
       if self.session.canAddOutput(videoOutput) {
         self.session.addOutput(videoOutput)
-        videoOutput.setSampleBufferDelegate(self, queue: self.sessionQueue)
         if let connection = videoOutput.connection(with: .video) {
           connection.videoOrientation = .portrait
           connection.isVideoMirrored = false
@@ -1320,14 +1330,12 @@ private final class IosCameraHostApi:
       let audioOutput = AVCaptureAudioDataOutput()
       if self.session.canAddOutput(audioOutput) {
         self.session.addOutput(audioOutput)
-        audioOutput.setSampleBufferDelegate(self, queue: self.sessionQueue)
         self.audioOutput = audioOutput
       }
 
       let metadataOutput = AVCaptureMetadataOutput()
       if self.session.canAddOutput(metadataOutput) {
         self.session.addOutput(metadataOutput)
-        metadataOutput.setMetadataObjectsDelegate(self, queue: self.sessionQueue)
         let availableTypes = metadataOutput.availableMetadataObjectTypes
         metadataOutput.metadataObjectTypes = Self.supportedMetadataTypes.filter {
           availableTypes.contains($0)
@@ -1336,7 +1344,99 @@ private final class IosCameraHostApi:
       }
 
       self.session.commitConfiguration()
+      self.configureOutputDelegates()
     }
+  }
+
+  /// 幂等地重挂 video/audio/metadata 的 delegate：只覆盖 delegate 与 queue，
+  /// 不创建新 output、不创建新 queue、不改变 output 数量。
+  private func configureOutputDelegates() {
+    videoOutput?.setSampleBufferDelegate(self, queue: sessionQueue)
+    audioOutput?.setSampleBufferDelegate(self, queue: sessionQueue)
+    metadataOutput?.setMetadataObjectsDelegate(self, queue: sessionQueue)
+  }
+
+  /// 摘除全部 delegate，避免已释放对象再收到回调。
+  private func clearOutputDelegates() {
+    videoOutput?.setSampleBufferDelegate(nil, queue: nil)
+    audioOutput?.setSampleBufferDelegate(nil, queue: nil)
+    metadataOutput?.setMetadataObjectsDelegate(nil, queue: nil)
+  }
+
+  /// 录像期音频会话：同时支持录音与播放提示音，避免被 .playback 降级。
+  private func configureRecordingAudioSession() {
+    try? AVAudioSession.sharedInstance().setCategory(
+      .playAndRecord,
+      mode: .videoRecording,
+      options: [.defaultToSpeaker]
+    )
+    try? AVAudioSession.sharedInstance().setActive(true)
+  }
+
+  /// 校验三个 output 均仍挂载在当前 session 上。
+  private func outputsAreValid() -> Bool {
+    let outputs = session.outputs
+    let videoValid = videoOutput.map { outputs.contains($0) } ?? false
+    let audioValid = audioOutput.map { outputs.contains($0) } ?? false
+    let metadataValid = metadataOutput.map { outputs.contains($0) } ?? false
+    return videoValid && audioValid && metadataValid
+  }
+
+  /// 恢复已 dispose 的相机：校验 outputs → 重注册纹理 → 重挂 delegate →
+  /// 重启 session，并在短时间内有界确认运行状态。
+  private func recoverCamera(completion: @escaping (Bool) -> Void) {
+    recoveryRuntimeError = false
+    guard outputsAreValid() else {
+      completion(false)
+      return
+    }
+    if textureId < 0 {
+      let newId = textures.register(self)
+      guard newId >= 0 else {
+        completion(false)
+        return
+      }
+      textureId = newId
+    }
+    configureOutputDelegates()
+    if !session.isRunning {
+      session.startRunning()
+    }
+    sessionQueue.asyncAfter(deadline: .now() + .milliseconds(300)) { [weak self] in
+      guard let self else {
+        completion(false)
+        return
+      }
+      if self.session.isRunning && !self.recoveryRuntimeError {
+        completion(true)
+      } else {
+        self.rollbackRecovery()
+        completion(false)
+      }
+    }
+  }
+
+  /// 恢复失败时回滚纹理与 delegate，保持 disposed 状态干净。
+  private func rollbackRecovery() {
+    clearOutputDelegates()
+    if textureId >= 0 {
+      textures.unregisterTexture(textureId)
+      textureId = -1
+    }
+  }
+
+  /// 初始化完成：发 sessionStarted 事件并返回初始化结果。
+  private func finishInitialize(
+    _ completion: @escaping (Result<CameraInitializationDto, Error>) -> Void
+  ) {
+    eventApi.sessionStarted(
+      event: CameraSessionStartedDto(
+        sessionId: sessionId,
+        startedAtMs: Int64(Date().timeIntervalSince1970 * 1000)
+      ),
+      completion: { _ in }
+    )
+    completion(.success(initializationDto()))
   }
 
   private func replaceVideoDevice(
@@ -1412,12 +1512,7 @@ private final class IosCameraHostApi:
     if recordAudio {
       // 录像需要同时录音和播报，这里显式切换到 playAndRecord；
       // 否则提示音会话的 .playback 会阻止麦克风输入，导致录像没声音。
-      try? AVAudioSession.sharedInstance().setCategory(
-        .playAndRecord,
-        mode: .videoRecording,
-        options: [.defaultToSpeaker]
-      )
-      try? AVAudioSession.sharedInstance().setActive(true)
+      configureRecordingAudioSession()
     }
     finishCurrentWriter {}
     let url = URL(fileURLWithPath: path)
