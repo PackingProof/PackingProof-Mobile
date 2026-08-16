@@ -900,6 +900,49 @@ void main() {
     expect(selectedHost, 'host-2');
   });
 
+  testWidgets('搜索进行中已发现的主机仍可点击连接', (WidgetTester tester) async {
+    final _FakeBackupHostDiscovery discovery = _FakeBackupHostDiscovery(
+      hosts: const <LanBackupDiscoveredHost>[
+        LanBackupDiscoveredHost(
+          nodeId: 'host-1',
+          name: '电脑1',
+          address: '192.168.1.10:5280',
+        ),
+      ],
+      searching: true,
+    );
+    String? selectedHost;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupHostDiscovery: discovery,
+          onConnectBackupHost: (host, confirmation) async {
+            selectedHost = host.nodeId;
+          },
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('电脑1'), findsOneWidget);
+    expect(find.text('连接'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('discovered-backup-host-host-1')),
+    );
+    await tester.pump();
+    expect(selectedHost, 'host-1');
+  });
+
   testWidgets('缓存主机保持显示但未重新发现前不可连接', (WidgetTester tester) async {
     final _FakeBackupHostDiscovery discovery = _FakeBackupHostDiscovery(
       hosts: const <LanBackupDiscoveredHost>[
@@ -4672,7 +4715,17 @@ class _FakeBackupHostDiscovery extends ChangeNotifier
         address: '192.168.1.10:5280',
       ),
     ],
-  }) : _currentHosts = List<LanBackupDiscoveredHost>.of(hosts);
+    bool searching = false,
+  }) : _currentHosts = List<LanBackupDiscoveredHost>.of(hosts) {
+    if (searching) {
+      _snapshot = LanBackupDiscoverySnapshot(
+        searching: true,
+        total: 1,
+        hosts: List<LanBackupDiscoveredHost>.unmodifiable(_currentHosts),
+        message: '正在搜索 0 / 1',
+      );
+    }
+  }
 
   final List<LanBackupDiscoveredHost> hosts;
   final List<LanBackupDiscoveredHost> _currentHosts;

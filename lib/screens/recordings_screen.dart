@@ -573,6 +573,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     connect = widget.onConnectBackupHost;
     if (connect == null) return;
     _lastApprovalHost = host;
+    _autoConnectStarted = true;
     _approvalRequestInFlight = true;
     if (mounted) {
       setState(() {
@@ -2840,8 +2841,7 @@ class _ComputerBackupSettings extends StatelessWidget {
                         'discovered-backup-host-${host.nodeId}',
                       ),
                       onTap:
-                          discovery.searching ||
-                              onSelectHost == null ||
+                          onSelectHost == null ||
                               !host.compatible ||
                               !host.reachable
                           ? null
@@ -3145,10 +3145,7 @@ class _CameraCapabilitySettings extends StatelessWidget {
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Icon(
-          Icons.videocam_outlined,
-          color: colors.primary,
-        ),
+        leading: Icon(Icons.videocam_outlined, color: colors.primary),
         title: const Text('摄像头能力'),
         subtitle: Text(statusText),
         trailing: TextButton(
