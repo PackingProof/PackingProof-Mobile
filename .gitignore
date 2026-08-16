@@ -46,3 +46,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# iOS 本机签名配置（团队 ID 不提交进仓库）
+ios/Flutter/DevelopmentTeam.xcconfig
