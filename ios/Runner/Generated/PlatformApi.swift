@@ -863,6 +863,7 @@ struct BarcodeCandidateDto: Hashable, CustomStringConvertible {
   var value: String
   var area: Int64
   var format: String? = nil
+  var detectedAtMs: Int64
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -870,11 +871,13 @@ struct BarcodeCandidateDto: Hashable, CustomStringConvertible {
     let value = pigeonVar_list[0] as! String
     let area = pigeonVar_list[1] as! Int64
     let format: String? = nilOrValue(pigeonVar_list[2])
+    let detectedAtMs = pigeonVar_list[3] as! Int64
 
     return BarcodeCandidateDto(
       value: value,
       area: area,
-      format: format
+      format: format,
+      detectedAtMs: detectedAtMs
     )
   }
   func toList() -> [Any?] {
@@ -882,13 +885,14 @@ struct BarcodeCandidateDto: Hashable, CustomStringConvertible {
       value,
       area,
       format,
+      detectedAtMs,
     ]
   }
   static func == (lhs: BarcodeCandidateDto, rhs: BarcodeCandidateDto) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return PlatformApiPigeonInternal.deepEquals(lhs.value, rhs.value) && PlatformApiPigeonInternal.deepEquals(lhs.area, rhs.area) && PlatformApiPigeonInternal.deepEquals(lhs.format, rhs.format)
+    return PlatformApiPigeonInternal.deepEquals(lhs.value, rhs.value) && PlatformApiPigeonInternal.deepEquals(lhs.area, rhs.area) && PlatformApiPigeonInternal.deepEquals(lhs.format, rhs.format) && PlatformApiPigeonInternal.deepEquals(lhs.detectedAtMs, rhs.detectedAtMs)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -896,10 +900,11 @@ struct BarcodeCandidateDto: Hashable, CustomStringConvertible {
     PlatformApiPigeonInternal.deepHash(value: value, hasher: &hasher)
     PlatformApiPigeonInternal.deepHash(value: area, hasher: &hasher)
     PlatformApiPigeonInternal.deepHash(value: format, hasher: &hasher)
+    PlatformApiPigeonInternal.deepHash(value: detectedAtMs, hasher: &hasher)
   }
 
   public var description: String {
-    return "BarcodeCandidateDto(value: \(String(describing: value)), area: \(String(describing: area)), format: \(String(describing: format)))"
+    return "BarcodeCandidateDto(value: \(String(describing: value)), area: \(String(describing: area)), format: \(String(describing: format)), detectedAtMs: \(String(describing: detectedAtMs)))"
   }
 }
 

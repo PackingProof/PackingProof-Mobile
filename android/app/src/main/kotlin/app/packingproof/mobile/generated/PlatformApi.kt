@@ -843,7 +843,8 @@ data class CameraRecordingStopDto (
 data class BarcodeCandidateDto (
   val value: String,
   val area: Long,
-  val format: String? = null
+  val format: String? = null,
+  val detectedAtMs: Long
 )
  {
   companion object {
@@ -851,7 +852,8 @@ data class BarcodeCandidateDto (
       val value = pigeonVar_list[0] as String
       val area = pigeonVar_list[1] as Long
       val format = pigeonVar_list[2] as String?
-      return BarcodeCandidateDto(value, area, format)
+      val detectedAtMs = pigeonVar_list[3] as Long
+      return BarcodeCandidateDto(value, area, format, detectedAtMs)
     }
   }
   fun toList(): List<Any?> {
@@ -859,6 +861,7 @@ data class BarcodeCandidateDto (
       value,
       area,
       format,
+      detectedAtMs,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -869,7 +872,7 @@ data class BarcodeCandidateDto (
       return true
     }
     val other = other as BarcodeCandidateDto
-    return PlatformApiPigeonUtils.deepEquals(this.value, other.value) && PlatformApiPigeonUtils.deepEquals(this.area, other.area) && PlatformApiPigeonUtils.deepEquals(this.format, other.format)
+    return PlatformApiPigeonUtils.deepEquals(this.value, other.value) && PlatformApiPigeonUtils.deepEquals(this.area, other.area) && PlatformApiPigeonUtils.deepEquals(this.format, other.format) && PlatformApiPigeonUtils.deepEquals(this.detectedAtMs, other.detectedAtMs)
   }
 
   override fun hashCode(): Int {
@@ -877,10 +880,11 @@ data class BarcodeCandidateDto (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.value)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.area)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.format)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.detectedAtMs)
     return result
   }
   override fun toString(): String {
-    return "BarcodeCandidateDto(value=$value, area=$area, format=$format)"
+    return "BarcodeCandidateDto(value=$value, area=$area, format=$format, detectedAtMs=$detectedAtMs)"
   }
 }
 

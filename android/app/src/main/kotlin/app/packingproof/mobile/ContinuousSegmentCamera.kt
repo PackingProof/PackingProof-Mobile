@@ -1256,12 +1256,14 @@ class ContinuousSegmentCamera(
             val input = InputImage.fromMediaImage(image, sensorOrientation)
             barcodeScanner.process(input)
                 .addOnSuccessListener { barcodes ->
+                    val detectedAtMs = System.currentTimeMillis()
                     val values = barcodes.mapNotNull { barcode ->
                         val raw = barcode.rawValue?.trim().orEmpty()
                         if (raw.isEmpty()) null else mapOf(
                             "value" to raw,
                             "area" to ((barcode.boundingBox ?: Rect()).let { it.width().toLong() * it.height() }),
                             "format" to barcodeFormatName(barcode.format),
+                            "detectedAtMs" to detectedAtMs,
                         )
                     }
                     emit("barcodeFrame", values)

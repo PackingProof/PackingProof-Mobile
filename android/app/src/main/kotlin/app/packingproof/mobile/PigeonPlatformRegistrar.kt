@@ -332,4 +332,5 @@ private fun Map<*, *>.toBarcodeCandidateDto(): BarcodeCandidateDto =
         value = this["value"] as String,
         area = (this["area"] as Number).toLong(),
         format = this["format"] as? String,
+        detectedAtMs = (this["detectedAtMs"] as? Number)?.toLong() ?: 0L,
     )

@@ -116,6 +116,7 @@ class BarcodeCandidateDto {
   String value;
   int area;
   String? format;
+  int detectedAtMs;
 }
 
 class CameraSessionStartedDto {

@@ -172,6 +172,7 @@ class NativeBarcodeCandidate {
     required this.value,
     required this.area,
     this.format,
+    this.detectedAtMs = 0,
   });
 
   final String value;
@@ -180,11 +181,15 @@ class NativeBarcodeCandidate {
   /// 原生 ML Kit 码制名称（如 ean13、code128），内部稳定标识，非界面文案。
   final String? format;
 
+  /// 原生识别到该条码的 wall-clock 毫秒时间戳，仅用于诊断。
+  final int detectedAtMs;
+
   factory NativeBarcodeCandidate.fromMap(Map<Object?, Object?> map) {
     return NativeBarcodeCandidate(
       value: map['value']! as String,
       area: (map['area']! as num).toInt(),
       format: map['format'] as String?,
+      detectedAtMs: (map['detectedAtMs'] as num?)?.toInt() ?? 0,
     );
   }
 }

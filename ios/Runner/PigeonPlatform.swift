@@ -1271,6 +1271,7 @@ private final class IosCameraHostApi:
     from connection: AVCaptureConnection
   ) {
     guard pairingScanEnabled || workScanEnabled else { return }
+    let detectedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
     var candidates: [BarcodeCandidateDto] = []
     for object in metadataObjects {
       guard let machineReadable = object as? AVMetadataMachineReadableCodeObject,
@@ -1282,7 +1283,8 @@ private final class IosCameraHostApi:
       candidates.append(BarcodeCandidateDto(
         value: value,
         area: area,
-        format: metadataTypeName(machineReadable.type)
+        format: metadataTypeName(machineReadable.type),
+        detectedAtMs: detectedAtMs
       ))
     }
     if !candidates.isEmpty {

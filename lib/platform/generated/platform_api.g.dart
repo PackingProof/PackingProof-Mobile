@@ -902,6 +902,7 @@ class BarcodeCandidateDto {
     required this.value,
     required this.area,
     this.format,
+    required this.detectedAtMs,
   });
 
   String value;
@@ -910,11 +911,14 @@ class BarcodeCandidateDto {
 
   String? format;
 
+  int detectedAtMs;
+
   List<Object?> _toList() {
     return <Object?>[
       value,
       area,
       format,
+      detectedAtMs,
     ];
   }
 
@@ -927,6 +931,7 @@ class BarcodeCandidateDto {
       value: result[0]! as String,
       area: result[1]! as int,
       format: result[2] as String?,
+      detectedAtMs: result[3]! as int,
     );
   }
 
@@ -939,7 +944,7 @@ class BarcodeCandidateDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(value, other.value) && _deepEquals(area, other.area) && _deepEquals(format, other.format);
+    return _deepEquals(value, other.value) && _deepEquals(area, other.area) && _deepEquals(format, other.format) && _deepEquals(detectedAtMs, other.detectedAtMs);
   }
 
   @override
@@ -948,7 +953,7 @@ class BarcodeCandidateDto {
 
   @override
   String toString() {
-    return 'BarcodeCandidateDto(value: $value, area: $area, format: $format)';
+    return 'BarcodeCandidateDto(value: $value, area: $area, format: $format, detectedAtMs: $detectedAtMs)';
   }
 }
 

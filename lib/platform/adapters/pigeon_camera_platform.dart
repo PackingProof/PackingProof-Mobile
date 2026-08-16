@@ -178,6 +178,7 @@ class _CameraEventSink extends CameraEventApi {
                   'value': value.value,
                   'area': value.area,
                   'format': value.format,
+                  'detectedAtMs': value.detectedAtMs,
                 }),
           )
           .toList(growable: false),
