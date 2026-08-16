@@ -49,3 +49,7 @@ app.*.map.json
 
 # iOS 本机签名配置（团队 ID 不提交进仓库）
 ios/Flutter/DevelopmentTeam.xcconfig
+ios/build/
+
+# 测试生成产物
+test/failures/
