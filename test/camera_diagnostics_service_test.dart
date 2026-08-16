@@ -61,7 +61,7 @@ void main() {
       maximumEntries: 3,
     );
     for (int i = 1; i <= 5; i++) {
-      await service.recordSnapshot(trigger: 'heartbeat');
+      await service.recordSnapshot(trigger: 'start_work');
     }
 
     final File file = File('${temp.path}/diagnostics/camera.jsonl');
@@ -71,7 +71,7 @@ void main() {
     final Map<String, Object?> first =
         jsonDecode(lines.first) as Map<String, Object?>;
     expect(first['kind'], 'snapshot');
-    expect(first['trigger'], 'heartbeat');
+    expect(first['trigger'], 'start_work');
     expect(first['previewFrameCount'], 1);
     expect(first['storageAvailableBytes'], 123456789);
     expect(first['storageTotalBytes'], 999999999);
@@ -84,6 +84,21 @@ void main() {
     expect(first['hardwareLevel'], 0);
     expect(first['yuvSizes'], <Object?>['960x540', '640x480']);
     expect(first['device.manufacturer'], 'vivo');
+  });
+
+  test('心跳快照去重：相同状态只记录一次', () async {
+    service = CameraDiagnosticsService(
+      rootProvider: () async => temp,
+      snapshotLoader: () async => snapshot(),
+      maximumEntries: 300,
+    );
+    for (int i = 1; i <= 5; i++) {
+      await service.recordSnapshot(trigger: 'heartbeat');
+    }
+
+    final File file = File('${temp.path}/diagnostics/camera.jsonl');
+    final List<String> lines = await file.readAsLines();
+    expect(lines, hasLength(1));
   });
 
   test('记录事件', () async {

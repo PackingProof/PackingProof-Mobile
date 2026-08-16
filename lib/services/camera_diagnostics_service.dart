@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -21,11 +22,33 @@ class CameraDiagnosticsService {
        _snapshotLoader = snapshotLoader ?? _nativeSnapshotLoader;
 
   static const Duration heartbeatInterval = Duration(seconds: 10);
+  static const Duration livenessInterval = Duration(seconds: 60);
+
+  /// 心跳去重时只比较这些“状态字段”，忽略会持续变化的计数类指标
+  /// （如 previewFrameCount / muxWriteMaxMs），避免永远判成“有变化”。
+  static const List<String> _heartbeatStateKeys = <String>[
+    'initialized',
+    'sessionRunning',
+    'disposed',
+    'workScanEnabled',
+    'pairingScanEnabled',
+    'metadataOutputAttached',
+    'videoOutputAttached',
+    'audioOutputAttached',
+    'recordingSpec',
+    'videoMime',
+    'cameraId',
+    'cameraPipelineVersion',
+    'stallActive',
+    'recordingFallbackMode',
+  ];
 
   final Future<Directory> Function() _rootProvider;
   final Future<CameraDiagnosticsSnapshot?> Function() _snapshotLoader;
   final int maximumEntries;
   Future<void> _pending = Future<void>.value();
+  Map<String, Object?>? _lastHeartbeatState;
+  DateTime? _lastHeartbeatLoggedAt;
 
   Future<CameraDiagnosticsSnapshot?> loadSnapshot() async {
     try {
@@ -41,6 +64,19 @@ class CameraDiagnosticsService {
   }) async {
     final CameraDiagnosticsSnapshot? current = snapshot ?? await loadSnapshot();
     if (current == null) return;
+    if (trigger == 'heartbeat') {
+      final Map<String, Object?> state = <String, Object?>{
+        for (final String key in _heartbeatStateKeys) key: current.camera[key],
+      };
+      final bool changed = !mapEquals(_lastHeartbeatState, state);
+      final bool livenessDue = _lastHeartbeatLoggedAt == null ||
+          DateTime.now().difference(_lastHeartbeatLoggedAt!) >= livenessInterval;
+      if (!changed && !livenessDue) {
+        return;
+      }
+      _lastHeartbeatState = state;
+      _lastHeartbeatLoggedAt = DateTime.now();
+    }
     await _append(<String, Object?>{
       'kind': 'snapshot',
       'trigger': trigger,
