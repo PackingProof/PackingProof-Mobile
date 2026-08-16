@@ -243,35 +243,42 @@ class LanBackupHostDiscoveryService extends ChangeNotifier
       message: '正在搜索 0 / ${candidates.length}',
     );
     notifyListeners();
+
+    void mergeHost(LanBackupDiscoveredHost host) {
+      final int existingIndex = hosts.indexWhere(
+        (LanBackupDiscoveredHost item) => _isSameDiscoveredHost(item, host),
+      );
+      if (existingIndex >= 0) {
+        hosts[existingIndex] = host;
+      } else {
+        hosts.add(host);
+      }
+      hosts.sort((a, b) => a.name.compareTo(b.name));
+    }
+
+    void publishProgress() {
+      _snapshot = LanBackupDiscoverySnapshot(
+        searching: true,
+        completed: completed,
+        total: candidates.length,
+        hosts: List<LanBackupDiscoveredHost>.unmodifiable(hosts),
+        message: '正在搜索 $completed / ${candidates.length}',
+      );
+      notifyListeners();
+    }
+
     Future<void> worker() async {
       while (revision == _revision) {
         final int index = cursor++;
         if (index >= candidates.length) return;
         final LanBackupDiscoveredHost? host = await _probe(candidates[index]);
         if (revision != _revision) return;
-        if (host != null) {
-          final int existingIndex = hosts.indexWhere(
-            (LanBackupDiscoveredHost item) => _isSameDiscoveredHost(item, host),
-          );
-          if (existingIndex >= 0) {
-            hosts[existingIndex] = host;
-          } else {
-            hosts.add(host);
-          }
-          hosts.sort((a, b) => a.name.compareTo(b.name));
-        }
+        if (host != null) mergeHost(host);
         completed++;
         if (completed == candidates.length ||
             completed % 4 == 0 ||
             host != null) {
-          _snapshot = LanBackupDiscoverySnapshot(
-            searching: true,
-            completed: completed,
-            total: candidates.length,
-            hosts: List<LanBackupDiscoveredHost>.unmodifiable(hosts),
-            message: '正在搜索 $completed / ${candidates.length}',
-          );
-          notifyListeners();
+          publishProgress();
         }
       }
     }
@@ -281,7 +288,10 @@ class LanBackupHostDiscoveryService extends ChangeNotifier
         candidates.length < 32 ? candidates.length : 32,
         (_) => worker(),
       ),
-      _runUdpDiscovery(hosts, revision),
+      _runUdpDiscovery((LanBackupDiscoveredHost host) {
+        mergeHost(host);
+        publishProgress();
+      }, revision),
     ]);
     if (revision != _revision) return;
     final List<LanBackupDiscoveredHost> reachableHosts = hosts
@@ -393,7 +403,7 @@ class LanBackupHostDiscoveryService extends ChangeNotifier
 
   /// Android 专用：UDP 广播探测主机候选，announce 立即走 HTTP 确认并并入结果。
   Future<void> _runUdpDiscovery(
-    List<LanBackupDiscoveredHost> hosts,
+    void Function(LanBackupDiscoveredHost host) onHost,
     int revision,
   ) async {
     if (!Platform.isAndroid) return;
@@ -404,15 +414,7 @@ class LanBackupHostDiscoveryService extends ChangeNotifier
       );
       if (revision != _revision) return;
       if (host == null) continue;
-      final int existingIndex = hosts.indexWhere(
-        (LanBackupDiscoveredHost item) => _isSameDiscoveredHost(item, host),
-      );
-      if (existingIndex >= 0) {
-        hosts[existingIndex] = host;
-      } else {
-        hosts.add(host);
-      }
-      hosts.sort((a, b) => a.name.compareTo(b.name));
+      onHost(host);
     }
   }
 
