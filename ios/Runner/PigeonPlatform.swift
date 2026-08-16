@@ -382,6 +382,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   private var lastLanReachable = false
   private let uploadsLock = NSLock()
   private var activeUploads: [String: Task<Void, Never>] = [:]
+  private var uploadTail: Task<Void, Never> = Task { }
   private let keys = (
     deviceId: "ios_backup_device_id",
     deviceName: "ios_backup_device_name",
@@ -680,10 +681,14 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     guard let jobId = job["id"] as? String else { return }
     uploadsLock.lock()
     activeUploads[jobId]?.cancel()
+    let previous = uploadTail
     let task = Task.detached { [weak self] in
-      if let self { await self.upload(job: job) }
+      await previous.value
+      guard let self, !Task.isCancelled else { return }
+      await self.upload(job: job)
     }
     activeUploads[jobId] = task
+    uploadTail = task
     uploadsLock.unlock()
   }
 
