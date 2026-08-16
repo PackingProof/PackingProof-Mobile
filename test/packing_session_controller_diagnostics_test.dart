@@ -8,6 +8,7 @@ import 'package:packing_proof_mobile/services/camera_diagnostics_service.dart';
 import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 import 'package:packing_proof_mobile/services/diagnostics_log_service.dart';
 import 'package:packing_proof_mobile/services/speech_prompt_service.dart';
+import 'package:packing_proof_mobile/platform/platform_capabilities.dart';
 
 import 'test_repository.dart';
 
@@ -42,6 +43,7 @@ void main() {
     final PackingSessionController controller = PackingSessionController(
       repository: testRepository(root),
       speechService: _FakeSpeechSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
       runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
       cameraDiagnostics: CameraDiagnosticsService(
         rootProvider: () async => root,
