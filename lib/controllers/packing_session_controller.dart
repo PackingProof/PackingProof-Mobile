@@ -196,6 +196,7 @@ class PackingSessionController extends ChangeNotifier {
   int _segmentIndex = 1;
   bool _torchEnabled = false;
   bool _workActive = false;
+  int _operationGeneration = 0;
   int _pairingSuccessRevision = 0;
   int _pairingFailureRevision = 0;
   String? _pairingFailureMessage;
@@ -1021,11 +1022,25 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   Future<void> startWork() async {
+    final int generation = ++_operationGeneration;
     final CameraController? camera = _cameraController;
     final bool cameraUnavailable = _supportsNativeCamera
         ? _nativeInitialization == null
         : camera == null || !camera.value.isInitialized;
     if (cameraUnavailable || isBusy || isWorking) {
+      unawaited(
+        _runtimeLog.log(
+          kind: 'start_work_skipped',
+          extra: <String, Object?>{
+            'generation': generation,
+            'cameraUnavailable': cameraUnavailable,
+            'isBusy': isBusy,
+            'isWorking': isWorking,
+            'phase': _phase.name,
+            'nativeInitialized': _nativeInitialization != null,
+          },
+        ),
+      );
       return;
     }
     unawaited(
@@ -1075,8 +1090,24 @@ class PackingSessionController extends ChangeNotifier {
       await _orderInfoReceiver.setBackgroundKeepAlive(false);
       _elapsed = Duration.zero;
       _setPhase(PackingSessionPhase.waitingForBarcode);
+      unawaited(
+        _runtimeLog.log(
+          kind: 'start_work_done',
+          extra: <String, Object?>{'generation': generation},
+        ),
+      );
       _scheduleInitialModeAnnouncement();
     } on CameraException catch (error) {
+      unawaited(
+        _runtimeLog.log(
+          kind: 'start_work_error',
+          extra: <String, Object?>{
+            'generation': generation,
+            'type': 'camera',
+            'error': '$error',
+          },
+        ),
+      );
       await _setNativeWorkScanEnabled(false);
       _cancelInitialPromptFlow();
       _workActive = false;
@@ -1087,6 +1118,16 @@ class PackingSessionController extends ChangeNotifier {
       await _endMaxVolumeSession();
       _setCameraError(error);
     } on Object catch (error) {
+      unawaited(
+        _runtimeLog.log(
+          kind: 'start_work_error',
+          extra: <String, Object?>{
+            'generation': generation,
+            'type': 'unknown',
+            'error': '$error',
+          },
+        ),
+      );
       await _setNativeWorkScanEnabled(false);
       _cancelInitialPromptFlow();
       _workActive = false;
@@ -1102,7 +1143,17 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   Future<RecordingSession?> stopWork() async {
+    final int generation = ++_operationGeneration;
     if (!isWorking) {
+      unawaited(
+        _runtimeLog.log(
+          kind: 'stop_work_skipped',
+          extra: <String, Object?>{
+            'generation': generation,
+            'reason': 'not_working',
+          },
+        ),
+      );
       return null;
     }
     final bool silentStorageStop = _storageStopRequested;
@@ -1112,6 +1163,15 @@ class PackingSessionController extends ChangeNotifier {
         ? _nativeCamera == null
         : camera == null || !camera.value.isRecordingVideo;
     if (startedAt == null) {
+      unawaited(
+        _runtimeLog.log(
+          kind: 'stop_work_skipped',
+          extra: <String, Object?>{
+            'generation': generation,
+            'reason': 'no_recording',
+          },
+        ),
+      );
       _cancelInitialPromptFlow();
       await _setNativeWorkScanEnabled(false);
       _workActive = false;
@@ -1126,6 +1186,15 @@ class PackingSessionController extends ChangeNotifier {
       return null;
     }
     if (recordingUnavailable) {
+      unawaited(
+        _runtimeLog.log(
+          kind: 'stop_work_skipped',
+          extra: <String, Object?>{
+            'generation': generation,
+            'reason': 'recording_unavailable',
+          },
+        ),
+      );
       return null;
     }
     _cancelInitialPromptFlow();
@@ -1153,10 +1222,28 @@ class PackingSessionController extends ChangeNotifier {
       if (!silentStorageStop) {
         _speechService.enqueue(SpeechPrompt.recordingStopped);
       }
+      unawaited(
+        _runtimeLog.log(
+          kind: 'stop_work_done',
+          extra: <String, Object?>{
+            'generation': generation,
+            'savedCount': savedSessions.length,
+          },
+        ),
+      );
       _setActiveOrderInfo(null, announce: false);
       await _releaseStorageNoticeAfterWork();
       return savedSessions.isEmpty ? null : savedSessions.last;
     } on Object catch (error) {
+      unawaited(
+        _runtimeLog.log(
+          kind: 'stop_work_error',
+          extra: <String, Object?>{
+            'generation': generation,
+            'error': '$error',
+          },
+        ),
+      );
       _timeline.reset();
       _workActive = false;
       _alternatingLastCompletedCode = null;
@@ -1979,6 +2066,28 @@ class PackingSessionController extends ChangeNotifier {
     );
     if (observation.confirmedCode.isNotEmpty) {
       _candidateCode = '';
+      final int receivedAtMs = now.millisecondsSinceEpoch;
+      int? nativeToDartMs;
+      for (final NativeBarcodeCandidate candidate in candidates) {
+        if (BarcodeCandidatePolicy.normalize(candidate.value) ==
+                observation.confirmedCode &&
+            candidate.detectedAtMs > 0) {
+          nativeToDartMs = receivedAtMs - candidate.detectedAtMs;
+          break;
+        }
+      }
+      if (nativeToDartMs != null) {
+        unawaited(
+          _runtimeLog.log(
+            kind: 'barcode_native_to_dart',
+            extra: <String, Object?>{
+              'code': observation.confirmedCode,
+              'ms': nativeToDartMs,
+              'negative': nativeToDartMs < 0,
+            },
+          ),
+        );
+      }
       unawaited(_handleConfirmedBarcode(observation.confirmedCode, now));
     } else if (observation.candidateCode != _candidateCode) {
       _candidateCode = observation.candidateCode;
@@ -2198,10 +2307,25 @@ class PackingSessionController extends ChangeNotifier {
     if (!isRecording || !_timeline.isActive) {
       _handlingBarcode = true;
       try {
+        final int t0 = DateTime.now().millisecondsSinceEpoch;
         final bool duplicate = await _hasRecentTrackingNumber(code);
+        final int t1 = DateTime.now().millisecondsSinceEpoch;
         final OrderInfo? orderInfo = await _orderInfoReceiver.lookup(code);
+        final int t2 = DateTime.now().millisecondsSinceEpoch;
         _setActiveOrderInfo(orderInfo, announce: false);
         await _startRecording();
+        final int t3 = DateTime.now().millisecondsSinceEpoch;
+        unawaited(
+          _runtimeLog.log(
+            kind: 'barcode_stage_timing',
+            extra: <String, Object?>{
+              'code': code,
+              'duplicateMs': t1 - t0,
+              'lookupMs': t2 - t1,
+              'startRecordingMs': t3 - t2,
+            },
+          ),
+        );
         _bindCurrentCode(code, _timeline.segmentStartedAt ?? now);
         if (_capabilityMode == CameraCapabilityMode.alternating) {
           _alternatingLastCompletedCode = null;
