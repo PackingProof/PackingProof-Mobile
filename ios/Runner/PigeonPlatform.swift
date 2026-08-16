@@ -968,9 +968,14 @@ private final class IosCameraHostApi:
     preferredVideoCodec = request.videoCodec
     recordingSpecName = request.recordingSpec
     sessionQueue.async { [weak self] in
-      guard let self, !self.disposed else {
+      guard let self else {
         completion(.failure(pigeonError("摄像头已经关闭")))
         return
+      }
+      if self.disposed {
+        // 后台切回或初始化重试时允许恢复：重新注册纹理并重启会话。
+        self.textureId = self.textures.register(self)
+        self.disposed = false
       }
       if !self.session.isRunning {
         self.session.startRunning()
@@ -1203,8 +1208,10 @@ private final class IosCameraHostApi:
       if self.session.isRunning {
         self.session.stopRunning()
       }
-      self.textures.unregisterTexture(self.textureId)
-      self.textureId = -1
+      if self.textureId >= 0 {
+        self.textures.unregisterTexture(self.textureId)
+        self.textureId = -1
+      }
       completion(.success(()))
     }
   }

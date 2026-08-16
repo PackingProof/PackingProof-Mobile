@@ -1,11 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'continuous_camera_service.dart';
+import '../platform/generated/platform_api.g.dart';
 
 /// 相机/预览诊断记录。
 ///
@@ -20,9 +20,6 @@ class CameraDiagnosticsService {
   }) : _rootProvider = rootProvider ?? getApplicationDocumentsDirectory,
        _snapshotLoader = snapshotLoader ?? _nativeSnapshotLoader;
 
-  static const MethodChannel _channel = MethodChannel(
-    'app.packingproof.mobile/continuous_camera',
-  );
   static const Duration heartbeatInterval = Duration(seconds: 2);
 
   final Future<Directory> Function() _rootProvider;
@@ -136,8 +133,7 @@ class CameraDiagnosticsService {
 }
 
 Future<CameraDiagnosticsSnapshot?> _nativeSnapshotLoader() async {
-  final Map<Object?, Object?>? values = await CameraDiagnosticsService._channel
-      .invokeMethod<Map<Object?, Object?>>('getDiagnostics');
+  final Map<String?, Object?>? values = await CameraHostApi().getDiagnostics();
   if (values == null) return null;
-  return CameraDiagnosticsSnapshot.fromMap(values);
+  return CameraDiagnosticsSnapshot.fromMap(Map<Object?, Object?>.from(values));
 }
