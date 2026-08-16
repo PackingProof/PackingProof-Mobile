@@ -2345,8 +2345,10 @@ private final class IosOrderReceiverHostApi: OrderReceiverHostApi {
       }
       guard client >= 0 else {
         if running {
-          lastError = "接收电脑连接失败"
+          let code = errno
+          lastError = "接收电脑连接失败 errno=\(code) \(String(cString: strerror(code)))"
         }
+        Thread.sleep(forTimeInterval: 0.1)
         continue
       }
       handle(client)
