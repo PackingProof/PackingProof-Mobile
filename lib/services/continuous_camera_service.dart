@@ -255,7 +255,13 @@ class CameraDiagnosticsSnapshot {
     final String release = '${device['release'] ?? ''}';
     final Object? sdkInt = device['sdkInt'];
     final String name = '$manufacturer $model'.trim();
-    return name.isEmpty ? '未知设备' : '$name · Android $release (SDK $sdkInt)';
+    if (name.isEmpty) {
+      return '未知设备';
+    }
+    if (manufacturer == 'Apple') {
+      return release.isEmpty ? name : '$name · iOS $release';
+    }
+    return release.isEmpty ? name : '$name · Android $release (SDK $sdkInt)';
   }
 
   factory CameraDiagnosticsSnapshot.fromMap(Map<Object?, Object?> map) {

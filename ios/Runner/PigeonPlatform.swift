@@ -1091,9 +1091,9 @@ private final class IosCameraHostApi:
     completion(.success([
       "device": [
         "manufacturer": "Apple",
-        "model": device?.modelID ?? "",
+        "model": UIDevice.current.model,
         "sdkInt": 0,
-        "release": "",
+        "release": UIDevice.current.systemVersion,
       ],
       "camera": [
         "initialized": true,
