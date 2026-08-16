@@ -942,6 +942,9 @@ private final class IosCameraHostApi:
   private var writerSessionStarted = false
   private var sessionId = UUID().uuidString
 
+  /// 固定 sessionPreset .hd1920x1080，竖屏预览与录像输出 1080x1920。
+  private var portraitSize: (width: Int, height: Int) { (1080, 1920) }
+
   init(eventApi: CameraEventApi, textures: FlutterTextureRegistry) {
     self.eventApi = eventApi
     self.textures = textures
@@ -1082,11 +1085,28 @@ private final class IosCameraHostApi:
   func getDiagnostics(
     completion: @escaping (Result<[String?: Any?]?, Error>) -> Void
   ) {
+    let device = videoDeviceInput?.device
+    let size = portraitSize
+    let usesHevc = preferredVideoCodec.lowercased() == "hevc"
     completion(.success([
-      "initialized": true,
-      "sessionRunning": session.isRunning,
-      "cameraPipelineVersion": 1,
-      "recordingSpec": recordingSpecName,
+      "device": [
+        "manufacturer": "Apple",
+        "model": device?.modelID ?? "",
+        "sdkInt": 0,
+        "release": "",
+      ],
+      "camera": [
+        "initialized": true,
+        "sessionRunning": session.isRunning,
+        "cameraPipelineVersion": 1,
+        "recordingSpec": recordingSpecName,
+        "cameraId": device?.uniqueID ?? "",
+        "videoWidth": size.width,
+        "videoHeight": size.height,
+        "analysisWidth": size.width,
+        "analysisHeight": size.height,
+        "videoMime": usesHevc ? "video/hevc" : "video/avc",
+      ],
     ]))
   }
 
@@ -1275,6 +1295,10 @@ private final class IosCameraHostApi:
       if self.session.canAddOutput(videoOutput) {
         self.session.addOutput(videoOutput)
         videoOutput.setSampleBufferDelegate(self, queue: self.sessionQueue)
+        if let connection = videoOutput.connection(with: .video) {
+          connection.videoOrientation = .portrait
+          connection.isVideoMirrored = false
+        }
         self.videoOutput = videoOutput
       }
 
@@ -1343,13 +1367,13 @@ private final class IosCameraHostApi:
 
   private func initializationDto() -> CameraInitializationDto {
     let device = videoDeviceInput?.device
-    let dimensions = Self.dimensions(for: device)
+    let size = portraitSize
     let usesHevc = preferredVideoCodec.lowercased() == "hevc"
     return CameraInitializationDto(
       textureId: textureId,
-      previewWidth: Int64(dimensions.width),
-      previewHeight: Int64(dimensions.height),
-      sensorOrientation: 90,
+      previewWidth: Int64(size.width),
+      previewHeight: Int64(size.height),
+      sensorOrientation: 0,
       fps: 30,
       videoMime: usesHevc ? "video/hevc" : "video/avc",
       codecFallbackReason: nil,
@@ -1370,11 +1394,11 @@ private final class IosCameraHostApi:
     let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
     let codec: AVVideoCodecType =
       preferredVideoCodec.lowercased() == "hevc" ? .hevc : .h264
-    let dimensions = Self.dimensions(for: videoDeviceInput?.device)
+    let size = portraitSize
     let videoSettings: [String: Any] = [
       AVVideoCodecKey: codec,
-      AVVideoWidthKey: dimensions.width,
-      AVVideoHeightKey: dimensions.height,
+      AVVideoWidthKey: size.width,
+      AVVideoHeightKey: size.height,
       AVVideoCompressionPropertiesKey: [
         AVVideoAverageBitRateKey: 8_000_000,
         AVVideoExpectedSourceFrameRateKey: 30,
@@ -1386,8 +1410,8 @@ private final class IosCameraHostApi:
       assetWriterInput: videoInput,
       sourcePixelBufferAttributes: [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-        kCVPixelBufferWidthKey as String: dimensions.width,
-        kCVPixelBufferHeightKey as String: dimensions.height,
+        kCVPixelBufferWidthKey as String: size.width,
+        kCVPixelBufferHeightKey as String: size.height,
       ]
     )
 
@@ -1579,14 +1603,6 @@ private final class IosCameraHostApi:
     }
   }
 
-  private static func dimensions(
-    for device: AVCaptureDevice?
-  ) -> CMVideoDimensions {
-    guard let formatDescription = device?.activeFormat.formatDescription else {
-      return CMVideoDimensions(width: 1920, height: 1080)
-    }
-    return CMVideoFormatDescriptionGetDimensions(formatDescription)
-  }
 }
 
 /// iOS 前台订单接收：用本地 TCP 监听 5280，解析桌面端推送的
