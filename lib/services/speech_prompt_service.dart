@@ -396,12 +396,13 @@ class DeviceSpeechOutput implements SpeechOutput {
     final AudioPlayer player = _beepPlayer ??= AudioPlayer();
     try {
       if (!_beepContextConfigured) {
+        developer.log('beep_set_audio_context', name: 'speech_prompt');
         await player
             .setAudioContext(
               AudioContext(
                 android: const AudioContextAndroid(
                   contentType: AndroidContentType.sonification,
-                  usageType: AndroidUsageType.notificationEvent,
+                  usageType: AndroidUsageType.assistanceSonification,
                   audioFocus: AndroidAudioFocus.none,
                 ),
               ),
@@ -409,10 +410,12 @@ class DeviceSpeechOutput implements SpeechOutput {
             .timeout(const Duration(seconds: 2));
         _beepContextConfigured = true;
       }
+      developer.log('beep_play', name: 'speech_prompt');
       await player
           .play(BytesSource(_shortBeepWav ??= buildShortBeepWav()))
           .timeout(const Duration(seconds: 3));
-    } on Object {
+    } on Object catch (error) {
+      developer.log('beep_failed: $error', name: 'speech_prompt');
       await _resetBeepPlayer();
     }
   }
