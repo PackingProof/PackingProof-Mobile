@@ -1388,6 +1388,7 @@ private final class IosCameraHostApi:
   private let textures: FlutterTextureRegistry
   private let session = AVCaptureSession()
   private let sessionQueue = DispatchQueue(label: "packingproof.camera.session")
+  private let metadataQueue = DispatchQueue(label: "packingproof.camera.metadata")
   private let bufferLock = NSLock()
 
   private var textureId: Int64 = -1
@@ -1801,7 +1802,9 @@ private final class IosCameraHostApi:
       }
 
       let videoOutput = AVCaptureVideoDataOutput()
-      videoOutput.alwaysDiscardsLateVideoFrames = false
+      // 保持系统缺省的丢弃迟到帧语义，避免视频帧在串行 sessionQueue 上堆积，
+      // 进而把 metadata 回调（扫码）长时间排挤掉，导致「偶尔能扫上、大部分扫不上」。
+      videoOutput.alwaysDiscardsLateVideoFrames = true
       videoOutput.videoSettings = [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
       ]
@@ -1840,7 +1843,8 @@ private final class IosCameraHostApi:
   private func configureOutputDelegates() {
     videoOutput?.setSampleBufferDelegate(self, queue: sessionQueue)
     audioOutput?.setSampleBufferDelegate(self, queue: sessionQueue)
-    metadataOutput?.setMetadataObjectsDelegate(self, queue: sessionQueue)
+    // 扫码回调走独立队列，避免与视频帧写入 / AVAssetWriter 在 sessionQueue 上排队。
+    metadataOutput?.setMetadataObjectsDelegate(self, queue: metadataQueue)
   }
 
   /// 摘除全部 delegate，避免已释放对象再收到回调。
