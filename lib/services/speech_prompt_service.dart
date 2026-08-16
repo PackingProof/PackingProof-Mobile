@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:developer' as developer;
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import '../models/speech_prompt.dart';
@@ -310,22 +309,18 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
         await _output.playAsset(prompt.audioPlayerAssetPath);
         return;
       } on TimeoutException {
-        developer.log(
-          'asset_play_timeout: ${prompt.name}',
-          name: 'speech_prompt',
-        );
+        debugPrint('[speech_prompt] asset_play_timeout: ${prompt.name}');
         assetFailed = true;
       } on Object catch (error) {
-        developer.log(
-          'asset_play_exception: ${prompt.name}: $error',
-          name: 'speech_prompt',
+        debugPrint(
+          '[speech_prompt] asset_play_exception: ${prompt.name}: $error',
         );
         // A missing or damaged bundled prompt falls back to offline system TTS.
         assetFailed = true;
       }
     }
     if (assetFailed) {
-      developer.log('tts_fallback: ${item.text}', name: 'speech_prompt');
+      debugPrint('[speech_prompt] tts_fallback: ${item.text}');
     }
     try {
       await _output.speakSystem(item.text, offlineOnly: true);
@@ -396,7 +391,7 @@ class DeviceSpeechOutput implements SpeechOutput {
     final AudioPlayer player = _beepPlayer ??= AudioPlayer();
     try {
       if (!_beepContextConfigured) {
-        developer.log('beep_set_audio_context', name: 'speech_prompt');
+        debugPrint('[speech_prompt] beep_set_audio_context');
         await player
             .setAudioContext(
               AudioContext(
@@ -410,12 +405,12 @@ class DeviceSpeechOutput implements SpeechOutput {
             .timeout(const Duration(seconds: 2));
         _beepContextConfigured = true;
       }
-      developer.log('beep_play', name: 'speech_prompt');
+      debugPrint('[speech_prompt] beep_play');
       await player
           .play(BytesSource(_shortBeepWav ??= buildShortBeepWav()))
           .timeout(const Duration(seconds: 3));
     } on Object catch (error) {
-      developer.log('beep_failed: $error', name: 'speech_prompt');
+      debugPrint('[speech_prompt] beep_failed: $error');
       await _resetBeepPlayer();
     }
   }
