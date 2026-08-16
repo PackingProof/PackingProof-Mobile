@@ -1594,6 +1594,12 @@ private final class IosCameraHostApi:
       "camera": [
         "initialized": true,
         "sessionRunning": session.isRunning,
+        "disposed": disposed,
+        "workScanEnabled": workScanEnabled,
+        "pairingScanEnabled": pairingScanEnabled,
+        "metadataOutputAttached": metadataOutput != nil,
+        "videoOutputAttached": videoOutput != nil,
+        "audioOutputAttached": audioOutput != nil,
         "cameraPipelineVersion": 1,
         "recordingSpec": recordingSpecName,
         "cameraId": device?.uniqueID ?? "",
