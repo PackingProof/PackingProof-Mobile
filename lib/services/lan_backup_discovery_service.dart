@@ -276,12 +276,13 @@ class LanBackupHostDiscoveryService extends ChangeNotifier
       }
     }
 
-    await Future.wait(
-      List<Future<void>>.generate(
+    await Future.wait(<Future<void>>[
+      ...List<Future<void>>.generate(
         candidates.length < 32 ? candidates.length : 32,
         (_) => worker(),
       ),
-    );
+      _runUdpDiscovery(hosts, revision),
+    ]);
     if (revision != _revision) return;
     final List<LanBackupDiscoveredHost> reachableHosts = hosts
         .where((LanBackupDiscoveredHost host) => host.reachable)
@@ -390,6 +391,73 @@ class LanBackupHostDiscoveryService extends ChangeNotifier
     }
   }
 
+  /// Android 专用：UDP 广播探测主机候选，announce 立即走 HTTP 确认并并入结果。
+  Future<void> _runUdpDiscovery(
+    List<LanBackupDiscoveredHost> hosts,
+    int revision,
+  ) async {
+    if (!Platform.isAndroid) return;
+    await for (final UdpDiscoveryAnnounce announce in _discoverUdpAnnounces()) {
+      if (revision != _revision) return;
+      final LanBackupDiscoveredHost? host = await _probe(
+        Uri(scheme: 'http', host: announce.sourceIp, port: announce.httpPort),
+      );
+      if (revision != _revision) return;
+      if (host == null) continue;
+      final int existingIndex = hosts.indexWhere(
+        (LanBackupDiscoveredHost item) => _isSameDiscoveredHost(item, host),
+      );
+      if (existingIndex >= 0) {
+        hosts[existingIndex] = host;
+      } else {
+        hosts.add(host);
+      }
+      hosts.sort((a, b) => a.name.compareTo(b.name));
+    }
+  }
+
+  Stream<UdpDiscoveryAnnounce> _discoverUdpAnnounces() async* {
+    RawDatagramSocket socket;
+    try {
+      socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+    } on SocketException {
+      return;
+    }
+    socket.broadcastEnabled = true;
+    socket.readEventsEnabled = true;
+
+    Timer? timeout;
+    try {
+      final List<int> request = utf8.encode(
+        jsonEncode(const <String, Object>{
+          'protocol': 'packingproof',
+          'protocolVersion': 1,
+          'action': 'discover',
+        }),
+      );
+      socket.send(
+        request,
+        InternetAddress('255.255.255.255'),
+        udpDiscoveryPort,
+      );
+      // 600ms 仅用于停止等待新的 announce；收到即 yield，不等窗口结束。
+      timeout = Timer(const Duration(milliseconds: 600), socket.close);
+      await for (final RawSocketEvent event in socket) {
+        if (event != RawSocketEvent.read) continue;
+        final Datagram? datagram = socket.receive();
+        if (datagram == null) continue;
+        final UdpDiscoveryAnnounce? announce = parseUdpAnnounce(
+          datagram.data,
+          datagram.address.address,
+        );
+        if (announce != null) yield announce;
+      }
+    } finally {
+      timeout?.cancel();
+      socket.close();
+    }
+  }
+
   @override
   void cancel() {
     _revision++;
@@ -474,4 +542,44 @@ String _normalizedDiscoveredAddress(String value) {
     return value.trim().toLowerCase();
   }
   return '${uri.host.toLowerCase()}:${uri.hasPort ? uri.port : 5280}';
+}
+
+/// 跨端 UDP 广播主机发现协议：固定 UDP 5281，广播 255.255.255.255，
+/// 报文为 UTF-8 JSON，单包不超过 512 字节。iOS 暂不启用。
+const int udpDiscoveryPort = 5281;
+const int udpDiscoveryMaxPacketBytes = 512;
+
+@visibleForTesting
+class UdpDiscoveryAnnounce {
+  const UdpDiscoveryAnnounce(this.nodeId, this.httpPort, this.sourceIp);
+
+  final String nodeId;
+  final int httpPort;
+  final String sourceIp;
+}
+
+@visibleForTesting
+UdpDiscoveryAnnounce? parseUdpAnnounce(List<int> data, String sourceIp) {
+  if (data.length > udpDiscoveryMaxPacketBytes) return null;
+  try {
+    final Object? decoded = jsonDecode(utf8.decode(data));
+    if (decoded is! Map) return null;
+    if (decoded['protocol'] != 'packingproof') return null;
+    if (decoded['protocolVersion'] != 1) return null;
+    if (decoded['action'] != 'announce') return null;
+    final String nodeId = '${decoded['nodeId'] ?? ''}'.trim();
+    if (!_isUuid(nodeId)) return null;
+    final int httpPort = (decoded['httpPort'] as num?)?.toInt() ?? 0;
+    if (httpPort <= 0 || httpPort > 65535) return null;
+    return UdpDiscoveryAnnounce(nodeId, httpPort, sourceIp);
+  } on Object {
+    return null;
+  }
+}
+
+bool _isUuid(String value) {
+  final RegExp uuid = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
+  return uuid.hasMatch(value);
 }

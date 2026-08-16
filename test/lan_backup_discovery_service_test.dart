@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -274,6 +275,82 @@ void main() {
     expect(service.snapshot.hosts.single.nodeId, 'host-2');
     expect(service.snapshot.hosts.single.reachable, isTrue);
     expect(cache.saved.single.nodeId, 'host-2');
+  });
+
+  group('UDP announce 解析', () {
+    test('接受合法 announce', () {
+      final UdpDiscoveryAnnounce? announce = parseUdpAnnounce(
+        utf8.encode(
+          jsonEncode(const <String, Object>{
+            'protocol': 'packingproof',
+            'protocolVersion': 1,
+            'action': 'announce',
+            'nodeId': '123e4567-e89b-12d3-a456-426614174000',
+            'httpPort': 5381,
+          }),
+        ),
+        '192.0.2.10',
+      );
+      expect(announce, isNotNull);
+      expect(announce!.nodeId, '123e4567-e89b-12d3-a456-426614174000');
+      expect(announce.httpPort, 5381);
+      expect(announce.sourceIp, '192.0.2.10');
+    });
+
+    test('拒绝非法字段', () {
+      const String nodeId = '123e4567-e89b-12d3-a456-426614174000';
+      final List<Map<String, Object>> cases = <Map<String, Object>>[
+        <String, Object>{
+          'protocol': 'other',
+          'protocolVersion': 1,
+          'action': 'announce',
+          'nodeId': nodeId,
+          'httpPort': 5381,
+        },
+        <String, Object>{
+          'protocol': 'packingproof',
+          'protocolVersion': 2,
+          'action': 'announce',
+          'nodeId': nodeId,
+          'httpPort': 5381,
+        },
+        <String, Object>{
+          'protocol': 'packingproof',
+          'protocolVersion': 1,
+          'action': 'discover',
+          'nodeId': nodeId,
+          'httpPort': 5381,
+        },
+        <String, Object>{
+          'protocol': 'packingproof',
+          'protocolVersion': 1,
+          'action': 'announce',
+          'nodeId': 'not-a-uuid',
+          'httpPort': 5381,
+        },
+        <String, Object>{
+          'protocol': 'packingproof',
+          'protocolVersion': 1,
+          'action': 'announce',
+          'nodeId': nodeId,
+          'httpPort': 0,
+        },
+        <String, Object>{
+          'protocol': 'packingproof',
+          'protocolVersion': 1,
+          'action': 'announce',
+          'nodeId': nodeId,
+          'httpPort': 65536,
+        },
+      ];
+      for (final Map<String, Object> object in cases) {
+        expect(
+          parseUdpAnnounce(utf8.encode(jsonEncode(object)), '192.0.2.10'),
+          isNull,
+          reason: object.toString(),
+        );
+      }
+    });
   });
 }
 
