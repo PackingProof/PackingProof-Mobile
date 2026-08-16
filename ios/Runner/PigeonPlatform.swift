@@ -670,7 +670,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   private func normalized(_ value: [String?: Any?]) -> [String: Any] {
     var result: [String: Any] = [:]
     for (key, item) in value {
-      guard let key = key, let item = item else { continue }
+      guard let key = key, let item = item, !(item is NSNull) else { continue }
       result[key] = item
     }
     return result
