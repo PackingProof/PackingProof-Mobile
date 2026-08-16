@@ -412,7 +412,11 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     request: [String?: Any?],
     completion: @escaping (Result<[String?: Any?]?, Error>) -> Void
   ) {
-    defaults.set(request["unbackedRetentionDays"], forKey: keys.retention)
+    if let days = request["unbackedRetentionDays"] as? Int {
+      defaults.set(days, forKey: keys.retention)
+    } else {
+      defaults.removeObject(forKey: keys.retention)
+    }
     completion(.success(currentSnapshot()))
   }
 
@@ -954,9 +958,8 @@ private final class IosCameraHostApi:
   }
 
   deinit {
-    if textureId >= 0 {
-      textures.unregisterTexture(textureId)
-    }
+    // 引擎销毁阶段调用 FlutterTextureRegistry 会触发 SIGSEGV，
+    // 纹理由 dispose() 正常路径反注册，App 终止时由引擎统一回收。
   }
 
   // MARK: - CameraHostApi
@@ -1199,6 +1202,11 @@ private final class IosCameraHostApi:
 
   func dispose(completion: @escaping (Result<Void, Error>) -> Void) {
     disposed = true
+    // 先移除采样回调，避免 App 终止时 AVCaptureSession 再回调到已释放的
+    // self，触发 use-after-free（SIGSEGV）。
+    videoOutput?.setSampleBufferDelegate(nil, queue: nil)
+    audioOutput?.setSampleBufferDelegate(nil, queue: nil)
+    metadataOutput?.setMetadataObjectsDelegate(nil, queue: nil)
     sessionQueue.async { [weak self] in
       guard let self else {
         completion(.success(()))
@@ -1395,6 +1403,16 @@ private final class IosCameraHostApi:
   // MARK: - Recording
 
   private func startWriter(path: String) throws {
+    if recordAudio {
+      // 录像需要同时录音和播报，这里显式切换到 playAndRecord；
+      // 否则提示音会话的 .playback 会阻止麦克风输入，导致录像没声音。
+      try? AVAudioSession.sharedInstance().setCategory(
+        .playAndRecord,
+        mode: .videoRecording,
+        options: [.defaultToSpeaker]
+      )
+      try? AVAudioSession.sharedInstance().setActive(true)
+    }
     finishCurrentWriter {}
     let url = URL(fileURLWithPath: path)
     try? FileManager.default.removeItem(at: url)
