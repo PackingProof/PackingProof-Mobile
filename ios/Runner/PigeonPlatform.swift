@@ -967,12 +967,19 @@ private final class IosCameraHostApi:
   }
 
   deinit {
+    disposed = true
+    clearOutputDelegates()
+    let session = self.session
+    sessionQueue.async {
+      if session.isRunning {
+        session.stopRunning()
+      }
+    }
     if let observer = runtimeErrorObserver {
       NotificationCenter.default.removeObserver(observer)
     }
     runtimeErrorObserver = nil
-    // 引擎销毁阶段调用 FlutterTextureRegistry 会触发 SIGSEGV，
-    // 纹理由 dispose() 正常路径反注册，App 终止时由引擎统一回收。
+    // 不在此处触碰 textures：引擎销毁阶段调用 FlutterTextureRegistry 会 SIGSEGV。
   }
 
   // MARK: - CameraHostApi
@@ -1251,6 +1258,7 @@ private final class IosCameraHostApi:
     didOutput sampleBuffer: CMSampleBuffer,
     from connection: AVCaptureConnection
   ) {
+    guard !disposed else { return }
     if output === videoOutput {
       guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
         return
@@ -1258,7 +1266,9 @@ private final class IosCameraHostApi:
       bufferLock.lock()
       latestPixelBuffer = pixelBuffer
       bufferLock.unlock()
-      textures.textureFrameAvailable(textureId)
+      if textureId >= 0 {
+        textures.textureFrameAvailable(textureId)
+      }
       appendVideo(sampleBuffer, pixelBuffer: pixelBuffer)
     } else if output === audioOutput {
       appendAudio(sampleBuffer)
@@ -1270,6 +1280,7 @@ private final class IosCameraHostApi:
     didOutput metadataObjects: [AVMetadataObject],
     from connection: AVCaptureConnection
   ) {
+    guard !disposed else { return }
     guard pairingScanEnabled || workScanEnabled else { return }
     let detectedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
     var candidates: [BarcodeCandidateDto] = []
