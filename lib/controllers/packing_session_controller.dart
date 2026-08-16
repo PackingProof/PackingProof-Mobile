@@ -28,6 +28,7 @@ import '../services/barcode_stability_tracker.dart';
 import '../services/barcode_work_mode_policy.dart';
 import '../services/camera_diagnostics_service.dart';
 import '../services/camera_capability_policy.dart';
+import '../services/camera_lens_policy.dart';
 import '../services/continuous_camera_service.dart';
 import '../services/diagnostics_log_service.dart';
 import '../services/initial_recording_prompt_policy.dart';
@@ -1012,59 +1013,13 @@ class PackingSessionController extends ChangeNotifier {
     final ContinuousCameraService? nativeCamera = _nativeCamera;
     if (nativeCamera == null) return;
     try {
-      _backCameraLenses = await nativeCamera.listCameras();
+      final List<NativeCameraLens> lenses = await nativeCamera.listCameras();
+      _backCameraLenses = scannableBackLenses(lenses);
     } on Object {
       _backCameraLenses = const <NativeCameraLens>[];
     }
     if (!_disposed) {
       notifyListeners();
-    }
-  }
-
-  /// iOS 上超广角镜头（0.5x）会显著缩小条码，原生 metadata 扫码经常识别不到。
-  /// 开始工作前若仍停在该类非主摄上，先切回主摄，保证扫码/录像主链路稳定。
-  Future<void> _restoreMainBackCameraForScanning() async {
-    if (!Platform.isIOS) return;
-    final ContinuousCameraService? nativeCamera = _nativeCamera;
-    final String? activeCameraId = _nativeInitialization?.cameraId;
-    NativeCameraLens? mainLens;
-    for (final NativeCameraLens lens in _backCameraLenses) {
-      if (lens.isMain) {
-        mainLens = lens;
-        break;
-      }
-    }
-    if (nativeCamera == null ||
-        activeCameraId == null ||
-        mainLens == null ||
-        activeCameraId == mainLens.cameraId) {
-      return;
-    }
-    try {
-      if (_torchEnabled) {
-        await nativeCamera.setTorchEnabled(false);
-        _torchEnabled = false;
-      }
-      _nativeInitialization = await nativeCamera.switchToCamera(
-        mainLens.cameraId,
-      );
-      await _refreshBackCameraLenses();
-      unawaited(
-        _runtimeLog.log(
-          kind: 'restore_main_lens_for_scan',
-          extra: <String, Object?>{
-            'fromCameraId': activeCameraId,
-            'toCameraId': mainLens.cameraId,
-          },
-        ),
-      );
-    } on Object catch (error) {
-      unawaited(
-        _runtimeLog.log(
-          kind: 'restore_main_lens_failed',
-          extra: <String, Object?>{'error': '$error'},
-        ),
-      );
     }
   }
 
@@ -1127,7 +1082,6 @@ class PackingSessionController extends ChangeNotifier {
     _stabilityTracker.reset();
     _speechService.resetIncidents();
     _beginInitialPromptFlow();
-    await _restoreMainBackCameraForScanning();
 
     try {
       await WakelockPlus.enable();
