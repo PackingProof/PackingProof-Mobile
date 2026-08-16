@@ -20,6 +20,7 @@ private const val CLEANUP_TAG = "PackingProofCleanup"
 
 internal object LanBackupCleanupScheduler {
     private const val WORK_PREFIX = "lan-backup-cleanup-"
+    val RETENTION_CONFIRMATION_GRACE: Duration = Duration.ofHours(24)
 
     fun reschedule(context: Context, store: LanBackupStateStore, job: JSONObject) =
         LanBackupStateStore.withJobLock {
@@ -87,6 +88,16 @@ internal object LanBackupCleanupScheduler {
 
     internal fun shouldDeferForBackupState(state: String): Boolean =
         state == "pending" || state == "uploading"
+
+    internal fun isConfirmationFresh(
+        lastAttestedAt: String?,
+        now: Instant = Instant.now(),
+    ): Boolean {
+        val attested = lastAttestedAt ?: return false
+        return runCatching {
+            !now.isAfter(Instant.parse(attested).plus(RETENTION_CONFIRMATION_GRACE))
+        }.getOrDefault(false)
+    }
 }
 
 internal enum class LanBackupFileCleanupResult { deleted, missing, stale, failed }
@@ -175,118 +186,200 @@ internal class LanBackupCleanupWorker(
     override suspend fun doWork(): Result {
         val id = inputData.getString("jobId") ?: return Result.failure()
         val generation = inputData.getString("generation") ?: return Result.success()
-        val snapshot = store.readJob(id) ?: return Result.success()
-        val requiresRemoteVerification =
-            LanBackupCleanupScheduler.nullableText(snapshot, "backupCompletedAt") != null
-        val freshRemoteVerification = !requiresRemoteVerification || run {
-            val connection = store.connection()
-            val credential = credentials.load()
-            connection != null && !credential.isNullOrBlank() &&
-                BackupRequestAuthentication.verifyRemoteRecord(
-                    connection,
-                    credential,
-                    store.deviceId(),
-                    snapshot,
-                )
-        }
-        return LanBackupStateStore.withJobLock {
-        val job = store.readJob(id) ?: return@withJobLock Result.success()
-        if (LanBackupCleanupScheduler.nullableText(job, "generation") != generation) {
-            return@withJobLock Result.success()
-        }
-        if (LanBackupCleanupScheduler.nullableText(job, "localDeletedAt") != null) {
-            return@withJobLock Result.success()
-        }
-        val dueAt = LanBackupCleanupScheduler.dueAt(store, job)
-            ?: return@withJobLock Result.success()
-        if (Instant.now().isBefore(dueAt)) {
-            LanBackupCleanupScheduler.reschedule(applicationContext, store, job)
-            return@withJobLock Result.success()
-        }
-        if (LanBackupCleanupScheduler.shouldDeferForBackupState(job.optString("state"))) {
-            job.put("waitingCleanup", true)
-            store.writeJob(job)
-            return@withJobLock Result.retry()
-        }
 
-        val file = File(job.optString("filePath"))
-        val appDataRoot = applicationContext.dataDir.canonicalFile
-        val managed = runCatching {
-            file.canonicalFile.path.startsWith(appDataRoot.path + File.separator)
-        }.getOrDefault(false)
-        if (!managed) {
-            Log.w(CLEANUP_TAG, "Cleanup rejected unmanaged path=${file.absolutePath}")
-            job.put("waitingCleanup", false)
-                .put("errorMessage", "录像不在应用目录内，已取消自动清理")
-            store.writeJob(job)
-            return@withJobLock Result.failure()
-        }
-        val completedAt = LanBackupCleanupScheduler.nullableText(job, "backupCompletedAt")
-        val contentSha256 = LanBackupCleanupScheduler.nullableText(job, "contentSha256")
-        if (completedAt != null && job.optInt("verificationVersion") < BackupRequestAuthentication.VERSION) {
-            Log.w(CLEANUP_TAG, "Cleanup preserved legacy unsigned backup path=${file.absolutePath}")
-            job.put("waitingCleanup", false)
-                .put("errorMessage", "需要重新申请并由电脑允许连接后才能自动清理")
-            store.writeJob(job)
-            return@withJobLock Result.success()
-        }
-        if (completedAt != null && !freshRemoteVerification) {
-            Log.w(CLEANUP_TAG, "Cleanup preserved backup without fresh host attestation path=${file.absolutePath}")
-            job.put("waitingCleanup", true)
-                .put("errorMessage", "暂时无法向备份电脑确认录像，已保留本机录像")
-            store.writeJob(job)
-            return@withJobLock Result.retry()
-        }
-        if (completedAt != null) {
-            job.put("lastAttestedAt", Instant.now().toString())
-        }
-        if (completedAt != null && contentSha256 == null) {
-            Log.w(CLEANUP_TAG, "Cleanup preserved unverified backup path=${file.absolutePath}")
-            job.put("waitingCleanup", false)
-                .put("errorMessage", "备份记录缺少文件校验信息，已保留本机录像")
-            store.writeJob(job)
-            return@withJobLock Result.success()
-        }
-        when (
-            LanBackupFileCleanup.deleteExpected(
-                file = file,
-                expectedBytes = job.optLong("totalBytes", -1L),
-                expectedLastModified = job.optLong("lastModified", -1L),
-                expectedSha256 = contentSha256,
-            )
-        ) {
-            LanBackupFileCleanupResult.stale -> {
-                Log.w(CLEANUP_TAG, "Cleanup preserved replaced recording path=${file.absolutePath}")
-                job.put("waitingCleanup", false)
-                    .put("errorMessage", "录像文件已被替换，已取消本次自动清理")
-                store.writeJob(job)
+        // 预计算远端确认结果（网络调用不持有 job 锁，避免阻塞 snapshot/enqueue）。
+        val snapshot = store.readJob(id) ?: return Result.success()
+        val snapshotCompletedAt =
+            LanBackupCleanupScheduler.nullableText(snapshot, "backupCompletedAt")
+        val precomputedAttestation: RemoteRecordAttestation? =
+            if (snapshotCompletedAt != null) {
+                if (
+                    LanBackupCleanupScheduler.isConfirmationFresh(
+                        LanBackupCleanupScheduler.nullableText(snapshot, "lastAttestedAt"),
+                    )
+                ) {
+                    RemoteRecordAttestation.Confirmed
+                } else {
+                    val connection = store.connection()
+                    val credential = credentials.load()
+                    val recordIds = snapshot.optJSONArray("remoteRecordIds")
+                    val sessions = snapshot.optJSONArray("sessions")
+                    val sha256 =
+                        LanBackupCleanupScheduler.nullableText(snapshot, "contentSha256")
+                    if (
+                        connection == null || credential.isNullOrBlank() ||
+                        recordIds == null || recordIds.length() == 0 ||
+                        sessions == null || sessions.length() == 0 ||
+                        sha256 == null
+                    ) {
+                        null
+                    } else {
+                        BackupRequestAuthentication.verifyRemoteRecord(
+                            connection,
+                            credential,
+                            store.deviceId(),
+                            recordIds.getLong(0),
+                            sessions.getJSONObject(0).getString("id"),
+                            sha256,
+                            snapshot.optLong("totalBytes", -1L),
+                        )
+                    }
+                }
+            } else {
+                null
+            }
+
+        return LanBackupStateStore.withJobLock {
+            val job = store.readJob(id) ?: return@withJobLock Result.success()
+            if (LanBackupCleanupScheduler.nullableText(job, "generation") != generation) {
                 return@withJobLock Result.success()
             }
-            LanBackupFileCleanupResult.failed -> {
-                Log.w(CLEANUP_TAG, "Cleanup failed and will retry path=${file.absolutePath}")
+            if (LanBackupCleanupScheduler.nullableText(job, "localDeletedAt") != null) {
+                return@withJobLock Result.success()
+            }
+            val dueAt = LanBackupCleanupScheduler.dueAt(store, job)
+                ?: return@withJobLock Result.success()
+            if (Instant.now().isBefore(dueAt)) {
+                LanBackupCleanupScheduler.reschedule(applicationContext, store, job)
+                return@withJobLock Result.success()
+            }
+            if (
+                LanBackupCleanupScheduler.shouldDeferForBackupState(job.optString("state"))
+            ) {
                 job.put("waitingCleanup", true)
                 store.writeJob(job)
                 return@withJobLock Result.retry()
             }
-            LanBackupFileCleanupResult.deleted -> Log.i(
-                CLEANUP_TAG,
-                "Cleanup deleted ${if (completedAt == null) "unbacked" else "verified backup"} " +
-                    "recording path=${file.absolutePath}",
-            )
-            LanBackupFileCleanupResult.missing -> Log.i(
-                CLEANUP_TAG,
-                "Cleanup found recording already missing path=${file.absolutePath}",
-            )
-        }
-        job.put("localDeletedAt", Instant.now().toString())
-            .put("scheduledCleanupAt", JSONObject.NULL)
-            .put("waitingCleanup", false)
-        if (completedAt == null) {
-            job.put("state", "expired")
-                .put("errorMessage", "未备份录像已按保留策略清理")
-        }
-        store.writeJob(job)
-        Result.success()
+
+            val file = File(job.optString("filePath"))
+            val appDataRoot = applicationContext.dataDir.canonicalFile
+            val managed = runCatching {
+                file.canonicalFile.path.startsWith(appDataRoot.path + File.separator)
+            }.getOrDefault(false)
+            if (!managed) {
+                Log.w(CLEANUP_TAG, "Cleanup rejected unmanaged path=${file.absolutePath}")
+                job.put("waitingCleanup", false)
+                    .put("errorMessage", "录像不在应用目录内，已取消自动清理")
+                store.writeJob(job)
+                return@withJobLock Result.failure()
+            }
+
+            val completedAt =
+                LanBackupCleanupScheduler.nullableText(job, "backupCompletedAt")
+            val contentSha256 =
+                LanBackupCleanupScheduler.nullableText(job, "contentSha256")
+            var unconfirmedCleanup = false
+
+            if (completedAt != null) {
+                val recordIds = job.optJSONArray("remoteRecordIds")
+                val sessions = job.optJSONArray("sessions")
+                val hasTrustedEvidence =
+                    job.optInt("verificationVersion") >= BackupRequestAuthentication.VERSION &&
+                        contentSha256 != null && contentSha256.length == 64 &&
+                        job.optLong("totalBytes", -1L) > 0 &&
+                        recordIds != null && recordIds.length() > 0 &&
+                        sessions != null && sessions.length() > 0
+                if (!hasTrustedEvidence) {
+                    Log.w(
+                        CLEANUP_TAG,
+                        "Cleanup preserved legacy/unverified backup path=${file.absolutePath}",
+                    )
+                    job.put("waitingCleanup", false)
+                        .put("errorMessage", "备份记录缺少安全校验信息，需重新备份后才能自动清理")
+                    store.writeJob(job)
+                    return@withJobLock Result.success()
+                }
+
+                val attestation =
+                    if (
+                        LanBackupCleanupScheduler.isConfirmationFresh(
+                            LanBackupCleanupScheduler.nullableText(job, "lastAttestedAt"),
+                        )
+                    ) {
+                        RemoteRecordAttestation.Confirmed
+                    } else {
+                        precomputedAttestation ?: RemoteRecordAttestation.Unreachable
+                    }
+                when (attestation) {
+                    RemoteRecordAttestation.Confirmed -> {
+                        job.put("lastAttestedAt", Instant.now().toString())
+                    }
+                    RemoteRecordAttestation.Missing -> {
+                        Log.w(CLEANUP_TAG, "Cleanup preserved missing remote record path=${file.absolutePath}")
+                        job.put("waitingCleanup", false)
+                            .put("errorMessage", "远端缺失，待重新备份")
+                        store.writeJob(job)
+                        return@withJobLock Result.success()
+                    }
+                    RemoteRecordAttestation.Unauthorized -> {
+                        Log.w(CLEANUP_TAG, "Cleanup preserved unauthorized attestation path=${file.absolutePath}")
+                        job.put("waitingCleanup", false)
+                            .put("errorMessage", "需要重新扫码授权")
+                        store.writeJob(job)
+                        return@withJobLock Result.success()
+                    }
+                    RemoteRecordAttestation.NotReady -> {
+                        Log.w(CLEANUP_TAG, "Cleanup preserved not-ready remote record path=${file.absolutePath}")
+                        job.put("waitingCleanup", true)
+                            .put("errorMessage", "电脑端尚未完成校验")
+                        store.writeJob(job)
+                        return@withJobLock Result.retry()
+                    }
+                    RemoteRecordAttestation.Unreachable -> {
+                        Log.w(CLEANUP_TAG, "Cleanup unconfirmed backup path=${file.absolutePath}")
+                        unconfirmedCleanup = true
+                    }
+                }
+            }
+
+            when (
+                LanBackupFileCleanup.deleteExpected(
+                    file = file,
+                    expectedBytes = job.optLong("totalBytes", -1L),
+                    expectedLastModified = job.optLong("lastModified", -1L),
+                    expectedSha256 = contentSha256,
+                )
+            ) {
+                LanBackupFileCleanupResult.stale -> {
+                    Log.w(CLEANUP_TAG, "Cleanup preserved replaced recording path=${file.absolutePath}")
+                    job.put("waitingCleanup", false)
+                        .put("errorMessage", "录像文件已被替换，已取消本次自动清理")
+                    store.writeJob(job)
+                    return@withJobLock Result.success()
+                }
+                LanBackupFileCleanupResult.failed -> {
+                    Log.w(CLEANUP_TAG, "Cleanup failed and will retry path=${file.absolutePath}")
+                    job.put("waitingCleanup", true)
+                    store.writeJob(job)
+                    return@withJobLock Result.retry()
+                }
+                LanBackupFileCleanupResult.deleted -> Log.i(
+                    CLEANUP_TAG,
+                    "Cleanup deleted ${if (completedAt == null) "unbacked" else "verified backup"} " +
+                        "recording path=${file.absolutePath}",
+                )
+                LanBackupFileCleanupResult.missing -> Log.i(
+                    CLEANUP_TAG,
+                    "Cleanup found recording already missing path=${file.absolutePath}",
+                )
+            }
+            job.put("localDeletedAt", Instant.now().toString())
+                .put("scheduledCleanupAt", JSONObject.NULL)
+                .put("waitingCleanup", false)
+                .put(
+                    "cleanupReason",
+                    when {
+                        completedAt == null -> "未备份录像保留策略清理"
+                        unconfirmedCleanup -> "已备份未确认清理（电脑离线）"
+                        else -> "已备份录像保留策略清理"
+                    },
+                )
+            if (completedAt == null) {
+                job.put("state", "expired")
+                    .put("errorMessage", "未备份录像已按保留策略清理")
+            }
+            store.writeJob(job)
+            Result.success()
         }
     }
 }

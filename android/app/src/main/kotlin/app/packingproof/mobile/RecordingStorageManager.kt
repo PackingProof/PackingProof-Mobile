@@ -10,13 +10,14 @@ internal object RecordingStoragePolicy {
     const val WARNING_BYTES = 3L * 1024 * 1024 * 1024
     const val MINIMUM_BYTES = 2L * 1024 * 1024 * 1024
     const val TARGET_BYTES = 3L * 1024 * 1024 * 1024
+    val STORAGE_ATTESTATION_FRESHNESS = java.time.Duration.ofMinutes(5)
 
     fun needsWarning(availableBytes: Long): Boolean = availableBytes < WARNING_BYTES
     fun needsReclaim(availableBytes: Long): Boolean = availableBytes < MINIMUM_BYTES
 
     fun isFreshAttestation(value: String): Boolean = runCatching {
         val age = java.time.Duration.between(Instant.parse(value), Instant.now()).abs()
-        age <= java.time.Duration.ofMinutes(5)
+        age <= STORAGE_ATTESTATION_FRESHNESS
     }.getOrDefault(false)
 
     fun verifiedCandidates(

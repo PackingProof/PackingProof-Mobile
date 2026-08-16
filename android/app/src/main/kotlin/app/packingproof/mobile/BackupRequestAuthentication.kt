@@ -13,6 +13,14 @@ internal data class StoredBackupCredential(
     val version: Int,
 )
 
+internal enum class RemoteRecordAttestation {
+    Confirmed,
+    Missing,
+    Unauthorized,
+    NotReady,
+    Unreachable,
+}
+
 internal object BackupRequestAuthentication {
     const val VERSION = 3
 
@@ -86,19 +94,12 @@ internal object BackupRequestAuthentication {
         connectionInfo: org.json.JSONObject,
         credentialValue: String,
         deviceId: String,
-        job: org.json.JSONObject,
-    ): Boolean = runCatching {
+        recordId: Long,
+        sessionId: String,
+        fileSha256: String,
+        fileSizeBytes: Long,
+    ): RemoteRecordAttestation = runCatching {
         val credential = parse(credentialValue)
-        if (credential.version < VERSION) return false
-        val recordIds = job.optJSONArray("remoteRecordIds") ?: return false
-        if (recordIds.length() == 0) return false
-        val recordId = recordIds.getLong(0)
-        val sessions = job.optJSONArray("sessions") ?: return false
-        if (sessions.length() == 0) return false
-        val sessionId = sessions.getJSONObject(0).getString("id")
-        val fileSha256 = job.optString("contentSha256")
-        val fileSizeBytes = job.optLong("totalBytes", -1L)
-        if (fileSha256.length != 64 || fileSizeBytes <= 0) return false
         val baseUrl = connectionInfo.getString("baseUrl").trimEnd('/')
         val url = "$baseUrl/api/mobile-backup/records/$recordId/attestation"
         val http = URL(url).openConnection() as HttpURLConnection
@@ -108,22 +109,37 @@ internal object BackupRequestAuthentication {
         http.useCaches = false
         http.instanceFollowRedirects = false
         apply(http, url, "GET", credential, deviceId, ByteArray(0))
-        if (http.responseCode !in 200..299) return false
-        val body = http.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val response = org.json.JSONObject(body)
-        response.optString("status") == "verified" &&
-            response.optString("fileSha256").equals(fileSha256, ignoreCase = true) &&
-            verifyReceipt(
-                response,
-                credential,
-                connectionInfo.optString("computerId"),
-                deviceId,
-                sessionId,
-                fileSha256,
-                fileSizeBytes,
-                recordId,
-            )
-    }.getOrDefault(false)
+        val code = http.responseCode
+        when (code) {
+            404 -> RemoteRecordAttestation.Missing
+            403 -> RemoteRecordAttestation.Unauthorized
+            409 -> RemoteRecordAttestation.NotReady
+            in 200..299 -> {
+                val body =
+                    http.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                val response = org.json.JSONObject(body)
+                val verified =
+                    response.optString("status") == "verified" &&
+                        response.optString("fileSha256").equals(fileSha256, ignoreCase = true) &&
+                        verifyReceipt(
+                            response,
+                            credential,
+                            connectionInfo.optString("computerId"),
+                            deviceId,
+                            sessionId,
+                            fileSha256,
+                            fileSizeBytes,
+                            recordId,
+                        )
+                if (verified) {
+                    RemoteRecordAttestation.Confirmed
+                } else {
+                    RemoteRecordAttestation.NotReady
+                }
+            }
+            else -> RemoteRecordAttestation.Unreachable
+        }
+    }.getOrDefault(RemoteRecordAttestation.Unreachable)
 
     private fun hmac(secret: String, value: String): String {
         val mac = Mac.getInstance("HmacSHA256")
