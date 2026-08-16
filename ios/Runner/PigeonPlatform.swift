@@ -346,8 +346,8 @@ private final class IosAlertAudioSessionHostApi: AlertAudioSessionHostApi {
     do {
       try AVAudioSession.sharedInstance().setCategory(
         .playAndRecord,
-        mode: .spokenAudio,
-        options: [.duckOthers]
+        mode: .videoRecording,
+        options: [.defaultToSpeaker]
       )
       try AVAudioSession.sharedInstance().setActive(true)
       completion(.success(()))
