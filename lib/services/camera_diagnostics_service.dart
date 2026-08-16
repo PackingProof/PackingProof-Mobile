@@ -20,7 +20,7 @@ class CameraDiagnosticsService {
   }) : _rootProvider = rootProvider ?? getApplicationDocumentsDirectory,
        _snapshotLoader = snapshotLoader ?? _nativeSnapshotLoader;
 
-  static const Duration heartbeatInterval = Duration(seconds: 2);
+  static const Duration heartbeatInterval = Duration(seconds: 10);
 
   final Future<Directory> Function() _rootProvider;
   final Future<CameraDiagnosticsSnapshot?> Function() _snapshotLoader;
