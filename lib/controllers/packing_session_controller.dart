@@ -243,7 +243,8 @@ class PackingSessionController extends ChangeNotifier {
   bool get canFinishCurrentOrder =>
       alternatingRecording && !isBusy && _nativeCamera != null;
   String get capabilityStatusText {
-    final String base = '${_capabilityMode.label}：${_capabilityMode.description}';
+    final String base =
+        '${_capabilityMode.label}：${_capabilityMode.description}';
     if (_capabilityMode == CameraCapabilityMode.unverified) {
       final String? reason = _capabilityState?['probeErrorReason'] as String?;
       if (reason != null && reason.trim().isNotEmpty) {
@@ -620,7 +621,8 @@ class PackingSessionController extends ChangeNotifier {
     final Map<String, Object?>? cachedIdentity = _identityMap(
       cached?['identity'],
     );
-    final bool cacheValid = _identityMatches(cachedIdentity, identity) &&
+    final bool cacheValid =
+        _identityMatches(cachedIdentity, identity) &&
         _capabilityState?['stale'] != true;
     if (cacheValid) {
       final CameraCapabilityMode mode = CameraCapabilityMode.fromWire(
@@ -715,8 +717,9 @@ class PackingSessionController extends ChangeNotifier {
           infraReason = '${raw['probeErrorReason'] ?? status}';
           break;
         }
-        final List<Object?> phaseList =
-            List<Object?>.from(raw['phases'] as List? ?? const <Object?>[]);
+        final List<Object?> phaseList = List<Object?>.from(
+          raw['phases'] as List? ?? const <Object?>[],
+        );
         final List<CameraProbePhase> phases = phaseList
             .map(
               (Object? item) => CameraProbePhase.fromMap(
@@ -845,10 +848,9 @@ class PackingSessionController extends ChangeNotifier {
     final String cameraId = _nativeInitialization?.cameraId ?? '';
     String sessionConfigStage = '';
     try {
-      final CameraDiagnosticsSnapshot? snapshot =
-          await _nativeCamera?.getDiagnostics();
-      sessionConfigStage =
-          '${snapshot?.camera['sessionConfigStage'] ?? ''}';
+      final CameraDiagnosticsSnapshot? snapshot = await _nativeCamera
+          ?.getDiagnostics();
+      sessionConfigStage = '${snapshot?.camera['sessionConfigStage'] ?? ''}';
     } on Object {
       // 诊断失败不影响降级安全网。
     }
@@ -860,14 +862,12 @@ class PackingSessionController extends ChangeNotifier {
       '${info['mode'] ?? ''}',
     ].join('|');
     final Map<String, Object?>? state = _capabilityState;
-    final List<Object?> existing =
-        List<Object?>.from(state?['suspicions'] as List? ?? const <Object?>[]);
+    final List<Object?> existing = List<Object?>.from(
+      state?['suspicions'] as List? ?? const <Object?>[],
+    );
     final int now = DateTime.now().millisecondsSinceEpoch;
     final List<Map<String, Object?>> suspicions = existing
-        .map(
-          (Object? item) =>
-              Map<String, Object?>.from(item! as Map),
-        )
+        .map((Object? item) => Map<String, Object?>.from(item! as Map))
         .where(
           (Map<String, Object?> item) =>
               (item['key'] == key) &&
@@ -1238,10 +1238,7 @@ class PackingSessionController extends ChangeNotifier {
       unawaited(
         _runtimeLog.log(
           kind: 'stop_work_error',
-          extra: <String, Object?>{
-            'generation': generation,
-            'error': '$error',
-          },
+          extra: <String, Object?>{'generation': generation, 'error': '$error'},
         ),
       );
       _timeline.reset();
@@ -1274,7 +1271,9 @@ class PackingSessionController extends ChangeNotifier {
     try {
       final List<RecordingSession> saved = await _finishNativeRecording();
       unawaited(_captureCameraDiagnosticsSnapshot('finish_order'));
-      _alternatingLastCompletedCode = completedCode.isEmpty ? null : completedCode;
+      _alternatingLastCompletedCode = completedCode.isEmpty
+          ? null
+          : completedCode;
       _alternatingNoCodeSince = null;
       _lastMarker = null;
       _candidateCode = '';
@@ -1958,8 +1957,8 @@ class PackingSessionController extends ChangeNotifier {
             'source': _pairingScanActive
                 ? 'pairing'
                 : _historyScanActive
-                    ? 'history'
-                    : 'work',
+                ? 'history'
+                : 'work',
           },
         ),
       );
@@ -3044,16 +3043,18 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   void _showDuplicateOrderWarning(String trackingNumber) {
+    final String incidentKey = 'duplicate-order-number:$trackingNumber';
     _scanWarningMessage = '警告：重复单号，请确认';
     _scanWarningTimer?.cancel();
     _scanWarningTimer = Timer(const Duration(seconds: 3), () {
       if (_disposed) return;
       _scanWarningMessage = null;
+      _speechService.resolveIncident(incidentKey);
       notifyListeners();
     });
     _speechService.enqueue(
       SpeechPrompt.duplicateOrderWarning,
-      incidentKey: 'duplicate-order-number:$trackingNumber',
+      incidentKey: incidentKey,
     );
     notifyListeners();
   }

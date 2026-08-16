@@ -135,6 +135,31 @@ void main() {
     await service.dispose();
   });
 
+  test('重复单号警告在释放 incident 后可再次播报', () async {
+    final _FakeSpeechOutput output = _FakeSpeechOutput();
+    final SpeechPromptService service = SpeechPromptService(output: output);
+
+    service.enqueue(
+      SpeechPrompt.duplicateOrderWarning,
+      incidentKey: 'duplicate-order-number:TRACK-1',
+    );
+    service.enqueue(
+      SpeechPrompt.duplicateOrderWarning,
+      incidentKey: 'duplicate-order-number:TRACK-1',
+    );
+    await service.waitUntilIdle();
+    expect(output.assetPaths, hasLength(1));
+
+    service.resolveIncident('duplicate-order-number:TRACK-1');
+    service.enqueue(
+      SpeechPrompt.duplicateOrderWarning,
+      incidentKey: 'duplicate-order-number:TRACK-1',
+    );
+    await service.waitUntilIdle();
+    expect(output.assetPaths, hasLength(2));
+    await service.dispose();
+  });
+
   test('开始录制会打断仍在播放的模式播报', () async {
     final _InterruptibleSpeechOutput output = _InterruptibleSpeechOutput();
     final SpeechPromptService service = SpeechPromptService(output: output);
