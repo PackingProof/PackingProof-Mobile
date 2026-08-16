@@ -943,6 +943,108 @@ void main() {
     expect(selectedHost, 'host-1');
   });
 
+  testWidgets('主机掉线后状态显示离线且不再显示连接', (WidgetTester tester) async {
+    final _FakeBackupHostDiscovery discovery = _FakeBackupHostDiscovery(
+      hosts: const <LanBackupDiscoveredHost>[
+        LanBackupDiscoveredHost(
+          nodeId: 'host-1',
+          name: '电脑1',
+          address: '192.168.1.10:5280',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: const LanBackupSnapshot(
+            connectionStatus: LanConnectionStatus.offline,
+            message: '无法通过局域网连接电脑，请确认手机和电脑连接了同一个 Wi-Fi',
+          ),
+          backupHostDiscovery: discovery,
+          onConnectBackupHost: (host, confirmation) async {},
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('离线'), findsNWidgets(2));
+    expect(find.text('连接'), findsNothing);
+    expect(find.text('重新搜索'), findsOneWidget);
+    expect(find.text('再次申请'), findsNothing);
+    expect(find.text('无法通过局域网连接电脑，请确认手机和电脑连接了同一个 Wi-Fi'), findsOneWidget);
+    final InkWell button = tester.widget<InkWell>(
+      find.byKey(const ValueKey<String>('discovered-backup-host-host-1')),
+    );
+    expect(button.onTap, isNull);
+  });
+
+  testWidgets('申请超时后主按钮回到重新搜索而非再次申请', (WidgetTester tester) async {
+    final _FakeBackupHostDiscovery discovery = _FakeBackupHostDiscovery();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: const LanBackupSnapshot(
+            connectionStatus: LanConnectionStatus.approvalUnavailable,
+          ),
+          backupHostDiscovery: discovery,
+          onConnectBackupHost: (host, confirmation) async {},
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('重新搜索'), findsOneWidget);
+    expect(find.text('再次申请'), findsNothing);
+  });
+
+  testWidgets('主机明确拒绝后主按钮保留再次申请', (WidgetTester tester) async {
+    final _FakeBackupHostDiscovery discovery = _FakeBackupHostDiscovery();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: const LanBackupSnapshot(
+            connectionStatus: LanConnectionStatus.approvalDenied,
+          ),
+          backupHostDiscovery: discovery,
+          onConnectBackupHost: (host, confirmation) async {},
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('再次申请'), findsOneWidget);
+  });
+
   testWidgets('缓存主机保持显示但未重新发现前不可连接', (WidgetTester tester) async {
     final _FakeBackupHostDiscovery discovery = _FakeBackupHostDiscovery(
       hosts: const <LanBackupDiscoveredHost>[

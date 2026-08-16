@@ -85,7 +85,8 @@ class LanBackupApprovalUnavailableException
 }
 
 class LanBackupApprovalTimeoutException extends LanBackupConnectionException {
-  const LanBackupApprovalTimeoutException() : super('电脑端还未处理连接申请，请打开电脑端后再次申请');
+  const LanBackupApprovalTimeoutException()
+    : super('电脑端还未处理连接申请，请打开电脑端后再次申请；如电脑已离线请重新搜索');
 }
 
 class LanBackupPairingConfirmation {

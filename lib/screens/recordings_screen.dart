@@ -2633,6 +2633,10 @@ class _ComputerBackupSettings extends StatelessWidget {
     final bool approvalFailed =
         snapshot.connectionStatus == LanConnectionStatus.approvalDenied ||
         snapshot.connectionStatus == LanConnectionStatus.approvalUnavailable;
+    final bool approvalDenied =
+        snapshot.connectionStatus == LanConnectionStatus.approvalDenied;
+    final bool offline =
+        snapshot.connectionStatus == LanConnectionStatus.offline;
     final String stateLabel = discovery.searching && !paired
         ? '搜索中'
         : awaitingApproval
@@ -2645,6 +2649,8 @@ class _ComputerBackupSettings extends StatelessWidget {
         ? '在线'
         : needsRepair
         ? '需允许'
+        : offline
+        ? '离线'
         : paired
         ? '离线'
         : '未连接';
@@ -2657,6 +2663,12 @@ class _ComputerBackupSettings extends StatelessWidget {
         : colors.onSurfaceVariant;
     final String? status = awaitingApproval || approvalFailed
         ? snapshot.message
+        : offline
+        ? (snapshot.message?.isNotEmpty == true
+              ? snapshot.message!
+              : paired
+              ? '电脑离线，备份已暂停'
+              : '电脑离线，请检查 Wi-Fi 后重新搜索')
         : !snapshot.connected
         ? '扫描电脑二维码后自动备份'
         : failureKind == LanBackupFailureKind.notBackupHost
@@ -2665,10 +2677,6 @@ class _ComputerBackupSettings extends StatelessWidget {
         ? '设备连接已失效，请重新申请并在电脑上允许连接'
         : connecting
         ? '正在重新连接电脑'
-        : snapshot.connectionStatus == LanConnectionStatus.offline
-        ? (snapshot.message?.isNotEmpty == true
-              ? snapshot.message!
-              : '电脑离线，备份已暂停')
         : active != null
         ? '正在备份 · $progress%'
         : failed != null
@@ -2683,6 +2691,10 @@ class _ComputerBackupSettings extends StatelessWidget {
 
     final String disconnectedMessage = awaitingApproval || approvalFailed
         ? (snapshot.message ?? '请在电脑上处理连接申请')
+        : offline
+        ? (snapshot.message?.isNotEmpty == true
+              ? snapshot.message!
+              : '电脑离线，请检查 Wi-Fi 后重新搜索')
         : discovery.searching
         ? (discovery.hosts.isEmpty
               ? discovery.message ?? '正在查找同一 Wi-Fi 下的保存主机'
@@ -2843,7 +2855,8 @@ class _ComputerBackupSettings extends StatelessWidget {
                       onTap:
                           onSelectHost == null ||
                               !host.compatible ||
-                              !host.reachable
+                              !host.reachable ||
+                              offline
                           ? null
                           : () => onSelectHost!(host),
                       borderRadius: BorderRadius.circular(10),
@@ -2883,13 +2896,18 @@ class _ComputerBackupSettings extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              host.compatible && host.reachable
+                              host.compatible && host.reachable && !offline
                                   ? '连接'
+                                  : host.compatible && offline
+                                  ? '离线'
                                   : host.compatible
                                   ? '未在线'
                                   : '需更新',
                               style: TextStyle(
-                                color: host.compatible && host.reachable
+                                color:
+                                    host.compatible &&
+                                        host.reachable &&
+                                        !offline
                                     ? colors.primary
                                     : colors.onSurfaceVariant,
                                 fontSize: 12,
@@ -2926,11 +2944,11 @@ class _ComputerBackupSettings extends StatelessWidget {
                       key: const Key('search-backup-host-button'),
                       onPressed: discovery.searching
                           ? null
-                          : approvalFailed && onRequestApproval != null
+                          : approvalDenied && onRequestApproval != null
                           ? onRequestApproval
                           : onSearchHosts,
                       icon: Icon(
-                        approvalFailed
+                        approvalDenied
                             ? Icons.refresh_rounded
                             : Icons.wifi_find_rounded,
                         size: 18,
@@ -2938,7 +2956,7 @@ class _ComputerBackupSettings extends StatelessWidget {
                       label: Text(
                         discovery.searching
                             ? '正在搜索'
-                            : approvalFailed
+                            : approvalDenied
                             ? '再次申请'
                             : '重新搜索',
                       ),
