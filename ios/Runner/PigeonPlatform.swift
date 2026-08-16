@@ -1362,6 +1362,12 @@ private final class IosCameraHostApi:
         self.session.addInput(input)
         self.videoDeviceInput = input
         self.session.commitConfiguration()
+        if let connection = self.videoOutput?.connection(with: .video) {
+          // 切换镜头后重新固定竖屏方向，前置镜头同时开启镜像，
+          // 避免切换后预览被拉伸或未镜像。
+          connection.videoOrientation = .portrait
+          connection.isVideoMirrored = device.position == .front
+        }
         completion(.success(self.initializationDto()))
       } catch {
         completion(.failure(error))
