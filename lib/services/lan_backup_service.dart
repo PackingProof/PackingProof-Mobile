@@ -194,7 +194,16 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
        _retryDelay = retryDelay ?? Future<void>.delayed,
        // Keep the public injection name readable while the stored callback remains private.
        // ignore: prefer_initializing_formals
-       _logEvent = logEvent;
+       _logEvent = logEvent {
+    // 跨网段连接主机时，默认 connect 可能长时间挂起并累积半开 socket，
+    // 最终触发 EMFILE(too many open files)。显式收紧连接与 keep-alive 超时。
+    // 仅对自行创建的客户端设置默认值，避免覆盖调用方注入的客户端配置。
+    if (httpClient == null) {
+      _httpClient
+        ..connectionTimeout = const Duration(seconds: 5)
+        ..idleTimeout = const Duration(seconds: 30);
+    }
+  }
 
   final BackupNativePlatform _platform;
   final HttpClient _httpClient;

@@ -138,7 +138,16 @@ class LanBackupHostDiscoveryService extends ChangeNotifier
   }) : _candidateProvider = candidateProvider ?? _defaultCandidates,
        _httpClient = httpClient ?? HttpClient(),
        _ownsHttpClient = httpClient == null,
-       _probeOverride = probe;
+       _probeOverride = probe {
+    // 探测 /24 网段时会并发连接大量不可达主机，若连接阶段无限期挂起，
+    // 半开 socket 会迅速耗尽文件描述符（EMFILE）。显式收紧连接与空闲超时。
+    // 仅对自行创建的客户端设置默认值，避免覆盖调用方注入的客户端配置。
+    if (_ownsHttpClient) {
+      _httpClient
+        ..connectionTimeout = const Duration(seconds: 5)
+        ..idleTimeout = const Duration(seconds: 10);
+    }
+  }
 
   final LanBackupCandidateProvider _candidateProvider;
   final LanBackupHostProbe? _probeOverride;
