@@ -1954,7 +1954,13 @@ class PackingSessionController extends ChangeNotifier {
       unawaited(
         _runtimeLog.log(
           kind: 'recognized_beep',
-          extra: const <String, Object?>{},
+          extra: <String, Object?>{
+            'source': _pairingScanActive
+                ? 'pairing'
+                : _historyScanActive
+                    ? 'history'
+                    : 'work',
+          },
         ),
       );
     }
