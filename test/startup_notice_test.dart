@@ -27,6 +27,12 @@ void main() {
 
     expect(attempts, 2);
     expect(find.byKey(const Key('startup-load-error')), findsNothing);
+
+    // 重试成功后进入 PackingHomeScreen，销毁时会创建有界音频 stop 超时计时器；
+    // 测试环境需要显式卸载并推进时间，避免残留 Timer 被判定为测试失败。
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 2));
   });
 
   testWidgets('首次打开显示统一的开源与本地数据说明', (WidgetTester tester) async {
