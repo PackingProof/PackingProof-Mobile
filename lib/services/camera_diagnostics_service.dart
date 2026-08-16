@@ -109,6 +109,7 @@ class CameraDiagnosticsService {
       'runtime.jsonl',
       'camera.jsonl',
       'path_fix.jsonl',
+      'crash.jsonl',
     ]) {
       final File file = File(p.join(root.path, 'diagnostics', name));
       if (await file.exists()) {
