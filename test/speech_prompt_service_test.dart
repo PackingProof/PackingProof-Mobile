@@ -247,6 +247,23 @@ void main() {
     expect(output.stopCount, 1);
     await service.dispose();
   });
+
+  test('clear 后 enqueue 停止语音仍能播放', () async {
+    final _BlockingSpeechOutput output = _BlockingSpeechOutput();
+    final SpeechPromptService service = SpeechPromptService(output: output);
+
+    service.enqueue(SpeechPrompt.recordingFailed);
+    while (output.assetPaths.isEmpty) {
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    await service.clear();
+    service.enqueue(SpeechPrompt.recordingStopped);
+    await service.waitUntilIdle();
+
+    expect(output.assetPaths, contains('audio/tts/recording_stopped.mp3'));
+    await service.dispose();
+  });
 }
 
 class _FakeSpeechOutput implements SpeechOutput {

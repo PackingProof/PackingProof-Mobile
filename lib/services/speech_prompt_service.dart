@@ -396,15 +396,17 @@ class DeviceSpeechOutput implements SpeechOutput {
     final AudioPlayer player = _beepPlayer ??= AudioPlayer();
     try {
       if (!_beepContextConfigured) {
-        await player.setAudioContext(
-          AudioContext(
-            android: const AudioContextAndroid(
-              contentType: AndroidContentType.sonification,
-              usageType: AndroidUsageType.notificationEvent,
-              audioFocus: AndroidAudioFocus.none,
-            ),
-          ),
-        );
+        await player
+            .setAudioContext(
+              AudioContext(
+                android: const AudioContextAndroid(
+                  contentType: AndroidContentType.sonification,
+                  usageType: AndroidUsageType.notificationEvent,
+                  audioFocus: AndroidAudioFocus.none,
+                ),
+              ),
+            )
+            .timeout(const Duration(seconds: 2));
         _beepContextConfigured = true;
       }
       await player
@@ -428,7 +430,7 @@ class DeviceSpeechOutput implements SpeechOutput {
       // Best-effort stop.
     }
     try {
-      await player.dispose();
+      await player.dispose().timeout(const Duration(seconds: 2));
     } on Object {
       // Best-effort dispose.
     }
@@ -738,10 +740,14 @@ class DeviceSpeechOutput implements SpeechOutput {
   @override
   Future<void> stop() async {
     _completePlayback();
-    await Future.wait<void>(<Future<void>>[
-      _audioPlayer.stop(),
-      _systemTts.stop().then((_) {}),
-    ]);
+    try {
+      await Future.wait<void>(<Future<void>>[
+        _audioPlayer.stop(),
+        _systemTts.stop().then((_) {}),
+      ]).timeout(const Duration(seconds: 2));
+    } on Object {
+      // Best-effort stop; a hung player must not block the speech workflow.
+    }
   }
 
   @override
