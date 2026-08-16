@@ -443,7 +443,14 @@ class PackingSessionController extends ChangeNotifier {
         nativeCamera.onProbeFinished = _handleNativeProbeFinished;
         nativeCamera.onRecordingFallback = _handleNativeRecordingFallback;
         _nativeCamera = nativeCamera;
-        await nativeCamera.ensurePermissions(recordAudio: _recordAudioEnabled);
+        final bool nativePermissionsGranted = await nativeCamera
+            .ensurePermissions(recordAudio: _recordAudioEnabled);
+        if (!nativePermissionsGranted) {
+          throw PlatformException(
+            code: 'permission_denied',
+            message: '需要摄像头和麦克风权限才能工作',
+          );
+        }
         _nativeInitialization = await nativeCamera
             .initialize(
               videoCodec: _preferredVideoCodec,
