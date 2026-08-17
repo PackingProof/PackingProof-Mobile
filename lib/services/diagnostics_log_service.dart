@@ -12,11 +12,18 @@ class DiagnosticsLogService {
   DiagnosticsLogService({
     Future<Directory> Function()? rootProvider,
     this.maximumEntries = 500,
-  }) : _rootProvider = rootProvider ?? getApplicationDocumentsDirectory;
+    // Named parameters cannot use a private initializing formal.
+    // ignore: prefer_initializing_formals
+    Future<Map<String, Object?>> Function()? runtimeMetadataLoader,
+  }) : _rootProvider = rootProvider ?? getApplicationDocumentsDirectory,
+       // ignore: prefer_initializing_formals
+       _runtimeMetadataLoader = runtimeMetadataLoader;
 
   final Future<Directory> Function() _rootProvider;
   final int maximumEntries;
+  final Future<Map<String, Object?>> Function()? _runtimeMetadataLoader;
   Future<void> _pending = Future<void>.value();
+  Future<Map<String, Object?>>? _runtimeMetadata;
 
   Future<File> logFile() async {
     final Directory root = await _rootProvider();
@@ -37,11 +44,13 @@ class DiagnosticsLogService {
   Future<void> _append(String kind, Map<String, Object?> extra) async {
     try {
       final File file = await logFile();
+      final Map<String, Object?> metadata = await _loadRuntimeMetadata();
       final List<String> lines = await file.exists()
           ? await file.readAsLines()
           : <String>[];
       lines.add(
         jsonEncode(<String, Object?>{
+          ...metadata,
           'ts': DateTime.now().toIso8601String(),
           'kind': kind,
           ...extra,
@@ -55,4 +64,27 @@ class DiagnosticsLogService {
       // 日志失败绝不影响业务。
     }
   }
+
+  Future<Map<String, Object?>> _loadRuntimeMetadata() {
+    final Future<Map<String, Object?>>? existing = _runtimeMetadata;
+    if (existing != null) {
+      return existing;
+    }
+    final Future<Map<String, Object?>> loaded =
+        (_runtimeMetadataLoader?.call() ??
+                Future<Map<String, Object?>>.value(_fallbackRuntimeMetadata()))
+            .then<Map<String, Object?>>(
+              (Map<String, Object?> value) => Map<String, Object?>.from(value),
+              onError: (Object _, StackTrace _) => _fallbackRuntimeMetadata(),
+            );
+    _runtimeMetadata = loaded;
+    return loaded;
+  }
+
+  Map<String, Object?> _fallbackRuntimeMetadata() => const <String, Object?>{
+    'appVersion': null,
+    'appBuildNumber': null,
+    'buildRevision': null,
+    'buildTimestamp': null,
+  };
 }

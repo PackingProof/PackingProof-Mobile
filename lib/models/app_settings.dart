@@ -22,6 +22,9 @@ class AppSettings {
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.startupNoticeVersion = 0,
+    this.lastLoggedAppVersion = '',
+    this.lastLoggedAppBuildNumber = 0,
+    this.lastLoggedBuildIdentity = '',
     this.mobileUpdatePromptDate = '',
     this.mobileUpdatePromptCount = 0,
     this.lanBackupAutoEnabled = true,
@@ -45,6 +48,9 @@ class AppSettings {
       ..remove('preferredVideoCodec')
       ..remove('recordingSpec')
       ..remove('startupNoticeVersion')
+      ..remove('lastLoggedAppVersion')
+      ..remove('lastLoggedAppBuildNumber')
+      ..remove('lastLoggedBuildIdentity')
       ..remove('mobileUpdatePromptDate')
       ..remove('mobileUpdatePromptCount')
       ..remove('lanBackupAutoEnabled')
@@ -89,6 +95,15 @@ class AppSettings {
       startupNoticeVersion: json['startupNoticeVersion'] is num
           ? (json['startupNoticeVersion']! as num).toInt()
           : 0,
+      lastLoggedAppVersion: json['lastLoggedAppVersion'] is String
+          ? json['lastLoggedAppVersion']! as String
+          : '',
+      lastLoggedAppBuildNumber: json['lastLoggedAppBuildNumber'] is num
+          ? (json['lastLoggedAppBuildNumber']! as num).toInt()
+          : 0,
+      lastLoggedBuildIdentity: json['lastLoggedBuildIdentity'] is String
+          ? json['lastLoggedBuildIdentity']! as String
+          : '',
       mobileUpdatePromptDate: json['mobileUpdatePromptDate'] is String
           ? json['mobileUpdatePromptDate']! as String
           : '',
@@ -149,6 +164,9 @@ class AppSettings {
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
   final int startupNoticeVersion;
+  final String lastLoggedAppVersion;
+  final int lastLoggedAppBuildNumber;
+  final String lastLoggedBuildIdentity;
   final String mobileUpdatePromptDate;
   final int mobileUpdatePromptCount;
   final bool lanBackupAutoEnabled;
@@ -171,6 +189,9 @@ class AppSettings {
     RecordingVideoCodec? preferredVideoCodec,
     RecordingSpecPreset? recordingSpec,
     int? startupNoticeVersion,
+    String? lastLoggedAppVersion,
+    int? lastLoggedAppBuildNumber,
+    String? lastLoggedBuildIdentity,
     String? mobileUpdatePromptDate,
     int? mobileUpdatePromptCount,
     bool? lanBackupAutoEnabled,
@@ -194,6 +215,11 @@ class AppSettings {
       preferredVideoCodec: preferredVideoCodec ?? this.preferredVideoCodec,
       recordingSpec: recordingSpec ?? this.recordingSpec,
       startupNoticeVersion: startupNoticeVersion ?? this.startupNoticeVersion,
+      lastLoggedAppVersion: lastLoggedAppVersion ?? this.lastLoggedAppVersion,
+      lastLoggedAppBuildNumber:
+          lastLoggedAppBuildNumber ?? this.lastLoggedAppBuildNumber,
+      lastLoggedBuildIdentity:
+          lastLoggedBuildIdentity ?? this.lastLoggedBuildIdentity,
       mobileUpdatePromptDate:
           mobileUpdatePromptDate ?? this.mobileUpdatePromptDate,
       mobileUpdatePromptCount:
@@ -222,6 +248,9 @@ class AppSettings {
     'preferredVideoCodec': preferredVideoCodec.storageValue,
     'recordingSpec': recordingSpec.storageValue,
     'startupNoticeVersion': startupNoticeVersion,
+    'lastLoggedAppVersion': lastLoggedAppVersion,
+    'lastLoggedAppBuildNumber': lastLoggedAppBuildNumber,
+    'lastLoggedBuildIdentity': lastLoggedBuildIdentity,
     'mobileUpdatePromptDate': mobileUpdatePromptDate,
     'mobileUpdatePromptCount': mobileUpdatePromptCount,
     'lanBackupAutoEnabled': lanBackupAutoEnabled,

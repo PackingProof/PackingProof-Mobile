@@ -198,6 +198,33 @@ void main() {
     expect(settings.speechEnabled, isFalse);
   });
 
+  test('历史构建身份默认空且可持久化', () async {
+    final SessionRepository repository = testRepository(root);
+
+    final AppSettings defaults = await repository.loadSettings();
+    expect(defaults.lastLoggedAppVersion, isEmpty);
+    expect(defaults.lastLoggedAppBuildNumber, 0);
+    expect(defaults.lastLoggedBuildIdentity, isEmpty);
+
+    await repository.saveLastLoggedAppIdentity(
+      version: '0.5.23',
+      buildNumber: 11030,
+      buildIdentity: '0.5.23|11030|def5678',
+    );
+    final AppSettings updated = await repository.loadSettings();
+    expect(updated.lastLoggedAppVersion, '0.5.23');
+    expect(updated.lastLoggedAppBuildNumber, 11030);
+    expect(updated.lastLoggedBuildIdentity, '0.5.23|11030|def5678');
+
+    final Map<String, Object?> persisted = Map<String, Object?>.from(
+      jsonDecode(await File('${root.path}/settings.json').readAsString())
+          as Map<Object?, Object?>,
+    );
+    expect(persisted['lastLoggedAppVersion'], '0.5.23');
+    expect(persisted['lastLoggedAppBuildNumber'], 11030);
+    expect(persisted['lastLoggedBuildIdentity'], '0.5.23|11030|def5678');
+  });
+
   test('手机更新提示每天最多保留两次且重启后继续计数', () async {
     final SessionRepository repository = testRepository(root);
     final DateTime firstDay = DateTime(2026, 7, 26, 8);

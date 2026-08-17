@@ -148,13 +148,10 @@ class _AboutScreenState extends State<AboutScreen> {
     if (shared || !mounted) {
       if (shared && mounted) {
         unawaited(
-          DiagnosticsLogService().log(
-            kind: 'diagnostics_export',
-            extra: <String, Object?>{
-              'shared': true,
-              'copied': false,
-              'chars': text.length,
-            },
+          _logDiagnosticsExport(
+            textLength: text.length,
+            shared: true,
+            copied: false,
           ),
         );
       }
@@ -169,13 +166,10 @@ class _AboutScreenState extends State<AboutScreen> {
     }
     if (!mounted) return;
     unawaited(
-      DiagnosticsLogService().log(
-        kind: 'diagnostics_export',
-        extra: <String, Object?>{
-          'shared': false,
-          'copied': copied,
-          'chars': text.length,
-        },
+      _logDiagnosticsExport(
+        textLength: text.length,
+        shared: false,
+        copied: copied,
       ),
     );
     ScaffoldMessenger.of(context).showSnackBar(
@@ -186,6 +180,41 @@ class _AboutScreenState extends State<AboutScreen> {
   Future<String?> _loadDefaultDiagnostics() async {
     final String header = await _diagnosticsHeader();
     return CameraDiagnosticsService().exportText(header: header);
+  }
+
+  Future<void> _logDiagnosticsExport({
+    required int textLength,
+    required bool shared,
+    required bool copied,
+  }) async {
+    PackageInfo? info;
+    try {
+      info = await _packageInfo;
+    } on Object {
+      info = null;
+    }
+    await DiagnosticsLogService().log(
+      kind: 'diagnostics_export',
+      extra: <String, Object?>{
+        'shared': shared,
+        'copied': copied,
+        'chars': textLength,
+        ..._diagnosticsVersionExtra(info),
+      },
+    );
+  }
+
+  Map<String, Object?> _diagnosticsVersionExtra(PackageInfo? info) {
+    return <String, Object?>{
+      'appVersion': info?.version,
+      'appBuildNumber': int.tryParse(info?.buildNumber ?? ''),
+      'buildRevision': widget.buildConfig.buildRevision.isEmpty
+          ? null
+          : widget.buildConfig.buildRevision,
+      'buildTimestamp': widget.buildConfig.buildTimestamp.isEmpty
+          ? null
+          : widget.buildConfig.buildTimestamp,
+    };
   }
 
   Future<String> _diagnosticsHeader() async {

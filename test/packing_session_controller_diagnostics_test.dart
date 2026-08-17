@@ -1,12 +1,16 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:packing_proof_mobile/app/app_build_config.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
+import 'package:packing_proof_mobile/models/app_settings.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
 import 'package:packing_proof_mobile/services/camera_diagnostics_service.dart';
 import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 import 'package:packing_proof_mobile/services/diagnostics_log_service.dart';
+import 'package:packing_proof_mobile/services/session_repository.dart';
 import 'package:packing_proof_mobile/services/speech_prompt_service.dart';
 import 'package:packing_proof_mobile/platform/platform_capabilities.dart';
 
@@ -57,6 +61,126 @@ void main() {
     final String content = await _waitForInitFailed(file);
     expect(content, contains('"kind":"init_failed"'));
     expect(content, contains('"code":"unknown"'));
+  });
+
+  test('首次启动记录带版本的 app_start 且不写 app_upgrade', () async {
+    final SessionRepository repository = testRepository(root);
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _FakeSpeechSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      packageInfoLoader: () async => PackageInfo(
+        appName: '包裹留证',
+        packageName: 'app.packingproof.mobile',
+        version: '0.5.23',
+        buildNumber: '11030',
+      ),
+      buildConfig: const AppBuildConfig(
+        buildRevision: 'def5678',
+        buildTimestamp: '2026-08-17T20:00:00Z',
+      ),
+      runtimeLog: DiagnosticsLogService(
+        rootProvider: () async => root,
+        runtimeMetadataLoader: () async => <String, Object?>{
+          'appVersion': '0.5.23',
+          'appBuildNumber': 11030,
+          'buildRevision': 'def5678',
+          'buildTimestamp': '2026-08-17T20:00:00Z',
+        },
+      ),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+
+    await controller.initialize();
+
+    final File file = File('${root.path}/diagnostics/runtime.jsonl');
+    final String content = await _waitForRuntimeKind(file, 'app_start');
+    expect(content, contains('"appVersion":"0.5.23"'));
+    expect(content, contains('"appBuildNumber":11030'));
+    expect(content, isNot(contains('"kind":"app_upgrade"')));
+
+    final AppSettings settings = await repository.loadSettings();
+    expect(settings.lastLoggedAppVersion, '0.5.23');
+    expect(settings.lastLoggedAppBuildNumber, 11030);
+    expect(settings.lastLoggedBuildIdentity, '0.5.23|11030|def5678');
+  });
+
+  test('构建身份变化时写 app_upgrade 且同版本不重复写', () async {
+    final SessionRepository repository = testRepository(root);
+    await repository.saveLastLoggedAppIdentity(
+      version: '0.5.22',
+      buildNumber: 11029,
+      buildIdentity: '0.5.22|11029|abc1234',
+    );
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _FakeSpeechSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      packageInfoLoader: () async => PackageInfo(
+        appName: '包裹留证',
+        packageName: 'app.packingproof.mobile',
+        version: '0.5.23',
+        buildNumber: '11030',
+      ),
+      buildConfig: const AppBuildConfig(
+        buildRevision: 'def5678',
+        buildTimestamp: '2026-08-17T20:00:00Z',
+      ),
+      runtimeLog: DiagnosticsLogService(
+        rootProvider: () async => root,
+        runtimeMetadataLoader: () async => <String, Object?>{
+          'appVersion': '0.5.23',
+          'appBuildNumber': 11030,
+          'buildRevision': 'def5678',
+          'buildTimestamp': '2026-08-17T20:00:00Z',
+        },
+      ),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+
+    await controller.initialize();
+    final File file = File('${root.path}/diagnostics/runtime.jsonl');
+    final String content = await _waitForRuntimeKind(file, 'app_upgrade');
+    expect(content, contains('"previousVersion":"0.5.22"'));
+    expect(content, contains('"previousBuildNumber":11029'));
+    expect(content, contains('"currentVersion":"0.5.23"'));
+    expect(content, contains('"currentBuildNumber":11030'));
+    expect(_countOccurrences(content, '"kind":"app_upgrade"'), 1);
+
+    final PackingSessionController second = PackingSessionController(
+      repository: testRepository(root),
+      speechService: _FakeSpeechSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      packageInfoLoader: () async => PackageInfo(
+        appName: '包裹留证',
+        packageName: 'app.packingproof.mobile',
+        version: '0.5.23',
+        buildNumber: '11030',
+      ),
+      buildConfig: const AppBuildConfig(
+        buildRevision: 'def5678',
+        buildTimestamp: '2026-08-17T20:00:00Z',
+      ),
+      runtimeLog: DiagnosticsLogService(
+        rootProvider: () async => root,
+        runtimeMetadataLoader: () async => <String, Object?>{
+          'appVersion': '0.5.23',
+          'appBuildNumber': 11030,
+          'buildRevision': 'def5678',
+          'buildTimestamp': '2026-08-17T20:00:00Z',
+        },
+      ),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+    await second.initialize();
+    final String updated = await file.readAsString();
+    expect(_countOccurrences(updated, '"kind":"app_upgrade"'), 1);
   });
 
   test('任意状态识别条码都会触发独立滴声且同码不重复', () async {
@@ -196,6 +320,34 @@ Future<String> _waitForInitFailed(
     await Future<void>.delayed(const Duration(milliseconds: 50));
   }
   fail('camera.jsonl 未在 $timeout 内记录 init_failed 事件');
+}
+
+Future<String> _waitForRuntimeKind(
+  File file,
+  String kind, {
+  Duration timeout = const Duration(seconds: 3),
+}) async {
+  final DateTime deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    if (await file.exists()) {
+      final String content = await file.readAsString();
+      if (content.contains('"kind":"$kind"')) {
+        return content;
+      }
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+  fail('runtime.jsonl 未在 $timeout 内记录 $kind 事件');
+}
+
+int _countOccurrences(String content, String needle) {
+  int count = 0;
+  int index = 0;
+  while ((index = content.indexOf(needle, index)) >= 0) {
+    count++;
+    index += needle.length;
+  }
+  return count;
 }
 
 class _FakeSpeechSink implements SpeechPromptSink {

@@ -63,4 +63,52 @@ void main() {
         jsonDecode(lines.last) as Map<String, Object?>;
     expect(last['index'], 4);
   });
+
+  test('运行时元数据只加载一次且缺失字段稳定为 null', () async {
+    int loadCount = 0;
+    final DiagnosticsLogService service = DiagnosticsLogService(
+      rootProvider: () async => temp,
+      maximumEntries: 10,
+      runtimeMetadataLoader: () async {
+        loadCount++;
+        return <String, Object?>{
+          'appVersion': '0.5.22',
+          'appBuildNumber': 11029,
+          'buildRevision': 'abc1234',
+          'buildTimestamp': null,
+        };
+      },
+    );
+    await service.log(kind: 'first');
+    await service.log(kind: 'second');
+
+    expect(loadCount, 1);
+    final File file = File('${temp.path}/diagnostics/runtime.jsonl');
+    for (final String line in await file.readAsLines()) {
+      final Map<String, Object?> entry =
+          jsonDecode(line) as Map<String, Object?>;
+      expect(entry['appVersion'], '0.5.22');
+      expect(entry['appBuildNumber'], 11029);
+      expect(entry['buildRevision'], 'abc1234');
+      expect(entry.containsKey('buildTimestamp'), isTrue);
+      expect(entry['buildTimestamp'], isNull);
+    }
+  });
+
+  test('元数据加载失败时仍写入稳定空字段', () async {
+    final DiagnosticsLogService service = DiagnosticsLogService(
+      rootProvider: () async => temp,
+      maximumEntries: 10,
+      runtimeMetadataLoader: () async => throw StateError('missing'),
+    );
+    await service.log(kind: 'event');
+
+    final File file = File('${temp.path}/diagnostics/runtime.jsonl');
+    final Map<String, Object?> entry =
+        jsonDecode((await file.readAsLines()).single) as Map<String, Object?>;
+    expect(entry['appVersion'], isNull);
+    expect(entry['appBuildNumber'], isNull);
+    expect(entry['buildRevision'], isNull);
+    expect(entry['buildTimestamp'], isNull);
+  });
 }

@@ -675,6 +675,18 @@ class SessionRepository {
     (AppSettings value) => value.copyWith(startupNoticeVersion: version),
   );
 
+  Future<void> saveLastLoggedAppIdentity({
+    required String version,
+    required int buildNumber,
+    required String buildIdentity,
+  }) => _updateSettings(
+    (AppSettings value) => value.copyWith(
+      lastLoggedAppVersion: version,
+      lastLoggedAppBuildNumber: buildNumber,
+      lastLoggedBuildIdentity: buildIdentity,
+    ),
+  );
+
   Future<bool> tryReserveMobileUpdatePrompt(
     DateTime now, {
     int maximumPerDay = 2,

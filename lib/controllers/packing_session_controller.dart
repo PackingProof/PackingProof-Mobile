@@ -6,8 +6,10 @@ import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../app/app_build_config.dart';
 import '../models/barcode_marker.dart';
 import '../models/app_settings.dart';
 import '../models/backup_retention_policy.dart';
@@ -81,6 +83,10 @@ class PackingSessionController extends ChangeNotifier {
     CameraDiagnosticsService? cameraDiagnostics,
     PlatformCapabilities? capabilities,
     ContinuousCameraService? cameraService,
+    Future<PackageInfo> Function()? packageInfoLoader,
+    // Named parameters cannot use a private initializing formal.
+    // ignore: prefer_initializing_formals
+    AppBuildConfig buildConfig = AppBuildConfig.environment,
   }) : _repository = repository ?? SessionRepository(),
        _speechService = speechService ?? SpeechPromptService(),
        _maxVolumeService = maxVolumeService ?? MaxVolumeService(),
@@ -90,10 +96,15 @@ class PackingSessionController extends ChangeNotifier {
        _capabilities =
            capabilities ?? AppContainer.forCurrentPlatform().capabilities,
        _nativeCamera = cameraService,
+       _packageInfoLoader = packageInfoLoader ?? PackageInfo.fromPlatform,
+       // ignore: prefer_initializing_formals
+       _buildConfig = buildConfig,
        _barcodeScanner = BarcodeScanner(
          formats: const <BarcodeFormat>[BarcodeFormat.all],
        ) {
-    _runtimeLog = runtimeLog ?? DiagnosticsLogService();
+    _runtimeLog =
+        runtimeLog ??
+        DiagnosticsLogService(runtimeMetadataLoader: _loadRuntimeMetadata);
     _cameraDiagnostics = cameraDiagnostics ?? CameraDiagnosticsService();
     _lanBackupService =
         lanBackupService ??
@@ -119,6 +130,8 @@ class PackingSessionController extends ChangeNotifier {
   final PlatformCapabilities _capabilities;
   final OrderInfoReceiverSink _orderInfoReceiver;
   final BarcodeScanner _barcodeScanner;
+  final Future<PackageInfo> Function() _packageInfoLoader;
+  final AppBuildConfig _buildConfig;
   final BarcodeStabilityTracker _stabilityTracker = BarcodeStabilityTracker();
   final BarcodeRecognizedBeepPolicy _recognizedBeepPolicy =
       BarcodeRecognizedBeepPolicy();
@@ -127,6 +140,7 @@ class PackingSessionController extends ChangeNotifier {
       InitialRecordingPromptPolicy();
   late final CameraDiagnosticsService _cameraDiagnostics;
   late final DiagnosticsLogService _runtimeLog;
+  Future<Map<String, Object?>>? _runtimeMetadataFuture;
   Future<void> _cameraInitializeTail = Future<void>.value();
   bool _appStartLogged = false;
 
@@ -387,6 +401,7 @@ class PackingSessionController extends ChangeNotifier {
       _hiddenRemoteRecordingIds = Set<int>.of(
         settings.hiddenRemoteRecordingIds,
       );
+      await _logAppUpgradeIfNeeded(settings);
       if (!_backupListenerAttached) {
         _lanBackupService.addListener(_handleBackupChanged);
         _backupListenerAttached = true;
@@ -579,6 +594,86 @@ class PackingSessionController extends ChangeNotifier {
         kind: 'init_failed',
         extra: <String, Object?>{'code': code, 'message': message},
       ),
+    );
+  }
+
+  Future<Map<String, Object?>> _loadRuntimeMetadata() {
+    final Future<Map<String, Object?>>? existing = _runtimeMetadataFuture;
+    if (existing != null) {
+      return existing;
+    }
+    final Future<Map<String, Object?>> loaded = _loadRuntimeMetadataNow();
+    _runtimeMetadataFuture = loaded;
+    return loaded;
+  }
+
+  Future<Map<String, Object?>> _loadRuntimeMetadataNow() async {
+    String? appVersion;
+    int? appBuildNumber;
+    try {
+      final PackageInfo info = await _packageInfoLoader();
+      appVersion = info.version;
+      appBuildNumber = int.tryParse(info.buildNumber);
+    } on Object {
+      // 版本信息失败时仍返回稳定的空字段，不能阻塞相机初始化。
+    }
+    return <String, Object?>{
+      'appVersion': appVersion,
+      'appBuildNumber': appBuildNumber,
+      'buildRevision': _buildConfig.buildRevision.isEmpty
+          ? null
+          : _buildConfig.buildRevision,
+      'buildTimestamp': _buildConfig.buildTimestamp.isEmpty
+          ? null
+          : _buildConfig.buildTimestamp,
+    };
+  }
+
+  String _buildIdentity(Map<String, Object?> metadata) {
+    final String version = '${metadata['appVersion'] ?? ''}';
+    if (version.isEmpty) {
+      return '';
+    }
+    final Object? buildNumber = metadata['appBuildNumber'];
+    final String revision = '${metadata['buildRevision'] ?? ''}';
+    final String timestamp = '${metadata['buildTimestamp'] ?? ''}';
+    final String discriminator = revision.isNotEmpty ? revision : timestamp;
+    return '$version|${buildNumber ?? ''}|$discriminator';
+  }
+
+  Future<void> _logAppUpgradeIfNeeded(AppSettings settings) async {
+    final Map<String, Object?> metadata = await _loadRuntimeMetadata();
+    final String version = '${metadata['appVersion'] ?? ''}';
+    final int buildNumber = (metadata['appBuildNumber'] as num?)?.toInt() ?? 0;
+    if (version.isEmpty) {
+      return;
+    }
+    final String buildIdentity = _buildIdentity(metadata);
+    final bool hasHistory =
+        settings.lastLoggedAppVersion.isNotEmpty ||
+        settings.lastLoggedBuildIdentity.isNotEmpty;
+    final bool changed =
+        hasHistory &&
+        (settings.lastLoggedAppVersion != version ||
+            settings.lastLoggedAppBuildNumber != buildNumber ||
+            settings.lastLoggedBuildIdentity != buildIdentity);
+    if (changed) {
+      await _runtimeLog.log(
+        kind: 'app_upgrade',
+        extra: <String, Object?>{
+          'previousVersion': settings.lastLoggedAppVersion,
+          'previousBuildNumber': settings.lastLoggedAppBuildNumber,
+          'previousBuildIdentity': settings.lastLoggedBuildIdentity,
+          'currentVersion': version,
+          'currentBuildNumber': buildNumber,
+          'currentBuildIdentity': buildIdentity,
+        },
+      );
+    }
+    await _repository.saveLastLoggedAppIdentity(
+      version: version,
+      buildNumber: buildNumber,
+      buildIdentity: buildIdentity,
     );
   }
 
