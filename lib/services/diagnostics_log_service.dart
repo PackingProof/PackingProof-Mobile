@@ -1,8 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+
+import '../app/app_build_config.dart';
 
 /// 统一运行日志：低频事件写入 `diagnostics/runtime.jsonl`。
 ///
@@ -17,7 +20,8 @@ class DiagnosticsLogService {
     Future<Map<String, Object?>> Function()? runtimeMetadataLoader,
   }) : _rootProvider = rootProvider ?? getApplicationDocumentsDirectory,
        // ignore: prefer_initializing_formals
-       _runtimeMetadataLoader = runtimeMetadataLoader;
+       _runtimeMetadataLoader =
+           runtimeMetadataLoader ?? _defaultRuntimeMetadataLoader;
 
   final Future<Directory> Function() _rootProvider;
   final int maximumEntries;
@@ -86,5 +90,26 @@ class DiagnosticsLogService {
     'appBuildNumber': null,
     'buildRevision': null,
     'buildTimestamp': null,
+  };
+}
+
+Future<Map<String, Object?>> _defaultRuntimeMetadataLoader() async {
+  String? appVersion;
+  int? appBuildNumber;
+  try {
+    final PackageInfo info = await PackageInfo.fromPlatform();
+    appVersion = info.version;
+    appBuildNumber = int.tryParse(info.buildNumber);
+  } on Object {
+    // 版本信息失败时仍返回稳定空字段，不能阻塞业务日志。
+  }
+  const AppBuildConfig build = AppBuildConfig.environment;
+  return <String, Object?>{
+    'appVersion': appVersion,
+    'appBuildNumber': appBuildNumber,
+    'buildRevision': build.buildRevision.isEmpty ? null : build.buildRevision,
+    'buildTimestamp': build.buildTimestamp.isEmpty
+        ? null
+        : build.buildTimestamp,
   };
 }
