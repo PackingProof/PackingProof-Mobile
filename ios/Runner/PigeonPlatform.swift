@@ -12,6 +12,8 @@ import UniformTypeIdentifiers
 import VideoToolbox
 
 final class PigeonPlatform {
+  private static var cameraHost: IosCameraHostApi?
+
   static func register(with registry: FlutterPluginRegistry) {
     guard
       let registrar = registry.registrar(forPlugin: "PigeonPlatform"),
@@ -37,12 +39,14 @@ final class PigeonPlatform {
       binaryMessenger: messenger,
       api: IosBackupHostApi(eventApi: backupEvents)
     )
+    let cameraHost = IosCameraHostApi(
+      eventApi: CameraEventApi(binaryMessenger: messenger),
+      textures: registrar.textures()
+    )
+    self.cameraHost = cameraHost
     CameraHostApiSetup.setUp(
       binaryMessenger: messenger,
-      api: IosCameraHostApi(
-        eventApi: CameraEventApi(binaryMessenger: messenger),
-        textures: registrar.textures()
-      )
+      api: cameraHost
     )
     OrderReceiverHostApiSetup.setUp(
       binaryMessenger: messenger,
@@ -50,6 +54,15 @@ final class PigeonPlatform {
         eventApi: OrderReceiverEventApi(binaryMessenger: messenger)
       )
     )
+  }
+
+  /// App 终止时必须在 Flutter 引擎销毁前同步关闭相机。
+  ///
+  /// `FlutterViewController` 会在 `UIApplicationWillTerminateNotification` /
+  /// `UISceneDidDisconnectNotification` 中销毁引擎；若相机回调仍调用
+  /// `textureFrameAvailable`，会触发 use-after-free 崩溃。
+  static func shutdownForTermination() {
+    cameraHost?.prepareForTermination()
   }
 }
 
@@ -1390,6 +1403,7 @@ private final class IosCameraHostApi:
   private let sessionQueue = DispatchQueue(label: "packingproof.camera.session")
   private let metadataQueue = DispatchQueue(label: "packingproof.camera.metadata")
   private let bufferLock = NSLock()
+  private let stateLock = NSLock()
 
   private var textureId: Int64 = -1
   private var latestPixelBuffer: CVPixelBuffer?
@@ -1424,7 +1438,7 @@ private final class IosCameraHostApi:
     self.eventApi = eventApi
     self.textures = textures
     super.init()
-    textureId = textures.register(self)
+    updateTextureId(textures.register(self))
     runtimeErrorObserver = NotificationCenter.default.addObserver(
       forName: .AVCaptureSessionRuntimeError,
       object: session,
@@ -1436,7 +1450,7 @@ private final class IosCameraHostApi:
   }
 
   deinit {
-    disposed = true
+    markDisposed()
     clearOutputDelegates()
     let session = self.session
     sessionQueue.async {
@@ -1465,10 +1479,10 @@ private final class IosCameraHostApi:
         return
       }
       self.configureRecordingAudioSession()
-      if self.disposed {
+      if self.isDisposed {
         self.recoverCamera { recovered in
           if recovered {
-            self.disposed = false
+            self.markNotDisposed()
             self.finishInitialize(completion)
           } else {
             completion(.failure(pigeonError("摄像头恢复失败")))
@@ -1500,7 +1514,7 @@ private final class IosCameraHostApi:
   ) {
     self.recordAudio = recordAudio
     sessionQueue.async { [weak self] in
-      guard let self, !self.disposed else {
+      guard let self, !self.isDisposed else {
         completion(.failure(pigeonError("摄像头已经关闭")))
         return
       }
@@ -1530,7 +1544,7 @@ private final class IosCameraHostApi:
     completion: @escaping (Result<CameraRecordingSplitDto, Error>) -> Void
   ) {
     sessionQueue.async { [weak self] in
-      guard let self, !self.disposed else {
+      guard let self, !self.isDisposed else {
         completion(.failure(pigeonError("摄像头已经关闭")))
         return
       }
@@ -1563,7 +1577,7 @@ private final class IosCameraHostApi:
     completion: @escaping (Result<CameraRecordingStopDto, Error>) -> Void
   ) {
     sessionQueue.async { [weak self] in
-      guard let self, !self.disposed else {
+      guard let self, !self.isDisposed else {
         completion(.failure(pigeonError("摄像头已经关闭")))
         return
       }
@@ -1595,7 +1609,7 @@ private final class IosCameraHostApi:
       "camera": [
         "initialized": true,
         "sessionRunning": session.isRunning,
-        "disposed": disposed,
+        "disposed": isDisposed,
         "workScanEnabled": workScanEnabled,
         "pairingScanEnabled": pairingScanEnabled,
         "metadataOutputAttached": metadataOutput != nil,
@@ -1696,7 +1710,7 @@ private final class IosCameraHostApi:
   }
 
   func dispose(completion: @escaping (Result<Void, Error>) -> Void) {
-    disposed = true
+    markDisposed()
     // 先移除采样回调，避免 App 终止时 AVCaptureSession 再回调到已释放的
     // self，触发 use-after-free（SIGSEGV）。
     clearOutputDelegates()
@@ -1709,12 +1723,36 @@ private final class IosCameraHostApi:
       if self.session.isRunning {
         self.session.stopRunning()
       }
-      if self.textureId >= 0 {
-        self.textures.unregisterTexture(self.textureId)
-        self.textureId = -1
+      let textureId = self.currentTextureId
+      if textureId >= 0 {
+        self.textures.unregisterTexture(textureId)
+        self.updateTextureId(-1)
       }
       completion(.success(()))
     }
+  }
+
+  /// 终止前同步停止相机并解除纹理注册，保证之后 Flutter 引擎可安全销毁。
+  func prepareForTermination() {
+    markDisposed()
+    clearOutputDelegates()
+    if let observer = runtimeErrorObserver {
+      NotificationCenter.default.removeObserver(observer)
+      runtimeErrorObserver = nil
+    }
+    sessionQueue.sync { [weak self] in
+      guard let self else { return }
+      self.finishCurrentWriter(false) {}
+      if self.session.isRunning {
+        self.session.stopRunning()
+      }
+      let textureId = self.currentTextureId
+      if textureId >= 0 {
+        self.textures.unregisterTexture(textureId)
+        self.updateTextureId(-1)
+      }
+    }
+    metadataQueue.sync {}
   }
 
   // MARK: - FlutterTexture
@@ -1733,7 +1771,7 @@ private final class IosCameraHostApi:
     didOutput sampleBuffer: CMSampleBuffer,
     from connection: AVCaptureConnection
   ) {
-    guard !disposed else { return }
+    guard !isDisposed else { return }
     if output === videoOutput {
       guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
         return
@@ -1741,7 +1779,8 @@ private final class IosCameraHostApi:
       bufferLock.lock()
       latestPixelBuffer = pixelBuffer
       bufferLock.unlock()
-      if textureId >= 0 {
+      let textureId = currentTextureId
+      if textureId >= 0 && !isDisposed {
         textures.textureFrameAvailable(textureId)
       }
       appendVideo(sampleBuffer, pixelBuffer: pixelBuffer)
@@ -1755,7 +1794,7 @@ private final class IosCameraHostApi:
     didOutput metadataObjects: [AVMetadataObject],
     from connection: AVCaptureConnection
   ) {
-    guard !disposed else { return }
+    guard !isDisposed else { return }
     guard pairingScanEnabled || workScanEnabled else { return }
     let detectedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
     var candidates: [BarcodeCandidateDto] = []
@@ -1881,13 +1920,13 @@ private final class IosCameraHostApi:
       completion(false)
       return
     }
-    if textureId < 0 {
+    if currentTextureId < 0 {
       let newId = textures.register(self)
       guard newId >= 0 else {
         completion(false)
         return
       }
-      textureId = newId
+      updateTextureId(newId)
     }
     configureOutputDelegates()
     if !session.isRunning {
@@ -1910,9 +1949,10 @@ private final class IosCameraHostApi:
   /// 恢复失败时回滚纹理与 delegate，保持 disposed 状态干净。
   private func rollbackRecovery() {
     clearOutputDelegates()
+    let textureId = currentTextureId
     if textureId >= 0 {
       textures.unregisterTexture(textureId)
-      textureId = -1
+      updateTextureId(-1)
     }
   }
 
@@ -1935,7 +1975,7 @@ private final class IosCameraHostApi:
     completion: @escaping (Result<CameraInitializationDto, Error>) -> Void
   ) {
     sessionQueue.async { [weak self] in
-      guard let self, !self.disposed else {
+      guard let self, !self.isDisposed else {
         completion(.failure(pigeonError("摄像头已经关闭")))
         return
       }
@@ -1982,7 +2022,7 @@ private final class IosCameraHostApi:
     let size = portraitSize
     let usesHevc = preferredVideoCodec.lowercased() == "hevc"
     return CameraInitializationDto(
-      textureId: textureId,
+      textureId: currentTextureId,
       previewWidth: Int64(size.width),
       previewHeight: Int64(size.height),
       sensorOrientation: 0,
@@ -2086,7 +2126,10 @@ private final class IosCameraHostApi:
     audioInput.append(sampleBuffer)
   }
 
-  private func finishCurrentWriter(completion: @escaping () -> Void) {
+  private func finishCurrentWriter(
+    _ sendEvents: Bool = true,
+    completion: @escaping () -> Void
+  ) {
     guard let writer else {
       completion()
       return
@@ -2104,30 +2147,62 @@ private final class IosCameraHostApi:
     self.currentPath = nil
     writerSessionStarted = false
     writer.finishWriting { [weak self] in
-      guard let self else { return }
-      if writer.status == .completed, let completedPath, !completedSegmentId.isEmpty {
-        self.eventApi.segmentCompleted(
-          event: CameraSegmentCompletedDto(
-            sessionId: self.sessionId,
-            segmentId: completedSegmentId,
-            path: completedPath,
-            startedAtMs: completedStartedAt,
-            endedAtMs: endedAt
-          ),
-          completion: { _ in }
-        )
-      } else if let completedPath {
-        self.eventApi.segmentFailed(
-          event: CameraSegmentFailedDto(
-            sessionId: self.sessionId,
-            segmentId: completedSegmentId,
-            reason: writer.error?.localizedDescription ?? "录像文件写入失败"
-          ),
-          completion: { _ in }
-        )
+      if sendEvents {
+        guard let self else { return }
+        if writer.status == .completed, let completedPath, !completedSegmentId.isEmpty {
+          self.eventApi.segmentCompleted(
+            event: CameraSegmentCompletedDto(
+              sessionId: self.sessionId,
+              segmentId: completedSegmentId,
+              path: completedPath,
+              startedAtMs: completedStartedAt,
+              endedAtMs: endedAt
+            ),
+            completion: { _ in }
+          )
+        } else if let completedPath {
+          self.eventApi.segmentFailed(
+            event: CameraSegmentFailedDto(
+              sessionId: self.sessionId,
+              segmentId: completedSegmentId,
+              reason: writer.error?.localizedDescription ?? "录像文件写入失败"
+            ),
+            completion: { _ in }
+          )
+        }
       }
       completion()
     }
+  }
+
+  private var isDisposed: Bool {
+    stateLock.lock()
+    defer { stateLock.unlock() }
+    return disposed
+  }
+
+  private func markDisposed() {
+    stateLock.lock()
+    disposed = true
+    stateLock.unlock()
+  }
+
+  private func markNotDisposed() {
+    stateLock.lock()
+    disposed = false
+    stateLock.unlock()
+  }
+
+  private var currentTextureId: Int64 {
+    stateLock.lock()
+    defer { stateLock.unlock() }
+    return textureId
+  }
+
+  private func updateTextureId(_ newValue: Int64) {
+    stateLock.lock()
+    textureId = newValue
+    stateLock.unlock()
   }
 
   // MARK: - Helpers

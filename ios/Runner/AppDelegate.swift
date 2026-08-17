@@ -14,4 +14,9 @@ import UIKit
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     PigeonPlatform.register(with: engineBridge.pluginRegistry)
   }
+
+  override func applicationWillTerminate(_ application: UIApplication) {
+    PigeonPlatform.shutdownForTermination()
+    super.applicationWillTerminate(application)
+  }
 }
