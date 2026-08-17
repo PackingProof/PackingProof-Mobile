@@ -66,8 +66,11 @@ final class PigeonPlatform {
   }
 }
 
-private func pigeonError(_ message: String) -> PigeonError {
-  PigeonError(code: "ios_unavailable", message: message, details: nil)
+private func pigeonError(
+  _ message: String,
+  code: String = "ios_unavailable"
+) -> PigeonError {
+  PigeonError(code: code, message: message, details: nil)
 }
 
 private final class IosMediaProcessingHostApi: MediaProcessingHostApi {
@@ -1430,6 +1433,13 @@ private final class IosCameraHostApi:
   private var currentStartedAtMs: Int64 = 0
   private var writerSessionStarted = false
   private var sessionId = UUID().uuidString
+  private var recordingAudioActive = false
+  private var currentAudioSampleCount: Int64 = 0
+  private var currentAudioAppendFailedCount: Int64 = 0
+  private var currentAudioLastError: String?
+  private var lastAudioSampleCount: Int64 = 0
+  private var lastAudioAppendFailedCount: Int64 = 0
+  private var lastAudioLastError: String?
 
   /// 固定 sessionPreset .hd1920x1080，竖屏预览与录像输出 1080x1920。
   private var portraitSize: (width: Int, height: Int) { (1080, 1920) }
@@ -1519,6 +1529,7 @@ private final class IosCameraHostApi:
         return
       }
       do {
+        try self.ensureRunningForWork()
         try self.startWriter(path: path)
         let startedAt = self.currentStartedAtMs
         self.eventApi.segmentStarted(
@@ -1584,12 +1595,13 @@ private final class IosCameraHostApi:
       let path = self.currentPath ?? ""
       let startedAt = self.currentStartedAtMs
       let endedAt = Int64(Date().timeIntervalSince1970 * 1000)
-      self.finishCurrentWriter {}
-      completion(.success(CameraRecordingStopDto(
-        path: path,
-        startedAtMs: startedAt,
-        endedAtMs: endedAt
-      )))
+      self.finishCurrentWriter {
+        completion(.success(CameraRecordingStopDto(
+          path: path,
+          startedAtMs: startedAt,
+          endedAtMs: endedAt
+        )))
+      }
     }
   }
 
@@ -1599,6 +1611,7 @@ private final class IosCameraHostApi:
     let device = videoDeviceInput?.device
     let size = portraitSize
     let usesHevc = preferredVideoCodec.lowercased() == "hevc"
+    let scanState = metadataQueue.sync { (pairingScanEnabled, workScanEnabled) }
     completion(.success([
       "device": [
         "manufacturer": "Apple",
@@ -1610,11 +1623,18 @@ private final class IosCameraHostApi:
         "initialized": true,
         "sessionRunning": session.isRunning,
         "disposed": isDisposed,
-        "workScanEnabled": workScanEnabled,
-        "pairingScanEnabled": pairingScanEnabled,
+        "workScanEnabled": scanState.1,
+        "pairingScanEnabled": scanState.0,
         "metadataOutputAttached": metadataOutput != nil,
         "videoOutputAttached": videoOutput != nil,
         "audioOutputAttached": audioOutput != nil,
+        "recordingAudioActive": recordingAudioActive,
+        "currentAudioSampleCount": currentAudioSampleCount,
+        "currentAudioAppendFailedCount": currentAudioAppendFailedCount,
+        "currentAudioLastError": currentAudioLastError,
+        "lastAudioSampleCount": lastAudioSampleCount,
+        "lastAudioAppendFailedCount": lastAudioAppendFailedCount,
+        "lastAudioLastError": lastAudioLastError,
         "cameraPipelineVersion": 1,
         "recordingSpec": recordingSpecName,
         "cameraId": device?.uniqueID ?? "",
@@ -1631,16 +1651,28 @@ private final class IosCameraHostApi:
     enabled: Bool,
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
-    pairingScanEnabled = enabled
-    completion(.success(()))
+    metadataQueue.async { [weak self] in
+      guard let self else {
+        completion(.failure(pigeonError("摄像头已经关闭")))
+        return
+      }
+      self.pairingScanEnabled = enabled
+      completion(.success(()))
+    }
   }
 
   func setWorkScanEnabled(
     enabled: Bool,
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
-    workScanEnabled = enabled
-    completion(.success(()))
+    metadataQueue.async { [weak self] in
+      guard let self else {
+        completion(.failure(pigeonError("摄像头已经关闭")))
+        return
+      }
+      self.workScanEnabled = enabled
+      completion(.success(()))
+    }
   }
 
   func setPreviewActive(
@@ -1903,6 +1935,28 @@ private final class IosCameraHostApi:
     try? AVAudioSession.sharedInstance().setActive(true)
   }
 
+  /// 工作开始前只负责让会话可运行，不重注册纹理、不处理 dispose 恢复。
+  private func ensureRunningForWork() throws {
+    if recordAudio {
+      configureRecordingAudioSession()
+    }
+    guard outputsAreValidForWork() else {
+      throw pigeonError(
+        "摄像头输出状态异常",
+        code: "camera_outputs_invalid"
+      )
+    }
+    if !session.isRunning {
+      session.startRunning()
+    }
+    guard session.isRunning else {
+      throw pigeonError(
+        "摄像头会话未运行",
+        code: "camera_session_not_running"
+      )
+    }
+  }
+
   /// 校验三个 output 均仍挂载在当前 session 上。
   private func outputsAreValid() -> Bool {
     let outputs = session.outputs
@@ -1910,6 +1964,14 @@ private final class IosCameraHostApi:
     let audioValid = audioOutput.map { outputs.contains($0) } ?? false
     let metadataValid = metadataOutput.map { outputs.contains($0) } ?? false
     return videoValid && audioValid && metadataValid
+  }
+
+  private func outputsAreValidForWork() -> Bool {
+    let outputs = session.outputs
+    let videoValid = videoOutput.map { outputs.contains($0) } ?? false
+    let metadataValid = metadataOutput.map { outputs.contains($0) } ?? false
+    let audioValid = !recordAudio || (audioOutput.map { outputs.contains($0) } ?? false)
+    return videoValid && metadataValid && audioValid
   }
 
   /// 恢复已 dispose 的相机：校验 outputs → 重注册纹理 → 重挂 delegate →
@@ -2040,12 +2102,6 @@ private final class IosCameraHostApi:
   // MARK: - Recording
 
   private func startWriter(path: String) throws {
-    if recordAudio {
-      // 录像需要同时录音和播报，这里显式切换到 playAndRecord；
-      // 否则提示音会话的 .playback 会阻止麦克风输入，导致录像没声音。
-      configureRecordingAudioSession()
-    }
-    finishCurrentWriter {}
     let url = URL(fileURLWithPath: path)
     try? FileManager.default.removeItem(at: url)
     let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
@@ -2074,6 +2130,12 @@ private final class IosCameraHostApi:
 
     var audioInput: AVAssetWriterInput?
     if recordAudio {
+      guard audioOutput != nil else {
+        throw pigeonError(
+          "未找到麦克风输入",
+          code: "audio_input_missing"
+        )
+      }
       let settings: [String: Any] = [
         AVFormatIDKey: kAudioFormatMPEG4AAC,
         AVSampleRateKey: 48_000,
@@ -2089,7 +2151,13 @@ private final class IosCameraHostApi:
     } else {
       throw pigeonError("无法创建录像视频轨道")
     }
-    if let audioInput, writer.canAdd(audioInput) {
+    if let audioInput {
+      guard writer.canAdd(audioInput) else {
+        throw pigeonError(
+          "无法创建录像声音轨道",
+          code: "audio_track_creation_failed"
+        )
+      }
       writer.add(audioInput)
     }
 
@@ -2104,6 +2172,10 @@ private final class IosCameraHostApi:
     self.currentSegmentId = UUID().uuidString
     self.currentStartedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
     self.writerSessionStarted = false
+    self.recordingAudioActive = recordAudio && audioInput != nil
+    self.currentAudioSampleCount = 0
+    self.currentAudioAppendFailedCount = 0
+    self.currentAudioLastError = nil
   }
 
   private func appendVideo(_ sampleBuffer: CMSampleBuffer, pixelBuffer: CVPixelBuffer) {
@@ -2123,11 +2195,19 @@ private final class IosCameraHostApi:
           writerSessionStarted, audioInput.isReadyForMoreMediaData else {
       return
     }
-    audioInput.append(sampleBuffer)
+    currentAudioSampleCount += 1
+    if !audioInput.append(sampleBuffer) {
+      currentAudioAppendFailedCount += 1
+      if currentAudioLastError == nil {
+        currentAudioLastError =
+          writer.error?.localizedDescription ?? "声音样本写入失败"
+      }
+    }
   }
 
   private func finishCurrentWriter(
     _ sendEvents: Bool = true,
+    timeout: TimeInterval = 5,
     completion: @escaping () -> Void
   ) {
     guard let writer else {
@@ -2146,9 +2226,53 @@ private final class IosCameraHostApi:
     self.pixelBufferAdaptor = nil
     self.currentPath = nil
     writerSessionStarted = false
+    lastAudioSampleCount = currentAudioSampleCount
+    lastAudioAppendFailedCount = currentAudioAppendFailedCount
+    lastAudioLastError = currentAudioLastError
+    currentAudioSampleCount = 0
+    currentAudioAppendFailedCount = 0
+    currentAudioLastError = nil
+    recordingAudioActive = false
+
+    let finishLock = NSLock()
+    var didFinish = false
+    let timeoutItem = DispatchWorkItem { [weak self] in
+      finishLock.lock()
+      guard !didFinish else {
+        finishLock.unlock()
+        return
+      }
+      didFinish = true
+      finishLock.unlock()
+      writer.cancelWriting()
+      if sendEvents, let completedPath {
+        self?.eventApi.segmentFailed(
+          event: CameraSegmentFailedDto(
+            sessionId: self?.sessionId ?? "",
+            segmentId: completedSegmentId,
+            reason: "录像写入超时"
+          ),
+          completion: { _ in }
+        )
+      }
+      completion()
+    }
+    sessionQueue.asyncAfter(deadline: .now() + timeout, execute: timeoutItem)
+
     writer.finishWriting { [weak self] in
+      finishLock.lock()
+      guard !didFinish else {
+        finishLock.unlock()
+        return
+      }
+      didFinish = true
+      finishLock.unlock()
+      timeoutItem.cancel()
       if sendEvents {
-        guard let self else { return }
+        guard let self else {
+          completion()
+          return
+        }
         if writer.status == .completed, let completedPath, !completedSegmentId.isEmpty {
           self.eventApi.segmentCompleted(
             event: CameraSegmentCompletedDto(
