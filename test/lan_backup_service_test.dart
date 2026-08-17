@@ -391,6 +391,59 @@ void main() {
     expect(toggleLogs.last['enabled'], isFalse);
   });
 
+  test('备份失败日志只记录状态边沿变化', () async {
+    final List<({String kind, Map<String, Object?> extra})> events =
+        <({String kind, Map<String, Object?> extra})>[];
+    final LanBackupService service = LanBackupService(
+      logEvent: (String kind, Map<String, Object?> extra) async {
+        events.add((kind: kind, extra: extra));
+      },
+    );
+    addTearDown(service.dispose);
+
+    Map<Object?, Object?> failedJob() => <Object?, Object?>{
+      'id': 'job-1',
+      'filePath': '/tmp/job-1.mp4',
+      'state': 'failed',
+      'failureKind': 'unknown',
+      'statusCode': 400,
+      'errorCode': 'invalid_session_id',
+      'errorMessage': '录像片段 ID 无效',
+    };
+    Map<Object?, Object?> pendingJob() => <Object?, Object?>{
+      'id': 'job-1',
+      'filePath': '/tmp/job-1.mp4',
+      'state': 'pending',
+    };
+
+    service.debugApplyNativeSnapshotForTesting(<Object?, Object?>{
+      'jobs': <Object?>[failedJob()],
+    });
+    service.debugApplyNativeSnapshotForTesting(<Object?, Object?>{
+      'jobs': <Object?>[failedJob()],
+    });
+    expect(
+      events.where((event) => event.kind == 'backup_job_failed'),
+      hasLength(1),
+    );
+
+    service.debugApplyNativeSnapshotForTesting(<Object?, Object?>{
+      'jobs': <Object?>[pendingJob()],
+    });
+    service.debugApplyNativeSnapshotForTesting(<Object?, Object?>{
+      'jobs': <Object?>[failedJob()],
+    });
+
+    final List<Map<String, Object?>> failures = events
+        .where((event) => event.kind == 'backup_job_failed')
+        .map((event) => event.extra)
+        .toList();
+    expect(failures, hasLength(2));
+    expect(failures.last['jobId'], 'job-1');
+    expect(failures.last['statusCode'], 400);
+    expect(failures.last['errorCode'], 'invalid_session_id');
+  });
+
   test('空录像不会创建无法完成的备份任务', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing-proof-empty-backup-',

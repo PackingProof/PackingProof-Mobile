@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/order_info.dart';
 import 'package:packing_proof_mobile/platform/contracts/order_receiver_platform.dart';
@@ -8,9 +9,11 @@ import 'package:packing_proof_mobile/services/order_info_receiver_service.dart';
 class _FakeOrderReceiverPlatform implements OrderReceiverPlatform {
   _FakeOrderReceiverPlatform({
     this.statusResult = const OrderReceiverPlatformSnapshot(),
+    this.startError,
   });
 
   final OrderReceiverPlatformSnapshot statusResult;
+  final Object? startError;
   final StreamController<OrderInfo> _controller =
       StreamController<OrderInfo>.broadcast();
 
@@ -22,7 +25,10 @@ class _FakeOrderReceiverPlatform implements OrderReceiverPlatform {
   @override
   Future<OrderReceiverPlatformSnapshot> start({
     required bool backgroundDelivery,
-  }) async => statusResult;
+  }) async {
+    if (startError != null) throw startError!;
+    return statusResult;
+  }
 
   @override
   Future<OrderReceiverPlatformSnapshot> status() async => statusResult;
@@ -79,5 +85,23 @@ void main() {
     addTearDown(service.dispose);
 
     expect(await service.lookup('   '), isNull);
+  });
+
+  test('启动失败时写入友好错误且不向上抛出原始平台错误', () async {
+    final OrderInfoReceiverService service = OrderInfoReceiverService(
+      platform: _FakeOrderReceiverPlatform(
+        startError: PlatformException(
+          code: 'order_receiver_port_in_use',
+          message: '订单接收端口 5280 已被占用',
+        ),
+      ),
+    );
+    addTearDown(service.dispose);
+
+    await service.retry();
+
+    expect(service.snapshot.running, isFalse);
+    expect(service.snapshot.errorMessage, '订单接收端口 5280 已被占用');
+    expect(service.snapshot.errorMessage, isNot(contains('PigeonError')));
   });
 }

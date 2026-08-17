@@ -226,6 +226,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   String _appVersion = currentMobileCompatibilityVersion;
   int _appBuildNumber = currentMobileCompatibilityBuildNumber;
   bool _deviceVideoClippingEnabled = false;
+  final Set<String> _loggedFailedJobIds = <String>{};
 
   @override
   LanBackupSnapshot get snapshot => _snapshot;
@@ -233,6 +234,11 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   @visibleForTesting
   void debugSetSnapshotForTesting(LanBackupSnapshot snapshot) {
     _snapshot = snapshot;
+  }
+
+  @visibleForTesting
+  void debugApplyNativeSnapshotForTesting(Map<Object?, Object?> values) {
+    _applyNativeSnapshot(values);
   }
 
   @visibleForTesting
@@ -1353,14 +1359,15 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
         ),
       );
     }
-    final List<LanBackupJob> jobs =
-        ((values['jobs'] as List<Object?>?) ?? const <Object?>[])
-            .map(
-              (Object? item) => LanBackupJob.fromMap(
-                Map<Object?, Object?>.from(item! as Map),
-              ),
-            )
-            .toList(growable: false);
+    final List<Object?> rawJobs =
+        (values['jobs'] as List<Object?>?) ?? const <Object?>[];
+    final List<LanBackupJob> jobs = rawJobs
+        .map(
+          (Object? item) =>
+              LanBackupJob.fromMap(Map<Object?, Object?>.from(item! as Map)),
+        )
+        .toList(growable: false);
+    _logBackupJobFailureEdges(jobs, rawJobs);
     final Object? migrationValue = values['migrationHost'];
     final Map<Object?, Object?> migration = migrationValue is Map
         ? Map<Object?, Object?>.from(migrationValue)
@@ -1396,6 +1403,45 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
           : _snapshot.message,
     );
     notifyListeners();
+  }
+
+  void _logBackupJobFailureEdges(
+    List<LanBackupJob> jobs,
+    List<Object?> rawJobs,
+  ) {
+    final Set<String> activeFailedIds = jobs
+        .where(
+          (LanBackupJob job) =>
+              job.state == LanBackupJobState.paused ||
+              job.state == LanBackupJobState.failed,
+        )
+        .map((LanBackupJob job) => job.id)
+        .toSet();
+    for (int index = 0; index < jobs.length; index++) {
+      final LanBackupJob job = jobs[index];
+      if (job.state != LanBackupJobState.paused &&
+          job.state != LanBackupJobState.failed) {
+        continue;
+      }
+      if (!_loggedFailedJobIds.add(job.id)) {
+        continue;
+      }
+      final Map<Object?, Object?> raw = index < rawJobs.length
+          ? Map<Object?, Object?>.from(rawJobs[index]! as Map)
+          : const <Object?, Object?>{};
+      _log('backup_job_failed', <String, Object?>{
+        'jobId': job.id,
+        'filePath': job.filePath,
+        'state': job.state.name,
+        'failureKind': job.failureKind?.name,
+        'statusCode': raw['statusCode'],
+        'errorCode': raw['errorCode'],
+        'errorMessage': job.errorMessage,
+      });
+    }
+    _loggedFailedJobIds.removeWhere(
+      (String jobId) => !activeFailedIds.contains(jobId),
+    );
   }
 
   @override

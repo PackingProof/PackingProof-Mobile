@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../models/order_info.dart';
 import '../platform/contracts/order_receiver_platform.dart';
@@ -80,21 +81,43 @@ class OrderInfoReceiverService extends ChangeNotifier
   @override
   Future<void> initialize() async {
     if (_disposed) return;
-    try {
-      await _applyStatus(await _platform.start(backgroundDelivery: false));
-    } on CapabilityUnavailableException {
-      // 非 Android 平台保持现有静默行为。
-    }
+    await _startSafely();
   }
 
   @override
   Future<void> retry() async {
     if (_disposed) return;
+    await _startSafely();
+  }
+
+  Future<void> _startSafely() async {
     try {
       await _applyStatus(await _platform.start(backgroundDelivery: false));
     } on CapabilityUnavailableException {
       // 非 Android 平台保持现有静默行为。
+    } on PlatformException catch (error) {
+      _applyStartError(error.message ?? '订单接收启动失败');
+    } on Object catch (error) {
+      _applyStartError(_friendlyStartError(error));
     }
+  }
+
+  void _applyStartError(String message) {
+    if (_disposed) return;
+    _snapshot = _snapshot.copyWith(
+      running: false,
+      url: '',
+      errorMessage: message,
+    );
+    notifyListeners();
+  }
+
+  String _friendlyStartError(Object error) {
+    final String value = '$error';
+    if (value.contains('PigeonError') || value.contains('PlatformException')) {
+      return '订单接收启动失败，请稍后重试';
+    }
+    return value.isEmpty ? '订单接收启动失败，请稍后重试' : value;
   }
 
   @override
