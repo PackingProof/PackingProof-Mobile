@@ -2209,7 +2209,14 @@ private final class IosCameraHostApi:
   private static func defaultVideoDevice(
     position: AVCaptureDevice.Position
   ) -> AVCaptureDevice? {
-    position == .front ? frontDevices.first : backDevices.first
+    if position == .front {
+      return frontDevices.first
+    }
+    // 显式优先主摄（广角）：DiscoverySession 的设备顺序没有文档保证，
+    // 若把超广角排到首位，初始化或翻转回后置会落在 0.5x，导致条码过小扫不上。
+    return backDevices.first(where: {
+      $0.deviceType == .builtInWideAngleCamera
+    }) ?? backDevices.first
   }
 
   private static func zoomRatio(for device: AVCaptureDevice) -> Double {
