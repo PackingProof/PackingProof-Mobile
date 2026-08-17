@@ -1593,6 +1593,7 @@ private final class IosCameraHostApi:
   private var textureId: Int64 = -1
   private var latestPixelBuffer: CVPixelBuffer?
   private var videoDeviceInput: AVCaptureDeviceInput?
+  private var audioDeviceInput: AVCaptureDeviceInput?
   private var videoOutput: AVCaptureVideoDataOutput?
   private var audioOutput: AVCaptureAudioDataOutput?
   private var metadataOutput: AVCaptureMetadataOutput?
@@ -1671,6 +1672,12 @@ private final class IosCameraHostApi:
         return
       }
       self.configureRecordingAudioSession()
+      do {
+        try self.addAudioInputIfNeeded()
+      } catch {
+        completion(.failure(error))
+        return
+      }
       if self.isDisposed {
         self.recoverCamera { recovered in
           if recovered {
@@ -2122,6 +2129,8 @@ private final class IosCameraHostApi:
     if recordAudio {
       configureRecordingAudioSession()
     }
+    try addAudioInputIfNeeded()
+    configureOutputDelegates()
     guard outputsAreValidForWork() else {
       throw pigeonError(
         "摄像头输出状态异常",
@@ -2154,6 +2163,33 @@ private final class IosCameraHostApi:
     let metadataValid = metadataOutput.map { outputs.contains($0) } ?? false
     let audioValid = !recordAudio || (audioOutput.map { outputs.contains($0) } ?? false)
     return videoValid && metadataValid && audioValid
+  }
+
+  private func addAudioInputIfNeeded() throws {
+    guard recordAudio else { return }
+    if let audioDeviceInput, session.inputs.contains(audioDeviceInput) {
+      return
+    }
+    let wasRunning = session.isRunning
+    if wasRunning {
+      session.stopRunning()
+    }
+    guard let audioDevice = AVCaptureDevice.default(for: .audio) else {
+      throw pigeonError("未找到麦克风输入", code: "audio_input_missing")
+    }
+    do {
+      let input = try AVCaptureDeviceInput(device: audioDevice)
+      guard session.canAddInput(input) else {
+        throw pigeonError("无法添加麦克风输入", code: "audio_input_missing")
+      }
+      session.addInput(input)
+      audioDeviceInput = input
+    } catch {
+      if wasRunning {
+        session.startRunning()
+      }
+      throw error
+    }
   }
 
   /// 恢复已 dispose 的相机：校验 outputs → 重注册纹理 → 重挂 delegate →
