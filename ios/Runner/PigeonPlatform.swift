@@ -2131,6 +2131,7 @@ private final class IosCameraHostApi:
     }
     try addAudioInputIfNeeded()
     configureOutputDelegates()
+    try restoreMetadataOutputForWork()
     guard outputsAreValidForWork() else {
       throw pigeonError(
         "摄像头输出状态异常",
@@ -2146,6 +2147,42 @@ private final class IosCameraHostApi:
         code: "camera_session_not_running"
       )
     }
+  }
+
+  /// 恢复扫码输出配置。`AVCaptureOutput.connections` 本身只包含该 output
+  /// 的 connection，因此从其中取出的首个 connection 即为当前 metadata output
+  /// 的有效 connection；这里不遍历 session 中其他 output 的 connection。
+  private func restoreMetadataOutputForWork() throws {
+    guard let metadataOutput else {
+      throw pigeonError(
+        "摄像头输出状态异常",
+        code: "camera_outputs_invalid"
+      )
+    }
+    let availableTypes = metadataOutput.availableMetadataObjectTypes
+    let configuredTypes = Self.supportedMetadataTypes.filter {
+      availableTypes.contains($0)
+    }
+    guard !configuredTypes.isEmpty else {
+      throw pigeonError(
+        "当前设备不支持扫码类型",
+        code: "metadata_types_unavailable"
+      )
+    }
+    metadataOutput.metadataObjectTypes = configuredTypes
+    guard !metadataOutput.metadataObjectTypes.isEmpty else {
+      throw pigeonError(
+        "扫码输出配置失败",
+        code: "metadata_types_unavailable"
+      )
+    }
+    guard let connection = metadataOutput.connections.first else {
+      throw pigeonError(
+        "扫码输出连接不可用",
+        code: "metadata_connection_unavailable"
+      )
+    }
+    connection.isEnabled = true
   }
 
   /// 校验三个 output 均仍挂载在当前 session 上。
