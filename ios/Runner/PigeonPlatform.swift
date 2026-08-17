@@ -73,6 +73,13 @@ private func pigeonError(
   PigeonError(code: code, message: message, details: nil)
 }
 
+private struct BackupTransferError: Error {
+  let statusCode: Int
+  let errorCode: String
+  let message: String
+  let failureKind: String
+}
+
 private final class IosMediaProcessingHostApi: MediaProcessingHostApi {
   private let exportLock = NSLock()
   private var activeExportSessions: [String: AVAssetExportSession] = [:]
@@ -872,13 +879,20 @@ private final class IosBackupHostApi: BackupNativeHostApi {
           "fileSha256": fileSha256,
           "sourceDeviceId": deviceId(),
           "sourceDeviceName": deviceName(),
-          "sessions": job["sessions"] as? [Any] ?? [],
+          "sessions": Self.backupCompletionSessions(
+            job["sessions"] as? [Any] ?? []
+          ),
         ],
         accessKey: accessKey,
         deviceId: deviceId()
       )
       guard complete["status"] as? String == "verified" else {
-        throw pigeonError("电脑未确认录像校验结果")
+        throw BackupTransferError(
+          statusCode: 0,
+          errorCode: "verification_failed",
+          message: "电脑未确认录像校验结果",
+          failureKind: "verification_failed"
+        )
       }
       let verificationVersion =
         (complete["authVersion"] as? NSNumber)?.intValue ?? 0
@@ -897,9 +911,13 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       emitSnapshot()
       triggerCleanup()
     } catch {
+      let failure = Self.backupFailureInfo(error)
       updateJob(jobId) { current in
         current["state"] = "paused"
-        current["errorMessage"] = error.localizedDescription
+        current["errorMessage"] = failure.message
+        current["failureKind"] = failure.failureKind
+        current["statusCode"] = failure.statusCode
+        current["errorCode"] = failure.errorCode
       }
       emitSnapshot()
     }
@@ -930,7 +948,12 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     )
     guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode
     else {
-      throw pigeonError("电脑备份请求失败")
+      let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+      throw Self.backupTransferError(
+        statusCode: statusCode,
+        data: responseData,
+        fallbackMessage: "电脑备份请求失败"
+      )
     }
     return (try JSONSerialization.jsonObject(with: responseData) as? [String: Any]) ?? [:]
   }
@@ -966,9 +989,168 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     let (data, response) = try await URLSession.shared.data(for: request)
     guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode
     else {
-      throw pigeonError("电脑备份分块失败")
+      let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+      throw Self.backupTransferError(
+        statusCode: statusCode,
+        data: data,
+        fallbackMessage: "电脑备份分块失败"
+      )
     }
     return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+  }
+
+  private static func backupCompletionSessions(_ rawSessions: [Any]) -> [Any] {
+    rawSessions.compactMap { value in
+      guard let source = value as? [String: Any] else { return nil }
+      let mediaEnd = Self.int64Value(source["mediaEndMs"])
+      let mediaStart = Self.int64Value(source["mediaStartMs"])
+      let startedAt = source["startedAt"] as? String ?? ""
+      let endedAt = source["endedAt"] as? String ?? ""
+
+      var duration = mediaEnd - mediaStart
+      if duration <= 0 {
+        duration = Self.durationBetween(startedAt: startedAt, endedAt: endedAt)
+      }
+      if duration <= 0 {
+        duration = 1
+      }
+
+      var completed: [String: Any] = [
+        "sessionId": source["id"] as? String ?? "",
+        "trackingNumber": source["trackingNumber"] as? String ?? "",
+        "startedAt": startedAt,
+        "durationMilliseconds": duration,
+        "mode": source["mode"] as? String ?? "shipping",
+      ]
+      if let orderInfo = source["orderInfo"] as? [String: Any] {
+        completed["orderInfo"] = orderInfo
+      }
+      return completed
+    }
+  }
+
+  private static func int64Value(_ value: Any?) -> Int64 {
+    if let number = value as? NSNumber {
+      return number.int64Value
+    }
+    if let number = value as? Int64 {
+      return number
+    }
+    if let number = value as? Int {
+      return Int64(number)
+    }
+    return 0
+  }
+
+  private static func durationBetween(
+    startedAt: String,
+    endedAt: String
+  ) -> Int64 {
+    guard
+      let start = Self.parseIso8601(startedAt),
+      let end = Self.parseIso8601(endedAt)
+    else {
+      return 0
+    }
+    let milliseconds = end.timeIntervalSince(start) * 1000
+    return Int64(max(0, milliseconds))
+  }
+
+  private static func parseIso8601(_ value: String) -> Date? {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = formatter.date(from: value) {
+      return date
+    }
+    formatter.formatOptions = [.withInternetDateTime]
+    if let date = formatter.date(from: value) {
+      return date
+    }
+    let withoutFraction = value.split(separator: ".").first.map(String.init) ?? value
+    return formatter.date(from: withoutFraction)
+  }
+
+  private static func backupTransferError(
+    statusCode: Int,
+    data: Data,
+    fallbackMessage: String
+  ) -> BackupTransferError {
+    let text = String(data: data, encoding: .utf8) ?? ""
+    var errorCode = ""
+    var message = ""
+    if let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+      errorCode = object["errorCode"] as? String ?? ""
+      message = object["error"] as? String ?? ""
+    }
+    if message.isEmpty {
+      message = text.isEmpty ? fallbackMessage : text
+    }
+    let failureKind = Self.backupFailureKind(
+      statusCode: statusCode,
+      errorCode: errorCode
+    )
+    return BackupTransferError(
+      statusCode: statusCode,
+      errorCode: errorCode,
+      message: message,
+      failureKind: failureKind
+    )
+  }
+
+  private static func backupFailureInfo(_ error: Error) -> BackupTransferError {
+    if let transfer = error as? BackupTransferError {
+      return transfer
+    }
+    if let pigeon = error as? PigeonError {
+      return BackupTransferError(
+        statusCode: 0,
+        errorCode: pigeon.code,
+        message: pigeon.message ?? pigeon.localizedDescription,
+        failureKind: "unknown"
+      )
+    }
+    return BackupTransferError(
+      statusCode: 0,
+      errorCode: "backup_transfer_failed",
+      message: error.localizedDescription,
+      failureKind: "offline_or_timeout"
+    )
+  }
+
+  private static func backupFailureKind(
+    statusCode: Int,
+    errorCode: String
+  ) -> String {
+    switch errorCode {
+    case "enrollment_required", "device_token_invalid":
+      return "credential_invalid"
+    case "backup_protocol_upgrade_required":
+      return "incompatible_version"
+    case "offset_mismatch":
+      return "temporary_service"
+    case "sha256_mismatch":
+      return "verification_failed"
+    case "upload_not_found":
+      return "upload_expired"
+    case "invalid_session_id":
+      return "unknown"
+    default:
+      break
+    }
+    switch statusCode {
+    case 401, 403:
+      return "credential_invalid"
+    case 426:
+      return "incompatible_version"
+    case 409, 429:
+      return "temporary_service"
+    case 422:
+      return "verification_failed"
+    case 500...599:
+      return "temporary_service"
+    default:
+      return "unknown"
+    }
   }
 
   private func applySignature(
@@ -2434,18 +2616,29 @@ private final class IosCameraHostApi:
 private final class IosOrderReceiverHostApi: OrderReceiverHostApi {
   private let eventApi: OrderReceiverEventApi
   private let queue = DispatchQueue(label: "packingproof.order.receiver")
+  private let networkQueue = DispatchQueue(label: "packingproof.order.network")
+  private let networkMonitor = NWPathMonitor()
   private let storeLock = NSLock()
   private var ordersByTrackingNumber: [String: OrderInfoDto] = [:]
   private var serverSocket: Int32 = -1
   private var running = false
   private var backgroundDelivery = false
   private var lastError = ""
+  private var activeWifiInterfaceNames = Set<String>()
 
   init(eventApi: OrderReceiverEventApi) {
     self.eventApi = eventApi
+    networkMonitor.pathUpdateHandler = { [weak self] path in
+      let names = path.availableInterfaces
+        .filter { $0.type == .wifi }
+        .map(\.name)
+      self?.activeWifiInterfaceNames = Set(names)
+    }
+    networkMonitor.start(queue: networkQueue)
   }
 
   deinit {
+    networkMonitor.cancel()
     if running {
       try? stopReceiver()
     }
@@ -2485,18 +2678,19 @@ private final class IosOrderReceiverHostApi: OrderReceiverHostApi {
     guard bindResult == 0 else {
       close(socketHandle)
       lastError = "订单接收端口 5280 已被占用"
-      throw pigeonError(lastError)
+      throw pigeonError(lastError, code: "order_receiver_port_in_use")
     }
 
     guard listen(socketHandle, 8) == 0 else {
       close(socketHandle)
       lastError = "订单接收服务监听失败"
-      throw pigeonError(lastError)
+      throw pigeonError(lastError, code: "order_receiver_bind_failed")
     }
 
     serverSocket = socketHandle
     running = true
-    lastError = ""
+    let preferredAddress = preferredPrivateIPv4()
+    lastError = preferredAddress == nil ? "无法确定可用局域网地址" : ""
     queue.async { [weak self] in
       self?.acceptLoop()
     }
@@ -2534,7 +2728,7 @@ private final class IosOrderReceiverHostApi: OrderReceiverHostApi {
   private var port: Int { 5280 }
 
   private func status() -> OrderReceiverStatusDto {
-    let address = Self.currentPrivateIPv4() ?? ""
+    let address = preferredPrivateIPv4() ?? ""
     return OrderReceiverStatusDto(
       running: running,
       ipAddress: address,
@@ -2542,6 +2736,11 @@ private final class IosOrderReceiverHostApi: OrderReceiverHostApi {
       port: Int64(port),
       errorMessage: lastError
     )
+  }
+
+  private func preferredPrivateIPv4() -> String? {
+    let names = networkQueue.sync { activeWifiInterfaceNames }
+    return Self.currentPrivateIPv4(preferredInterfaceNames: names)
   }
 
   private func acceptLoop() {
@@ -2748,11 +2947,20 @@ private final class IosOrderReceiverHostApi: OrderReceiverHostApi {
     }
   }
 
-  private static func currentPrivateIPv4() -> String? {
+  private static func currentPrivateIPv4(
+    preferredInterfaceNames: Set<String> = []
+  ) -> String? {
     var interfacePointer: UnsafeMutablePointer<ifaddrs>?
     guard getifaddrs(&interfacePointer) == 0 else { return nil }
     defer { freeifaddrs(interfacePointer) }
 
+    struct Candidate {
+      let interfaceName: String
+      let address: String
+      let score: Int
+    }
+
+    var candidates: [Candidate] = []
     var cursor = interfacePointer
     while let interface = cursor {
       defer { cursor = interface.pointee.ifa_next }
@@ -2767,11 +2975,58 @@ private final class IosOrderReceiverHostApi: OrderReceiverHostApi {
       let ip = address.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { socketAddress in
         String(cString: inet_ntoa(socketAddress.pointee.sin_addr))
       }
-      if isPrivateIPv4(ip) {
-        return ip
-      }
+      guard isPrivateIPv4(ip) else { continue }
+      let name = String(cString: interface.pointee.ifa_name)
+      candidates.append(Candidate(
+        interfaceName: name,
+        address: ip,
+        score: interfaceScore(
+          name: name,
+          address: ip,
+          preferredInterfaceNames: preferredInterfaceNames
+        )
+      ))
     }
-    return nil
+
+    return candidates
+      .sorted {
+        if $0.score != $1.score { return $0.score < $1.score }
+        return $0.interfaceName < $1.interfaceName
+      }
+      .first?
+      .address
+  }
+
+  private static func interfaceScore(
+    name: String,
+    address: String,
+    preferredInterfaceNames: Set<String>
+  ) -> Int {
+    if isLinkLocalIPv4(address) { return 200 }
+    if preferredInterfaceNames.contains(name) { return 0 }
+    if name == "en0" { return 1 }
+    if name.hasPrefix("en") { return 2 }
+    if name.hasPrefix("bridge") { return 3 }
+    if isExcludedInterfaceName(name) { return 100 }
+    return 50
+  }
+
+  private static func isLinkLocalIPv4(_ value: String) -> Bool {
+    let parts = value.split(separator: ".").compactMap { Int($0) }
+    return parts.count == 4 && parts[0] == 169 && parts[1] == 254
+  }
+
+  private static func isExcludedInterfaceName(_ name: String) -> Bool {
+    let lower = name.lowercased()
+    return lower.hasPrefix("utun")
+      || lower.hasPrefix("ipsec")
+      || lower.hasPrefix("ppp")
+      || lower.hasPrefix("tap")
+      || lower.hasPrefix("tun")
+      || lower.hasPrefix("pdp_ip")
+      || lower == "awdl0"
+      || lower == "llw0"
+      || lower.hasPrefix("anpi")
   }
 
   private static func isPrivateIPv4(_ value: String) -> Bool {
