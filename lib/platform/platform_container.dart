@@ -32,7 +32,12 @@ class AppContainer {
     required this.alertAudioSession,
   });
 
-  factory AppContainer.forCurrentPlatform() {
+  factory AppContainer.forCurrentPlatform() =>
+      _currentPlatform ??= _createForCurrentPlatform();
+
+  static AppContainer? _currentPlatform;
+
+  static AppContainer _createForCurrentPlatform() {
     return AppContainer(
       capabilities: Platform.isAndroid
           ? const PlatformCapabilities(<PlatformCapability>{
