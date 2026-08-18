@@ -557,6 +557,11 @@ class SessionRepository {
   Future<void> saveWorkMode(WorkMode mode) =>
       _updateSettings((AppSettings value) => value.copyWith(workMode: mode));
 
+  Future<void> saveOperationMode(RecordingOperationMode mode) =>
+      _updateSettings(
+        (AppSettings value) => value.copyWith(operationMode: mode),
+      );
+
   Future<void> saveSpeechEnabled(bool enabled) => _updateSettings(
     (AppSettings value) => value.copyWith(speechEnabled: enabled),
   );

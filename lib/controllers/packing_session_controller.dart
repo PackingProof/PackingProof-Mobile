@@ -386,6 +386,7 @@ class PackingSessionController extends ChangeNotifier {
       await _reloadRecentSessions();
       final AppSettings settings = await _repository.loadSettings();
       _workMode = settings.workMode;
+      _operationMode = settings.operationMode;
       _speechEnabled = settings.speechEnabled;
       _orderSpeechEnabled = settings.orderSpeechEnabled;
       _maxVolumeEnabled = settings.maxVolumeEnabled;
@@ -1534,13 +1535,20 @@ class PackingSessionController extends ChangeNotifier {
     await _repository.saveWorkMode(mode);
   }
 
-  void setOperationMode(RecordingOperationMode mode) {
+  Future<void> setOperationMode(RecordingOperationMode mode) async {
     if (_operationMode == mode || isWorking || isBusy) {
       return;
     }
     _operationMode = mode;
     notifyListeners();
+    _speechService.enqueue(_speechForOperationMode(mode));
+    await _repository.saveOperationMode(mode);
   }
+
+  SpeechPrompt _speechForOperationMode(RecordingOperationMode mode) =>
+      mode == RecordingOperationMode.returnGoods
+      ? SpeechPrompt.returnMode
+      : SpeechPrompt.shippingMode;
 
   Future<void> setSpeechEnabled(bool enabled) async {
     if (_speechEnabled == enabled) {
@@ -2534,6 +2542,7 @@ class PackingSessionController extends ChangeNotifier {
             notifyListeners();
           }
           _speechService.enqueue(SpeechPrompt.shippingMode);
+          unawaited(_repository.saveOperationMode(_operationMode));
         }
         break;
       case MobileBarcodeCommand.switchReturn:
@@ -2543,6 +2552,7 @@ class PackingSessionController extends ChangeNotifier {
             notifyListeners();
           }
           _speechService.enqueue(SpeechPrompt.returnMode);
+          unawaited(_repository.saveOperationMode(_operationMode));
         }
         break;
       case MobileBarcodeCommand.startWork:

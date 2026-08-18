@@ -6,6 +6,7 @@ import 'package:packing_proof_mobile/models/backup_retention_policy.dart';
 import 'package:packing_proof_mobile/models/app_settings.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/recording_spec.dart';
+import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/models/work_mode.dart';
 import 'package:packing_proof_mobile/services/session_repository.dart';
 
@@ -42,6 +43,7 @@ void main() {
     expect(settings.unbackedRetention, UnbackedRetentionPolicy.days30);
     expect(settings.backedRetention, BackedRetentionPolicy.days7);
     expect(settings.minimumBarcodeLength, 11);
+    expect(settings.operationMode, RecordingOperationMode.shipping);
 
     await repository.saveSpeechEnabled(false);
     final Map<String, Object?> persisted = Map<String, Object?>.from(
@@ -52,6 +54,20 @@ void main() {
     expect(persisted['speechEnabled'], isFalse);
     expect(persisted['maxVolumeEnabled'], isTrue);
     expect(persisted['futureOption'], <String, Object>{'enabled': true});
+  });
+
+  test('发货退货模式可持久化并保留未知字段', () async {
+    final SessionRepository repository = testRepository(root);
+
+    await repository.saveOperationMode(RecordingOperationMode.returnGoods);
+    final AppSettings updated = await repository.loadSettings();
+    expect(updated.operationMode, RecordingOperationMode.returnGoods);
+
+    final Map<String, Object?> persisted = Map<String, Object?>.from(
+      jsonDecode(await File('${root.path}/settings.json').readAsString())
+          as Map<Object?, Object?>,
+    );
+    expect(persisted['operationMode'], 'return');
   });
 
   test('双重保留策略相互独立并保留未知字段', () async {

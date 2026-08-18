@@ -255,6 +255,7 @@ void main() {
     ]);
     await Future<void>.delayed(Duration.zero);
     expect(controller.operationMode, RecordingOperationMode.shipping);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(speech.beepCount, 2);
 
     controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
@@ -268,6 +269,39 @@ void main() {
     ]);
     await Future<void>.delayed(Duration.zero);
     expect(speech.beepCount, 4);
+  });
+
+  test('模式切换会保存选择并播报固定模式语音，初始化恢复选择', () async {
+    final SessionRepository repository = testRepository(root);
+    final _FakeSpeechSink speech = _FakeSpeechSink();
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: speech,
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+
+    await controller.initialize();
+    await controller.setOperationMode(RecordingOperationMode.returnGoods);
+    expect(controller.operationMode, RecordingOperationMode.returnGoods);
+    expect(speech.prompts, contains(SpeechPrompt.returnMode));
+    expect(
+      (await repository.loadSettings()).operationMode,
+      RecordingOperationMode.returnGoods,
+    );
+
+    final PackingSessionController restored = PackingSessionController(
+      repository: repository,
+      speechService: _FakeSpeechSink(),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+    await restored.initialize();
+    expect(restored.operationMode, RecordingOperationMode.returnGoods);
   });
 
   test('历史记录扫码忽略二维码并从同帧选择 Code128', () async {

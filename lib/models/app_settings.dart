@@ -3,6 +3,7 @@ import 'work_mode.dart';
 import 'storage_notice.dart';
 import 'recording_video_codec.dart';
 import 'recording_spec.dart';
+import 'recording_operation_mode.dart';
 
 class AppSettings {
   static const int defaultMinimumBarcodeLength = 11;
@@ -13,6 +14,7 @@ class AppSettings {
 
   const AppSettings({
     this.workMode = WorkMode.continuousScan,
+    this.operationMode = RecordingOperationMode.shipping,
     this.speechEnabled = true,
     this.orderSpeechEnabled = true,
     this.maxVolumeEnabled = true,
@@ -40,6 +42,7 @@ class AppSettings {
   factory AppSettings.fromJson(Map<String, Object?> json) {
     final Map<String, Object?> extraValues = Map<String, Object?>.of(json)
       ..remove('workMode')
+      ..remove('operationMode')
       ..remove('speechEnabled')
       ..remove('orderSpeechEnabled')
       ..remove('maxVolumeEnabled')
@@ -68,6 +71,7 @@ class AppSettings {
     extraValues.remove('hiddenRemoteRecordingIds');
     return AppSettings(
       workMode: workModeFromStorage(json['workMode']),
+      operationMode: recordingOperationModeFromStorage(json['operationMode']),
       speechEnabled: json['speechEnabled'] is bool
           ? json['speechEnabled']! as bool
           : true,
@@ -155,6 +159,7 @@ class AppSettings {
   }
 
   final WorkMode workMode;
+  final RecordingOperationMode operationMode;
   final bool speechEnabled;
   final bool orderSpeechEnabled;
   final bool maxVolumeEnabled;
@@ -180,6 +185,7 @@ class AppSettings {
 
   AppSettings copyWith({
     WorkMode? workMode,
+    RecordingOperationMode? operationMode,
     bool? speechEnabled,
     bool? orderSpeechEnabled,
     bool? maxVolumeEnabled,
@@ -204,6 +210,7 @@ class AppSettings {
   }) {
     return AppSettings(
       workMode: workMode ?? this.workMode,
+      operationMode: operationMode ?? this.operationMode,
       speechEnabled: speechEnabled ?? this.speechEnabled,
       orderSpeechEnabled: orderSpeechEnabled ?? this.orderSpeechEnabled,
       maxVolumeEnabled: maxVolumeEnabled ?? this.maxVolumeEnabled,
@@ -239,6 +246,7 @@ class AppSettings {
   Map<String, Object?> toJson() => <String, Object?>{
     ...extraValues,
     'workMode': workMode.storageValue,
+    'operationMode': operationMode.storageValue,
     'speechEnabled': speechEnabled,
     'orderSpeechEnabled': orderSpeechEnabled,
     'maxVolumeEnabled': maxVolumeEnabled,
