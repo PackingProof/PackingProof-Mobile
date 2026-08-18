@@ -1614,6 +1614,7 @@ private final class IosCameraHostApi:
   private var currentPath: String?
   private var currentSegmentId = ""
   private var currentStartedAtMs: Int64 = 0
+  private var currentSegmentSerial: Int64 = 0
   private var writerSessionStarted = false
   private var sessionId = UUID().uuidString
   private var recordingAudioActive = false
@@ -1623,6 +1624,13 @@ private final class IosCameraHostApi:
   private var lastAudioSampleCount: Int64 = 0
   private var lastAudioAppendFailedCount: Int64 = 0
   private var lastAudioLastError: String?
+  private var lastCompletedSegmentSerial: Int64 = -1
+  private var lastSegmentWriterStatus: String?
+  private var lastSegmentWriterError: String?
+  private var lastSegmentAudioTrackCheckSucceeded: Bool?
+  private var lastSegmentAudioTrackCount: Int64?
+  private var lastSegmentAudioTrackPresent: Bool?
+  private var lastSegmentAudioTrackInspectionError: String?
 
   /// 固定 sessionPreset .hd1920x1080，竖屏预览与录像输出 1080x1920。
   private var portraitSize: (width: Int, height: Int) { (1080, 1920) }
@@ -1801,6 +1809,10 @@ private final class IosCameraHostApi:
     let size = portraitSize
     let usesHevc = preferredVideoCodec.lowercased() == "hevc"
     let scanState = metadataQueue.sync { (pairingScanEnabled, workScanEnabled) }
+    let audioSession = AVAudioSession.sharedInstance()
+    let audioOptions = audioSession.categoryOptions
+    let audioOptionNames = Self.audioSessionCategoryOptionNames(audioOptions)
+    let lastSegment = lastSegmentDiagnosticsSnapshot()
     completion(.success([
       "device": [
         "manufacturer": "Apple",
@@ -1824,6 +1836,16 @@ private final class IosCameraHostApi:
         "lastAudioSampleCount": lastAudioSampleCount,
         "lastAudioAppendFailedCount": lastAudioAppendFailedCount,
         "lastAudioLastError": lastAudioLastError,
+        "audioSessionCategory": audioSession.category.rawValue,
+        "audioSessionMode": audioSession.mode.rawValue,
+        "audioSessionCategoryOptions": audioOptionNames,
+        "audioSessionCategoryOptionsRawValue": Int64(audioOptions.rawValue),
+        "lastSegmentWriterStatus": lastSegment.writerStatus,
+        "lastSegmentWriterError": lastSegment.writerError,
+        "lastSegmentAudioTrackCheckSucceeded": lastSegment.trackCheckSucceeded,
+        "lastSegmentAudioTrackCount": lastSegment.trackCount,
+        "lastSegmentAudioTrackPresent": lastSegment.trackPresent,
+        "lastSegmentAudioTrackInspectionError": lastSegment.trackInspectionError,
         "cameraPipelineVersion": 1,
         "recordingSpec": recordingSpecName,
         "cameraId": device?.uniqueID ?? "",
@@ -1834,6 +1856,57 @@ private final class IosCameraHostApi:
         "videoMime": usesHevc ? "video/hevc" : "video/avc",
       ],
     ]))
+  }
+
+  private static func audioSessionCategoryOptionNames(
+    _ options: AVAudioSession.CategoryOptions
+  ) -> [String] {
+    var names: [String] = []
+    if options.contains(.mixWithOthers) {
+      names.append("mixWithOthers")
+    }
+    if options.contains(.duckOthers) {
+      names.append("duckOthers")
+    }
+    if options.contains(.interruptSpokenAudioAndMixWithOthers) {
+      names.append("interruptSpokenAudioAndMixWithOthers")
+    }
+    if options.contains(.allowBluetooth) {
+      names.append("allowBluetooth")
+    }
+    if options.contains(.allowBluetoothA2DP) {
+      names.append("allowBluetoothA2DP")
+    }
+    if options.contains(.allowAirPlay) {
+      names.append("allowAirPlay")
+    }
+    if options.contains(.defaultToSpeaker) {
+      names.append("defaultToSpeaker")
+    }
+    if options.contains(.overrideMutedMicrophoneInterruption) {
+      names.append("overrideMutedMicrophoneInterruption")
+    }
+    return names
+  }
+
+  private func lastSegmentDiagnosticsSnapshot() -> (
+    writerStatus: String?,
+    writerError: String?,
+    trackCheckSucceeded: Bool?,
+    trackCount: Int64?,
+    trackPresent: Bool?,
+    trackInspectionError: String?
+  ) {
+    stateLock.lock()
+    defer { stateLock.unlock() }
+    return (
+      lastSegmentWriterStatus,
+      lastSegmentWriterError,
+      lastSegmentAudioTrackCheckSucceeded,
+      lastSegmentAudioTrackCount,
+      lastSegmentAudioTrackPresent,
+      lastSegmentAudioTrackInspectionError
+    )
   }
 
   func setPairingScanEnabled(
@@ -2357,6 +2430,9 @@ private final class IosCameraHostApi:
   // MARK: - Recording
 
   private func startWriter(path: String) throws {
+    if recordAudio {
+      configureRecordingAudioSession()
+    }
     let url = URL(fileURLWithPath: path)
     try? FileManager.default.removeItem(at: url)
     let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
@@ -2426,6 +2502,7 @@ private final class IosCameraHostApi:
     self.currentPath = path
     self.currentSegmentId = UUID().uuidString
     self.currentStartedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+    self.currentSegmentSerial += 1
     self.writerSessionStarted = false
     self.recordingAudioActive = recordAudio && audioInput != nil
     self.currentAudioSampleCount = 0
@@ -2472,6 +2549,7 @@ private final class IosCameraHostApi:
     let completedPath = currentPath
     let completedStartedAt = currentStartedAtMs
     let completedSegmentId = currentSegmentId
+    let completedSegmentSerial = currentSegmentSerial
     let endedAt = Int64(Date().timeIntervalSince1970 * 1000)
     videoInput?.markAsFinished()
     audioInput?.markAsFinished()
@@ -2500,6 +2578,13 @@ private final class IosCameraHostApi:
       didFinish = true
       finishLock.unlock()
       writer.cancelWriting()
+      self?.recordLastSegmentResult(
+        serial: completedSegmentSerial,
+        writerStatus: "cancelled",
+        writerError: "录像写入超时",
+        path: nil,
+        inspectionError: "录像写入超时"
+      )
       if sendEvents, let completedPath {
         self?.eventApi.segmentFailed(
           event: CameraSegmentFailedDto(
@@ -2523,6 +2608,17 @@ private final class IosCameraHostApi:
       didFinish = true
       finishLock.unlock()
       timeoutItem.cancel()
+      let writerStatus = writer.status
+      let writerError = writer.error?.localizedDescription
+      self?.recordLastSegmentResult(
+        serial: completedSegmentSerial,
+        writerStatus: Self.writerStatusName(writerStatus),
+        writerError: writerError,
+        path: writerStatus == .completed ? completedPath : nil,
+        inspectionError: writerStatus == .completed
+          ? nil
+          : writerError ?? "录像文件写入失败"
+      )
       if sendEvents {
         guard let self else {
           completion()
@@ -2552,6 +2648,56 @@ private final class IosCameraHostApi:
       }
       completion()
     }
+  }
+
+  private static func writerStatusName(_ status: AVAssetWriter.Status) -> String {
+    switch status {
+    case .unknown:
+      return "unknown"
+    case .writing:
+      return "writing"
+    case .completed:
+      return "completed"
+    case .failed:
+      return "failed"
+    case .cancelled:
+      return "cancelled"
+    @unknown default:
+      return "unknown"
+    }
+  }
+
+  private func recordLastSegmentResult(
+    serial: Int64,
+    writerStatus: String,
+    writerError: String?,
+    path: String?,
+    inspectionError: String?
+  ) {
+    stateLock.lock()
+    defer { stateLock.unlock() }
+    guard serial >= lastCompletedSegmentSerial else {
+      return
+    }
+    lastCompletedSegmentSerial = serial
+    lastSegmentWriterStatus = writerStatus
+    lastSegmentWriterError = writerError
+
+    guard let path, !path.isEmpty else {
+      lastSegmentAudioTrackCheckSucceeded = false
+      lastSegmentAudioTrackCount = nil
+      lastSegmentAudioTrackPresent = nil
+      lastSegmentAudioTrackInspectionError = inspectionError
+      return
+    }
+
+    let url = URL(fileURLWithPath: path)
+    let asset = AVURLAsset(url: url)
+    let audioTracks = asset.tracks(withMediaType: .audio)
+    lastSegmentAudioTrackCheckSucceeded = true
+    lastSegmentAudioTrackCount = Int64(audioTracks.count)
+    lastSegmentAudioTrackPresent = !audioTracks.isEmpty
+    lastSegmentAudioTrackInspectionError = nil
   }
 
   private var isDisposed: Bool {

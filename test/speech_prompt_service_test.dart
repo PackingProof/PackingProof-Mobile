@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
 import 'package:packing_proof_mobile/services/speech_prompt_service.dart';
@@ -188,6 +189,22 @@ void main() {
     expect(wav.sublist(36, 40), <int>[100, 97, 116, 97]); // data
     // 80ms @ 22050Hz 单声道 16bit
     expect((wav.length - 44) ~/ 2, 22050 * 80 ~/ 1000);
+  });
+
+  test('iOS 提示音上下文保留录音能力', () {
+    final AudioContext context = DeviceSpeechOutput.buildSpeechAudioContext(
+      const AudioContextAndroid(
+        contentType: AndroidContentType.speech,
+        usageType: AndroidUsageType.assistanceNavigationGuidance,
+        audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+      ),
+    );
+
+    expect(context.iOS.category, AVAudioSessionCategory.playAndRecord);
+    expect(
+      context.iOS.options,
+      contains(AVAudioSessionOptions.defaultToSpeaker),
+    );
   });
 
   test('识别短滴声跟随语音提示开关且不打断播报', () async {

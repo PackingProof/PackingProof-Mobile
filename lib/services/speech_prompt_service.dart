@@ -360,6 +360,20 @@ class DeviceSpeechOutput implements SpeechOutput {
   bool _audioContextConfigured = false;
   bool _beepContextConfigured = false;
 
+  /// 录像期间播放提示音时，iOS 也必须保留录音能力。
+  ///
+  /// `audioplayers` 在 iOS 使用全局 `AVAudioSession`，默认上下文会把
+  /// category 设为 `.playback`，从而可能让后续录像分段没有麦克风输入。
+  static AudioContext buildSpeechAudioContext(AudioContextAndroid android) {
+    return AudioContext(
+      android: android,
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playAndRecord,
+        options: const {AVAudioSessionOptions.defaultToSpeaker},
+      ),
+    );
+  }
+
   @override
   Future<void> playAsset(String assetPath) => _play(AssetSource(assetPath));
 
@@ -394,8 +408,8 @@ class DeviceSpeechOutput implements SpeechOutput {
         debugPrint('[speech_prompt] beep_set_audio_context');
         await player
             .setAudioContext(
-              AudioContext(
-                android: const AudioContextAndroid(
+              buildSpeechAudioContext(
+                const AudioContextAndroid(
                   contentType: AndroidContentType.sonification,
                   usageType: AndroidUsageType.media,
                   audioFocus: AndroidAudioFocus.none,
@@ -666,8 +680,8 @@ class DeviceSpeechOutput implements SpeechOutput {
   Future<void> _configureAudioContext() async {
     if (!_audioContextConfigured) {
       await _audioPlayer.setAudioContext(
-        AudioContext(
-          android: const AudioContextAndroid(
+        buildSpeechAudioContext(
+          const AudioContextAndroid(
             contentType: AndroidContentType.speech,
             usageType: AndroidUsageType.assistanceNavigationGuidance,
             audioFocus: AndroidAudioFocus.gainTransientMayDuck,
