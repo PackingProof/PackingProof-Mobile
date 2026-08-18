@@ -203,6 +203,7 @@ class PackingSessionController extends ChangeNotifier {
   int _pairingAttemptRevision = 0;
   bool _backupListenerAttached = false;
   bool _orderReceiverListenerAttached = false;
+  bool _backgroundServicesInitialized = false;
   final Set<String> _handledDeletedBackupJobs = <String>{};
   String? _pairingMessage;
   String? _historyScanResult;
@@ -378,13 +379,29 @@ class PackingSessionController extends ChangeNotifier {
     if (_disposed || (!force && isCameraReady)) {
       return;
     }
+    final Stopwatch totalStopwatch = Stopwatch()..start();
+    final Map<String, int> stageDurationsMs = <String, int>{};
+    AppSettings? loadedSettings;
     _setPhase(PackingSessionPhase.initializing);
     _errorMessage = null;
 
     try {
-      await _repository.initialize();
-      await _reloadRecentSessions();
-      final AppSettings settings = await _repository.loadSettings();
+      await _measureCameraPreparationStage(
+        stageDurationsMs,
+        'repository',
+        _repository.initialize,
+      );
+      await _measureCameraPreparationStage(
+        stageDurationsMs,
+        'recentSessions',
+        _reloadRecentSessions,
+      );
+      final AppSettings settings = await _measureCameraPreparationStage(
+        stageDurationsMs,
+        'settings',
+        _repository.loadSettings,
+      );
+      loadedSettings = settings;
       _workMode = settings.workMode;
       _operationMode = settings.operationMode;
       _speechEnabled = settings.speechEnabled;
@@ -402,43 +419,11 @@ class PackingSessionController extends ChangeNotifier {
       _hiddenRemoteRecordingIds = Set<int>.of(
         settings.hiddenRemoteRecordingIds,
       );
-      await _logAppUpgradeIfNeeded(settings);
-      if (!_backupListenerAttached) {
-        _lanBackupService.addListener(_handleBackupChanged);
-        _backupListenerAttached = true;
-      }
-      try {
-        await _lanBackupService
-            .initialize(
-              autoEnabled: settings.lanBackupAutoEnabled,
-              unbackedRetention: settings.unbackedRetention,
-              backedRetention: settings.backedRetention,
-            )
-            .timeout(const Duration(seconds: 8));
-      } on Object {
-        // Backup is optional and must never hold camera startup indefinitely.
-      }
-      await _pruneDeletedBackupSessions(notify: false);
-      if (_lanBackupService.snapshot.autoEnabled) {
-        unawaited(_backupAllRepositorySessions('app_start'));
-      } else {
-        unawaited(_registerRepositorySessionsForRetention());
-      }
-      await _speechService.setEnabled(_speechEnabled);
-      if (!_orderReceiverListenerAttached) {
-        _orderInfoReceiver.addListener(_handleOrderReceiverChanged);
-        _orderReceiverListenerAttached = true;
-        _orderInfoSubscription = _orderInfoReceiver.received.listen(
-          _handleReceivedOrderInfo,
-        );
-        try {
-          await _orderInfoReceiver.initialize().timeout(
-            const Duration(seconds: 8),
-          );
-        } on Object {
-          // Order push can be retried from settings after recording is ready.
-        }
-      }
+      await _measureCameraPreparationStage(
+        stageDurationsMs,
+        'speech',
+        () => _speechService.setEnabled(_speechEnabled),
+      );
       if (_supportsNativeCamera) {
         final ContinuousCameraService nativeCamera =
             _nativeCamera ?? ContinuousCameraService();
@@ -462,24 +447,34 @@ class PackingSessionController extends ChangeNotifier {
         nativeCamera.onProbeFinished = _handleNativeProbeFinished;
         nativeCamera.onRecordingFallback = _handleNativeRecordingFallback;
         _nativeCamera = nativeCamera;
-        final bool nativePermissionsGranted = await nativeCamera
-            .ensurePermissions(recordAudio: _recordAudioEnabled);
+        final bool nativePermissionsGranted =
+            await _measureCameraPreparationStage(
+              stageDurationsMs,
+              'permissions',
+              () => nativeCamera.ensurePermissions(
+                recordAudio: _recordAudioEnabled,
+              ),
+            );
         if (!nativePermissionsGranted) {
           throw PlatformException(
             code: 'permission_denied',
             message: '需要摄像头和麦克风权限才能工作',
           );
         }
-        _nativeInitialization = await nativeCamera
-            .initialize(
-              videoCodec: _preferredVideoCodec,
-              recordingSpec: _recordingSpec,
-              capabilityMode: _provisionalCapabilityMode().wireValue,
-            )
-            .timeout(
-              const Duration(seconds: 15),
-              onTimeout: () => throw TimeoutException('摄像头初始化超过 15 秒'),
-            );
+        _nativeInitialization = await _measureCameraPreparationStage(
+          stageDurationsMs,
+          'nativeCamera',
+          () => nativeCamera
+              .initialize(
+                videoCodec: _preferredVideoCodec,
+                recordingSpec: _recordingSpec,
+                capabilityMode: _provisionalCapabilityMode().wireValue,
+              )
+              .timeout(
+                const Duration(seconds: 15),
+                onTimeout: () => throw TimeoutException('摄像头初始化超过 15 秒'),
+              ),
+        );
         final String? codecFallbackReason =
             _nativeInitialization?.codecFallbackReason;
         if (codecFallbackReason != null) {
@@ -497,8 +492,16 @@ class PackingSessionController extends ChangeNotifier {
             ),
           );
         }
-        await _refreshBackCameraLenses();
-        await _resolveCameraCapability();
+        await _measureCameraPreparationStage(
+          stageDurationsMs,
+          'cameraLenses',
+          _refreshBackCameraLenses,
+        );
+        await _measureCameraPreparationStage(
+          stageDurationsMs,
+          'capabilityCache',
+          _resolveCameraCapability,
+        );
         if (_phase == PackingSessionPhase.error) {
           return;
         }
@@ -550,7 +553,92 @@ class PackingSessionController extends ChangeNotifier {
       _recordInitFailure('unknown', '$error');
       _errorMessage = '摄像头初始化失败，请重试\n$error';
       _setPhase(PackingSessionPhase.error);
+    } finally {
+      final bool cameraReadyBeforeBackgroundServices = isCameraReady;
+      if (loadedSettings != null) {
+        await _measureCameraPreparationStage(
+          stageDurationsMs,
+          'backgroundServices',
+          () => _initializeBackgroundServices(loadedSettings!),
+        );
+      }
+      totalStopwatch.stop();
+      await _runtimeLog.log(
+        kind: 'camera_prepare_timing',
+        extra: <String, Object?>{
+          'force': force,
+          'phase': _phase.name,
+          'readyBeforeBackgroundServices': cameraReadyBeforeBackgroundServices,
+          'totalMs': totalStopwatch.elapsedMilliseconds,
+          'stagesMs': stageDurationsMs,
+        },
+      );
     }
+  }
+
+  Future<T> _measureCameraPreparationStage<T>(
+    Map<String, int> durations,
+    String stage,
+    Future<T> Function() action,
+  ) async {
+    final Stopwatch stopwatch = Stopwatch()..start();
+    try {
+      return await action();
+    } finally {
+      stopwatch.stop();
+      durations[stage] = stopwatch.elapsedMilliseconds;
+    }
+  }
+
+  Future<void> _initializeBackgroundServices(AppSettings settings) async {
+    if (_disposed || _backgroundServicesInitialized) return;
+    try {
+      await _logAppUpgradeIfNeeded(settings);
+    } on Object {
+      // Runtime metadata is diagnostic and must not delay camera availability.
+    }
+    if (!_backupListenerAttached) {
+      _lanBackupService.addListener(_handleBackupChanged);
+      _backupListenerAttached = true;
+    }
+    try {
+      await _lanBackupService
+          .initialize(
+            autoEnabled: settings.lanBackupAutoEnabled,
+            unbackedRetention: settings.unbackedRetention,
+            backedRetention: settings.backedRetention,
+          )
+          .timeout(const Duration(seconds: 8));
+    } on Object {
+      // Backup can be retried independently after the camera is ready.
+    }
+    if (_disposed) return;
+    try {
+      await _pruneDeletedBackupSessions(notify: false);
+    } on Object {
+      // Local history remains available even when optional cleanup cannot run.
+    }
+    if (_lanBackupService.snapshot.autoEnabled) {
+      unawaited(_backupAllRepositorySessions('app_start'));
+    } else {
+      unawaited(_registerRepositorySessionsForRetention());
+    }
+    if (!_orderReceiverListenerAttached) {
+      _orderInfoReceiver.addListener(_handleOrderReceiverChanged);
+      _orderReceiverListenerAttached = true;
+      _orderInfoSubscription = _orderInfoReceiver.received.listen(
+        _handleReceivedOrderInfo,
+      );
+      try {
+        await _orderInfoReceiver.initialize().timeout(
+          const Duration(seconds: 8),
+        );
+      } on Object {
+        // Order push can be retried from settings after the camera is ready.
+      }
+    }
+    _backgroundServicesInitialized = true;
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> retryInitialize() async {
@@ -1959,16 +2047,16 @@ class PackingSessionController extends ChangeNotifier {
 
   Future<void> handleResumed() async {
     _appIsActive = true;
-    await _lanBackupService.refresh();
-    await _orderInfoReceiver.setBackgroundKeepAlive(false);
-    if (isWorking) {
-      await _beginMaxVolumeIfNeeded();
-    }
     final bool needsInitialization = _supportsNativeCamera
         ? _nativeInitialization == null
         : _cameraController?.value.isInitialized != true;
     if (needsInitialization && _phase != PackingSessionPhase.saving) {
       await initialize();
+    }
+    await _orderInfoReceiver.setBackgroundKeepAlive(false);
+    unawaited(_lanBackupService.refresh());
+    if (isWorking) {
+      await _beginMaxVolumeIfNeeded();
     }
   }
 

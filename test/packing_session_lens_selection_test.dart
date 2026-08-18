@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -189,6 +190,11 @@ class _FakeMaxVolumeSink implements MaxVolumeSink {
 }
 
 class _FakeOrderReceiverSink implements OrderInfoReceiverSink {
+  _FakeOrderReceiverSink({this.initializeBlocker});
+
+  final Completer<void>? initializeBlocker;
+  final Completer<void> initializeStarted = Completer<void>();
+
   @override
   void addListener(VoidCallback listener) {}
   @override
@@ -198,7 +204,11 @@ class _FakeOrderReceiverSink implements OrderInfoReceiverSink {
   @override
   Stream<OrderInfo> get received => const Stream<OrderInfo>.empty();
   @override
-  Future<void> initialize() async {}
+  Future<void> initialize() async {
+    if (!initializeStarted.isCompleted) initializeStarted.complete();
+    await initializeBlocker?.future;
+  }
+
   @override
   Future<void> retry() async {}
   @override
@@ -272,6 +282,34 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  test('订单接收初始化较慢时摄像头先进入可用状态', () async {
+    final Completer<void> orderInitialization = Completer<void>();
+    final _FakeOrderReceiverSink orderReceiver = _FakeOrderReceiverSink(
+      initializeBlocker: orderInitialization,
+    );
+    final PackingSessionController prioritizedController =
+        PackingSessionController(
+          repository: testRepository(root),
+          speechService: _FakeSpeechSink(),
+          maxVolumeService: _FakeMaxVolumeSink(),
+          orderInfoReceiver: orderReceiver,
+          videoWatermarkService: _FakeWatermarkSink(),
+          capabilities: const PlatformCapabilities(<PlatformCapability>{
+            PlatformCapability.continuousCameraRecording,
+          }),
+          cameraService: ContinuousCameraService(platform: camera),
+        );
+
+    final Future<void> initialization = prioritizedController.initialize();
+    await orderReceiver.initializeStarted.future;
+
+    expect(prioritizedController.phase, PackingSessionPhase.ready);
+    expect(prioritizedController.isCameraReady, isTrue);
+
+    orderInitialization.complete();
+    await initialization;
   });
 
   test('用户切到长焦后开始工作不会切回主摄', () async {
