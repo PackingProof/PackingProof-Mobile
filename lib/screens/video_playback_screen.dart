@@ -40,6 +40,20 @@ class PlaybackBufferingTracker {
   }
 }
 
+class PlaybackDisposalGuard {
+  PlaybackDisposalGuard(this._dispose);
+
+  final Future<void> Function() _dispose;
+  Future<void>? _disposeFuture;
+
+  Future<void> dispose() => _disposeFuture ??= _dispose();
+
+  Future<void> disposeAfter(Future<void> dependentsDetached) async {
+    await dependentsDetached;
+    await dispose();
+  }
+}
+
 class PlaybackBufferingOverlay extends StatelessWidget {
   const PlaybackBufferingOverlay({super.key});
 
@@ -113,6 +127,9 @@ class VideoPlaybackScreen extends StatefulWidget {
 class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
   late VideoPlayerController _video;
   late Future<void> _initialized;
+  late final PlaybackDisposalGuard _disposalGuard;
+  bool _closing = false;
+  bool _allowPop = false;
   bool _remoteCompatRetryTried = false;
   late RecordingSession _session;
   late Duration _playbackStart;
@@ -141,6 +158,7 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     _playbackStart = _session.mediaStart;
     _playbackEnd = _session.playbackEnd;
     _video = _createVideoController();
+    _disposalGuard = PlaybackDisposalGuard(_disposePlayback);
     _initialized = _initializePlayback();
   }
 
@@ -288,10 +306,37 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
 
   @override
   void dispose() {
-    _video.removeListener(_handlePlaybackBoundary);
-    unawaited(_logPlaybackEnd());
-    _video.dispose();
+    unawaited(_disposalGuard.dispose());
     super.dispose();
+  }
+
+  Future<void> _disposePlayback() async {
+    _video.removeListener(_handlePlaybackBoundary);
+    try {
+      await _video.dispose();
+    } on Object catch (error) {
+      unawaited(
+        DiagnosticsLogService().log(
+          kind: 'playback_dispose_failed',
+          extra: <String, Object?>{
+            'sessionId': _session.id,
+            'error': error.toString(),
+          },
+        ),
+      );
+    }
+    unawaited(_logPlaybackEnd());
+  }
+
+  Future<void> _closePlayback([Object? result]) async {
+    if (_closing) return;
+    setState(() => _closing = true);
+    await _disposalGuard.disposeAfter(WidgetsBinding.instance.endOfFrame);
+    if (!mounted) return;
+    setState(() => _allowPop = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop(result);
+    });
   }
 
   Future<void> _logPlaybackEnvironment() async {
@@ -668,7 +713,7 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     if (confirmed != true || !mounted) return;
     try {
       await widget.onDelete?.call();
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) await _closePlayback(true);
     } on Object {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -788,6 +833,22 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return PopScope<Object?>(
+      canPop: _allowPop,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (!didPop) unawaited(_closePlayback(result));
+      },
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
+    if (_closing) {
+      return Scaffold(
+        appBar: AppBar(title: Text(_session.displayCode)),
+        body: const SizedBox.expand(),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: Text(_session.displayCode),
