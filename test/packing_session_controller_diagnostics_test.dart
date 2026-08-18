@@ -270,6 +270,44 @@ void main() {
     expect(speech.beepCount, 4);
   });
 
+  test('历史记录扫码忽略二维码并从同帧选择 Code128', () async {
+    final PackingSessionController controller = PackingSessionController(
+      repository: testRepository(root),
+      speechService: _FakeSpeechSink(),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+
+    await controller.initialize();
+    controller.beginHistoryBarcodeScan();
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(
+        value: 'QR12345678901',
+        area: 300,
+        format: 'qr',
+      ),
+    ]);
+    expect(controller.historyScanActive, isTrue);
+    expect(controller.historyScanResult, isNull);
+
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(
+        value: 'QR12345678901',
+        area: 300,
+        format: 'qr',
+      ),
+      const NativeBarcodeCandidate(
+        value: 'YT123456789012',
+        area: 200,
+        format: 'code128',
+      ),
+    ]);
+    expect(controller.historyScanActive, isFalse);
+    expect(controller.historyScanResult, 'YT123456789012');
+  });
+
   testWidgets('录像兼容提示 5 秒独立计时且新事件重新计时', (WidgetTester tester) async {
     const String notice = '受硬件限制，录像时预览画面会暂停，扫码和录像不受影响';
     final PackingSessionController controller = PackingSessionController(

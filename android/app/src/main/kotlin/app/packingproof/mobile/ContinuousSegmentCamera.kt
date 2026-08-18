@@ -1281,15 +1281,6 @@ class ContinuousSegmentCamera(
         }
     }
 
-    private fun barcodeFormatName(format: Int): String? = when (format) {
-        Barcode.FORMAT_EAN_13 -> "ean13"
-        Barcode.FORMAT_EAN_8 -> "ean8"
-        Barcode.FORMAT_UPC_A -> "upca"
-        Barcode.FORMAT_UPC_E -> "upce"
-        Barcode.FORMAT_ITF -> "itf"
-        else -> null
-    }
-
     private fun refreshCaptureRequest() {
         cameraHandler?.post {
             val session = captureSession ?: return@post
@@ -3225,4 +3216,21 @@ class ContinuousSegmentCamera(
         val presentationTimeUs: Long,
         val flags: Int,
     )
+}
+
+internal fun barcodeFormatName(format: Int): String? = when (format) {
+    Barcode.FORMAT_EAN_13 -> "ean13"
+    Barcode.FORMAT_EAN_8 -> "ean8"
+    Barcode.FORMAT_UPC_A -> "upca"
+    Barcode.FORMAT_UPC_E -> "upce"
+    Barcode.FORMAT_ITF -> "itf"
+    Barcode.FORMAT_CODE_128 -> "code128"
+    Barcode.FORMAT_CODE_39 -> "code39"
+    Barcode.FORMAT_CODE_93 -> "code93"
+    Barcode.FORMAT_CODABAR -> "codabar"
+    Barcode.FORMAT_QR_CODE -> "qr"
+    Barcode.FORMAT_DATA_MATRIX -> "dataMatrix"
+    Barcode.FORMAT_PDF417 -> "pdf417"
+    Barcode.FORMAT_AZTEC -> "aztec"
+    else -> null
 }

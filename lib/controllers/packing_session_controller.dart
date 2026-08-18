@@ -2097,7 +2097,10 @@ class PackingSessionController extends ChangeNotifier {
     if (_historyScanActive) {
       NativeBarcodeCandidate? match;
       for (final NativeBarcodeCandidate candidate in candidates) {
-        if (BarcodeCandidatePolicy.isValid(candidate.value)) {
+        if (BarcodeCandidatePolicy.isValidForHistoryScan(
+          candidate.value,
+          format: candidate.format,
+        )) {
           match = candidate;
           break;
         }

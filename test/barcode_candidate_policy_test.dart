@@ -24,7 +24,7 @@ void main() {
       expect(BarcodeCandidatePolicy.isValid('https://example.com'), isFalse);
     });
 
-    test('工作识别拒绝商品码制，历史扫码不受影响', () {
+    test('工作识别只接受 Code128', () {
       expect(
         BarcodeCandidatePolicy.isValidForWorkScan(
           '6901234567890',
@@ -61,10 +61,57 @@ void main() {
         ),
         isTrue,
       );
+      expect(
+        BarcodeCandidatePolicy.isValidForWorkScan(
+          'YT123456789012',
+          format: 'qr',
+        ),
+        isFalse,
+      );
+      expect(
+        BarcodeCandidatePolicy.isValidForWorkScan(
+          'YT123456789012',
+          format: 'code39',
+        ),
+        isFalse,
+      );
+      expect(
+        BarcodeCandidatePolicy.isValidForWorkScan('YT123456789012'),
+        isFalse,
+      );
       expect(BarcodeCandidatePolicy.isValid('6901234567890'), isTrue);
     });
 
-    test('工作识别按最短长度过滤 Code128 防伪码，历史扫码不受影响', () {
+    test('历史记录扫码只接受 Code128，通用内容校验不受影响', () {
+      expect(
+        BarcodeCandidatePolicy.isValidForHistoryScan(
+          'YT123456789012',
+          format: 'code128',
+        ),
+        isTrue,
+      );
+      for (final String? format in <String?>[
+        'qr',
+        'ean13',
+        'code39',
+        'code93',
+        'pdf417',
+        'unknown',
+        null,
+      ]) {
+        expect(
+          BarcodeCandidatePolicy.isValidForHistoryScan(
+            'YT123456789012',
+            format: format,
+          ),
+          isFalse,
+          reason: 'format=$format',
+        );
+      }
+      expect(BarcodeCandidatePolicy.isValid('YT123456789012'), isTrue);
+    });
+
+    test('工作识别按最短长度过滤 Code128 防伪码', () {
       expect(
         BarcodeCandidatePolicy.isValidForWorkScan(
           '1234567890',
@@ -126,6 +173,13 @@ void main() {
           format: 'code128',
         ),
         isNull,
+      );
+      expect(
+        BarcodeCandidatePolicy.rejectionForWorkScan(
+          'JT1234567890',
+          format: 'qr',
+        ),
+        WorkScanRejection.unsupportedFormat,
       );
     });
   });

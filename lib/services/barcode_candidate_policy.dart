@@ -68,8 +68,7 @@ class BarcodeCandidatePolicy {
     return !_blockedWords.any(normalized.contains);
   }
 
-  /// 工作识别专用：先按普通规则校验，再拒绝商品码制。
-  /// 历史记录扫码继续使用 [isValid]，不受商品码制过滤影响。
+  /// 工作识别和历史记录扫码均只接受 Code 128。
   static bool isValidForWorkScan(
     String? value, {
     String? format,
@@ -82,8 +81,32 @@ class BarcodeCandidatePolicy {
       ) ==
       null;
 
+  static bool isValidForHistoryScan(
+    String? value, {
+    String? format,
+    int minimumLength = defaultMinimumLength,
+  }) =>
+      rejectionForCode128Scan(
+        value,
+        format: format,
+        minimumLength: minimumLength,
+      ) ==
+      null;
+
   /// 工作识别被拒绝的原因；返回 null 表示可接受。
   static WorkScanRejection? rejectionForWorkScan(
+    String? value, {
+    String? format,
+    int minimumLength = defaultMinimumLength,
+  }) {
+    return rejectionForCode128Scan(
+      value,
+      format: format,
+      minimumLength: minimumLength,
+    );
+  }
+
+  static WorkScanRejection? rejectionForCode128Scan(
     String? value, {
     String? format,
     int minimumLength = defaultMinimumLength,
@@ -95,14 +118,17 @@ class BarcodeCandidatePolicy {
     if (normalized.length < minimumLength) {
       return WorkScanRejection.tooShort;
     }
-    if (_productFormats.contains(format)) {
-      return WorkScanRejection.productFormat;
+    if (format != 'code128') {
+      if (_productFormats.contains(format)) {
+        return WorkScanRejection.productFormat;
+      }
+      return WorkScanRejection.unsupportedFormat;
     }
     return null;
   }
 }
 
-enum WorkScanRejection { tooShort, productFormat, invalid }
+enum WorkScanRejection { tooShort, productFormat, unsupportedFormat, invalid }
 
 /// 手机版摄像头可执行的指令码动作。
 enum MobileBarcodeCommand { switchShipping, switchReturn, startWork, stopWork }

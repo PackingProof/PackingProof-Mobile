@@ -321,4 +321,32 @@ void main() {
     expect(second.capabilityMode, CameraCapabilityMode.alternating);
     expect(second.capabilityProbedAtMs, firstProbedAtMs);
   });
+
+  test('开始工作后忽略二维码并从同帧选择 Code128', () async {
+    await controller.initialize();
+    await controller.startWork();
+
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(
+        value: 'QR12345678901',
+        area: 300,
+        format: 'qr',
+      ),
+    ]);
+    expect(controller.candidateCode, isEmpty);
+
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(
+        value: 'QR12345678901',
+        area: 300,
+        format: 'qr',
+      ),
+      const NativeBarcodeCandidate(
+        value: 'YT123456789012',
+        area: 200,
+        format: 'code128',
+      ),
+    ]);
+    expect(controller.candidateCode, 'YT123456789012');
+  });
 }
