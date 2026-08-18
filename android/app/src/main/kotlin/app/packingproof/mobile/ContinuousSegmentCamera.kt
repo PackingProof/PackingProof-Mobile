@@ -186,6 +186,7 @@ class ContinuousSegmentCamera(
     @Volatile private var initialized = false
     private var disposed = false
     private var initializeResult: MethodChannel.Result? = null
+    private var previewResumeResult: MethodChannel.Result? = null
     private var openCameraAttempts = 0
     private var preferredVideoMime = MediaFormat.MIMETYPE_VIDEO_HEVC
     private var codecFallbackReason: String? = null
@@ -222,6 +223,12 @@ class ContinuousSegmentCamera(
     private var storageFailureReported = false
 
     private var scannerBusy = false
+    @Volatile private var analysisStartedCount = 0L
+    @Volatile private var analysisCompletedCount = 0L
+    @Volatile private var analysisDetectedCount = 0L
+    @Volatile private var analysisFailureCount = 0L
+    @Volatile private var lastAnalysisCompletedElapsedMs = 0L
+    @Volatile private var lastAnalysisFailure: String? = null
     @Volatile private var pairingScanEnabled = false
     @Volatile private var workScanEnabled = false
     @Volatile private var torchEnabled = false
@@ -685,6 +692,7 @@ class ContinuousSegmentCamera(
         probeGeneration++
         probeInProgress = false
         initializeResult?.let { replyError(it, "disposed", "摄像头初始化已取消") }
+        previewResumeResult?.let { replyError(it, "disposed", "摄像头恢复已取消") }
         startResult?.let { replyError(it, "disposed", "录像启动已取消") }
         splitResult?.let { replyError(it, "disposed", "录像分段已取消") }
         stopResult?.let { replyError(it, "disposed", "录像保存已取消") }
@@ -702,6 +710,7 @@ class ContinuousSegmentCamera(
         if (activeMuxHandler != null) activeMuxHandler.post {
             // 与 muxHandler 上可能在途的开始/停止/分段任务串行清空状态。
             initializeResult = null
+            previewResumeResult = null
             startResult = null
             stopResult = null
             splitResult = null
@@ -922,7 +931,7 @@ class ContinuousSegmentCamera(
 
                 override fun onDisconnected(camera: CameraDevice) {
                     closeCameraSafely(camera)
-                    if (initializeResult != null &&
+                    if ((initializeResult != null || previewResumeResult != null) &&
                         openCameraAttempts < CameraOpenRetryPolicy.MAX_ATTEMPTS
                     ) {
                         retryCameraOpen()
@@ -933,7 +942,7 @@ class ContinuousSegmentCamera(
 
                 override fun onError(camera: CameraDevice, error: Int) {
                     closeCameraSafely(camera)
-                    if (initializeResult != null &&
+                    if ((initializeResult != null || previewResumeResult != null) &&
                         CameraOpenRetryPolicy.isTransientStateError(error) &&
                         openCameraAttempts < CameraOpenRetryPolicy.MAX_ATTEMPTS
                     ) {
@@ -1078,6 +1087,27 @@ class ContinuousSegmentCamera(
             onConfigured = { session ->
                 captureSession = session
                 try {
+                    if (!previewActive) {
+                        initialized = true
+                        val result = initializeResult
+                        initializeResult = null
+                        if (result != null) replySuccess(result, initializationMap())
+                        initialized = false
+                        session.close()
+                        captureSession = null
+                        sessionHasPreview = false
+                        sessionHasEncoder = false
+                        sessionHasAnalysis = false
+                        if (cameraDevice === camera) {
+                            camera.close()
+                            cameraDevice = null
+                        }
+                        Log.i(
+                            CAMERA_LOG_TAG,
+                            "camera initialization completed while preview suspended",
+                        )
+                        return@submitWithFallback
+                    }
                     applyCaptureRequest(session, camera, characteristics)
                     initialized = true
                     schedulePreviewStallCheck()
@@ -1100,6 +1130,9 @@ class ContinuousSegmentCamera(
                     val result = initializeResult
                     initializeResult = null
                     if (result != null) replySuccess(result, initializationMap())
+                    val resumed = previewResumeResult
+                    previewResumeResult = null
+                    if (resumed != null) replySuccess(resumed, null)
                     val restoreCallback = probeRestoreCallback
                     probeRestoreCallback = null
                     restoreCallback?.invoke(null)
@@ -1355,10 +1388,12 @@ class ContinuousSegmentCamera(
         }
         scannerBusy = true
         lastAnalysisElapsedMs = SystemClock.elapsedRealtime()
+        analysisStartedCount++
         try {
             val input = InputImage.fromMediaImage(image, sensorOrientation)
             barcodeScanner.process(input)
                 .addOnSuccessListener { barcodes ->
+                    recordAnalysisResult(barcodes.size)
                     val detectedAtMs = System.currentTimeMillis()
                     val values = barcodes.mapNotNull { barcode ->
                         val raw = barcode.rawValue?.trim().orEmpty()
@@ -1371,7 +1406,10 @@ class ContinuousSegmentCamera(
                     }
                     emit("barcodeFrame", values)
                 }
-                .addOnFailureListener { emit("barcodeFrame", emptyList<Any>()) }
+                .addOnFailureListener { error ->
+                    recordAnalysisResult(0, error)
+                    emit("barcodeFrame", emptyList<Any>())
+                }
                 .addOnCompleteListener {
                     cameraHandler?.post {
                         image.close()
@@ -1379,13 +1417,25 @@ class ContinuousSegmentCamera(
                     }
                 }
         } catch (error: Throwable) {
+            recordAnalysisResult(0, error)
             image.close()
             scannerBusy = false
         }
     }
 
+    private fun recordAnalysisResult(count: Int, error: Throwable? = null) {
+        analysisCompletedCount++
+        lastAnalysisCompletedElapsedMs = SystemClock.elapsedRealtime()
+        if (count > 0) analysisDetectedCount += count
+        if (error != null) {
+            analysisFailureCount++
+            lastAnalysisFailure = "${error.javaClass.simpleName}: ${error.message.orEmpty()}"
+        }
+    }
+
     private fun refreshCaptureRequest() {
         cameraHandler?.post {
+            if (!previewActive || !initialized) return@post
             val session = captureSession ?: return@post
             val camera = cameraDevice ?: return@post
             val characteristics = selectedCameraCharacteristics ?: return@post
@@ -1813,10 +1863,72 @@ class ContinuousSegmentCamera(
         refreshCaptureRequest()
     }
 
-    fun setPreviewActive(active: Boolean) {
-        previewActive = active
-        if (active) refreshCaptureRequest()
-        Log.i(CAMERA_LOG_TAG, "previewActive=$active")
+    fun setPreviewActive(active: Boolean, result: MethodChannel.Result) {
+        val handler = cameraHandler
+        if (disposed || handler == null) {
+            replyError(result, "camera_not_ready", "摄像头尚未准备完成")
+            return
+        }
+        handler.post {
+            if (recordingRequested || recordingActive) {
+                replyError(result, "camera_busy", "录像期间不能暂停摄像头")
+                return@post
+            }
+            if (!active) {
+                previewActive = false
+                previewResumeResult?.let {
+                    replyError(it, "preview_suspended", "摄像头恢复已取消")
+                }
+                previewResumeResult = null
+                initialized = false
+                cameraHandler?.removeCallbacks(previewStallCheck)
+                try {
+                    captureSession?.stopRepeating()
+                    captureSession?.abortCaptures()
+                } catch (_: Throwable) {
+                }
+                captureSession?.close()
+                captureSession = null
+                sessionHasPreview = false
+                sessionHasEncoder = false
+                sessionHasAnalysis = false
+                cameraDevice?.close()
+                cameraDevice = null
+                lastCaptureStartedAtMs = 0L
+                lastCaptureCompletedAtMs = 0L
+                stallActive = false
+                resetStallRecovery()
+                Log.i(CAMERA_LOG_TAG, "previewActive=false camera suspended")
+                replySuccess(result, null)
+                return@post
+            }
+            previewActive = true
+            if (initialized && cameraDevice != null && captureSession != null) {
+                val camera = cameraDevice
+                val characteristics = selectedCameraCharacteristics
+                if (camera == null || characteristics == null) {
+                    replyError(result, "camera_not_ready", "摄像头尚未准备完成")
+                    return@post
+                }
+                try {
+                    applyCaptureRequest(captureSession!!, camera, characteristics)
+                    Log.i(CAMERA_LOG_TAG, "previewActive=true camera already active")
+                    replySuccess(result, null)
+                } catch (error: Throwable) {
+                    replyError(result, "preview_resume_failed", error.message ?: "摄像头恢复失败")
+                }
+                return@post
+            }
+            if (previewResumeResult != null || initializeResult != null) {
+                replyError(result, "camera_busy", "摄像头正在恢复")
+                return@post
+            }
+            previewResumeResult = result
+            openCameraAttempts = 0
+            lastAnalysisElapsedMs = 0L
+            Log.i(CAMERA_LOG_TAG, "previewActive=true reopening camera")
+            openCamera()
+        }
     }
 
     fun setTorchEnabled(enabled: Boolean, result: MethodChannel.Result) {
@@ -2216,14 +2328,18 @@ class ContinuousSegmentCamera(
     private fun failInitialization(code: String, message: String, error: Throwable?) {
         val result = initializeResult
         initializeResult = null
+        val resumed = previewResumeResult
+        previewResumeResult = null
         initialized = false
         pendingSwitchStartedAtMs = 0L
         initFailureStage = code
         initFailureDetail = error?.let { "$message：${it.message}" } ?: message
         Log.w(CAMERA_LOG_TAG, "initialization failed code=$code message=$message", error)
         closeCameraResourcesForRetry()
-        if (result != null) replyError(result, code, error?.let { "$message：${it.message}" } ?: message)
-        else notifyNativeError(message, error)
+        val detail = error?.let { "$message：${it.message}" } ?: message
+        if (result != null) replyError(result, code, detail)
+        if (resumed != null) replyError(resumed, code, detail)
+        if (result == null && resumed == null) notifyNativeError(message, error)
         val restoreCallback = probeRestoreCallback
         probeRestoreCallback = null
         restoreCallback?.invoke(error)
@@ -3182,6 +3298,16 @@ class ContinuousSegmentCamera(
             "previewActive" to previewActive,
             "workScanEnabled" to workScanEnabled,
             "pairingScanEnabled" to pairingScanEnabled,
+            "analysisStartedCount" to analysisStartedCount,
+            "analysisCompletedCount" to analysisCompletedCount,
+            "analysisDetectedCount" to analysisDetectedCount,
+            "analysisFailureCount" to analysisFailureCount,
+            "lastAnalysisCompletedAgeMs" to if (lastAnalysisCompletedElapsedMs == 0L) {
+                -1L
+            } else {
+                now - lastAnalysisCompletedElapsedMs
+            },
+            "lastAnalysisFailure" to lastAnalysisFailure,
             "recordingRequested" to recordingRequested,
             "recordingActive" to recordingActive,
             "torchEnabled" to torchEnabled,

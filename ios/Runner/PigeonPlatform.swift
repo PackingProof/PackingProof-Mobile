@@ -1603,6 +1603,7 @@ private final class IosCameraHostApi:
   private var recordAudio = true
   private var pairingScanEnabled = false
   private var workScanEnabled = false
+  private var previewActive = true
   private var disposed = false
   private var recoveryRuntimeError = false
   private var runtimeErrorObserver: NSObjectProtocol?
@@ -1823,6 +1824,7 @@ private final class IosCameraHostApi:
       "camera": [
         "initialized": true,
         "sessionRunning": session.isRunning,
+        "previewActive": previewActive,
         "disposed": isDisposed,
         "workScanEnabled": scanState.1,
         "pairingScanEnabled": scanState.0,
@@ -1941,7 +1943,36 @@ private final class IosCameraHostApi:
     active: Bool,
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
-    completion(.success(()))
+    sessionQueue.async { [weak self] in
+      guard let self, !self.isDisposed else {
+        completion(.failure(pigeonError("摄像头已经关闭")))
+        return
+      }
+      guard self.currentPath == nil else {
+        completion(.failure(pigeonError(
+          "录像期间不能暂停摄像头",
+          code: "camera_busy"
+        )))
+        return
+      }
+      self.previewActive = active
+      if active {
+        self.configureOutputDelegates()
+        if !self.session.isRunning {
+          self.session.startRunning()
+        }
+        guard self.session.isRunning else {
+          completion(.failure(pigeonError(
+            "摄像头恢复失败",
+            code: "preview_resume_failed"
+          )))
+          return
+        }
+      } else if self.session.isRunning {
+        self.session.stopRunning()
+      }
+      completion(.success(()))
+    }
   }
 
   func setTorchEnabled(

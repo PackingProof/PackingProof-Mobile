@@ -90,8 +90,10 @@ class ContinuousCameraPlugin(
                 result.success(null)
             }
             "setPreviewActive" -> {
-                engine.setPreviewActive(call.argument<Boolean>("active") == true)
-                result.success(null)
+                engine.setPreviewActive(
+                    call.argument<Boolean>("active") == true,
+                    result,
+                )
             }
             "setTorchEnabled" -> {
                 engine.setTorchEnabled(call.argument<Boolean>("enabled") == true, result)

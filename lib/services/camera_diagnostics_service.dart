@@ -29,6 +29,7 @@ class CameraDiagnosticsService {
   static const List<String> _heartbeatStateKeys = <String>[
     'initialized',
     'sessionRunning',
+    'previewActive',
     'disposed',
     'workScanEnabled',
     'pairingScanEnabled',
@@ -69,8 +70,10 @@ class CameraDiagnosticsService {
         for (final String key in _heartbeatStateKeys) key: current.camera[key],
       };
       final bool changed = !mapEquals(_lastHeartbeatState, state);
-      final bool livenessDue = _lastHeartbeatLoggedAt == null ||
-          DateTime.now().difference(_lastHeartbeatLoggedAt!) >= livenessInterval;
+      final bool livenessDue =
+          _lastHeartbeatLoggedAt == null ||
+          DateTime.now().difference(_lastHeartbeatLoggedAt!) >=
+              livenessInterval;
       if (!changed && !livenessDue) {
         return;
       }
@@ -88,7 +91,8 @@ class CameraDiagnosticsService {
         (String key, Object? value) => MapEntry<String, Object?>(key, value),
       ),
       ...current.process.map(
-        (String key, Object? value) => MapEntry<String, Object?>('process.$key', value),
+        (String key, Object? value) =>
+            MapEntry<String, Object?>('process.$key', value),
       ),
     });
   }
