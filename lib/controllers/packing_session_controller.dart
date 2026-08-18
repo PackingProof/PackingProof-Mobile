@@ -1137,6 +1137,8 @@ class PackingSessionController extends ChangeNotifier {
 
   Future<void> switchCamera() async {
     if (!cameraSwitchAvailable || isBusy || isWorking) return;
+    final Stopwatch stopwatch = Stopwatch()..start();
+    bool usedFallback = false;
     try {
       if (_torchEnabled) {
         await _nativeCamera!.setTorchEnabled(false);
@@ -1151,12 +1153,27 @@ class PackingSessionController extends ChangeNotifier {
       _setPhase(PackingSessionPhase.ready);
       unawaited(_captureCameraDiagnosticsSnapshot('switch_camera'));
     } on Object {
+      usedFallback = true;
       await _disposeCamera();
       await initialize();
       if (!_disposed) {
         _errorMessage = '摄像头切换失败，已恢复后置摄像头';
         notifyListeners();
       }
+    } finally {
+      stopwatch.stop();
+      unawaited(
+        _runtimeLog.log(
+          kind: 'camera_switch_timing',
+          extra: <String, Object?>{
+            'target': 'oppositeFacing',
+            'cameraId': activeCameraId,
+            'durationMs': stopwatch.elapsedMilliseconds,
+            'usedFallback': usedFallback,
+            'ready': isCameraReady,
+          },
+        ),
+      );
     }
   }
 
@@ -1170,6 +1187,8 @@ class PackingSessionController extends ChangeNotifier {
         )) {
       return;
     }
+    final Stopwatch stopwatch = Stopwatch()..start();
+    bool usedFallback = false;
     try {
       if (_torchEnabled) {
         await nativeCamera.setTorchEnabled(false);
@@ -1184,12 +1203,28 @@ class PackingSessionController extends ChangeNotifier {
       _setPhase(PackingSessionPhase.ready);
       unawaited(_captureCameraDiagnosticsSnapshot('switch_lens'));
     } on Object {
+      usedFallback = true;
       await _disposeCamera();
       await initialize();
       if (!_disposed) {
         _errorMessage = '摄像头切换失败，已恢复默认后置摄像头';
         notifyListeners();
       }
+    } finally {
+      stopwatch.stop();
+      unawaited(
+        _runtimeLog.log(
+          kind: 'camera_switch_timing',
+          extra: <String, Object?>{
+            'target': 'cameraId',
+            'requestedCameraId': cameraId,
+            'cameraId': activeCameraId,
+            'durationMs': stopwatch.elapsedMilliseconds,
+            'usedFallback': usedFallback,
+            'ready': isCameraReady,
+          },
+        ),
+      );
     }
   }
 

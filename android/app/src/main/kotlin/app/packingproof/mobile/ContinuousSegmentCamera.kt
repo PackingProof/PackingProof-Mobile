@@ -141,6 +141,10 @@ class ContinuousSegmentCamera(
     private var cachedCameraIdList: List<String> = emptyList()
     private var cachedZoomRatioRange: List<Float>? = null
     @Volatile private var canSwitchCamera = false
+    @Volatile private var switchCount = 0
+    @Volatile private var lastSwitchDurationMs = 0L
+    @Volatile private var lastSwitchRestartedEncoder = false
+    private var pendingSwitchStartedAtMs = 0L
     @Volatile private var videoSize = Size(
         RecordingSpecPolicy.HD.videoWidth,
         RecordingSpecPolicy.HD.videoHeight,
@@ -471,6 +475,91 @@ class ContinuousSegmentCamera(
     fun currentCameraId(): String? = selectedCameraId
 
     fun hasBackCamera(cameraId: String): Boolean = cameraId in allBackCameraIds()
+
+    fun switchToCamera(cameraId: String, result: MethodChannel.Result) {
+        reconfigureCamera(result, targetCameraId = cameraId)
+    }
+
+    fun switchToLensFacing(lensFacing: Int, result: MethodChannel.Result) {
+        reconfigureCamera(result, targetLensFacing = lensFacing)
+    }
+
+    private fun reconfigureCamera(
+        result: MethodChannel.Result,
+        targetCameraId: String? = null,
+        targetLensFacing: Int? = null,
+    ) {
+        if (!canSwitchNow()) {
+            replyError(result, "camera_busy", "当前状态不能切换摄像头")
+            return
+        }
+        initialized = false
+        initializeResult = result
+        openCameraAttempts = 0
+        pendingSwitchStartedAtMs = SystemClock.elapsedRealtime()
+        cameraHandler?.post {
+            if (disposed) {
+                failInitialization("disposed", "摄像头已经关闭", null)
+                return@post
+            }
+            val previousVideoSize = videoSize
+            captureSession?.close()
+            captureSession = null
+            cameraDevice?.close()
+            cameraDevice = null
+            analysisReader?.close()
+            analysisReader = null
+            resetStallRecovery()
+            sessionHasPreview = false
+            sessionHasEncoder = false
+            sessionHasAnalysis = false
+            workingStreamConfig = null
+            sessionConfigStage = null
+            try {
+                selectCameraConfiguration(
+                    targetCameraId = targetCameraId,
+                    targetLensFacing = targetLensFacing,
+                )
+                textureEntry?.surfaceTexture()?.setDefaultBufferSize(
+                    videoSize.width,
+                    videoSize.height,
+                )
+                val restartEncoder = CameraSwitchResourcePolicy.shouldRestartEncoder(
+                    previousWidth = previousVideoSize.width,
+                    previousHeight = previousVideoSize.height,
+                    nextWidth = videoSize.width,
+                    nextHeight = videoSize.height,
+                )
+                lastSwitchRestartedEncoder = restartEncoder
+                if (restartEncoder) {
+                    muxHandler?.post {
+                        if (disposed) return@post
+                        try {
+                            releaseVideoEncoder()
+                            prepareVideoEncoder()
+                            setVideoSuspended(true)
+                            cameraHandler?.post(::openCamera)
+                                ?: failInitialization(
+                                    "camera_thread",
+                                    "摄像头线程不可用",
+                                    null,
+                                )
+                        } catch (error: Throwable) {
+                            failInitialization(
+                                "encoder_init",
+                                "视频编码器初始化失败",
+                                error,
+                            )
+                        }
+                    } ?: failInitialization("camera_thread", "编码线程不可用", null)
+                } else {
+                    openCamera()
+                }
+            } catch (error: Throwable) {
+                failInitialization("camera_switch", "摄像头切换失败", error)
+            }
+        } ?: failInitialization("camera_thread", "摄像头线程不可用", null)
+    }
 
     /** 探测完成后由 Dart 设置最终工作模式，并清除上一次的临时降级。 */
     fun setCapabilityMode(modeName: String?) {
@@ -901,7 +990,10 @@ class ContinuousSegmentCamera(
         )
     }
 
-    private fun selectCameraConfiguration() {
+    private fun selectCameraConfiguration(
+        targetCameraId: String? = preferredCameraId,
+        targetLensFacing: Int? = preferredLensFacing,
+    ) {
         val availableFacing = cameraManager.cameraIdList.mapNotNull { id ->
             cameraManager.getCameraCharacteristics(id)
                 .get(CameraCharacteristics.LENS_FACING)
@@ -910,11 +1002,11 @@ class ContinuousSegmentCamera(
             CameraCharacteristics.LENS_FACING_BACK in availableFacing &&
             CameraCharacteristics.LENS_FACING_FRONT in availableFacing
         val cameraId = when {
-            preferredCameraId != null &&
-                hasBackCamera(preferredCameraId) -> preferredCameraId
+            targetCameraId != null &&
+                hasBackCamera(targetCameraId) -> targetCameraId
             else -> cameraManager.cameraIdList.firstOrNull { id ->
                 cameraManager.getCameraCharacteristics(id)
-                    .get(CameraCharacteristics.LENS_FACING) == preferredLensFacing
+                    .get(CameraCharacteristics.LENS_FACING) == targetLensFacing
             } ?: cameraManager.cameraIdList.firstOrNull()
                 ?: throw IllegalStateException("没有检测到可用摄像头")
         }
@@ -994,6 +1086,17 @@ class ContinuousSegmentCamera(
                         "camera session configured cameraId=$selectedCameraId " +
                             "video=$videoSize analysis=$analysisSize mime=$selectedVideoMime",
                     )
+                    if (pendingSwitchStartedAtMs > 0L) {
+                        lastSwitchDurationMs =
+                            SystemClock.elapsedRealtime() - pendingSwitchStartedAtMs
+                        pendingSwitchStartedAtMs = 0L
+                        switchCount++
+                        Log.i(
+                            CAMERA_LOG_TAG,
+                            "camera switch configured durationMs=$lastSwitchDurationMs " +
+                                "encoderRestarted=$lastSwitchRestartedEncoder",
+                        )
+                    }
                     val result = initializeResult
                     initializeResult = null
                     if (result != null) replySuccess(result, initializationMap())
@@ -2114,6 +2217,7 @@ class ContinuousSegmentCamera(
         val result = initializeResult
         initializeResult = null
         initialized = false
+        pendingSwitchStartedAtMs = 0L
         initFailureStage = code
         initFailureDetail = error?.let { "$message：${it.message}" } ?: message
         Log.w(CAMERA_LOG_TAG, "initialization failed code=$code message=$message", error)
@@ -3082,6 +3186,9 @@ class ContinuousSegmentCamera(
             "recordingActive" to recordingActive,
             "torchEnabled" to torchEnabled,
             "canSwitchCamera" to canSwitchCamera,
+            "switchCount" to switchCount,
+            "lastSwitchDurationMs" to lastSwitchDurationMs,
+            "lastSwitchRestartedEncoder" to lastSwitchRestartedEncoder,
             "previewFrameCount" to captureStartedCount,
             "previewFrameAgeMs" to if (lastCaptureStartedAtMs == 0L) -1L else now - lastCaptureStartedAtMs,
             "lastCaptureCompletedAgeMs" to if (lastCaptureCompletedAtMs == 0L) -1L else now - lastCaptureCompletedAtMs,

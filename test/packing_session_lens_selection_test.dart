@@ -22,6 +22,7 @@ import 'test_repository.dart';
 class _FakeLensCameraPlatform implements CameraPlatform {
   int switchToCameraCalls = 0;
   int switchCameraCalls = 0;
+  int probeSequenceCalls = 0;
 
   @override
   void Function(List<NativeBarcodeCandidate> candidates)? onBarcodeBatch;
@@ -92,6 +93,7 @@ class _FakeLensCameraPlatform implements CameraPlatform {
     String sequence, {
     required int budgetMs,
   }) async {
+    probeSequenceCalls++;
     return <Object?, Object?>{
       'sequence': sequence,
       'status': 'ok',
@@ -324,6 +326,7 @@ void main() {
     // 开始工作应保留用户所选镜头，不触发任何镜头切换。
     expect(camera.switchToCameraCalls, 1);
     expect(camera.switchCameraCalls, 0);
+    expect(camera.probeSequenceCalls, 0);
   });
 
   test('开始工作不会把用户停留的主摄切走', () async {

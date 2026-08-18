@@ -104,15 +104,7 @@ class ContinuousCameraPlugin(
                 } else if (!engine.canSwitchNow()) {
                     result.error("camera_busy", "当前状态不能切换摄像头", null)
                 } else {
-                    engine.dispose {
-                        engine = createEngine(preferredCameraId = cameraId)
-                        engine.initialize(
-                            result,
-                            lastVideoCodec,
-                            lastRecordingSpec,
-                            lastCapabilityMode,
-                        )
-                    }
+                    engine.switchToCamera(cameraId, result)
                 }
             }
             "switchCamera" -> {
@@ -123,15 +115,7 @@ class ContinuousCameraPlugin(
                         engine.currentLensFacing() == CameraCharacteristics.LENS_FACING_FRONT
                     ) CameraCharacteristics.LENS_FACING_BACK
                     else CameraCharacteristics.LENS_FACING_FRONT
-                    engine.dispose {
-                        engine = createEngine(target)
-                        engine.initialize(
-                            result,
-                            lastVideoCodec,
-                            lastRecordingSpec,
-                            lastCapabilityMode,
-                        )
-                    }
+                    engine.switchToLensFacing(target, result)
                 }
             }
             "dispose" -> {
