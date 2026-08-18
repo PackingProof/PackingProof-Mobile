@@ -1887,6 +1887,9 @@ class PackingSessionController extends ChangeNotifier {
   fetchRemoteRecordingStatuses(Iterable<int> ids) =>
       _lanBackupService.fetchRemoteRecordingStatuses(ids);
 
+  Future<Uri?> resolveRemoteRecordingUri(Uri remoteUri) =>
+      _lanBackupService.resolveRemoteUri(remoteUri);
+
   Map<String, String> get remotePlaybackHeaders =>
       _lanBackupService.playbackHeaders;
 

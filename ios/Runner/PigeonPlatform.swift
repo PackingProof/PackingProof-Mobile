@@ -407,6 +407,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   private var activeUploads: [String: Task<Void, Never>] = [:]
   private var uploadTail: Task<Void, Never> = Task { }
   private let cleanupLock = NSLock()
+  private let hostResolver = IosLanBackupHostResolver()
   private var cleanupRunning = false
   private var lastCleanupAt = Date.distantPast
   private let keys = (
@@ -802,13 +803,14 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   private func upload(job: [String: Any]) async {
     guard
       let connection = defaults.dictionary(forKey: keys.connection),
-      let baseUrl = connection["baseUrl"] as? String,
+      let storedBaseUrl = connection["baseUrl"] as? String,
       let accessKey = defaults.string(forKey: keys.accessKey),
       let path = job["filePath"] as? String,
       let jobId = job["id"] as? String
     else {
       return
     }
+    var baseUrl = storedBaseUrl
     defer {
       uploadsLock.lock()
       activeUploads.removeValue(forKey: jobId)
@@ -821,17 +823,34 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     }.joined()
 
     do {
-      let create = try await uploadJson(
-        baseUrl: baseUrl,
-        path: "/api/mobile-backup/uploads",
-        body: [
-          "fileSha256": fileSha256,
-          "totalBytes": data.count,
-          "mimeType": "video/mp4",
-        ],
-        accessKey: accessKey,
-        deviceId: deviceId()
-      )
+      let createBody: [String: Any] = [
+        "fileSha256": fileSha256,
+        "totalBytes": data.count,
+        "mimeType": "video/mp4",
+      ]
+      let create: [String: Any]
+      do {
+        create = try await uploadJson(
+          baseUrl: baseUrl,
+          path: "/api/mobile-backup/uploads",
+          body: createBody,
+          accessKey: accessKey,
+          deviceId: deviceId()
+        )
+      } catch {
+        guard let recovered = await recoverBaseUrl(
+          failedBaseUrl: baseUrl,
+          connection: connection
+        ) else { throw error }
+        baseUrl = recovered
+        create = try await uploadJson(
+          baseUrl: baseUrl,
+          path: "/api/mobile-backup/uploads",
+          body: createBody,
+          accessKey: accessKey,
+          deviceId: deviceId()
+        )
+      }
       guard
         let uploadId = create["uploadId"] as? String,
         let rawOffset = create["offset"] as? NSNumber,
@@ -851,15 +870,34 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         try Task.checkCancellation()
         let end = min(offset + chunkSize, data.count)
         let chunk = data.subdata(in: offset..<end)
-        let result = try await uploadChunk(
-          baseUrl: baseUrl,
-          path: "/api/mobile-backup/uploads/\(uploadIdEncoded)/chunks",
-          chunk: chunk,
-          offset: offset,
-          total: data.count,
-          accessKey: accessKey,
-          deviceId: deviceId()
-        )
+        let chunkPath = "/api/mobile-backup/uploads/\(uploadIdEncoded)/chunks"
+        let result: [String: Any]
+        do {
+          result = try await uploadChunk(
+            baseUrl: baseUrl,
+            path: chunkPath,
+            chunk: chunk,
+            offset: offset,
+            total: data.count,
+            accessKey: accessKey,
+            deviceId: deviceId()
+          )
+        } catch {
+          guard let recovered = await recoverBaseUrl(
+            failedBaseUrl: baseUrl,
+            connection: connection
+          ) else { throw error }
+          baseUrl = recovered
+          result = try await uploadChunk(
+            baseUrl: baseUrl,
+            path: chunkPath,
+            chunk: chunk,
+            offset: offset,
+            total: data.count,
+            accessKey: accessKey,
+            deviceId: deviceId()
+          )
+        }
         guard let next = result["offset"] as? NSNumber else {
           throw pigeonError("电脑返回的上传进度无效")
         }
@@ -872,20 +910,38 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       }
 
       try Task.checkCancellation()
-      let complete = try await uploadJson(
-        baseUrl: baseUrl,
-        path: "/api/mobile-backup/uploads/\(uploadIdEncoded)/complete",
-        body: [
-          "fileSha256": fileSha256,
-          "sourceDeviceId": deviceId(),
-          "sourceDeviceName": deviceName(),
-          "sessions": Self.backupCompletionSessions(
-            job["sessions"] as? [Any] ?? []
-          ),
-        ],
-        accessKey: accessKey,
-        deviceId: deviceId()
-      )
+      let completePath = "/api/mobile-backup/uploads/\(uploadIdEncoded)/complete"
+      let completeBody: [String: Any] = [
+        "fileSha256": fileSha256,
+        "sourceDeviceId": deviceId(),
+        "sourceDeviceName": deviceName(),
+        "sessions": Self.backupCompletionSessions(
+          job["sessions"] as? [Any] ?? []
+        ),
+      ]
+      let complete: [String: Any]
+      do {
+        complete = try await uploadJson(
+          baseUrl: baseUrl,
+          path: completePath,
+          body: completeBody,
+          accessKey: accessKey,
+          deviceId: deviceId()
+        )
+      } catch {
+        guard let recovered = await recoverBaseUrl(
+          failedBaseUrl: baseUrl,
+          connection: connection
+        ) else { throw error }
+        baseUrl = recovered
+        complete = try await uploadJson(
+          baseUrl: baseUrl,
+          path: completePath,
+          body: completeBody,
+          accessKey: accessKey,
+          deviceId: deviceId()
+        )
+      }
       guard complete["status"] as? String == "verified" else {
         throw BackupTransferError(
           statusCode: 0,
@@ -921,6 +977,29 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       }
       emitSnapshot()
     }
+  }
+
+  private func recoverBaseUrl(
+    failedBaseUrl: String,
+    connection: [String: Any]
+  ) async -> String? {
+    guard
+      let computerId = connection["computerId"] as? String,
+      !computerId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      let resolved = await hostResolver.resolve(
+        currentBaseUrl: failedBaseUrl,
+        expectedNodeId: computerId
+      ),
+      resolved.trimmingCharacters(in: CharacterSet(charactersIn: "/")) !=
+        failedBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    else { return nil }
+
+    var updated = connection
+    updated["baseUrl"] = resolved
+    updated["lastConnectedAt"] = Self.isoFormatter.string(from: Date())
+    defaults.set(updated, forKey: keys.connection)
+    emitSnapshot()
+    return resolved
   }
 
   private func uploadJson(
@@ -1567,6 +1646,180 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       return .deleted
     } catch {
       return .failed
+    }
+  }
+}
+
+/// iOS 后台上传无法依赖 Dart isolate，因此在原生侧按稳定 NodeId 重新定位主机。
+final class IosLanBackupHostResolver: @unchecked Sendable {
+  private static let minimumHostVersion = "0.0.32"
+  private static let backupProtocol = "mobile-backup-v2"
+  private static let enrollmentVersion = 2
+  private static let authenticationVersion = 3
+
+  func resolve(currentBaseUrl: String, expectedNodeId: String) async -> String? {
+    let nodeId = expectedNodeId.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !nodeId.isEmpty else { return nil }
+    if let current = await Self.probe(baseUrl: currentBaseUrl, nodeId: nodeId) {
+      return current
+    }
+
+    for batch in Self.subnetCandidates().chunks(ofCount: 32) {
+      let match = await withTaskGroup(of: String?.self, returning: String?.self) { group in
+        for candidate in batch {
+          group.addTask {
+            await Self.probe(baseUrl: candidate, nodeId: nodeId)
+          }
+        }
+        for await result in group {
+          if let result {
+            group.cancelAll()
+            return result
+          }
+        }
+        return nil
+      }
+      if let match {
+        return match
+      }
+    }
+    return nil
+  }
+
+  private static func probe(baseUrl: String, nodeId: String) async -> String? {
+    guard let url = URL(string: baseUrl + "/api/node-info") else { return nil }
+    var request = URLRequest(url: url, timeoutInterval: 0.9)
+    request.httpMethod = "GET"
+    request.cachePolicy = .reloadIgnoringLocalCacheData
+    request.httpShouldHandleCookies = false
+    do {
+      let (data, response) = try await URLSession.shared.data(for: request)
+      guard
+        (response as? HTTPURLResponse)?.statusCode == 200,
+        let node = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+        node["protocol"] as? String == "packingproof",
+        (node["protocolVersion"] as? NSNumber)?.intValue == 1,
+        (node["nodeId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) == nodeId,
+        let capabilities = node["capabilities"] as? [String],
+        capabilities.contains(where: { $0.caseInsensitiveCompare("host") == .orderedSame }),
+        capabilities.contains(where: { $0.caseInsensitiveCompare("mobile-backup") == .orderedSame }),
+        compatible(node["backupCompatibility"] as? [String: Any]),
+        var components = URLComponents(string: baseUrl)
+      else { return nil }
+      let advertisedPort = (node["httpPort"] as? NSNumber)?.intValue ?? components.port ?? 5280
+      components.port = (1...65535).contains(advertisedPort) ? advertisedPort : 5280
+      components.path = ""
+      components.query = nil
+      components.fragment = nil
+      return components.url?.absoluteString.trimmingCharacters(
+        in: CharacterSet(charactersIn: "/")
+      )
+    } catch {
+      return nil
+    }
+  }
+
+  private static func compatible(_ value: [String: Any]?) -> Bool {
+    guard let value else { return false }
+    let appVersion = Bundle.main.object(
+      forInfoDictionaryKey: "CFBundleShortVersionString"
+    ) as? String ?? ""
+    let appBuild = Int(Bundle.main.object(
+      forInfoDictionaryKey: "CFBundleVersion"
+    ) as? String ?? "") ?? 0
+    return compareLanBackupVersions(
+      value["hostVersion"] as? String ?? "",
+      minimumHostVersion
+    ) >= 0 &&
+      value["protocol"] as? String == backupProtocol &&
+      (value["enrollmentVersion"] as? NSNumber)?.intValue == enrollmentVersion &&
+      (value["authVersion"] as? NSNumber)?.intValue == authenticationVersion &&
+      compareLanBackupVersions(
+        appVersion,
+        value["minimumMobileVersion"] as? String ?? ""
+      ) >= 0 &&
+      appBuild >= ((value["minimumMobileBuildNumber"] as? NSNumber)?.intValue ?? Int.max)
+  }
+
+  private static func subnetCandidates() -> [String] {
+    var pointer: UnsafeMutablePointer<ifaddrs>?
+    guard getifaddrs(&pointer) == 0, let first = pointer else { return [] }
+    defer { freeifaddrs(pointer) }
+    var addresses = Set<String>()
+    var current: UnsafeMutablePointer<ifaddrs>? = first
+    while let interface = current {
+      defer { current = interface.pointee.ifa_next }
+      guard
+        let address = interface.pointee.ifa_addr,
+        address.pointee.sa_family == UInt8(AF_INET)
+      else {
+        continue
+      }
+      let value = address.withMemoryRebound(to: sockaddr_in.self, capacity: 1) {
+        String(cString: inet_ntoa($0.pointee.sin_addr))
+      }
+      if isPrivateIpv4(value) { addresses.insert(value) }
+    }
+    var candidates: [String] = []
+    for address in addresses {
+      let parts = address.split(separator: ".")
+      guard parts.count == 4, let localHost = Int(parts[3]) else { continue }
+      let prefix = parts.prefix(3).joined(separator: ".")
+      for host in scanOrder(localHost: localHost) {
+        let candidate = "\(prefix).\(host)"
+        if !addresses.contains(candidate) {
+          candidates.append("http://\(candidate):5280")
+        }
+      }
+    }
+    return candidates
+  }
+}
+
+func compareLanBackupVersions(_ left: String, _ right: String) -> Int {
+  func parse(_ value: String) -> [Int]? {
+    var normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if normalized.first == "v" || normalized.first == "V" {
+      normalized.removeFirst()
+    }
+    normalized = normalized.split(whereSeparator: { $0 == "+" || $0 == "-" }).first.map(String.init) ?? ""
+    let values = normalized.split(separator: ".").compactMap { Int($0) }
+    return values.count == normalized.split(separator: ".").count ? values : nil
+  }
+  guard let lhs = parse(left) else { return -1 }
+  guard let rhs = parse(right) else { return 1 }
+  for index in 0..<max(lhs.count, rhs.count) {
+    let comparison = (index < lhs.count ? lhs[index] : 0) -
+      (index < rhs.count ? rhs[index] : 0)
+    if comparison != 0 { return comparison < 0 ? -1 : 1 }
+  }
+  return 0
+}
+
+private func isPrivateIpv4(_ value: String) -> Bool {
+  let parts = value.split(separator: ".").compactMap { Int($0) }
+  guard parts.count == 4, parts.allSatisfy({ (0...255).contains($0) }) else {
+    return false
+  }
+  return parts[0] == 10 ||
+    (parts[0] == 172 && (16...31).contains(parts[1])) ||
+    (parts[0] == 192 && parts[1] == 168)
+}
+
+private func scanOrder(localHost: Int) -> [Int] {
+  var result: [Int] = []
+  for low in 1...127 {
+    let high = 255 - low
+    if low != localHost { result.append(low) }
+    if high != localHost { result.append(high) }
+  }
+  return result
+}
+
+private extension Array {
+  func chunks(ofCount count: Int) -> [[Element]] {
+    stride(from: 0, to: self.count, by: count).map {
+      Array(self[$0..<Swift.min($0 + count, self.count)])
     }
   }
 }

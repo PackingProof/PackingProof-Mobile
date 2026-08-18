@@ -72,6 +72,94 @@ abstract interface class LanBackupHostCache {
   Future<void> save(List<LanBackupDiscoveredHost> hosts);
 }
 
+abstract interface class LanBackupHostLocator {
+  Future<Uri?> locate({required Uri currentBaseUri, required String nodeId});
+
+  void dispose();
+}
+
+class LanBackupHostLocatorService implements LanBackupHostLocator {
+  LanBackupHostLocatorService({
+    LanBackupCandidateProvider? candidateProvider,
+    LanBackupHostProbe? probe,
+    HttpClient? httpClient,
+  }) : _httpClient = httpClient ?? HttpClient(),
+       _ownsHttpClient = httpClient == null,
+       _probeOverride = probe,
+       _discovery = LanBackupHostDiscoveryService(
+         candidateProvider: candidateProvider,
+         probe: probe,
+         httpClient: httpClient,
+       );
+
+  final HttpClient _httpClient;
+  final bool _ownsHttpClient;
+  final LanBackupHostProbe? _probeOverride;
+  final LanBackupHostDiscoveryService _discovery;
+  Future<Uri?>? _activeLocate;
+
+  @override
+  Future<Uri?> locate({required Uri currentBaseUri, required String nodeId}) {
+    final String expectedNodeId = nodeId.trim();
+    if (expectedNodeId.isEmpty) return Future<Uri?>.value();
+    final Future<Uri?>? active = _activeLocate;
+    if (active != null) return active;
+    final Future<Uri?> locating = _runLocate(
+      currentBaseUri: currentBaseUri,
+      nodeId: expectedNodeId,
+    );
+    _activeLocate = locating;
+    return locating.whenComplete(() {
+      if (identical(_activeLocate, locating)) _activeLocate = null;
+    });
+  }
+
+  Future<Uri?> _runLocate({
+    required Uri currentBaseUri,
+    required String nodeId,
+  }) async {
+    final LanBackupDiscoveredHost? current = await _probe(currentBaseUri);
+    if (_matches(current, nodeId)) return current!.baseUri;
+
+    await _discovery.search();
+    for (final LanBackupDiscoveredHost host in _discovery.snapshot.hosts) {
+      if (_matches(host, nodeId)) return host.baseUri;
+    }
+    return null;
+  }
+
+  bool _matches(LanBackupDiscoveredHost? host, String nodeId) =>
+      host != null &&
+      host.reachable &&
+      host.compatible &&
+      host.nodeId.trim() == nodeId;
+
+  Future<LanBackupDiscoveredHost?> _probe(Uri uri) async {
+    final LanBackupHostProbe? override = _probeOverride;
+    if (override != null) return override(uri);
+    try {
+      final HttpClientRequest request = await _httpClient
+          .getUrl(uri.replace(path: '/api/node-info'))
+          .timeout(const Duration(milliseconds: 700));
+      request.followRedirects = false;
+      final HttpClientResponse response = await request.close().timeout(
+        const Duration(milliseconds: 900),
+      );
+      final String body = await utf8.decoder.bind(response).join();
+      if (response.statusCode != HttpStatus.ok) return null;
+      return parseLanBackupDiscoveredHost(uri, body);
+    } on Object {
+      return null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _discovery.dispose();
+    if (_ownsHttpClient) _httpClient.close(force: true);
+  }
+}
+
 typedef LanBackupCandidateProvider = Future<List<Uri>> Function();
 typedef LanBackupHostProbe = Future<LanBackupDiscoveredHost?> Function(Uri uri);
 
@@ -249,7 +337,10 @@ class LanBackupHostDiscoveryService extends ChangeNotifier
         (LanBackupDiscoveredHost item) => _isSameDiscoveredHost(item, host),
       );
       if (existingIndex >= 0) {
-        hosts[existingIndex] = host;
+        final LanBackupDiscoveredHost existing = hosts[existingIndex];
+        if (!existing.compatible || host.compatible) {
+          hosts[existingIndex] = host;
+        }
       } else {
         hosts.add(host);
       }

@@ -35,6 +35,7 @@ internal class LanBackupWorker(
 
     private val store = LanBackupStateStore(appContext)
     private val credentials = LanBackupCredentialStore(appContext)
+    private val hostResolver = LanBackupHostResolver(appContext)
 
     override suspend fun doWork(): Result {
         val id = inputData.getString("jobId") ?: return Result.failure()
@@ -78,7 +79,8 @@ internal class LanBackupWorker(
             }
         }
         val file = File(job.optString("filePath"))
-        val baseUrl = connection.getString("baseUrl").trimEnd('/')
+        var baseUrl = connection.getString("baseUrl").trimEnd('/')
+        resolveChangedBaseUrl(baseUrl, connection)?.let { baseUrl = it }
         val storedCredential = BackupRequestAuthentication.parse(accessKey)
 
         return try {
@@ -91,14 +93,16 @@ internal class LanBackupWorker(
                 throw BackupSourceUnavailableException("无法读取录像文件", error)
             }
             requireAvailable(job)
-            val createResponse = postJson(
-                "$baseUrl/api/mobile-backup/uploads",
-                accessKey,
-                JSONObject()
-                    .put("fileSha256", sha256)
-                    .put("totalBytes", file.length())
-                    .put("mimeType", "video/mp4"),
-            )
+            val createBody = JSONObject()
+                .put("fileSha256", sha256)
+                .put("totalBytes", file.length())
+                .put("mimeType", "video/mp4")
+            val createResponse = try {
+                postJson("$baseUrl/api/mobile-backup/uploads", accessKey, createBody)
+            } catch (error: IOException) {
+                baseUrl = resolveChangedBaseUrl(baseUrl, connection) ?: throw error
+                postJson("$baseUrl/api/mobile-backup/uploads", accessKey, createBody)
+            }
             Log.i(TAG, "Upload session ready id=${id.take(8)}")
             setForeground(foreground(job, 0))
             val uploadId = createResponse.getString("uploadId")
@@ -134,13 +138,24 @@ internal class LanBackupWorker(
                     }
                     requireAvailable(job)
                     val nextOffset = try {
-                        putChunk(
-                            "$baseUrl/api/mobile-backup/uploads/$encodedUploadId/chunks",
-                            accessKey,
-                            bytes,
-                            offset,
-                            file.length(),
-                        )
+                        try {
+                            putChunk(
+                                "$baseUrl/api/mobile-backup/uploads/$encodedUploadId/chunks",
+                                accessKey,
+                                bytes,
+                                offset,
+                                file.length(),
+                            )
+                        } catch (error: IOException) {
+                            baseUrl = resolveChangedBaseUrl(baseUrl, connection) ?: throw error
+                            putChunk(
+                                "$baseUrl/api/mobile-backup/uploads/$encodedUploadId/chunks",
+                                accessKey,
+                                bytes,
+                                offset,
+                                file.length(),
+                            )
+                        }
                     } catch (error: BackupHttpException) {
                         if (error.statusCode != 409 || error.errorCode != "offset_mismatch") throw error
                         val expected = error.expectedOffset
@@ -174,15 +189,25 @@ internal class LanBackupWorker(
                 }
             }
             requireAvailable(job)
-            val completion = postJson(
-                "$baseUrl/api/mobile-backup/uploads/$encodedUploadId/complete",
-                accessKey,
-                JSONObject()
-                    .put("fileSha256", sha256)
-                    .put("sourceDeviceId", store.deviceId())
-                    .put("sourceDeviceName", store.deviceName())
-                    .put("sessions", completionSessions(job.getJSONArray("sessions"))),
-            )
+            val completionBody = JSONObject()
+                .put("fileSha256", sha256)
+                .put("sourceDeviceId", store.deviceId())
+                .put("sourceDeviceName", store.deviceName())
+                .put("sessions", completionSessions(job.getJSONArray("sessions")))
+            val completion = try {
+                postJson(
+                    "$baseUrl/api/mobile-backup/uploads/$encodedUploadId/complete",
+                    accessKey,
+                    completionBody,
+                )
+            } catch (error: IOException) {
+                baseUrl = resolveChangedBaseUrl(baseUrl, connection) ?: throw error
+                postJson(
+                    "$baseUrl/api/mobile-backup/uploads/$encodedUploadId/complete",
+                    accessKey,
+                    completionBody,
+                )
+            }
             val recordIds = completion.optJSONArray("recordIds") ?: JSONArray()
             if (completion.optString("status") != "verified" ||
                 completion.optString("fileSha256") != sha256 ||
@@ -412,6 +437,25 @@ internal class LanBackupWorker(
     private fun clearBackupNotification(job: JSONObject) {
         val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.cancel(notificationId(job))
+    }
+
+    private suspend fun resolveChangedBaseUrl(
+        failedBaseUrl: String,
+        connection: JSONObject,
+    ): String? {
+        val computerId = connection.optString("computerId").trim()
+        if (computerId.isEmpty()) return null
+        val resolved = hostResolver.resolve(failedBaseUrl, computerId)?.trimEnd('/') ?: return null
+        if (resolved.equals(failedBaseUrl.trimEnd('/'), ignoreCase = true)) return null
+        store.saveConnection(
+            baseUrl = resolved,
+            computerId = computerId,
+            computerName = connection.optString("computerName", "已连接电脑"),
+            deviceName = store.deviceName(),
+        )
+        connection.put("baseUrl", resolved)
+        Log.i(TAG, "Backup host address updated id=${computerId.take(8)} address=${URL(resolved).authority}")
+        return resolved
     }
 
     private fun postJson(url: String, key: String, body: JSONObject): JSONObject {

@@ -9,6 +9,7 @@ import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/services/lan_backup_service.dart';
+import 'package:packing_proof_mobile/services/lan_backup_discovery_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +26,101 @@ void main() {
       isFalse,
     );
     expect(parseDeviceVideoClippingFeature('not-json'), isFalse);
+  });
+
+  test('播放前按 NodeId 更新主机地址并保留令牌与路径参数', () async {
+    final MethodChannel channel = const MethodChannel(
+      'app.packingproof.mobile/lan_backup_address_recovery_test',
+    );
+    Map<Object?, Object?>? saved;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'saveConnection') {
+            saved = Map<Object?, Object?>.from(call.arguments! as Map);
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final _FakeHostLocator locator = _FakeHostLocator(
+      Uri.parse('http://192.168.1.30:5280'),
+    );
+    final LanBackupService service = LanBackupService(
+      channel: channel,
+      hostLocator: locator,
+    );
+    addTearDown(service.dispose);
+    service.debugSetAccessKeyForTesting('a' * 64);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        deviceName: '录像手机',
+        endpoint: LanBackupEndpoint(
+          baseUri: Uri.parse('http://192.168.1.20:5280'),
+          accessKey: '',
+          computerId: 'host-1',
+          computerName: '保存主机',
+        ),
+      ),
+    );
+
+    final Uri? resolved = await service.resolveRemoteUri(
+      Uri.parse(
+        'http://192.168.1.20:5280/api/mobile-backup/videos/7/play?compat=1',
+      ),
+    );
+
+    expect(
+      resolved,
+      Uri.parse(
+        'http://192.168.1.30:5280/api/mobile-backup/videos/7/play?compat=1',
+      ),
+    );
+    expect(saved?['baseUrl'], 'http://192.168.1.30:5280');
+    expect(saved?['accessKey'], 'a' * 64);
+    expect(saved?['computerId'], 'host-1');
+    expect(locator.requests, 1);
+  });
+
+  test('录像列表请求失败后只在地址变化时改用新地址重试', () async {
+    final MethodChannel channel = const MethodChannel(
+      'app.packingproof.mobile/lan_backup_request_recovery_test',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (_) async => null);
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final _FailThenSucceedHttpClient client = _FailThenSucceedHttpClient();
+    final LanBackupService service = LanBackupService(
+      channel: channel,
+      httpClient: client,
+      hostLocator: _FakeHostLocator(Uri.parse('http://192.168.1.30:5280')),
+    );
+    addTearDown(service.dispose);
+    service.debugSetAccessKeyForTesting('a' * 64);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        deviceId: '00000000-0000-0000-0000-000000000001',
+        deviceName: '录像手机',
+        endpoint: LanBackupEndpoint(
+          baseUri: Uri.parse('http://192.168.1.20:5280'),
+          accessKey: '',
+          computerId: 'host-1',
+          computerName: '保存主机',
+        ),
+      ),
+    );
+
+    final RemoteRecordingPage result = await service.fetchRemoteRecordings(
+      page: 1,
+      pageSize: 5,
+    );
+
+    expect(result.data, isEmpty);
+    expect(client.requestedHosts, <String>['192.168.1.20', '192.168.1.30']);
   });
 
   test('Android 私有目录别名会识别为同一个备份文件', () {
@@ -1155,4 +1251,44 @@ class _IgnoringHttpHeaders extends Fake implements HttpHeaders {
 
   @override
   void set(String name, Object value, {bool preserveHeaderCase = false}) {}
+}
+
+class _FakeHostLocator implements LanBackupHostLocator {
+  _FakeHostLocator(this.result);
+
+  final Uri? result;
+  int requests = 0;
+
+  @override
+  Future<Uri?> locate({
+    required Uri currentBaseUri,
+    required String nodeId,
+  }) async {
+    requests++;
+    return result;
+  }
+
+  @override
+  void dispose() {}
+}
+
+class _FailThenSucceedHttpClient extends Fake implements HttpClient {
+  final List<String> requestedHosts = <String>[];
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async {
+    requestedHosts.add(url.host);
+    if (requestedHosts.length == 1) {
+      throw const SocketException('旧地址不可达');
+    }
+    return _CompletedHttpClientRequest(
+      _StreamHttpResponse(
+        HttpStatus.ok,
+        '{"data":[],"page":1,"pageSize":5,"total":0,"deviceTotal":0}',
+      ),
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

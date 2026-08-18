@@ -82,6 +82,61 @@ void main() {
     expect(order.toSet().length, 253);
   });
 
+  test('地址定位只接受相同 NodeId 的兼容主机并合并并发请求', () async {
+    final Completer<void> releaseCurrentProbe = Completer<void>();
+    int candidateRequests = 0;
+    int currentProbeRequests = 0;
+    final LanBackupHostLocatorService locator = LanBackupHostLocatorService(
+      candidateProvider: () async {
+        candidateRequests++;
+        return <Uri>[
+          Uri.parse('http://192.168.1.30:5280'),
+          Uri.parse('http://192.168.1.40:5280'),
+        ];
+      },
+      probe: (Uri uri) async {
+        if (uri.host == '192.168.1.20') {
+          currentProbeRequests++;
+          await releaseCurrentProbe.future;
+          return const LanBackupDiscoveredHost(
+            nodeId: 'other-host',
+            name: '其他电脑',
+            address: '192.168.1.20:5280',
+          );
+        }
+        if (uri.host == '192.168.1.30') {
+          return const LanBackupDiscoveredHost(
+            nodeId: 'host-1',
+            name: '原电脑',
+            address: '192.168.1.30:5280',
+          );
+        }
+        return const LanBackupDiscoveredHost(
+          nodeId: 'host-1',
+          name: '不兼容电脑',
+          address: '192.168.1.40:5280',
+          compatible: false,
+        );
+      },
+    );
+    addTearDown(locator.dispose);
+
+    final Future<Uri?> first = locator.locate(
+      currentBaseUri: Uri.parse('http://192.168.1.20:5280'),
+      nodeId: 'host-1',
+    );
+    final Future<Uri?> second = locator.locate(
+      currentBaseUri: Uri.parse('http://192.168.1.20:5280'),
+      nodeId: 'host-1',
+    );
+    releaseCurrentProbe.complete();
+
+    expect(await first, Uri.parse('http://192.168.1.30:5280'));
+    expect(await second, Uri.parse('http://192.168.1.30:5280'));
+    expect(currentProbeRequests, 1);
+    expect(candidateRequests, 1);
+  });
+
   test('搜索进行中重复调用不会重启扫描或重复探测', () async {
     final Completer<void> allowProbe = Completer<void>();
     int candidateRequests = 0;

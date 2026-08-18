@@ -14,6 +14,7 @@ import '../models/backup_retention_policy.dart';
 import '../platform/adapters/legacy_backup_platform.dart';
 import '../platform/contracts/backup_platform.dart';
 import 'lan_backup_compatibility.dart';
+import 'lan_backup_discovery_service.dart';
 import 'remote_video_clip_service.dart';
 
 class LanBackupUnsupportedException implements Exception {
@@ -167,6 +168,7 @@ abstract interface class LanBackupSink implements Listenable {
   });
   Future<Map<int, ({RemoteRecordingStatus status, bool exists, String reason})>>
   fetchRemoteRecordingStatuses(Iterable<int> ids);
+  Future<Uri?> resolveRemoteUri(Uri remoteUri);
   Map<String, String> get playbackHeaders;
   RemoteVideoClipSink? createRemoteVideoClipService(Uri remoteUri);
   Future<void> dispose();
@@ -181,6 +183,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     Future<PackageInfo> Function()? packageInfoLoader,
     Future<void> Function(Duration)? retryDelay,
     Future<void> Function(String kind, Map<String, Object?> extra)? logEvent,
+    LanBackupHostLocator? hostLocator,
   }) : _platform =
            platform ??
            LegacyBackupNativePlatform(
@@ -196,6 +199,8 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
        // Keep the public injection name readable while the stored callback remains private.
        // ignore: prefer_initializing_formals
        _logEvent = logEvent {
+    _hostLocator = hostLocator ?? LanBackupHostLocatorService();
+    _ownsHostLocator = hostLocator == null;
     // 跨网段连接主机时，默认 connect 可能长时间挂起并累积半开 socket，
     // 最终触发 EMFILE(too many open files)。显式收紧连接与 keep-alive 超时。
     // 仅对自行创建的客户端设置默认值，避免覆盖调用方注入的客户端配置。
@@ -213,6 +218,8 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   final Future<void> Function(Duration) _retryDelay;
   final Future<void> Function(String kind, Map<String, Object?> extra)?
   _logEvent;
+  late final LanBackupHostLocator _hostLocator;
+  late final bool _ownsHostLocator;
   Timer? _pollTimer;
   Timer? _heartbeatTimer;
   Future<void>? _refreshFuture;
@@ -227,6 +234,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   int _appBuildNumber = currentMobileCompatibilityBuildNumber;
   bool _deviceVideoClippingEnabled = false;
   final Set<String> _loggedFailedJobIds = <String>{};
+  Future<Uri?>? _activeAddressRecovery;
 
   @override
   LanBackupSnapshot get snapshot => _snapshot;
@@ -234,6 +242,11 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   @visibleForTesting
   void debugSetSnapshotForTesting(LanBackupSnapshot snapshot) {
     _snapshot = snapshot;
+  }
+
+  @visibleForTesting
+  void debugSetAccessKeyForTesting(String accessKey) {
+    _accessKey = accessKey;
   }
 
   @visibleForTesting
@@ -701,7 +714,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
 
   @override
   Future<bool> retryConnection() async {
-    final LanBackupEndpoint? endpoint = _snapshot.endpoint;
+    LanBackupEndpoint? endpoint = _snapshot.endpoint;
     if (endpoint == null || _accessKey.isEmpty) return false;
     _deviceVideoClippingEnabled = false;
     if (_snapshot.connectionStatus == LanConnectionStatus.notBackupHost) {
@@ -717,6 +730,9 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       notifyListeners();
       return false;
     }
+    await _resolveCurrentBaseUri();
+    endpoint = _snapshot.endpoint;
+    if (endpoint == null) return false;
     _snapshot = _snapshot.copyWith(
       connectionStatus: LanConnectionStatus.connecting,
       message: '正在重新连接电脑',
@@ -932,132 +948,234 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     _platform.setSnapshotListener(_applyNativeSnapshot);
   }
 
+  Future<Uri?> _resolveCurrentBaseUri() {
+    final Future<Uri?>? active = _activeAddressRecovery;
+    if (active != null) return active;
+    final Future<Uri?> recovery = _runAddressRecovery();
+    _activeAddressRecovery = recovery;
+    return recovery.whenComplete(() {
+      if (identical(_activeAddressRecovery, recovery)) {
+        _activeAddressRecovery = null;
+      }
+    });
+  }
+
+  Future<Uri?> _runAddressRecovery() async {
+    LanBackupEndpoint? endpoint = _snapshot.endpoint;
+    if (endpoint == null ||
+        endpoint.computerId.trim().isEmpty ||
+        _accessKey.isEmpty) {
+      return null;
+    }
+    final Uri? located = await _hostLocator.locate(
+      currentBaseUri: endpoint.baseUri,
+      nodeId: endpoint.computerId,
+    );
+    if (located == null) return null;
+
+    final LanBackupEndpoint? current = _snapshot.endpoint;
+    if (current == null || current.computerId != endpoint.computerId) {
+      return null;
+    }
+    if (_normalizedHostUri(current.baseUri) == _normalizedHostUri(located)) {
+      return current.baseUri;
+    }
+
+    final LanBackupEndpoint updated = LanBackupEndpoint(
+      baseUri: located,
+      accessKey: '',
+      computerId: current.computerId,
+      computerName: current.computerName,
+      lastConnectedAt: DateTime.now(),
+    );
+    await _platform.saveConnection(<String, Object?>{
+      'baseUrl': located.toString(),
+      'accessKey': _accessKey,
+      'computerId': updated.computerId,
+      'computerName': updated.computerName,
+      'deviceName': _snapshot.deviceName,
+    });
+    _snapshot = _snapshot.copyWith(
+      endpoint: updated,
+      connectionStatus: LanConnectionStatus.connected,
+      message: '保存主机地址已自动更新',
+    );
+    _log('backup_host_address_updated', <String, Object?>{
+      'computerId': updated.computerId,
+      'address': located.authority,
+    });
+    notifyListeners();
+    return located;
+  }
+
+  Future<bool> _recoverChangedEndpoint(Uri failedBaseUri) async {
+    final Uri? resolved = await _resolveCurrentBaseUri();
+    return resolved != null &&
+        _normalizedHostUri(resolved) != _normalizedHostUri(failedBaseUri);
+  }
+
+  @override
+  Future<Uri?> resolveRemoteUri(Uri remoteUri) async {
+    final Uri? baseUri = await _resolveCurrentBaseUri();
+    if (baseUri == null) return null;
+    return remoteUri.replace(
+      scheme: baseUri.scheme,
+      host: baseUri.host,
+      port: baseUri.port,
+    );
+  }
+
   @override
   Future<RemoteRecordingPage> fetchRemoteRecordings({
     required int page,
     required int pageSize,
     String keyword = '',
   }) async {
-    final LanBackupEndpoint? endpoint = _snapshot.endpoint;
-    if (endpoint == null || _accessKey.isEmpty) {
-      return const RemoteRecordingPage.empty();
-    }
-    final Uri uri = buildRemoteRecordingsUri(
-      endpoint.baseUri,
-      page: page,
-      pageSize: pageSize,
-      keyword: keyword,
-    );
-    try {
-      final HttpClientRequest request = await _httpClient
-          .getUrl(uri)
-          .timeout(const Duration(seconds: 5));
-      _setSignedBackupHeaders(
-        request,
-        _accessKey,
-        const <int>[],
-        method: 'GET',
-        path: uri.path,
-      );
-      final HttpClientResponse response = await request.close().timeout(
-        const Duration(seconds: 10),
-      );
-      final String body = await utf8.decoder.bind(response).join();
-      if (response.statusCode == HttpStatus.unauthorized ||
-          response.statusCode == HttpStatus.forbidden) {
-        _snapshot = _snapshot.copyWith(
-          connectionStatus: LanConnectionStatus.rePair,
-        );
-        notifyListeners();
+    for (int attempt = 0; attempt < 2; attempt++) {
+      final LanBackupEndpoint? endpoint = _snapshot.endpoint;
+      if (endpoint == null || _accessKey.isEmpty) {
         return const RemoteRecordingPage.empty();
       }
-      if (response.statusCode != HttpStatus.ok) {
-        throw HttpException('电脑录像读取失败（${response.statusCode}）');
+      final Uri uri = buildRemoteRecordingsUri(
+        endpoint.baseUri,
+        page: page,
+        pageSize: pageSize,
+        keyword: keyword,
+      );
+      try {
+        final HttpClientRequest request = await _httpClient
+            .getUrl(uri)
+            .timeout(const Duration(seconds: 5));
+        _setSignedBackupHeaders(
+          request,
+          _accessKey,
+          const <int>[],
+          method: 'GET',
+          path: uri.path,
+        );
+        final HttpClientResponse response = await request.close().timeout(
+          const Duration(seconds: 10),
+        );
+        final String body = await utf8.decoder.bind(response).join();
+        if (response.statusCode == HttpStatus.unauthorized ||
+            response.statusCode == HttpStatus.forbidden) {
+          if (attempt == 0 && await _recoverChangedEndpoint(endpoint.baseUri)) {
+            continue;
+          }
+          _snapshot = _snapshot.copyWith(
+            connectionStatus: LanConnectionStatus.rePair,
+          );
+          notifyListeners();
+          return const RemoteRecordingPage.empty();
+        }
+        if (response.statusCode != HttpStatus.ok) {
+          throw HttpException('电脑录像读取失败（${response.statusCode}）');
+        }
+        final Map<String, Object?> payload = Map<String, Object?>.from(
+          jsonDecode(body) as Map<Object?, Object?>,
+        );
+        final List<RemoteRecording> recordings =
+            ((payload['data'] as List<Object?>?) ?? const <Object?>[])
+                .map(
+                  (Object? value) => RemoteRecording.fromJson(
+                    Map<String, Object?>.from(value! as Map),
+                    endpoint.baseUri,
+                  ),
+                )
+                .toList(growable: false);
+        _snapshot = _snapshot.copyWith(
+          connectionStatus: LanConnectionStatus.connected,
+        );
+        notifyListeners();
+        return RemoteRecordingPage(
+          data: recordings,
+          page: (payload['page'] as num?)?.toInt() ?? page,
+          pageSize: (payload['pageSize'] as num?)?.toInt() ?? pageSize,
+          total: (payload['total'] as num?)?.toInt() ?? recordings.length,
+          deviceTotal: (payload['deviceTotal'] as num?)?.toInt() ?? 0,
+        );
+      } on Object {
+        if (attempt == 0 && await _recoverChangedEndpoint(endpoint.baseUri)) {
+          continue;
+        }
       }
-      final Map<String, Object?> payload = Map<String, Object?>.from(
-        jsonDecode(body) as Map<Object?, Object?>,
-      );
-      final List<RemoteRecording> recordings =
-          ((payload['data'] as List<Object?>?) ?? const <Object?>[])
-              .map(
-                (Object? value) => RemoteRecording.fromJson(
-                  Map<String, Object?>.from(value! as Map),
-                  endpoint.baseUri,
-                ),
-              )
-              .toList(growable: false);
-      _snapshot = _snapshot.copyWith(
-        connectionStatus: LanConnectionStatus.connected,
-      );
-      notifyListeners();
-      return RemoteRecordingPage(
-        data: recordings,
-        page: (payload['page'] as num?)?.toInt() ?? page,
-        pageSize: (payload['pageSize'] as num?)?.toInt() ?? pageSize,
-        total: (payload['total'] as num?)?.toInt() ?? recordings.length,
-        deviceTotal: (payload['deviceTotal'] as num?)?.toInt() ?? 0,
-      );
-    } on Object {
-      _snapshot = _snapshot.copyWith(
-        connectionStatus: LanConnectionStatus.offline,
-      );
-      notifyListeners();
-      return const RemoteRecordingPage.empty();
     }
+    _snapshot = _snapshot.copyWith(
+      connectionStatus: LanConnectionStatus.offline,
+    );
+    notifyListeners();
+    return const RemoteRecordingPage.empty();
   }
 
   @override
   Future<Map<int, ({RemoteRecordingStatus status, bool exists, String reason})>>
   fetchRemoteRecordingStatuses(Iterable<int> ids) async {
-    final LanBackupEndpoint? endpoint = _snapshot.endpoint;
     final List<int> values = ids
         .where((int id) => id > 0)
         .toSet()
         .take(100)
         .toList();
-    if (endpoint == null || _accessKey.isEmpty || values.isEmpty) {
+    if (_snapshot.endpoint == null || _accessKey.isEmpty || values.isEmpty) {
       return const <
         int,
         ({RemoteRecordingStatus status, bool exists, String reason})
       >{};
     }
-    final Uri uri = endpoint.baseUri.replace(
-      path: '/api/mobile-backup/videos/status',
-      queryParameters: <String, String>{'ids': values.join(',')},
-    );
-    final HttpClientRequest request = await _httpClient
-        .getUrl(uri)
-        .timeout(const Duration(seconds: 5));
-    _setSignedBackupHeaders(
-      request,
-      _accessKey,
-      const <int>[],
-      method: 'GET',
-      path: uri.path,
-    );
-    final HttpClientResponse response = await request.close().timeout(
-      const Duration(seconds: 10),
-    );
-    final String body = await utf8.decoder.bind(response).join();
-    if (response.statusCode != HttpStatus.ok) {
-      throw HttpException('电脑录像状态读取失败（${response.statusCode}）');
+    for (int attempt = 0; attempt < 2; attempt++) {
+      final LanBackupEndpoint endpoint = _snapshot.endpoint!;
+      final Uri uri = endpoint.baseUri.replace(
+        path: '/api/mobile-backup/videos/status',
+        queryParameters: <String, String>{'ids': values.join(',')},
+      );
+      try {
+        final HttpClientRequest request = await _httpClient
+            .getUrl(uri)
+            .timeout(const Duration(seconds: 5));
+        _setSignedBackupHeaders(
+          request,
+          _accessKey,
+          const <int>[],
+          method: 'GET',
+          path: uri.path,
+        );
+        final HttpClientResponse response = await request.close().timeout(
+          const Duration(seconds: 10),
+        );
+        final String body = await utf8.decoder.bind(response).join();
+        if (response.statusCode != HttpStatus.ok) {
+          throw HttpException('电脑录像状态读取失败（${response.statusCode}）');
+        }
+        final Map<String, Object?> payload = Map<String, Object?>.from(
+          jsonDecode(body) as Map<Object?, Object?>,
+        );
+        return <
+          int,
+          ({RemoteRecordingStatus status, bool exists, String reason})
+        >{
+          for (final Object? value
+              in (payload['data'] as List<Object?>?) ?? const <Object?>[])
+            if (value is Map)
+              (value['id'] as num).toInt(): (
+                status: RemoteRecordingStatus.values.firstWhere(
+                  (RemoteRecordingStatus status) =>
+                      status.name == value['status'],
+                  orElse: () => RemoteRecordingStatus.missing,
+                ),
+                exists: value['exists'] == true,
+                reason: '${value['reason'] ?? ''}',
+              ),
+        };
+      } on Object {
+        if (attempt == 0 && await _recoverChangedEndpoint(endpoint.baseUri)) {
+          continue;
+        }
+        rethrow;
+      }
     }
-    final Map<String, Object?> payload = Map<String, Object?>.from(
-      jsonDecode(body) as Map<Object?, Object?>,
-    );
-    return <int, ({RemoteRecordingStatus status, bool exists, String reason})>{
-      for (final Object? value
-          in (payload['data'] as List<Object?>?) ?? const <Object?>[])
-        if (value is Map)
-          (value['id'] as num).toInt(): (
-            status: RemoteRecordingStatus.values.firstWhere(
-              (RemoteRecordingStatus status) => status.name == value['status'],
-              orElse: () => RemoteRecordingStatus.missing,
-            ),
-            exists: value['exists'] == true,
-            reason: '${value['reason'] ?? ''}',
-          ),
-    };
+    return const <
+      int,
+      ({RemoteRecordingStatus status, bool exists, String reason})
+    >{};
   }
 
   @override
@@ -1197,7 +1315,10 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     throw const FormatException('手机设备身份尚未准备好，请稍后重试');
   }
 
-  Future<void> _sendConnectionHeartbeat({bool connected = true}) async {
+  Future<void> _sendConnectionHeartbeat({
+    bool connected = true,
+    bool allowAddressRecovery = true,
+  }) async {
     final LanBackupEndpoint? endpoint = _snapshot.endpoint;
     if (endpoint == null ||
         _accessKey.isEmpty ||
@@ -1230,6 +1351,12 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       );
       final String responseBody = await utf8.decoder.bind(response).join();
       if (connected) {
+        if (allowAddressRecovery &&
+            response.statusCode != HttpStatus.ok &&
+            await _recoverChangedEndpoint(endpoint.baseUri)) {
+          await _sendConnectionHeartbeat(allowAddressRecovery: false);
+          return;
+        }
         LanConnectionStatus nextStatus = heartbeatConnectionStatus(
           response.statusCode,
         );
@@ -1247,6 +1374,12 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
         }
       }
     } on Object {
+      if (connected &&
+          allowAddressRecovery &&
+          await _recoverChangedEndpoint(endpoint.baseUri)) {
+        await _sendConnectionHeartbeat(allowAddressRecovery: false);
+        return;
+      }
       if (connected &&
           _snapshot.connectionStatus != LanConnectionStatus.notBackupHost) {
         _applyHeartbeatConnectionStatus(LanConnectionStatus.offline);
@@ -1453,6 +1586,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       await _platform.dispose();
       _nativeHandlerAttached = false;
     }
+    if (_ownsHostLocator) _hostLocator.dispose();
     _httpClient.close(force: true);
     super.dispose();
   }

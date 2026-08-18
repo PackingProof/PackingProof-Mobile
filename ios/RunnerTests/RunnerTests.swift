@@ -1,8 +1,16 @@
 import Flutter
 import UIKit
 import XCTest
+@testable import Runner
 
 class RunnerTests: XCTestCase {
+
+  func testLanBackupVersionComparison() {
+    XCTAssertEqual(compareLanBackupVersions("v0.5.11+11011", "0.5.11"), 0)
+    XCTAssertGreaterThan(compareLanBackupVersions("0.5.12", "0.5.11"), 0)
+    XCTAssertLessThan(compareLanBackupVersions("0.5.10", "0.5.11"), 0)
+    XCTAssertLessThan(compareLanBackupVersions("invalid", "0.5.11"), 0)
+  }
 
   func testRequiredUsageDescriptionsPresent() {
     let requiredKeys = [

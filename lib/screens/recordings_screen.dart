@@ -187,6 +187,7 @@ class RecordingsScreen extends StatefulWidget {
     this.onLoadRemoteRecordings,
     this.onLoadLocalRecordings,
     this.onLoadRemoteRecordingStatuses,
+    this.onResolveRemoteUri,
     this.hiddenRemoteRecordingIds = const <int>{},
     this.onHideRemoteRecordings,
     this.remotePlaybackHeaders = const <String, String>{},
@@ -270,6 +271,7 @@ class RecordingsScreen extends StatefulWidget {
   >
   Function(Iterable<int> ids)?
   onLoadRemoteRecordingStatuses;
+  final Future<Uri?> Function(Uri remoteUri)? onResolveRemoteUri;
   final Set<int> hiddenRemoteRecordingIds;
   final Future<void> Function(Set<int> ids)? onHideRemoteRecordings;
   final Map<String, String> remotePlaybackHeaders;
@@ -1957,12 +1959,24 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                         if (!localAvailable &&
                             remoteAvailable &&
                             item.remote != null) {
+                          final Future<Uri?> Function(Uri remoteUri)? resolver =
+                              widget.onResolveRemoteUri;
+                          final Uri? currentRemoteUri = resolver == null
+                              ? item.remote!.playUri
+                              : await resolver(item.remote!.playUri);
+                          if (!context.mounted) return;
+                          if (currentRemoteUri == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('保存主机暂时离线，请稍后重试')),
+                            );
+                            return;
+                          }
                           final VideoDecodeSupport? decodeSupport =
                               await SystemVideoPlayerService()
                                   .getVideoDecodeSupport();
                           resolvedRemoteUri =
                               RemotePlaybackCompat.resolvePlaybackUri(
-                                item.remote!.playUri,
+                                currentRemoteUri,
                                 decodeSupport: decodeSupport,
                                 videoCodec: item.remote!.videoCodec,
                               );
@@ -1997,7 +2011,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                                       : item.remote == null
                                       ? null
                                       : widget.remoteClipServiceFactory?.call(
-                                          item.remote!.playUri,
+                                          resolvedRemoteUri!,
                                         ),
                                   networkDiagnosticsLoader:
                                       widget.onNetworkDiagnostics,
