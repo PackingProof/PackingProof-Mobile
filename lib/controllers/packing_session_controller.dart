@@ -142,6 +142,7 @@ class PackingSessionController extends ChangeNotifier {
   late final DiagnosticsLogService _runtimeLog;
   Future<Map<String, Object?>>? _runtimeMetadataFuture;
   Future<void> _cameraInitializeTail = Future<void>.value();
+  Future<void> _previewStateTail = Future<void>.value();
   bool _appStartLogged = false;
 
   PlatformCapabilities get capabilities => _capabilities;
@@ -1304,6 +1305,7 @@ class PackingSessionController extends ChangeNotifier {
 
     try {
       await WakelockPlus.enable();
+      await setPreviewActive(true);
       await _setNativeWorkScanEnabled(true);
       unawaited(_captureCameraDiagnosticsSnapshot('start_work'));
       _workActive = true;
@@ -2108,11 +2110,15 @@ class PackingSessionController extends ChangeNotifier {
 
   Future<void> setPreviewActive(bool active) async {
     if (!_supportsNativeCamera) return;
-    try {
-      await _nativeCamera?.setPreviewActive(active);
-    } on Object {
-      // Preview power tuning must never block navigation or recording.
-    }
+    final Future<void> next = _previewStateTail.then((_) async {
+      try {
+        await _nativeCamera?.setPreviewActive(active);
+      } on Object {
+        // Preview power tuning must never block navigation or recording.
+      }
+    });
+    _previewStateTail = next;
+    await next;
   }
 
   Future<void> _setNativeWorkScanEnabled(bool enabled) async {

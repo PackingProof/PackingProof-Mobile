@@ -23,6 +23,9 @@ class _FakeLensCameraPlatform implements CameraPlatform {
   int switchToCameraCalls = 0;
   int switchCameraCalls = 0;
   int probeSequenceCalls = 0;
+  final List<String> scanStateEvents = <String>[];
+  Completer<void>? previewDeactivationBlocker;
+  final Completer<void> previewDeactivationStarted = Completer<void>();
 
   @override
   void Function(List<NativeBarcodeCandidate> candidates)? onBarcodeBatch;
@@ -111,9 +114,22 @@ class _FakeLensCameraPlatform implements CameraPlatform {
   @override
   Future<void> setPairingScanEnabled(bool enabled) async {}
   @override
-  Future<void> setWorkScanEnabled(bool enabled) async {}
+  Future<void> setWorkScanEnabled(bool enabled) async {
+    scanStateEvents.add('work:$enabled');
+  }
+
   @override
-  Future<void> setPreviewActive(bool active) async {}
+  Future<void> setPreviewActive(bool active) async {
+    scanStateEvents.add('preview:$active:start');
+    if (!active) {
+      if (!previewDeactivationStarted.isCompleted) {
+        previewDeactivationStarted.complete();
+      }
+      await previewDeactivationBlocker?.future;
+    }
+    scanStateEvents.add('preview:$active:end');
+  }
+
   @override
   Future<bool> setTorchEnabled(bool enabled) async => false;
   @override
@@ -338,5 +354,34 @@ void main() {
     expect(controller.activeCameraId, 'wide');
     expect(camera.switchToCameraCalls, 0);
     expect(camera.switchCameraCalls, 0);
+  });
+
+  test('从历史页返回后开始工作会等待预览恢复再开启扫码', () async {
+    await controller.initialize();
+    camera.previewDeactivationBlocker = Completer<void>();
+
+    final Future<void> deactivation = controller.setPreviewActive(false);
+    await camera.previewDeactivationStarted.future;
+    bool startCompleted = false;
+    final Future<void> starting = controller.startWork().whenComplete(() {
+      startCompleted = true;
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(startCompleted, isFalse);
+    expect(camera.scanStateEvents, <String>['preview:false:start']);
+
+    camera.previewDeactivationBlocker!.complete();
+    await deactivation;
+    await starting;
+
+    expect(controller.isWorking, isTrue);
+    expect(camera.scanStateEvents, <String>[
+      'preview:false:start',
+      'preview:false:end',
+      'preview:true:start',
+      'preview:true:end',
+      'work:true',
+    ]);
   });
 }
