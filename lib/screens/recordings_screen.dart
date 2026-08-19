@@ -1576,12 +1576,26 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   @override
   Widget build(BuildContext context) {
     final List<_RecordingListItem> visibleItems = _visibleItems;
-    final int localCount = _filteredSessions
+    final List<RecordingSession> filteredSessions = _filteredSessions;
+    final int localCount = filteredSessions
         .where((session) => _localRecordingPaths.contains(session.filePath))
         .length;
     final int localLogicalCount = widget.onLoadLocalRecordings == null
-        ? _filteredSessions.length
+        ? filteredSessions.length
         : _localTotal;
+    final bool hasOtherDeviceRecordings = _hasOtherDeviceRecordings;
+    final List<RecordingSession> existingLocalSessions = _existingLocalSessions;
+    final Set<String> confirmedBackupPaths = _backupSnapshot.jobs
+        .where(_isJobConfirmedAvailable)
+        .map((LanBackupJob job) => lanBackupFileIdentity(job.filePath))
+        .toSet();
+    final bool allLocalFilesBackedUp = _localRecordingPaths
+        .map(lanBackupFileIdentity)
+        .every(confirmedBackupPaths.contains);
+    final int remainingBackupCount = _localRecordingPaths
+        .map(lanBackupFileIdentity)
+        .where((String path) => !confirmedBackupPaths.contains(path))
+        .length;
     final int estimatedCount = switch (_sourceFilter) {
       RecordingSourceFilter.local =>
         widget.onLoadLocalRecordings == null ? localCount : _localTotal,
@@ -1754,8 +1768,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
             ] else ...<Widget>[
               if (!_managing) ...<Widget>[
                 _HistorySummary(
-                  total: _existingLocalSessions.length,
-                  today: _existingLocalSessions
+                  total: existingLocalSessions.length,
+                  today: existingLocalSessions
                       .where((item) => _isToday(item.startedAt))
                       .length,
                   totalBytes: _localRecordingBytes,
@@ -1763,8 +1777,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                 const SizedBox(height: 12),
                 _ComputerBackupSettings(
                   snapshot: _backupSnapshot,
-                  allBackedUp: _allLocalFilesBackedUp,
-                  remainingBackupCount: _remainingBackupCount,
+                  allBackedUp: allLocalFilesBackedUp,
+                  remainingBackupCount: remainingBackupCount,
                   onConnect:
                       widget.onConnectComputer ??
                       () => Navigator.of(context).pop(true),
@@ -1966,7 +1980,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                       selected: _selectedIds.contains(session.id),
                       onLongPress: () =>
                           _handleRecordingLongPress(item, session),
-                      hideSourceChip: !_hasOtherDeviceRecordings,
+                      hideSourceChip: !hasOtherDeviceRecordings,
                       sourceChipOnSecondaryRow: _managing && item.local == null,
                       onTap: () async {
                         if (_managing) {
@@ -2168,27 +2182,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
             : null,
       ),
     );
-  }
-
-  bool get _allLocalFilesBackedUp {
-    final Set<String> completedPaths = _backupSnapshot.jobs
-        .where(_isJobConfirmedAvailable)
-        .map((LanBackupJob job) => lanBackupFileIdentity(job.filePath))
-        .toSet();
-    return _localRecordingPaths
-        .map(lanBackupFileIdentity)
-        .every(completedPaths.contains);
-  }
-
-  int get _remainingBackupCount {
-    final Set<String> completedPaths = _backupSnapshot.jobs
-        .where(_isJobConfirmedAvailable)
-        .map((LanBackupJob job) => lanBackupFileIdentity(job.filePath))
-        .toSet();
-    return _localRecordingPaths
-        .map(lanBackupFileIdentity)
-        .where((String path) => !completedPaths.contains(path))
-        .length;
   }
 
   void _refreshLocalRecordingStats() {
