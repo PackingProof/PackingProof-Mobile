@@ -222,6 +222,10 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   late final bool _ownsHostLocator;
   Timer? _pollTimer;
   Timer? _heartbeatTimer;
+  DateTime? _lastHeartbeatSentAt;
+  DateTime? _lastHeartbeatStallLoggedAt;
+  DateTime? _lastHeartbeatSkipLoggedAt;
+  DateTime? _lastHeartbeatErrorLoggedAt;
   Future<void>? _refreshFuture;
   bool _refreshAgain = false;
   bool _nativeHandlerAttached = false;
@@ -273,15 +277,6 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     } on Object {
       // Version checks are optional and must never block recording or backup.
     }
-    final Map<Object?, Object?> values =
-        await _platform.initialize(<String, Object?>{
-          'unbackedRetentionDays': unbackedRetention.days,
-          'backedRetentionDays': backedRetention.days,
-        }) ??
-        <Object?, Object?>{};
-    _accessKey = await _platform.loadAccessKey() ?? '';
-    _applyNativeSnapshot(values);
-    unawaited(_refreshHostFeatures());
     _pollTimer ??= Timer.periodic(
       const Duration(seconds: 1),
       (_) => unawaited(refresh()),
@@ -291,6 +286,31 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       (_) => unawaited(_sendConnectionHeartbeat()),
     );
     unawaited(_sendConnectionHeartbeat());
+    _log('heartbeat_timer', <String, Object?>{
+      'event': 'created',
+      'endpoint': _snapshot.endpoint?.baseUri.toString(),
+      'hasAccessKey': _accessKey.isNotEmpty,
+      'deviceId': _snapshot.deviceId,
+      'deviceName': _snapshot.deviceName,
+    });
+    // 平台初始化失败不能让心跳永久停摆：先启动轮询与看门狗，
+    // 由 _ensureHeartbeatAlive 在后续周期重读凭据并补发心跳。
+    try {
+      final Map<Object?, Object?> values =
+          await _platform.initialize(<String, Object?>{
+            'unbackedRetentionDays': unbackedRetention.days,
+            'backedRetentionDays': backedRetention.days,
+          }) ??
+          <Object?, Object?>{};
+      _accessKey = await _platform.loadAccessKey() ?? '';
+      _applyNativeSnapshot(values);
+    } on Object catch (error) {
+      _log('heartbeat_timer', <String, Object?>{
+        'event': 'platform_init_failed',
+        'error': error.toString(),
+      });
+    }
+    unawaited(_refreshHostFeatures());
   }
 
   static LanBackupEndpoint parsePairingQr(String value) {
@@ -940,6 +960,86 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     } on PlatformException {
       // A worker can briefly hold the state file while replacing it.
     }
+    _ensureHeartbeatAlive();
+  }
+
+  /// 轻量看门狗：心跳定时器丢失或长时间未发出心跳时自动恢复。
+  ///
+  /// 复用现有 1 秒轮询，仅做整数时间比较，不新增唤醒或常驻开销。
+  void _ensureHeartbeatAlive() {
+    final DateTime now = DateTime.now();
+    if (_snapshot.endpoint == null ||
+        _snapshot.deviceId.isEmpty ||
+        _snapshot.deviceName.isEmpty) {
+      return; // 未配对，无需心跳。
+    }
+    final bool hasAccessKey = _accessKey.isNotEmpty;
+    final DateTime? lastSent = _lastHeartbeatSentAt;
+    final bool stalled =
+        !hasAccessKey ||
+        lastSent == null ||
+        now.difference(lastSent) > const Duration(seconds: 60);
+    if (!stalled) {
+      return;
+    }
+    if (_lastHeartbeatStallLoggedAt != null &&
+        now.difference(_lastHeartbeatStallLoggedAt!) <
+            const Duration(seconds: 60)) {
+      return;
+    }
+    _lastHeartbeatStallLoggedAt = now;
+    _log('heartbeat_stalled', <String, Object?>{
+      'timerAlive': _heartbeatTimer != null,
+      'lastSentSecondsAgo': lastSent == null
+          ? -1
+          : now.difference(lastSent).inSeconds,
+      'hasAccessKey': hasAccessKey,
+      'endpoint': _snapshot.endpoint?.baseUri.toString(),
+    });
+    _heartbeatTimer ??= Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => unawaited(_sendConnectionHeartbeat()),
+    );
+    if (hasAccessKey) {
+      unawaited(_sendConnectionHeartbeat());
+    } else {
+      unawaited(_reloadAccessKeyAndHeartbeat());
+    }
+  }
+
+  Future<void> _reloadAccessKeyAndHeartbeat() async {
+    try {
+      final String? key = await _platform.loadAccessKey();
+      if (key == null || key.isEmpty) {
+        return;
+      }
+      _accessKey = key;
+      unawaited(_sendConnectionHeartbeat());
+    } on Object {
+      // 平台初始化失败后下个自愈周期再试。
+    }
+  }
+
+  void _logHeartbeatSkip(Map<String, Object?> extra) {
+    final DateTime now = DateTime.now();
+    if (_lastHeartbeatSkipLoggedAt != null &&
+        now.difference(_lastHeartbeatSkipLoggedAt!) <
+            const Duration(seconds: 60)) {
+      return;
+    }
+    _lastHeartbeatSkipLoggedAt = now;
+    _log('heartbeat_skip', extra);
+  }
+
+  void _logHeartbeatError(Map<String, Object?> extra) {
+    final DateTime now = DateTime.now();
+    if (_lastHeartbeatErrorLoggedAt != null &&
+        now.difference(_lastHeartbeatErrorLoggedAt!) <
+            const Duration(seconds: 60)) {
+      return;
+    }
+    _lastHeartbeatErrorLoggedAt = now;
+    _log('heartbeat_error', extra);
   }
 
   void _attachNativeHandler() {
@@ -1324,6 +1424,12 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
         _accessKey.isEmpty ||
         _snapshot.deviceId.isEmpty ||
         _snapshot.deviceName.isEmpty) {
+      _logHeartbeatSkip(<String, Object?>{
+        'endpoint': endpoint?.baseUri.toString(),
+        'hasAccessKey': _accessKey.isNotEmpty,
+        'deviceId': _snapshot.deviceId,
+        'deviceName': _snapshot.deviceName,
+      });
       return;
     }
     try {
@@ -1350,6 +1456,11 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
         const Duration(seconds: 8),
       );
       final String responseBody = await utf8.decoder.bind(response).join();
+      _lastHeartbeatSentAt = DateTime.now();
+      _log('heartbeat_send', <String, Object?>{
+        'status': response.statusCode,
+        'connected': connected,
+      });
       if (connected) {
         if (allowAddressRecovery &&
             response.statusCode != HttpStatus.ok &&
@@ -1373,7 +1484,12 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
           await _applyHeartbeatResponse(responseBody);
         }
       }
-    } on Object {
+    } on Object catch (error) {
+      _logHeartbeatError(<String, Object?>{
+        'endpoint': endpoint.baseUri.toString(),
+        'connected': connected,
+        'error': error.toString(),
+      });
       if (connected &&
           allowAddressRecovery &&
           await _recoverChangedEndpoint(endpoint.baseUri)) {
@@ -1581,6 +1697,10 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   Future<void> dispose() async {
     _pollTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _log('heartbeat_timer', <String, Object?>{
+      'event': 'cancelled',
+      'endpoint': _snapshot.endpoint?.baseUri.toString(),
+    });
     await _sendConnectionHeartbeat(connected: false);
     if (_nativeHandlerAttached) {
       await _platform.dispose();

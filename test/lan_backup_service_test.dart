@@ -123,6 +123,54 @@ void main() {
     expect(client.requestedHosts, <String>['192.168.1.20', '192.168.1.30']);
   });
 
+  test('心跳看门狗在定时器丢失时自动补发心跳并记录状态', () async {
+    final MethodChannel channel = const MethodChannel(
+      'app.packingproof.mobile/lan_backup_heartbeat_watchdog_test',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'snapshot') {
+            return <Object?, Object?>{
+              'deviceId': 'android-watchdog-test',
+              'deviceName': '手机1',
+              'connection': <Object?, Object?>{
+                'baseUrl': 'http://192.168.31.250:5280',
+                'computerId': 'host-1',
+                'computerName': '电脑1',
+                'lastConnectedAt': '',
+              },
+              'jobs': <Object?>[],
+              'migrationHost': null,
+            };
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+
+    final List<String> logKinds = <String>[];
+    final _HeartbeatHttpClient client = _HeartbeatHttpClient();
+    final LanBackupService service = LanBackupService(
+      channel: channel,
+      httpClient: client,
+      hostLocator: _FakeHostLocator(null),
+      logEvent: (String kind, Map<String, Object?> extra) async {
+        logKinds.add(kind);
+      },
+    );
+    addTearDown(service.dispose);
+    service.debugSetAccessKeyForTesting('a' * 64);
+
+    await service.refresh();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(client.heartbeatPosts, 1);
+    expect(logKinds, contains('heartbeat_stalled'));
+    expect(logKinds, contains('heartbeat_send'));
+  });
+
   test('Android 私有目录别名会识别为同一个备份文件', () {
     expect(
       isSameLanBackupFile(
@@ -1167,6 +1215,11 @@ class _CompletedHttpClientRequest extends Fake implements HttpClientRequest {
   void add(List<int> data) => onBytes?.call(List<int>.from(data));
 
   @override
+  void write(Object? object) {
+    onBytes?.call(utf8.encode('$object'));
+  }
+
+  @override
   Future<HttpClientResponse> close() async => response;
 }
 
@@ -1285,6 +1338,34 @@ class _FailThenSucceedHttpClient extends Fake implements HttpClient {
       _StreamHttpResponse(
         HttpStatus.ok,
         '{"data":[],"page":1,"pageSize":5,"total":0,"deviceTotal":0}',
+      ),
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _HeartbeatHttpClient extends Fake implements HttpClient {
+  int heartbeatPosts = 0;
+
+  @override
+  Future<HttpClientRequest> postUrl(Uri url) async {
+    heartbeatPosts++;
+    return _CompletedHttpClientRequest(
+      _StreamHttpResponse(
+        HttpStatus.ok,
+        '{"ok":true,"heartbeatIntervalSeconds":15,"expiresInSeconds":45}',
+      ),
+    );
+  }
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async {
+    return _CompletedHttpClientRequest(
+      _StreamHttpResponse(
+        HttpStatus.ok,
+        '{"protocol":"packingproof","capabilities":["mobile-backup"]}',
       ),
     );
   }

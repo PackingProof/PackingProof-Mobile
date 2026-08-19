@@ -610,8 +610,14 @@ class PackingSessionController extends ChangeNotifier {
             backedRetention: settings.backedRetention,
           )
           .timeout(const Duration(seconds: 8));
-    } on Object {
-      // Backup can be retried independently after the camera is ready.
+    } on Object catch (error) {
+      // 备份服务初始化失败不影响摄像头；记录原因，服务侧看门狗会自愈重试。
+      unawaited(
+        _runtimeLog.log(
+          kind: 'backup_service_init_failed',
+          extra: <String, Object?>{'error': error.toString()},
+        ),
+      );
     }
     if (_disposed) return;
     try {

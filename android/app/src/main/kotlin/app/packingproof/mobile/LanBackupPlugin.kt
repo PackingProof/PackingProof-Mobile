@@ -45,6 +45,10 @@ internal class LanBackupPlugin(
         notifySnapshotChanged()
     }
 
+    /** Dart int 可能以 Integer 或 Long 到达，统一按 Number 转换避免类型强转崩溃。 */
+    private fun intArgument(call: MethodCall, name: String): Int? =
+        (call.argument<Number>(name) ?: return null).toInt()
+
     init {
         channel.setMethodCallHandler(this)
         WorkManager.getInstance(context)
@@ -64,8 +68,8 @@ internal class LanBackupPlugin(
                         }
                         store.discardUnavailableJobs()
                         store.saveRetentionPolicies(
-                            call.argument<Int>("unbackedRetentionDays"),
-                            call.argument<Int>("backedRetentionDays"),
+                            intArgument(call, "unbackedRetentionDays"),
+                            intArgument(call, "backedRetentionDays"),
                         )
                         schedulePending()
                         LanBackupCleanupScheduler.rescheduleAll(context, store)
@@ -158,8 +162,8 @@ internal class LanBackupPlugin(
                 }
                 "setRetentionPolicies" -> {
                     store.saveRetentionPolicies(
-                        call.argument<Int>("unbackedRetentionDays"),
-                        call.argument<Int>("backedRetentionDays"),
+                        intArgument(call, "unbackedRetentionDays"),
+                        intArgument(call, "backedRetentionDays"),
                     )
                     LanBackupCleanupScheduler.rescheduleAll(context, store)
                     result.success(null)
