@@ -315,6 +315,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   late int _localRecordingBytes;
   late Set<String> _localRecordingPaths;
   late LanBackupSnapshot _backupSnapshot;
+  Map<String, List<LanBackupJob>> _backupJobsByPath =
+      <String, List<LanBackupJob>>{};
   late final LanBackupHostDiscovery _backupHostDiscovery;
   late final bool _ownsBackupHostDiscovery;
   LanBackupDiscoverySnapshot _backupDiscoverySnapshot =
@@ -403,6 +405,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _sessions = List<RecordingSession>.of(widget.sessions);
     _refreshLocalRecordingStats();
     _backupSnapshot = widget.backupSnapshot;
+    _backupJobsByPath = _buildBackupJobsByPath(_backupSnapshot);
     _ownsBackupHostDiscovery = widget.backupHostDiscovery == null;
     _backupHostDiscovery =
         widget.backupHostDiscovery ?? LanBackupHostDiscoveryService();
@@ -668,6 +671,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     if (localCleanupChanged) {
       _refreshLocalRecordingStats();
     }
+    _backupJobsByPath = _buildBackupJobsByPath(next);
     setState(() {
       _backupSnapshot = next;
       if (completedChanged) _remoteCacheDirty = true;
@@ -699,6 +703,21 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       return left == null && right == null;
     }
     return left.computerId == right.computerId && left.baseUri == right.baseUri;
+  }
+
+  Map<String, List<LanBackupJob>> _buildBackupJobsByPath(
+    LanBackupSnapshot snapshot,
+  ) {
+    final Map<String, List<LanBackupJob>> jobs = <String, List<LanBackupJob>>{};
+    for (final LanBackupJob job in snapshot.jobs) {
+      jobs
+          .putIfAbsent(
+            lanBackupFileIdentity(job.filePath),
+            () => <LanBackupJob>[],
+          )
+          .add(job);
+    }
+    return jobs;
   }
 
   Set<String> _completedBackupSignatures(LanBackupSnapshot snapshot) => snapshot
@@ -862,21 +881,17 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
               (!item.startedAt.isBefore(dateWindow.start) &&
                   item.startedAt.isBefore(dateWindow.end));
           final bool hasLocalFile =
-              item.local != null && File(item.local!.filePath).existsSync();
+              item.local != null &&
+              _localRecordingPaths.contains(item.local!.filePath);
           final bool backedUp =
               (item.remote != null &&
                   _isRemoteFromThisDevice(item.remote!) &&
                   item.remote!.status == RemoteRecordingStatus.available &&
                   item.remote!.exists) ||
               (item.local != null &&
-                  _backupSnapshot.jobs.any(
-                    (job) =>
-                        isSameLanBackupFile(
-                          job.filePath,
-                          item.local!.filePath,
-                        ) &&
-                        _isJobConfirmedAvailable(job),
-                  ));
+                  _backupJobsByPath[lanBackupFileIdentity(item.local!.filePath)]
+                          ?.any(_isJobConfirmedAvailable) ==
+                      true);
           return inDateRange &&
               switch (_sourceFilter) {
                 RecordingSourceFilter.all => true,
@@ -1548,7 +1563,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   Widget build(BuildContext context) {
     final List<_RecordingListItem> visibleItems = _visibleItems;
     final int localCount = _filteredSessions
-        .where((session) => File(session.filePath).existsSync())
+        .where((session) => _localRecordingPaths.contains(session.filePath))
         .length;
     final int localLogicalCount = widget.onLoadLocalRecordings == null
         ? _filteredSessions.length
@@ -1892,18 +1907,14 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   final RecordingSession session = item.session;
                   final bool localAvailable =
                       item.local != null &&
-                      File(item.local!.filePath).existsSync();
+                      _localRecordingPaths.contains(item.local!.filePath);
                   final List<LanBackupJob> matchingBackupJobs =
                       item.local == null
                       ? const <LanBackupJob>[]
-                      : _backupSnapshot.jobs
-                            .where(
-                              (LanBackupJob job) => isSameLanBackupFile(
-                                job.filePath,
-                                item.local!.filePath,
-                              ),
-                            )
-                            .toList(growable: false);
+                      : _backupJobsByPath[lanBackupFileIdentity(
+                              item.local!.filePath,
+                            )] ??
+                            const <LanBackupJob>[];
                   final bool remoteAvailable =
                       item.remote != null &&
                       item.remote!.status == RemoteRecordingStatus.available &&

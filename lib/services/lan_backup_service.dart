@@ -912,9 +912,10 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       'sessionCount': sessions.length,
       'forceRestart': forceRestart,
     });
+    final Map<String, LanBackupJob> jobsByFile = _backupJobsByFile();
     for (final MapEntry<String, List<RecordingSession>> entry
         in grouped.entries) {
-      if (!forceRestart && await _shouldSkipBackupAll(entry.key)) {
+      if (!forceRestart && await _shouldSkipBackupAll(entry.key, jobsByFile)) {
         continue;
       }
       await _enqueue(
@@ -929,7 +930,10 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   /// 仅当任务快照能证明该文件无需重新入队时才跳过（native 仍保留最终裁决权）：
   /// - completed 且已持 contentSha256（与原生 needsVerifiedRestart 语义一致）；
   /// - pending/uploading，且路径、destination、size、mtime 全部匹配。
-  Future<bool> _shouldSkipBackupAll(String filePath) async {
+  Future<bool> _shouldSkipBackupAll(
+    String filePath,
+    Map<String, LanBackupJob> jobsByFile,
+  ) async {
     final FileStat stat;
     try {
       stat = await File(filePath).stat();
@@ -939,7 +943,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     if (stat.type == FileSystemEntityType.notFound || stat.size <= 0) {
       return false;
     }
-    final LanBackupJob? job = _findJobForFile(filePath);
+    final LanBackupJob? job = jobsByFile[lanBackupFileIdentity(filePath)];
     if (job == null) return false;
     final bool sameSizeAndTime =
         job.totalBytes == stat.size &&
@@ -957,11 +961,12 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     return false;
   }
 
-  LanBackupJob? _findJobForFile(String filePath) {
+  Map<String, LanBackupJob> _backupJobsByFile() {
+    final Map<String, LanBackupJob> jobs = <String, LanBackupJob>{};
     for (final LanBackupJob job in _snapshot.jobs) {
-      if (isSameLanBackupFile(job.filePath, filePath)) return job;
+      jobs.putIfAbsent(lanBackupFileIdentity(job.filePath), () => job);
     }
-    return null;
+    return jobs;
   }
 
   @override

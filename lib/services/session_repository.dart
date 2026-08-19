@@ -614,19 +614,25 @@ class SessionRepository {
     Set<String> retainedMissingPaths = const <String>{},
   }) => _serializeSessionMutation(() async {
     await initialize();
-    final List<RecordingSession> sessions = await _recordingDatabase
-        .loadActiveSessions();
-    final List<RecordingSession> resolved = await _resolveAndRepair(sessions);
-    final Map<String, String> repairs = <String, String>{
-      for (int index = 0; index < sessions.length; index++)
-        if (resolved[index].filePath != sessions[index].filePath)
-          sessions[index].id: resolved[index].filePath,
-    };
+    final List<({String id, String filePath})> activePaths =
+        await _recordingDatabase.loadActiveSessionPaths();
+    final Map<String, String> repairs = <String, String>{};
+    for (final ({String id, String filePath}) item in activePaths) {
+      final String? resolved = await resolveRecordingPath(item.filePath);
+      if (resolved != null && resolved != item.filePath) {
+        repairs[item.id] = resolved;
+      }
+    }
     await _recordingDatabase.refreshMissingState(
       retainedMissingPaths: retainedMissingPaths.map(p.normalize).toSet(),
       resolvedPaths: repairs,
     );
-    return resolved.take(50).toList(growable: false);
+    final List<RecordingSession> recent =
+        (await _recordingDatabase.queryActiveSessions(
+          page: 1,
+          pageSize: 50,
+        )).data;
+    return _resolveAndRepair(recent);
   });
 
   /// 解析录像文件的实际路径；找不到时返回 null，并记录诊断信息。

@@ -3196,6 +3196,7 @@ class PackingSessionController extends ChangeNotifier {
   ) async {
     final Map<String, List<RecordingSession>> grouped =
         <String, List<RecordingSession>>{};
+    final Map<String, LanBackupJob> jobsByFile = _backupJobsByFile();
     for (final RecordingSession session in sessions) {
       final FileStat stat;
       try {
@@ -3206,7 +3207,9 @@ class PackingSessionController extends ChangeNotifier {
       if (stat.type == FileSystemEntityType.notFound || stat.size <= 0) {
         continue;
       }
-      if (_hasRegisteredRetentionJob(session.filePath, stat)) continue;
+      if (_hasRegisteredRetentionJob(session.filePath, stat, jobsByFile)) {
+        continue;
+      }
       grouped
           .putIfAbsent(session.filePath, () => <RecordingSession>[])
           .add(session);
@@ -3217,14 +3220,24 @@ class PackingSessionController extends ChangeNotifier {
     }
   }
 
-  bool _hasRegisteredRetentionJob(String filePath, FileStat stat) {
+  Map<String, LanBackupJob> _backupJobsByFile() {
+    final Map<String, LanBackupJob> jobs = <String, LanBackupJob>{};
     for (final LanBackupJob job in _lanBackupService.snapshot.jobs) {
-      if (!isSameLanBackupFile(job.filePath, filePath)) continue;
-      return job.totalBytes == stat.size &&
-          (job.lastModified?.millisecondsSinceEpoch ?? -1) ==
-              stat.modified.millisecondsSinceEpoch;
+      jobs.putIfAbsent(lanBackupFileIdentity(job.filePath), () => job);
     }
-    return false;
+    return jobs;
+  }
+
+  bool _hasRegisteredRetentionJob(
+    String filePath,
+    FileStat stat,
+    Map<String, LanBackupJob> jobsByFile,
+  ) {
+    final LanBackupJob? job = jobsByFile[lanBackupFileIdentity(filePath)];
+    return job != null &&
+        job.totalBytes == stat.size &&
+        (job.lastModified?.millisecondsSinceEpoch ?? -1) ==
+            stat.modified.millisecondsSinceEpoch;
   }
 
   Future<void> _pruneDeletedBackupSessions({bool notify = true}) async {
@@ -3235,11 +3248,13 @@ class PackingSessionController extends ChangeNotifier {
               job.localDeletedAt != null,
         )
         .toList(growable: false);
+    final Set<String> deletedBackupPaths = deletedBackupJobs
+        .map((LanBackupJob job) => lanBackupFileIdentity(job.filePath))
+        .toSet();
     final Set<String> backedPaths = _sessions
         .where(
-          (RecordingSession session) => deletedBackupJobs.any(
-            (LanBackupJob job) =>
-                isSameLanBackupFile(job.filePath, session.filePath),
+          (RecordingSession session) => deletedBackupPaths.contains(
+            lanBackupFileIdentity(session.filePath),
           ),
         )
         .map((RecordingSession session) => session.filePath)

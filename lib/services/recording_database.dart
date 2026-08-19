@@ -203,6 +203,22 @@ class RecordingDatabase {
     return rows.map(_sessionFromRow).toList(growable: false);
   }
 
+  Future<List<({String id, String filePath})>> loadActiveSessionPaths() async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.query(
+      'recording_sessions',
+      columns: <String>['id', 'file_path'],
+      where: 'is_deleted = 0',
+      orderBy: 'started_at DESC, id DESC',
+    );
+    return rows
+        .map(
+          (Map<String, Object?> row) =>
+              (id: row['id']! as String, filePath: row['file_path']! as String),
+        )
+        .toList(growable: false);
+  }
+
   Future<LocalRecordingPage> queryActiveSessions({
     required int page,
     required int pageSize,
@@ -289,26 +305,77 @@ class RecordingDatabase {
   Future<void> upsertSessions(List<RecordingSession> sessions) async {
     if (sessions.isEmpty) return;
     final Database db = await _db;
-    await db.transaction((Transaction txn) async {
-      for (final RecordingSession session in sessions) {
-        final Map<String, Object?> row = await _sessionRow(session);
-        final List<Map<String, Object?>> existing = await txn.query(
-          'recording_sessions',
-          columns: <String>['created_at'],
-          where: 'id = ?',
-          whereArgs: <Object?>[session.id],
-          limit: 1,
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final List<String> ids = sessions
+        .map((RecordingSession session) => session.id)
+        .toList(growable: false);
+    final Map<String, Object?> createdAts = await _readCreatedAtMap(db, ids);
+    final List<Map<String, Object?>> rows = <Map<String, Object?>>[];
+
+    // 文件 stat 放在事务外，并按小批次并发处理，避免一次同时打开过多文件描述符。
+    const int statBatchSize = 200;
+    for (var start = 0; start < sessions.length; start += statBatchSize) {
+      final int end = start + statBatchSize < sessions.length
+          ? start + statBatchSize
+          : sessions.length;
+      final List<RecordingSession> batch = sessions.sublist(start, end);
+      final List<_RecordingFileMetadata> metadata = await Future.wait(
+        batch.map(
+          (RecordingSession session) =>
+              _readFileMetadata(File(session.filePath)),
+        ),
+      );
+      for (var index = 0; index < batch.length; index++) {
+        final RecordingSession session = batch[index];
+        final Map<String, Object?> row = await _sessionRow(
+          session,
+          fileMetadata: metadata[index],
+          now: now,
         );
-        if (existing.isNotEmpty) {
-          row['created_at'] = existing.single['created_at'];
-        }
-        await txn.insert(
+        row['created_at'] = createdAts[session.id] ?? row['created_at'];
+        rows.add(row);
+      }
+    }
+
+    await db.transaction((Transaction txn) async {
+      final Batch batch = txn.batch();
+      for (final Map<String, Object?> row in rows) {
+        batch.insert(
           'recording_sessions',
           row,
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
+      await batch.commit(noResult: true);
     });
+  }
+
+  Future<Map<String, Object?>> _readCreatedAtMap(
+    Database db,
+    List<String> ids,
+  ) async {
+    final Map<String, Object?> result = <String, Object?>{};
+    const int queryBatchSize = 500;
+    for (var start = 0; start < ids.length; start += queryBatchSize) {
+      final int end = start + queryBatchSize < ids.length
+          ? start + queryBatchSize
+          : ids.length;
+      final List<String> batch = ids.sublist(start, end);
+      final String placeholders = List<String>.filled(
+        batch.length,
+        '?',
+      ).join(',');
+      final List<Map<String, Object?>> rows = await db.query(
+        'recording_sessions',
+        columns: <String>['id', 'created_at'],
+        where: 'id IN ($placeholders)',
+        whereArgs: batch,
+      );
+      for (final Map<String, Object?> row in rows) {
+        result[row['id']! as String] = row['created_at'];
+      }
+    }
+    return result;
   }
 
   Future<List<RecordingSession>> findActiveByIds(Set<String> ids) async {
@@ -330,11 +397,26 @@ class RecordingDatabase {
     if (sessions.isEmpty) return;
     final Database db = await _db;
     final int now = DateTime.now().millisecondsSinceEpoch;
+    final Map<String, int> fileSizes = <String, int>{};
+    final Map<String, _RecordingFileMetadata> fileMetadata =
+        <String, _RecordingFileMetadata>{};
+    for (final RecordingSession session in sessions) {
+      final String normalized = _normalizedFilePath(session.filePath);
+      if (fileMetadata.containsKey(normalized)) continue;
+      fileMetadata[normalized] = await _readFileMetadata(
+        File(session.filePath),
+      );
+    }
+    for (final MapEntry<String, _RecordingFileMetadata> entry
+        in fileMetadata.entries) {
+      fileSizes[entry.key] = entry.value.size;
+    }
+
     await db.transaction((Transaction txn) async {
+      final Batch batch = txn.batch();
       for (final RecordingSession session in sessions) {
-        final File file = File(session.filePath);
-        final int fileSize = await file.exists() ? await file.length() : 0;
-        await txn.update(
+        final String normalized = _normalizedFilePath(session.filePath);
+        batch.update(
           'recording_sessions',
           <String, Object?>{
             'is_deleted': 1,
@@ -345,15 +427,16 @@ class RecordingDatabase {
           where: 'id = ? AND is_deleted = 0',
           whereArgs: <Object?>[session.id],
         );
-        await txn.insert('recording_delete_logs', <String, Object?>{
+        batch.insert('recording_delete_logs', <String, Object?>{
           'file_path': session.filePath,
           'session_id': session.id,
           'tracking_number': session.displayCode,
-          'file_size_bytes': fileSize,
+          'file_size_bytes': fileSizes[normalized] ?? 0,
           'deleted_at': now,
           'reason': reason,
         });
       }
+      await batch.commit(noResult: true);
     });
   }
 
@@ -521,9 +604,14 @@ class RecordingDatabase {
         .toList(growable: false);
   }
 
-  Future<Map<String, Object?>> _sessionRow(RecordingSession session) async {
-    final File file = File(session.filePath);
-    final int now = DateTime.now().millisecondsSinceEpoch;
+  Future<Map<String, Object?>> _sessionRow(
+    RecordingSession session, {
+    _RecordingFileMetadata? fileMetadata,
+    int? now,
+  }) async {
+    final int timestamp = now ?? DateTime.now().millisecondsSinceEpoch;
+    final _RecordingFileMetadata metadata =
+        fileMetadata ?? await _readFileMetadata(File(session.filePath));
     final String orderId = session.orderInfo?.orderId ?? '';
     final String searchText = <String>[
       session.displayCode,
@@ -542,15 +630,30 @@ class RecordingDatabase {
       'order_id': orderId,
       'search_text': searchText,
       'payload_json': jsonEncode(session.toJson()),
-      'file_size_bytes': await file.exists() ? await file.length() : 0,
+      'file_size_bytes': metadata.size,
       'is_deleted': 0,
       'deleted_at': null,
       'delete_reason': '',
-      'missing_at': await file.exists() ? null : now,
-      'created_at': now,
-      'updated_at': now,
+      'missing_at': metadata.exists ? null : timestamp,
+      'created_at': timestamp,
+      'updated_at': timestamp,
     };
   }
+
+  Future<_RecordingFileMetadata> _readFileMetadata(File file) async {
+    try {
+      final FileStat stat = await file.stat();
+      if (stat.type == FileSystemEntityType.notFound) {
+        return const _RecordingFileMetadata(exists: false, size: 0);
+      }
+      return _RecordingFileMetadata(exists: true, size: stat.size);
+    } on FileSystemException {
+      return const _RecordingFileMetadata(exists: false, size: 0);
+    }
+  }
+
+  static String _normalizedFilePath(String filePath) =>
+      filePath.replaceAll('\\', '/');
 
   static RecordingSession _sessionFromRow(Map<String, Object?> row) =>
       RecordingSession.fromJson(
@@ -558,4 +661,11 @@ class RecordingDatabase {
           jsonDecode(row['payload_json']! as String) as Map<Object?, Object?>,
         ),
       );
+}
+
+class _RecordingFileMetadata {
+  const _RecordingFileMetadata({required this.exists, required this.size});
+
+  final bool exists;
+  final int size;
 }
