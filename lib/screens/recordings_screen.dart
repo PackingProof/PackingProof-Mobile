@@ -264,6 +264,8 @@ class RecordingsScreen extends StatefulWidget {
     required int page,
     required int pageSize,
     String keyword,
+    DateTime? start,
+    DateTime? end,
   })?
   onLoadLocalRecordings;
   final Future<
@@ -801,6 +803,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         page: pageNumber,
         pageSize: _historyPageSize,
         keyword: _query,
+        start: _activeDateWindow?.start,
+        end: _activeDateWindow?.end,
       );
       if (!mounted || generation != _localRequestGeneration) return;
       setState(() {
@@ -828,6 +832,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       page: pageNumber,
       pageSize: _historyPageSize,
       keyword: _query,
+      start: _activeDateWindow?.start,
+      end: _activeDateWindow?.end,
     );
     if (!mounted || generation != _localRequestGeneration) return;
     setState(() {
@@ -1469,12 +1475,20 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         _customDateRange = picked;
         _historyPage = 0;
       });
+      _reloadLocalAfterFilterChange();
       return;
     }
     setState(() {
       _datePreset = value;
       _historyPage = 0;
     });
+    _reloadLocalAfterFilterChange();
+  }
+
+  void _reloadLocalAfterFilterChange() {
+    _localRequestGeneration++;
+    _loadingLocal = false;
+    unawaited(_loadLocal(reset: true, pageNumber: 1, prefetchNext: true));
   }
 
   Future<void> _copySelectedTrackingNumbers() async {

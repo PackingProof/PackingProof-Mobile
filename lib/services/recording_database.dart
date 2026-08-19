@@ -223,17 +223,28 @@ class RecordingDatabase {
     required int page,
     required int pageSize,
     String keyword = '',
+    DateTime? start,
+    DateTime? end,
   }) async {
     final Database db = await _db;
     final int normalizedPage = page < 1 ? 1 : page;
     final int normalizedSize = pageSize.clamp(1, 100);
     final String query = keyword.trim().toLowerCase();
-    final String where = query.isEmpty
-        ? 'is_deleted = 0'
-        : 'is_deleted = 0 AND search_text LIKE ?';
-    final List<Object?> args = query.isEmpty
-        ? <Object?>[]
-        : <Object?>['%$query%'];
+    final List<String> conditions = <String>['is_deleted = 0'];
+    final List<Object?> args = <Object?>[];
+    if (query.isNotEmpty) {
+      conditions.add('search_text LIKE ?');
+      args.add('%$query%');
+    }
+    if (start != null) {
+      conditions.add('started_at >= ?');
+      args.add(start.millisecondsSinceEpoch);
+    }
+    if (end != null) {
+      conditions.add('started_at < ?');
+      args.add(end.millisecondsSinceEpoch);
+    }
+    final String where = conditions.join(' AND ');
     final List<Map<String, Object?>> countRows = await db.rawQuery(
       'SELECT COUNT(1) AS total FROM recording_sessions WHERE $where',
       args,

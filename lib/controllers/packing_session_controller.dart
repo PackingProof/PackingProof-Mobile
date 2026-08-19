@@ -1859,10 +1859,14 @@ class PackingSessionController extends ChangeNotifier {
     required int page,
     required int pageSize,
     String keyword = '',
+    DateTime? start,
+    DateTime? end,
   }) => _repository.querySessions(
     page: page,
     pageSize: pageSize,
     keyword: keyword,
+    start: start,
+    end: end,
   );
 
   Future<void> disconnectBackup() => _lanBackupService.disconnect();

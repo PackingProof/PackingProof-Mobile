@@ -1982,7 +1982,13 @@ void main() {
             changedPageSizes.add(value);
           },
           onLoadLocalRecordings:
-              ({required page, required pageSize, keyword = ''}) async {
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                DateTime? start,
+                DateTime? end,
+              }) async {
                 requestedPageSizes.add(pageSize);
                 final int start = (page - 1) * pageSize;
                 return LocalRecordingPage(
@@ -2073,7 +2079,13 @@ void main() {
           speechEnabled: true,
           maxVolumeEnabled: true,
           onLoadLocalRecordings:
-              ({required page, required pageSize, keyword = ''}) async {
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                DateTime? start,
+                DateTime? end,
+              }) async {
                 final int start = (page - 1) * pageSize;
                 return LocalRecordingPage(
                   data: start >= all.length
@@ -2116,6 +2128,8 @@ void main() {
       required int page,
       required int pageSize,
       String keyword = '',
+      DateTime? start,
+      DateTime? end,
     }) async {
       requestedPages.add(page);
       requestedKeywords.add(keyword);
@@ -3513,7 +3527,13 @@ void main() {
           maxVolumeEnabled: true,
           backupListenable: notifier,
           onLoadLocalRecordings:
-              ({required page, required pageSize, keyword = ''}) async {
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                DateTime? start,
+                DateTime? end,
+              }) async {
                 final int start = (page - 1) * pageSize;
                 return LocalRecordingPage(
                   data: start >= all.length
@@ -3582,7 +3602,13 @@ void main() {
           backupSnapshotProvider: () => snapshot,
           backupListenable: notifier,
           onLoadLocalRecordings:
-              ({required page, required pageSize, keyword = ''}) async {
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                DateTime? start,
+                DateTime? end,
+              }) async {
                 final int start = (page - 1) * pageSize;
                 return LocalRecordingPage(
                   data: start >= all.length
@@ -3678,7 +3704,13 @@ void main() {
           speechEnabled: true,
           maxVolumeEnabled: true,
           onLoadLocalRecordings:
-              ({required page, required pageSize, keyword = ''}) async {
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                DateTime? start,
+                DateTime? end,
+              }) async {
                 final int start = (page - 1) * pageSize;
                 return LocalRecordingPage(
                   data: start >= all.length
@@ -4100,7 +4132,13 @@ void main() {
           speechEnabled: true,
           maxVolumeEnabled: true,
           onLoadLocalRecordings:
-              ({required page, required pageSize, keyword = ''}) async {
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                DateTime? start,
+                DateTime? end,
+              }) async {
                 final int start = (page - 1) * pageSize;
                 return LocalRecordingPage(
                   data: start >= all.length

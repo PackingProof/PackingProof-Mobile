@@ -648,12 +648,20 @@ void main() {
       pageSize: 5,
       keyword: 'TRACK09999',
     );
+    final ranged = await repository.querySessions(
+      page: 1,
+      pageSize: 5,
+      start: startedAt.add(const Duration(seconds: 9990)),
+      end: startedAt.add(const Duration(seconds: 10000)),
+    );
 
     expect(first.total, 10000);
     expect(first.data, hasLength(5));
     expect(first.data.first.id, 'large-9999');
     expect(searched.total, 1);
     expect(searched.data.single.id, 'large-9999');
+    expect(ranged.total, 10);
+    expect(ranged.data.first.id, 'large-9999');
   });
 
   test('重复单号只核验最近三十天且忽略已删除记录', () async {

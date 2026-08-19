@@ -264,10 +264,18 @@ class SessionRepository {
     required int page,
     required int pageSize,
     String keyword = '',
+    DateTime? start,
+    DateTime? end,
   }) async {
     await initialize();
     final LocalRecordingPage result = await _recordingDatabase
-        .queryActiveSessions(page: page, pageSize: pageSize, keyword: keyword);
+        .queryActiveSessions(
+          page: page,
+          pageSize: pageSize,
+          keyword: keyword,
+          start: start,
+          end: end,
+        );
     final List<RecordingSession> resolved = await _resolveAndRepair(
       result.data,
     );
@@ -616,9 +624,12 @@ class SessionRepository {
     await initialize();
     final List<({String id, String filePath})> activePaths =
         await _recordingDatabase.loadActiveSessionPaths();
+    final Map<String, String?> resolvedPaths = await _resolvePathMap(
+      activePaths.map((({String id, String filePath}) item) => item.filePath),
+    );
     final Map<String, String> repairs = <String, String>{};
     for (final ({String id, String filePath}) item in activePaths) {
-      final String? resolved = await resolveRecordingPath(item.filePath);
+      final String? resolved = resolvedPaths[item.filePath];
       if (resolved != null && resolved != item.filePath) {
         repairs[item.id] = resolved;
       }
@@ -657,20 +668,21 @@ class SessionRepository {
     return resolved;
   }
 
-  Future<RecordingSession> _resolveSession(RecordingSession session) async {
-    final String? resolved = await resolveRecordingPath(session.filePath);
-    if (resolved == null || resolved == session.filePath) return session;
-    return session.copyWith(filePath: resolved);
-  }
-
   Future<List<RecordingSession>> _resolveAndRepair(
     List<RecordingSession> sessions,
   ) async {
     if (sessions.isEmpty) return sessions;
+    final Map<String, String?> resolvedPaths = await _resolvePathMap(
+      sessions.map((RecordingSession session) => session.filePath).toSet(),
+    );
     final List<RecordingSession> resolved = <RecordingSession>[];
     final Map<String, String> repairs = <String, String>{};
     for (final RecordingSession session in sessions) {
-      final RecordingSession sessionWithPath = await _resolveSession(session);
+      final String? resolvedPath = resolvedPaths[session.filePath];
+      final RecordingSession sessionWithPath =
+          resolvedPath == null || resolvedPath == session.filePath
+          ? session
+          : session.copyWith(filePath: resolvedPath);
       resolved.add(sessionWithPath);
       if (sessionWithPath.filePath != session.filePath) {
         repairs[session.id] = sessionWithPath.filePath;
@@ -678,6 +690,32 @@ class SessionRepository {
     }
     if (repairs.isNotEmpty) {
       await _recordingDatabase.repairFilePaths(repairs);
+    }
+    return resolved;
+  }
+
+  Future<Map<String, String?>> _resolvePathMap(
+    Iterable<String> storedPaths,
+  ) async {
+    final Map<String, String?> resolved = <String, String?>{};
+    final Map<String, RecordingPathResolution> resolutions = await _pathResolver
+        .resolveBatch(storedPaths);
+    for (final MapEntry<String, RecordingPathResolution> entry
+        in resolutions.entries) {
+      final RecordingPathResolution resolution = entry.value;
+      resolved[entry.key] = resolution.resolvedPath;
+      if (resolution.repaired) {
+        developer.log(
+          '录像路径自动修复：${entry.key} -> ${resolution.resolvedPath}',
+          name: 'PackingProof.PathFix',
+        );
+      } else if (resolution.resolvedPath == null) {
+        await _pathDiagnostics.recordMissing(
+          storedPath: entry.key,
+          recordingsRoot: _recordingsDirectory.path,
+          attemptedPaths: resolution.attemptedPaths,
+        );
+      }
     }
     return resolved;
   }
