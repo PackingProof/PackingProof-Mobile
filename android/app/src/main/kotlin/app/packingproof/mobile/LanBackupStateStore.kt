@@ -1,13 +1,12 @@
 package app.packingproof.mobile
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import android.provider.Settings
-import android.util.AtomicFile
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
@@ -17,49 +16,10 @@ internal data class LanBackupConnectionMigration(
     val computerName: String,
 )
 
-/** 备份任务目录里单个任务文件的元数据，用于缓存脏检查。 */
-internal data class JobFileMeta(
-    val id: String,
-    val lastModified: Long,
-    val length: Long,
-)
-
 internal data class LanBackupUpsertResult(
     val job: JSONObject,
     val recreated: Boolean,
 )
-
-/** 汇总任务目录元数据；同一任务同时存在 .json 与 .json.bak 时优先采用 .json。 */
-internal fun jobMetasOf(files: List<File>): List<JobFileMeta> {
-    val byId = linkedMapOf<String, JobFileMeta>()
-    for (file in files.sortedBy { it.name }) {
-        val id = file.name.removeSuffix(".bak").removeSuffix(".json")
-        if (byId.containsKey(id) && !file.name.endsWith(".json")) continue
-        byId[id] = JobFileMeta(id, file.lastModified(), file.length())
-    }
-    return byId.values.toList().sortedBy { it.id }
-}
-
-/**
- * 任务缓存合并：目录元数据未变化时直接复用缓存；变化时只重读变化/新增的任务，
- * 未变化的任务继续复用缓存对象。返回值保持按任务文件 mtime 倒序。
- */
-internal fun mergeJobCache(
-    cached: List<JSONObject>?,
-    cachedMeta: List<JobFileMeta>?,
-    currentMeta: List<JobFileMeta>,
-    readJob: (String) -> JSONObject?,
-): List<JSONObject> {
-    if (cached != null && cachedMeta == currentMeta) return cached
-    val cachedById = cached?.associateBy { it.getString("id") } ?: emptyMap()
-    val cachedMetaById = cachedMeta?.associateBy { it.id } ?: emptyMap()
-    return currentMeta
-        .mapNotNull { meta ->
-            cachedById[meta.id]?.takeIf { cachedMetaById[meta.id] == meta }
-                ?: readJob(meta.id)
-        }
-        .sortedByDescending { it.optLong("lastModified") }
-}
 
 internal fun planLanBackupConnectionMigration(
     schemaVersion: Int,
@@ -104,10 +64,9 @@ internal class LanBackupStateStore(private val context: Context) {
         fun <T> withJobLock(action: () -> T): T = synchronized(jobIoLock, action)
     }
 
-    private val jobsDirectory = File(context.filesDir, "lan_backup/jobs").apply { mkdirs() }
-
-    private var jobsCache: List<JSONObject>? = null
-    private var jobsMeta: List<JobFileMeta>? = null
+    private val database = LanBackupJobDatabase(context)
+    private val db: SQLiteDatabase
+        get() = database.writableDatabase
 
     fun saveConnection(
         baseUrl: String,
@@ -323,40 +282,39 @@ internal class LanBackupStateStore(private val context: Context) {
     }
 
     private fun readJobUnlocked(id: String): JSONObject? {
-        val file = File(jobsDirectory, "$id.json")
-        return try {
-            if (!file.exists() && !File("${file.path}.bak").exists()) return null
-            AtomicFile(file).openRead().bufferedReader(Charsets.UTF_8).use { reader ->
-                JSONObject(reader.readText())
+        val columns = LanBackupJobDatabase.COLUMNS.toTypedArray()
+        return db.query(
+            LanBackupJobDatabase.TABLE,
+            columns,
+            "id = ?",
+            arrayOf(id),
+            null,
+            null,
+            null,
+            "1",
+        ).use { cursor ->
+            if (cursor.moveToFirst()) {
+                lanBackupRowToJob(cursor.toRowMap(LanBackupJobDatabase.COLUMNS))
+            } else {
+                null
             }
-        } catch (_: Throwable) {
-            null
         }
     }
 
     private fun writeJobUnlocked(job: JSONObject) {
-        jobsCache = null
-        jobsMeta = null
-        val target = File(jobsDirectory, "${job.getString("id")}.json")
-        val atomicFile = AtomicFile(target)
-        var output: FileOutputStream? = null
-        try {
-            output = atomicFile.startWrite()
-            output.write(job.toString().toByteArray(Charsets.UTF_8))
-            atomicFile.finishWrite(output)
-        } catch (error: Throwable) {
-            output?.let(atomicFile::failWrite)
-            throw error
-        }
+        db.insertWithOnConflict(
+            LanBackupJobDatabase.TABLE,
+            null,
+            lanBackupJobToRow(job).toContentValues(),
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
     }
 
     private fun deleteJobUnlocked(id: String, expectedGeneration: String): Boolean {
         val current = readJobUnlocked(id) ?: return false
         if (current.optString("generation") != expectedGeneration) return false
         if (current.optString("state") == "completed") return false
-        jobsCache = null
-        jobsMeta = null
-        AtomicFile(File(jobsDirectory, "$id.json")).delete()
+        db.delete(LanBackupJobDatabase.TABLE, "id = ?", arrayOf(id))
         return true
     }
 
@@ -368,14 +326,22 @@ internal class LanBackupStateStore(private val context: Context) {
         )
 
     private fun jobsUnlocked(): List<JSONObject> {
-        val files = jobsDirectory.listFiles { file ->
-            file.name.endsWith(".json") || file.name.endsWith(".json.bak")
-        }?.toList() ?: emptyList()
-        val metas = jobMetasOf(files)
-        val jobs = mergeJobCache(jobsCache, jobsMeta, metas) { readJobUnlocked(it) }
-        jobsCache = jobs
-        jobsMeta = metas
-        return jobs
+        val columns = LanBackupJobDatabase.COLUMNS
+        return db.query(
+            LanBackupJobDatabase.TABLE,
+            columns.toTypedArray(),
+            null,
+            null,
+            null,
+            null,
+            "last_modified DESC",
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    add(lanBackupRowToJob(cursor.toRowMap(columns)))
+                }
+            }
+        }
     }
 
     fun saveRetentionPolicies(unbackedDays: Int?, backedDays: Int?) {

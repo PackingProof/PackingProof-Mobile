@@ -7,6 +7,7 @@ import Flutter
 import ImageIO
 import Network
 import QuartzCore
+import SQLite3
 import UIKit
 import UniformTypeIdentifiers
 import VideoToolbox
@@ -397,8 +398,299 @@ private final class IosAlertAudioSessionHostApi: AlertAudioSessionHostApi {
   }
 }
 
+/// 备份任务的 SQLite 存储：与 Android 端 `backup_jobs` 表保持同一 schema 与字段语义，
+/// 替代旧版把全部任务塞进一个 UserDefaults 数组、每次写入全量重写的方式。
+private final class IosBackupJobStore {
+  private static let legacyDefaultsKey = "ios_backup_jobs"
+  private static let sqliteTransient = unsafeBitCast(
+    -1,
+    to: sqlite3_destructor_type.self
+  )
+
+  private var db: OpaquePointer?
+  private let lock = NSLock()
+
+  init() {
+    let directory = FileManager.default.urls(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask
+    ).first ?? FileManager.default.temporaryDirectory
+    try? FileManager.default.createDirectory(
+      at: directory,
+      withIntermediateDirectories: true
+    )
+    let path = directory.appendingPathComponent("lan_backup.db").path
+    sqlite3_open(path, &db)
+    createSchema()
+    migrateLegacyJobsIfNeeded()
+  }
+
+  deinit {
+    sqlite3_close(db)
+  }
+
+  func allJobs() -> [[String: Any]] {
+    lock.lock()
+    defer { lock.unlock() }
+    return queryJobsUnlocked()
+  }
+
+  func upsert(_ rawJob: [String: Any]) {
+    lock.lock()
+    defer { lock.unlock() }
+    upsertUnlocked(rawJob)
+  }
+
+  func updateJob(id: String, mutate: (inout [String: Any]) -> Void) {
+    lock.lock()
+    defer { lock.unlock() }
+    guard var job = readJobUnlocked(id) else { return }
+    mutate(&job)
+    upsertUnlocked(job)
+  }
+
+  func deleteJob(id: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    deleteUnlocked(id)
+  }
+
+  private func createSchema() {
+    let sql = """
+      CREATE TABLE IF NOT EXISTS backup_jobs (
+        id TEXT PRIMARY KEY,
+        generation TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        file_name TEXT,
+        destination_computer_id TEXT,
+        state TEXT NOT NULL,
+        uploaded_bytes INTEGER NOT NULL DEFAULT 0,
+        total_bytes INTEGER NOT NULL DEFAULT 0,
+        last_modified INTEGER NOT NULL DEFAULT 0,
+        file_created_at TEXT,
+        backup_completed_at TEXT,
+        scheduled_cleanup_at TEXT,
+        local_deleted_at TEXT,
+        waiting_cleanup INTEGER NOT NULL DEFAULT 0,
+        remote_record_ids TEXT,
+        content_sha256 TEXT,
+        verification_version INTEGER NOT NULL DEFAULT 0,
+        verification_receipt TEXT,
+        last_attested_at TEXT,
+        cleanup_reason TEXT,
+        error_message TEXT,
+        failure_kind TEXT,
+        sessions TEXT
+      );
+    """
+    sqlite3_exec(db, sql, nil, nil, nil)
+  }
+
+  private func migrateLegacyJobsIfNeeded() {
+    lock.lock()
+    defer { lock.unlock() }
+    guard
+      let legacy = UserDefaults.standard.array(
+        forKey: Self.legacyDefaultsKey
+      ) as? [[String: Any]],
+      !legacy.isEmpty
+    else { return }
+    for job in legacy {
+      upsertUnlocked(job)
+    }
+    UserDefaults.standard.removeObject(forKey: Self.legacyDefaultsKey)
+  }
+
+  private func readJobUnlocked(_ id: String) -> [String: Any]? {
+    let sql = "SELECT * FROM backup_jobs WHERE id = ? LIMIT 1"
+    var stmt: OpaquePointer?
+    guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+      return nil
+    }
+    bindText(stmt, 1, id)
+    defer { sqlite3_finalize(stmt) }
+    guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+    return jobFromRow(stmt)
+  }
+
+  private func queryJobsUnlocked() -> [[String: Any]] {
+    let sql = "SELECT * FROM backup_jobs ORDER BY last_modified DESC"
+    var stmt: OpaquePointer?
+    guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+      return []
+    }
+    defer { sqlite3_finalize(stmt) }
+    var jobs: [[String: Any]] = []
+    while sqlite3_step(stmt) == SQLITE_ROW {
+      jobs.append(jobFromRow(stmt))
+    }
+    return jobs
+  }
+
+  private func upsertUnlocked(_ rawJob: [String: Any]) {
+    let job = IosBackupHostApi.migratedJob(rawJob)
+    let sql = """
+      INSERT OR REPLACE INTO backup_jobs (
+        id, generation, file_path, file_name, destination_computer_id, state,
+        uploaded_bytes, total_bytes, last_modified, file_created_at,
+        backup_completed_at, scheduled_cleanup_at, local_deleted_at,
+        waiting_cleanup, remote_record_ids, content_sha256, verification_version,
+        verification_receipt, last_attested_at, cleanup_reason, error_message,
+        failure_kind, sessions
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    var stmt: OpaquePointer?
+    guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+      return
+    }
+    defer { sqlite3_finalize(stmt) }
+    let row = jobRow(job)
+    bindText(stmt, 1, row["id"] as? String)
+    bindText(stmt, 2, row["generation"] as? String)
+    bindText(stmt, 3, row["file_path"] as? String)
+    bindText(stmt, 4, row["file_name"] as? String)
+    bindText(stmt, 5, row["destination_computer_id"] as? String)
+    bindText(stmt, 6, row["state"] as? String)
+    bindInt(stmt, 7, (row["uploaded_bytes"] as? NSNumber)?.int64Value ?? 0)
+    bindInt(stmt, 8, (row["total_bytes"] as? NSNumber)?.int64Value ?? 0)
+    bindInt(stmt, 9, (row["last_modified"] as? NSNumber)?.int64Value ?? 0)
+    bindText(stmt, 10, row["file_created_at"] as? String)
+    bindText(stmt, 11, row["backup_completed_at"] as? String)
+    bindText(stmt, 12, row["scheduled_cleanup_at"] as? String)
+    bindText(stmt, 13, row["local_deleted_at"] as? String)
+    bindInt(stmt, 14, ((row["waiting_cleanup"] as? Bool) ?? false) ? 1 : 0)
+    bindText(stmt, 15, row["remote_record_ids"] as? String)
+    bindText(stmt, 16, row["content_sha256"] as? String)
+    bindInt(stmt, 17, Int64((row["verification_version"] as? NSNumber)?.intValue ?? 0))
+    bindText(stmt, 18, row["verification_receipt"] as? String)
+    bindText(stmt, 19, row["last_attested_at"] as? String)
+    bindText(stmt, 20, row["cleanup_reason"] as? String)
+    bindText(stmt, 21, row["error_message"] as? String)
+    bindText(stmt, 22, row["failure_kind"] as? String)
+    bindText(stmt, 23, row["sessions"] as? String)
+    sqlite3_step(stmt)
+  }
+
+  private func deleteUnlocked(_ id: String) {
+    let sql = "DELETE FROM backup_jobs WHERE id = ?"
+    var stmt: OpaquePointer?
+    guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+      return
+    }
+    bindText(stmt, 1, id)
+    sqlite3_step(stmt)
+    sqlite3_finalize(stmt)
+  }
+
+  private func jobRow(_ job: [String: Any]) -> [String: Any?] {
+    [
+      "id": job["id"] as? String ?? "",
+      "generation": job["generation"] as? String ?? "",
+      "file_path": job["filePath"] as? String ?? "",
+      "file_name": job["fileName"] as? String,
+      "destination_computer_id": job["destinationComputerId"] as? String,
+      "state": job["state"] as? String ?? "",
+      "uploaded_bytes": (job["uploadedBytes"] as? NSNumber)?.int64Value ?? 0,
+      "total_bytes": (job["totalBytes"] as? NSNumber)?.int64Value ?? 0,
+      "last_modified": (job["lastModified"] as? NSNumber)?.int64Value ?? 0,
+      "file_created_at": job["fileCreatedAt"] as? String,
+      "backup_completed_at": job["backupCompletedAt"] as? String,
+      "scheduled_cleanup_at": job["scheduledCleanupAt"] as? String,
+      "local_deleted_at": job["localDeletedAt"] as? String,
+      "waiting_cleanup": (job["waitingCleanup"] as? Bool) ?? false,
+      "remote_record_ids": Self.jsonText(job["remoteRecordIds"]),
+      "content_sha256": job["contentSha256"] as? String,
+      "verification_version": (job["verificationVersion"] as? NSNumber)?.intValue ?? 0,
+      "verification_receipt": Self.jsonText(job["verificationReceipt"]),
+      "last_attested_at": job["lastAttestedAt"] as? String,
+      "cleanup_reason": job["cleanupReason"] as? String,
+      "error_message": job["errorMessage"] as? String,
+      "failure_kind": job["failureKind"] as? String,
+      "sessions": Self.jsonText(job["sessions"]),
+    ]
+  }
+
+  private func jobFromRow(_ stmt: OpaquePointer?) -> [String: Any] {
+    var job: [String: Any] = [:]
+    job["id"] = text(stmt, 0) ?? ""
+    job["generation"] = text(stmt, 1) ?? ""
+    job["filePath"] = text(stmt, 2) ?? ""
+    job["fileName"] = text(stmt, 3)
+    job["destinationComputerId"] = text(stmt, 4)
+    job["state"] = text(stmt, 5) ?? ""
+    job["uploadedBytes"] = integer(stmt, 6)
+    job["totalBytes"] = integer(stmt, 7)
+    job["lastModified"] = integer(stmt, 8)
+    job["fileCreatedAt"] = text(stmt, 9)
+    job["backupCompletedAt"] = text(stmt, 10)
+    job["scheduledCleanupAt"] = text(stmt, 11)
+    job["localDeletedAt"] = text(stmt, 12)
+    job["waitingCleanup"] = integer(stmt, 13) != 0
+    job["remoteRecordIds"] = Self.jsonArray(text(stmt, 14))
+    job["contentSha256"] = text(stmt, 15)
+    job["verificationVersion"] = Int(integer(stmt, 16))
+    job["verificationReceipt"] = Self.jsonObject(text(stmt, 17))
+    job["lastAttestedAt"] = text(stmt, 18)
+    job["cleanupReason"] = text(stmt, 19)
+    job["errorMessage"] = text(stmt, 20)
+    job["failureKind"] = text(stmt, 21)
+    job["sessions"] = Self.jsonArray(text(stmt, 22))
+    return job
+  }
+
+  private func text(_ stmt: OpaquePointer?, _ index: Int32) -> String? {
+    guard let value = sqlite3_column_text(stmt, index) else { return nil }
+    return String(cString: value)
+  }
+
+  private func integer(_ stmt: OpaquePointer?, _ index: Int32) -> Int64 {
+    sqlite3_column_int64(stmt, index)
+  }
+
+  private func bindText(_ stmt: OpaquePointer?, _ index: Int32, _ value: String?) {
+    guard let stmt else { return }
+    if let value {
+      sqlite3_bind_text(stmt, index, value, -1, Self.sqliteTransient)
+    } else {
+      sqlite3_bind_null(stmt, index)
+    }
+  }
+
+  private func bindInt(_ stmt: OpaquePointer?, _ index: Int32, _ value: Int64) {
+    guard let stmt else { return }
+    sqlite3_bind_int64(stmt, index, value)
+  }
+
+  private static func jsonText(_ value: Any?) -> String? {
+    guard let value, JSONSerialization.isValidJSONObject(value) else { return nil }
+    return (try? JSONSerialization.data(withJSONObject: value))
+      .flatMap { String(data: $0, encoding: .utf8) }
+  }
+
+  private static func jsonArray(_ value: String?) -> [Any] {
+    guard let value,
+          let data = value.data(using: .utf8),
+          let array = try? JSONSerialization.jsonObject(with: data) as? [Any]
+    else {
+      return []
+    }
+    return array
+  }
+
+  private static func jsonObject(_ value: String?) -> [String: Any]? {
+    guard let value,
+          let data = value.data(using: .utf8),
+          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return nil
+    }
+    return object
+  }
+}
+
 private final class IosBackupHostApi: BackupNativeHostApi {
   private let defaults = UserDefaults.standard
+  private let jobStore = IosBackupJobStore()
   private let eventApi: BackupNativeEventApi
   private let networkMonitor = NWPathMonitor()
   private let networkQueue = DispatchQueue(label: "ios.backup.network")
@@ -410,6 +702,8 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   private let hostResolver = IosLanBackupHostResolver()
   private var cleanupRunning = false
   private var lastCleanupAt = Date.distantPast
+  private let emitLock = NSLock()
+  private var emitScheduled = false
   private let keys = (
     deviceId: "ios_backup_device_id",
     deviceName: "ios_backup_device_name",
@@ -466,7 +760,6 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       unbacked: (request["unbackedRetentionDays"] as? Int) ?? -1,
       backed: (request["backedRetentionDays"] as? Int) ?? -1
     )
-    migrateExistingJobs()
     triggerCleanup()
     completion(.success(currentSnapshot()))
   }
@@ -671,8 +964,22 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       "deviceId": deviceId(),
       "deviceName": deviceName(),
       "connection": defaults.dictionary(forKey: keys.connection),
-      "jobs": jobs(),
+      "jobs": jobs().map(slimJob),
     ]
+  }
+
+  /// 快照瘦身：只下发 Dart 实际消费的字段，避免 sessions 等大字段随每次推送跨通道传输。
+  private func slimJob(_ job: [String: Any]) -> [String: Any] {
+    var slim: [String: Any] = [:]
+    for key in [
+      "id", "filePath", "state", "uploadedBytes", "totalBytes", "lastModified",
+      "contentSha256", "errorMessage", "failureKind", "fileCreatedAt",
+      "backupCompletedAt", "scheduledCleanupAt", "localDeletedAt", "waitingCleanup",
+      "remoteRecordIds", "destinationComputerId", "cleanupReason",
+    ] {
+      slim[key] = job[key]
+    }
+    return slim
   }
 
   private func deviceId() -> String {
@@ -710,7 +1017,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
 
   /// 旧版本任务字段补齐：fileCreatedAt 用文件 lastModified（与 Android 一致），
   /// 其余用文件元数据或默认值回填，避免旧任务被误判为未备份/可清理。
-  private func migratedJob(_ job: [String: Any]) -> [String: Any] {
+  fileprivate static func migratedJob(_ job: [String: Any]) -> [String: Any] {
     var result = job
     let path = job["filePath"] as? String ?? ""
     let attributes = try? FileManager.default.attributesOfItem(atPath: path)
@@ -735,36 +1042,33 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     return result
   }
 
-  private func migrateExistingJobs() {
-    let migrated = jobs().map(migratedJob)
-    defaults.set(migrated, forKey: keys.jobs)
-  }
-
   private func jobs() -> [[String: Any]] {
-    (defaults.array(forKey: keys.jobs) as? [[String: Any]]) ?? []
+    jobStore.allJobs()
   }
 
   private func upsert(_ job: [String: Any]) {
-    let migrated = migratedJob(job)
-    let id = migrated["id"] as? String ?? ""
-    var all = jobs().filter { $0["id"] as? String != id }
-    all.append(migrated)
-    defaults.set(all, forKey: keys.jobs)
+    jobStore.upsert(job)
   }
 
   private func updateJob(_ id: String, mutate: (inout [String: Any]) -> Void) {
-    var all = jobs()
-    guard let index = all.firstIndex(where: { $0["id"] as? String == id }) else {
-      return
-    }
-    var job = all[index]
-    mutate(&job)
-    all[index] = job
-    defaults.set(all, forKey: keys.jobs)
+    jobStore.updateJob(id: id, mutate: mutate)
   }
 
   private func emitSnapshot() {
-    eventApi.snapshotChanged(snapshot: currentSnapshot()) { _ in }
+    emitLock.lock()
+    let alreadyScheduled = emitScheduled
+    emitScheduled = true
+    emitLock.unlock()
+    if alreadyScheduled {
+      return
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+      guard let self else { return }
+      self.emitLock.lock()
+      self.emitScheduled = false
+      self.emitLock.unlock()
+      self.eventApi.snapshotChanged(snapshot: self.currentSnapshot()) { _ in }
+    }
   }
 
   private func stableId(_ path: String) -> String {
