@@ -11,6 +11,8 @@ dependencies {
     implementation("androidx.media3:media3-transformer:1.10.1")
     implementation("androidx.media3:media3-effect:1.10.1")
     testImplementation("junit:junit:4.13.2")
+    // 本地单元测试需要真实的 org.json 实现；android.jar 中的桩会抛 “not mocked”。
+    testImplementation("org.json:json:20240303")
 }
 
 val releaseStorePath = System.getenv("PACKING_PROOF_KEYSTORE_PATH")?.trim().orEmpty()

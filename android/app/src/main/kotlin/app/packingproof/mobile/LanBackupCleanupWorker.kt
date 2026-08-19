@@ -39,6 +39,9 @@ internal object LanBackupCleanupScheduler {
                 workManager.cancelUniqueWork(WORK_PREFIX + id)
                 return@withJobLock
             }
+            if (shouldSkipReschedule(current, dueAt)) {
+                return@withJobLock
+            }
             val delay = Duration.between(Instant.now(), dueAt).toMillis().coerceAtLeast(0)
             store.updateJob(id, expectedGeneration) { value ->
                 value.put("scheduledCleanupAt", dueAt.toString())
@@ -52,6 +55,7 @@ internal object LanBackupCleanupScheduler {
                     ),
                 )
                 .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+                .addTag("lan-backup")
                 .build()
             workManager.enqueueUniqueWork(
                 WORK_PREFIX + id,
@@ -59,6 +63,10 @@ internal object LanBackupCleanupScheduler {
                 request,
             )
         }
+
+    /** 已按同一 dueAt 排程过且未到期的清理任务不重复入队，保证启动与竞态下幂等。 */
+    internal fun shouldSkipReschedule(current: JSONObject, dueAt: Instant): Boolean =
+        nullableText(current, "scheduledCleanupAt") == dueAt.toString()
 
     fun rescheduleAll(context: Context, store: LanBackupStateStore) {
         store.jobs().forEach { reschedule(context, store, it) }
@@ -240,6 +248,10 @@ internal class LanBackupCleanupWorker(
             val dueAt = LanBackupCleanupScheduler.dueAt(store, job)
                 ?: return@withJobLock Result.success()
             if (Instant.now().isBefore(dueAt)) {
+                // worker 自身提前运行时（如系统时间回拨）需要重新排程：
+                // 先清掉已排期时间，避免被幂等跳过逻辑当作“已排程”而不重建。
+                job.put("scheduledCleanupAt", JSONObject.NULL)
+                store.writeJob(job)
                 LanBackupCleanupScheduler.reschedule(applicationContext, store, job)
                 return@withJobLock Result.success()
             }

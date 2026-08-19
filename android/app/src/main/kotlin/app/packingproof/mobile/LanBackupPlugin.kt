@@ -5,6 +5,8 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.lifecycle.Observer
 import androidx.work.BackoffPolicy
@@ -33,6 +35,7 @@ internal class LanBackupPlugin(
         private const val WORK_PREFIX = "lan-backup-"
         private const val TAG = "PackingProofBackup"
         private const val INVALID_RSSI = -127
+        private const val SNAPSHOT_PUSH_DEBOUNCE_MS = 250L
     }
 
     private val context: Context = activity.applicationContext
@@ -41,8 +44,14 @@ internal class LanBackupPlugin(
     private val storageManager = RecordingStorageManager(context, store)
     private val credentials = LanBackupCredentialStore(context)
     private val snapshotListeners = mutableListOf<(Map<String, Any?>) -> Unit>()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var snapshotPushPending = false
+    private val snapshotPushRunnable = Runnable {
+        snapshotPushPending = false
+        pushSnapshotNow()
+    }
     private val workObserver = Observer<List<WorkInfo>> {
-        notifySnapshotChanged()
+        notifySnapshotChangedDebounced()
     }
 
     /** Dart int 可能以 Integer 或 Long 到达，统一按 Number 转换避免类型强转崩溃。 */
@@ -93,12 +102,14 @@ internal class LanBackupPlugin(
                     store.retargetJobs(computerId)
                     store.clearMigrationHint()
                     schedulePending()
+                    LanBackupCleanupScheduler.rescheduleAll(context, store)
                     result.success(null)
                 }
                 "disconnect" -> {
                     WorkManager.getInstance(context).cancelAllWorkByTag("lan-backup")
                     store.clearConnection()
                     credentials.clear()
+                    LanBackupCleanupScheduler.rescheduleAll(context, store)
                     result.success(null)
                 }
                 "enqueue" -> {
@@ -117,8 +128,10 @@ internal class LanBackupPlugin(
                         call.argument<List<Map<String, Any?>>>("sessions")
                             ?: emptyList<Map<String, Any?>>(),
                     )
-                    var job = store.upsertJob(path, sessions)
+                    val upsert = store.upsertJob(path, sessions)
+                    var job = upsert.job
                     val forceRestart = call.argument<Boolean>("forceRestart") == true
+                    val recreated = upsert.recreated
                     val startUpload = call.argument<Boolean>("startUpload") != false
                     val needsVerifiedRestart = forceRestart &&
                         (job.optString("state") != "completed" ||
@@ -149,7 +162,9 @@ internal class LanBackupPlugin(
                     }
                     LanBackupCleanupScheduler.reschedule(context, store, job)
                     if (startUpload) {
-                        schedule(job.getString("id"), replace = forceRestart)
+                        // 只有用户显式强制重启或任务确实是新建/替换（需要换 generation）
+                        // 时才 REPLACE；普通恢复（paused/failed）保留已有进度与 work。
+                        schedule(job.getString("id"), replace = forceRestart || recreated)
                     }
                     Log.i(
                         TAG,
@@ -283,11 +298,24 @@ internal class LanBackupPlugin(
         "deviceId" to store.deviceId(),
         "deviceName" to store.deviceName(),
         "connection" to store.connection()?.toFlutterValue(),
-        "jobs" to store.jobs().map { it.toFlutterValue() },
+        "jobs" to store.jobs().map { it.toSnapshotValue() },
         "migrationHost" to store.migrationHint()?.toFlutterValue(),
     )
 
+    /** WorkManager 状态变化可能成批到达，全局合并为一次推送，避免推送风暴。 */
+    private fun notifySnapshotChangedDebounced() {
+        if (snapshotPushPending) return
+        snapshotPushPending = true
+        mainHandler.postDelayed(snapshotPushRunnable, SNAPSHOT_PUSH_DEBOUNCE_MS)
+    }
+
     fun notifySnapshotChanged() {
+        mainHandler.removeCallbacks(snapshotPushRunnable)
+        snapshotPushPending = false
+        pushSnapshotNow()
+    }
+
+    private fun pushSnapshotNow() {
         val value = snapshot()
         channel.invokeMethod("snapshotChanged", value)
         snapshotListeners.forEach { it(value) }
@@ -305,9 +333,38 @@ internal class LanBackupPlugin(
         WorkManager.getInstance(context)
             .getWorkInfosByTagLiveData("lan-backup")
             .removeObserver(workObserver)
+        mainHandler.removeCallbacks(snapshotPushRunnable)
+        snapshotPushPending = false
         snapshotListeners.clear()
         channel.setMethodCallHandler(null)
     }
+}
+
+/** 快照瘦身：只下发 Dart 实际消费的字段，避免 sessions 等大字段每秒跨通道传输。 */
+private fun org.json.JSONObject.toSnapshotValue(): Map<String, Any?> {
+    val remoteRecordIds = optJSONArray("remoteRecordIds")?.let { array ->
+        (0 until array.length()).map { array.getLong(it) }
+    } ?: emptyList<Long>()
+    fun nullable(key: String): Any? = LanBackupCleanupScheduler.nullableText(this, key)
+    return mapOf(
+        "id" to getString("id"),
+        "filePath" to getString("filePath"),
+        "state" to optString("state"),
+        "uploadedBytes" to optLong("uploadedBytes"),
+        "totalBytes" to optLong("totalBytes"),
+        "lastModified" to optLong("lastModified"),
+        "contentSha256" to nullable("contentSha256"),
+        "errorMessage" to nullable("errorMessage"),
+        "failureKind" to nullable("failureKind"),
+        "fileCreatedAt" to nullable("fileCreatedAt"),
+        "backupCompletedAt" to nullable("backupCompletedAt"),
+        "scheduledCleanupAt" to nullable("scheduledCleanupAt"),
+        "localDeletedAt" to nullable("localDeletedAt"),
+        "waitingCleanup" to optBoolean("waitingCleanup"),
+        "remoteRecordIds" to remoteRecordIds,
+        "destinationComputerId" to optString("destinationComputerId"),
+        "cleanupReason" to nullable("cleanupReason"),
+    )
 }
 
 internal fun Any?.toFlutterValue(): Any? = when (this) {

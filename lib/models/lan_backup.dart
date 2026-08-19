@@ -115,6 +115,8 @@ class LanBackupJob {
     required this.state,
     required this.uploadedBytes,
     required this.totalBytes,
+    this.lastModified,
+    this.contentSha256,
     this.errorMessage,
     this.failureKind,
     this.fileCreatedAt,
@@ -137,6 +139,8 @@ class LanBackupJob {
       ),
       uploadedBytes: (map['uploadedBytes'] as num?)?.toInt() ?? 0,
       totalBytes: (map['totalBytes'] as num?)?.toInt() ?? 0,
+      lastModified: _dateTime(map['lastModified']),
+      contentSha256: map['contentSha256'] as String?,
       errorMessage: map['errorMessage'] as String?,
       failureKind: LanBackupFailureKind.fromWireValue(map['failureKind']),
       fileCreatedAt: _dateTime(map['fileCreatedAt']),
@@ -158,6 +162,8 @@ class LanBackupJob {
   final LanBackupJobState state;
   final int uploadedBytes;
   final int totalBytes;
+  final DateTime? lastModified;
+  final String? contentSha256;
   final String? errorMessage;
   final LanBackupFailureKind? failureKind;
   final DateTime? fileCreatedAt;

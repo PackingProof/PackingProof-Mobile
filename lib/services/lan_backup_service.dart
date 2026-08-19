@@ -155,7 +155,10 @@ abstract interface class LanBackupSink implements Listenable {
     String filePath,
     List<RecordingSession> sessions,
   );
-  Future<void> backupAll(List<RecordingSession> sessions);
+  Future<void> backupAll(
+    List<RecordingSession> sessions, {
+    bool forceRestart = false,
+  });
   Future<void> retry(String jobId);
   Future<void> cancel(String jobId);
   Future<StorageSpaceResult> checkAndReclaimStorage();
@@ -175,6 +178,9 @@ abstract interface class LanBackupSink implements Listenable {
 }
 
 class LanBackupService extends ChangeNotifier implements LanBackupSink {
+  /// 1 秒心跳轮询中，每 N tick 触发一次完整快照安全轮询。
+  static const int _safetyPollEveryTicks = 10;
+
   LanBackupService({
     MethodChannel? channel,
     BackupNativePlatform? platform,
@@ -221,6 +227,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   late final LanBackupHostLocator _hostLocator;
   late final bool _ownsHostLocator;
   Timer? _pollTimer;
+  int _pollTickCount = 0;
   Timer? _heartbeatTimer;
   DateTime? _lastHeartbeatSentAt;
   DateTime? _lastHeartbeatStallLoggedAt;
@@ -238,6 +245,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   int _appBuildNumber = currentMobileCompatibilityBuildNumber;
   bool _deviceVideoClippingEnabled = false;
   final Set<String> _loggedFailedJobIds = <String>{};
+  String _lastSnapshotSignature = '';
   Future<Uri?>? _activeAddressRecovery;
 
   @override
@@ -279,7 +287,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     }
     _pollTimer ??= Timer.periodic(
       const Duration(seconds: 1),
-      (_) => unawaited(refresh()),
+      (_) => _onPollTick(),
     );
     _heartbeatTimer ??= Timer.periodic(
       const Duration(seconds: 15),
@@ -312,6 +320,19 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     }
     unawaited(_refreshHostFeatures());
   }
+
+  /// 1 秒轮询的每次触发：心跳看门狗每 tick 都检查（纯 Dart，无原生调用），
+  /// 完整快照刷新降低到每 10 tick 一次，作为事件推送之外的安全兜底。
+  void _onPollTick() {
+    _ensureHeartbeatAlive();
+    _pollTickCount++;
+    if (_pollTickCount % _safetyPollEveryTicks == 0) {
+      unawaited(refresh());
+    }
+  }
+
+  @visibleForTesting
+  void debugFirePollTick() => _onPollTick();
 
   static LanBackupEndpoint parsePairingQr(String value) {
     final Uri uri = Uri.parse(value.trim());
@@ -875,7 +896,10 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   }
 
   @override
-  Future<void> backupAll(List<RecordingSession> sessions) async {
+  Future<void> backupAll(
+    List<RecordingSession> sessions, {
+    bool forceRestart = false,
+  }) async {
     final Map<String, List<RecordingSession>> grouped =
         <String, List<RecordingSession>>{};
     for (final RecordingSession session in sessions) {
@@ -886,16 +910,58 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     _log('backup_all_batch', <String, Object?>{
       'fileCount': grouped.length,
       'sessionCount': sessions.length,
+      'forceRestart': forceRestart,
     });
     for (final MapEntry<String, List<RecordingSession>> entry
         in grouped.entries) {
+      if (!forceRestart && await _shouldSkipBackupAll(entry.key)) {
+        continue;
+      }
       await _enqueue(
         entry.key,
         entry.value,
         startUpload: true,
-        forceRestart: true,
+        forceRestart: forceRestart,
       );
     }
+  }
+
+  /// 仅当任务快照能证明该文件无需重新入队时才跳过（native 仍保留最终裁决权）：
+  /// - completed 且已持 contentSha256（与原生 needsVerifiedRestart 语义一致）；
+  /// - pending/uploading，且路径、destination、size、mtime 全部匹配。
+  Future<bool> _shouldSkipBackupAll(String filePath) async {
+    final FileStat stat;
+    try {
+      stat = await File(filePath).stat();
+    } on FileSystemException {
+      return false;
+    }
+    if (stat.type == FileSystemEntityType.notFound || stat.size <= 0) {
+      return false;
+    }
+    final LanBackupJob? job = _findJobForFile(filePath);
+    if (job == null) return false;
+    final bool sameSizeAndTime =
+        job.totalBytes == stat.size &&
+        (job.lastModified?.millisecondsSinceEpoch ?? -1) ==
+            stat.modified.millisecondsSinceEpoch;
+    if (job.state == LanBackupJobState.completed && job.contentSha256 != null) {
+      return true;
+    }
+    if ((job.state == LanBackupJobState.pending ||
+            job.state == LanBackupJobState.uploading) &&
+        job.destinationComputerId == (_snapshot.endpoint?.computerId ?? '') &&
+        sameSizeAndTime) {
+      return true;
+    }
+    return false;
+  }
+
+  LanBackupJob? _findJobForFile(String filePath) {
+    for (final LanBackupJob job in _snapshot.jobs) {
+      if (isSameLanBackupFile(job.filePath, filePath)) return job;
+    }
+    return null;
   }
 
   @override
@@ -1621,7 +1687,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     final Map<Object?, Object?> migration = migrationValue is Map
         ? Map<Object?, Object?>.from(migrationValue)
         : const <Object?, Object?>{};
-    _snapshot = LanBackupSnapshot(
+    final LanBackupSnapshot next = LanBackupSnapshot(
       deviceId: '${values['deviceId'] ?? _snapshot.deviceId}',
       deviceName: '${values['deviceName'] ?? _snapshot.deviceName}',
       preferredHostId: endpoint == null
@@ -1651,7 +1717,77 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
           ? '连接的电脑当前不是录像备份主机，请切换电脑用途或重新搜索'
           : _snapshot.message,
     );
+    final String signature = _snapshotSignature(next);
+    if (signature == _lastSnapshotSignature) {
+      return;
+    }
+    _lastSnapshotSignature = signature;
+    _snapshot = next;
     notifyListeners();
+  }
+
+  /// 对快照中 Dart 实际消费的字段做紧凑签名；内容未变化时跳过 UI 通知，
+  /// 避免低频安全轮询与原生合并推送反复触发整页重建。
+  String _snapshotSignature(LanBackupSnapshot snapshot) {
+    final StringBuffer buffer = StringBuffer()
+      ..write(snapshot.deviceId)
+      ..write('|')
+      ..write(snapshot.deviceName)
+      ..write('|')
+      ..write(snapshot.preferredHostId)
+      ..write('|')
+      ..write(snapshot.preferredHostName)
+      ..write('|')
+      ..write(snapshot.endpoint?.baseUri)
+      ..write('|')
+      ..write(snapshot.endpoint?.computerId)
+      ..write('|')
+      ..write(snapshot.endpoint?.computerName)
+      ..write('|')
+      ..write(snapshot.endpoint?.lastConnectedAt)
+      ..write('|')
+      ..write(snapshot.connectionStatus.name)
+      ..write('|')
+      ..write(snapshot.message)
+      ..write('|');
+    for (final LanBackupJob job in snapshot.jobs) {
+      buffer
+        ..write(job.id)
+        ..write(',')
+        ..write(job.filePath)
+        ..write(',')
+        ..write(job.state.name)
+        ..write(',')
+        ..write(job.uploadedBytes)
+        ..write(',')
+        ..write(job.totalBytes)
+        ..write(',')
+        ..write(job.lastModified)
+        ..write(',')
+        ..write(job.contentSha256)
+        ..write(',')
+        ..write(job.errorMessage)
+        ..write(',')
+        ..write(job.failureKind)
+        ..write(',')
+        ..write(job.fileCreatedAt)
+        ..write(',')
+        ..write(job.backupCompletedAt)
+        ..write(',')
+        ..write(job.scheduledCleanupAt)
+        ..write(',')
+        ..write(job.localDeletedAt)
+        ..write(',')
+        ..write(job.waitingCleanup)
+        ..write(',')
+        ..write(job.remoteRecordIds.join('-'))
+        ..write(',')
+        ..write(job.destinationComputerId)
+        ..write(',')
+        ..write(job.cleanupReason)
+        ..write(';');
+    }
+    return buffer.toString();
   }
 
   void _logBackupJobFailureEdges(

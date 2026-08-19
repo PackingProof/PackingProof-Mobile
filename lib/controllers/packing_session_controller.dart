@@ -3166,7 +3166,12 @@ class PackingSessionController extends ChangeNotifier {
         extra: <String, Object?>{'reason': reason},
       ),
     );
-    await _forEachRepositoryBackupBatch(_lanBackupService.backupAll);
+    await _forEachRepositoryBackupBatch(
+      (List<RecordingSession> sessions) => _lanBackupService.backupAll(
+        sessions,
+        forceRestart: lanBackupForceRestartForReason(reason),
+      ),
+    );
   }
 
   Future<void> _registerRepositorySessionsForRetention() =>
@@ -3192,7 +3197,16 @@ class PackingSessionController extends ChangeNotifier {
     final Map<String, List<RecordingSession>> grouped =
         <String, List<RecordingSession>>{};
     for (final RecordingSession session in sessions) {
-      if (!File(session.filePath).existsSync()) continue;
+      final FileStat stat;
+      try {
+        stat = await File(session.filePath).stat();
+      } on FileSystemException {
+        continue;
+      }
+      if (stat.type == FileSystemEntityType.notFound || stat.size <= 0) {
+        continue;
+      }
+      if (_hasRegisteredRetentionJob(session.filePath, stat)) continue;
       grouped
           .putIfAbsent(session.filePath, () => <RecordingSession>[])
           .add(session);
@@ -3201,6 +3215,16 @@ class PackingSessionController extends ChangeNotifier {
         in grouped.entries) {
       await _lanBackupService.enqueueFinalizedFile(entry.key, entry.value);
     }
+  }
+
+  bool _hasRegisteredRetentionJob(String filePath, FileStat stat) {
+    for (final LanBackupJob job in _lanBackupService.snapshot.jobs) {
+      if (!isSameLanBackupFile(job.filePath, filePath)) continue;
+      return job.totalBytes == stat.size &&
+          (job.lastModified?.millisecondsSinceEpoch ?? -1) ==
+              stat.modified.millisecondsSinceEpoch;
+    }
+    return false;
   }
 
   Future<void> _pruneDeletedBackupSessions({bool notify = true}) async {
@@ -3452,3 +3476,7 @@ bool _looksLikeComputerPairingQr(String value) {
   final String normalized = value.trim().toLowerCase();
   return normalized.startsWith('http://') || normalized.startsWith('https://');
 }
+
+/// 备份触发原因是否要求强制重启已有上传任务：只有用户手动“立即备份”需要，
+/// 启动恢复、连接恢复等场景由原生状态机裁决，避免每次启动全量重启上传。
+bool lanBackupForceRestartForReason(String reason) => reason == 'manual';

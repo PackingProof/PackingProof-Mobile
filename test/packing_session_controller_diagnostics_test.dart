@@ -63,6 +63,14 @@ void main() {
     expect(content, contains('"code":"unknown"'));
   });
 
+  test('备份触发原因决定是否强制重启上传', () {
+    expect(lanBackupForceRestartForReason('manual'), isTrue);
+    expect(lanBackupForceRestartForReason('app_start'), isFalse);
+    expect(lanBackupForceRestartForReason('auto_toggle_enabled'), isFalse);
+    expect(lanBackupForceRestartForReason('connection_restored'), isFalse);
+    expect(lanBackupForceRestartForReason('pairing_completed'), isFalse);
+  });
+
   test('首次启动记录带版本的 app_start 且不写 app_upgrade', () async {
     final SessionRepository repository = testRepository(root);
     final PackingSessionController controller = PackingSessionController(

@@ -5,6 +5,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONObject
+import java.time.Instant
 import java.nio.file.Files
 import java.security.MessageDigest
 
@@ -26,6 +28,30 @@ class LanBackupCleanupSchedulerTest {
         assertTrue(LanBackupCleanupScheduler.shouldDeferForBackupState("pending"))
         assertTrue(LanBackupCleanupScheduler.shouldDeferForBackupState("uploading"))
         assertFalse(LanBackupCleanupScheduler.shouldDeferForBackupState("paused"))
+    }
+
+    @Test
+    fun rescheduleIsSkippedWhenDueAtAlreadyScheduled() {
+        val dueAt = Instant.parse("2026-08-20T03:00:00Z")
+        val job = JSONObject().put("scheduledCleanupAt", dueAt.toString())
+        assertTrue(LanBackupCleanupScheduler.shouldSkipReschedule(job, dueAt))
+    }
+
+    @Test
+    fun rescheduleIsNeededWhenDueAtChangedOrNotScheduled() {
+        val dueAt = Instant.parse("2026-08-20T03:00:00Z")
+        assertFalse(
+            LanBackupCleanupScheduler.shouldSkipReschedule(
+                JSONObject().put("scheduledCleanupAt", "2026-08-19T03:00:00Z"),
+                dueAt,
+            ),
+        )
+        assertFalse(
+            LanBackupCleanupScheduler.shouldSkipReschedule(
+                JSONObject().put("scheduledCleanupAt", org.json.JSONObject.NULL),
+                dueAt,
+            ),
+        )
     }
 
     @Test

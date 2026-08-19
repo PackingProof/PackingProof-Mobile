@@ -473,13 +473,309 @@ void main() {
         endedAt: startedAt.add(const Duration(seconds: 1)),
         markers: const <BarcodeMarker>[],
       ),
-    ]);
+    ], forceRestart: true);
 
     expect(enqueueCall?.method, 'enqueue');
     final Map<Object?, Object?> arguments =
         enqueueCall!.arguments! as Map<Object?, Object?>;
     expect(arguments['startUpload'], isTrue);
     expect(arguments['forceRestart'], isTrue);
+  });
+
+  test('启动备份跳过已完成且带校验值的任务', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-skip-completed-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final File video = File('${root.path}/video.mp4');
+    await video.writeAsBytes(<int>[1, 2, 3]);
+    final FileStat stat = await video.stat();
+    final MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/lan_backup_skip_completed_${root.path.hashCode}',
+    );
+    int enqueueCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'enqueue') enqueueCalls++;
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    final LanBackupService service = LanBackupService(channel: channel);
+    addTearDown(service.dispose);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        jobs: <LanBackupJob>[
+          LanBackupJob(
+            id: 'job-completed',
+            filePath: video.path,
+            state: LanBackupJobState.completed,
+            uploadedBytes: stat.size,
+            totalBytes: stat.size,
+            lastModified: stat.modified,
+            contentSha256: 'verified-sha',
+          ),
+        ],
+      ),
+    );
+    final DateTime startedAt = DateTime.utc(2026, 7, 19, 10);
+
+    await service.backupAll(<RecordingSession>[
+      RecordingSession(
+        id: 'session-completed',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <BarcodeMarker>[],
+      ),
+    ]);
+
+    expect(enqueueCalls, 0);
+  });
+
+  test('启动备份满足全部条件时跳过待上传任务且不强制重启', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-skip-pending-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final File video = File('${root.path}/video.mp4');
+    await video.writeAsBytes(<int>[1, 2, 3]);
+    final FileStat stat = await video.stat();
+    final MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/lan_backup_skip_pending_${root.path.hashCode}',
+    );
+    int enqueueCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'enqueue') enqueueCalls++;
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    final LanBackupService service = LanBackupService(channel: channel);
+    addTearDown(service.dispose);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        jobs: <LanBackupJob>[
+          LanBackupJob(
+            id: 'job-pending',
+            filePath: video.path,
+            state: LanBackupJobState.pending,
+            uploadedBytes: 0,
+            totalBytes: stat.size,
+            lastModified: stat.modified,
+          ),
+        ],
+      ),
+    );
+    final DateTime startedAt = DateTime.utc(2026, 7, 19, 10);
+
+    await service.backupAll(<RecordingSession>[
+      RecordingSession(
+        id: 'session-pending',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <BarcodeMarker>[],
+      ),
+    ]);
+
+    expect(enqueueCalls, 0);
+  });
+
+  test('启动备份对暂停任务重新入队但不强制重启', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-resume-paused-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final File video = File('${root.path}/video.mp4');
+    await video.writeAsBytes(<int>[1, 2, 3]);
+    final FileStat stat = await video.stat();
+    final MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/lan_backup_resume_paused_${root.path.hashCode}',
+    );
+    MethodCall? enqueueCall;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'enqueue') enqueueCall = call;
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    final LanBackupService service = LanBackupService(channel: channel);
+    addTearDown(service.dispose);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        jobs: <LanBackupJob>[
+          LanBackupJob(
+            id: 'job-paused',
+            filePath: video.path,
+            state: LanBackupJobState.paused,
+            uploadedBytes: 37,
+            totalBytes: stat.size,
+            lastModified: stat.modified,
+          ),
+        ],
+      ),
+    );
+    final DateTime startedAt = DateTime.utc(2026, 7, 19, 10);
+
+    await service.backupAll(<RecordingSession>[
+      RecordingSession(
+        id: 'session-paused',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <BarcodeMarker>[],
+      ),
+    ]);
+
+    expect(enqueueCall?.method, 'enqueue');
+    final Map<Object?, Object?> arguments =
+        enqueueCall!.arguments! as Map<Object?, Object?>;
+    expect(arguments['startUpload'], isTrue);
+    expect(arguments['forceRestart'], isFalse);
+  });
+
+  test('启动备份条件不满足时必须走原生入队', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-skip-mismatch-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final File video = File('${root.path}/video.mp4');
+    await video.writeAsBytes(<int>[1, 2, 3]);
+    final MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/lan_backup_skip_mismatch_${root.path.hashCode}',
+    );
+    int enqueueCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'enqueue') enqueueCalls++;
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    final LanBackupService service = LanBackupService(channel: channel);
+    addTearDown(service.dispose);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        jobs: <LanBackupJob>[
+          LanBackupJob(
+            id: 'job-stale-size',
+            filePath: video.path,
+            state: LanBackupJobState.pending,
+            uploadedBytes: 0,
+            totalBytes: 999999,
+          ),
+        ],
+      ),
+    );
+    final DateTime startedAt = DateTime.utc(2026, 7, 19, 10);
+
+    await service.backupAll(<RecordingSession>[
+      RecordingSession(
+        id: 'session-mismatch',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <BarcodeMarker>[],
+      ),
+    ]);
+
+    expect(enqueueCalls, 1);
+  });
+
+  test('快照内容未变时不重复通知监听者', () {
+    final LanBackupService service = LanBackupService();
+    addTearDown(service.dispose);
+    int notifications = 0;
+    service.addListener(() => notifications++);
+    final Map<Object?, Object?> values = <Object?, Object?>{
+      'deviceId': 'android-signature',
+      'deviceName': '手机1',
+      'connection': null,
+      'jobs': <Object?>[],
+      'migrationHost': null,
+    };
+
+    service.debugApplyNativeSnapshotForTesting(values);
+    expect(notifications, 1);
+    service.debugApplyNativeSnapshotForTesting(values);
+    expect(notifications, 1);
+  });
+
+  test('瘦身快照缺省字段可正常解析', () {
+    final LanBackupService service = LanBackupService();
+    addTearDown(service.dispose);
+    service.debugApplyNativeSnapshotForTesting(<Object?, Object?>{
+      'deviceId': 'android-slim',
+      'deviceName': '手机2',
+      'connection': null,
+      'jobs': <Object?>[
+        <Object?, Object?>{
+          'id': 'job-slim',
+          'filePath': '/data/user/0/app.packingproof.mobile/recordings/a.mp4',
+          'state': 'pending',
+          'uploadedBytes': 0,
+          'totalBytes': 100,
+          'lastModified': 1000,
+          'contentSha256': 'sha-slim',
+        },
+      ],
+      'migrationHost': null,
+    });
+
+    final LanBackupJob job = service.snapshot.jobs.single;
+    expect(job.id, 'job-slim');
+    expect(job.lastModified?.millisecondsSinceEpoch, 1000);
+    expect(job.contentSha256, 'sha-slim');
+    expect(job.remoteRecordIds, isEmpty);
+    expect(job.destinationComputerId, '');
+  });
+
+  test('轮询定时器每 10 tick 才刷新一次完整快照', () async {
+    final MethodChannel channel = const MethodChannel(
+      'app.packingproof.mobile/lan_backup_poll_test',
+    );
+    int snapshotCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'snapshot') {
+            snapshotCalls++;
+            return <Object?, Object?>{
+              'deviceId': 'android-poll',
+              'deviceName': '手机1',
+              'connection': null,
+              'jobs': <Object?>[],
+              'migrationHost': null,
+            };
+          }
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    final LanBackupService service = LanBackupService(channel: channel);
+    addTearDown(service.dispose);
+
+    for (int index = 0; index < 9; index++) {
+      service.debugFirePollTick();
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(snapshotCalls, 0);
+
+    service.debugFirePollTick();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(snapshotCalls, 1);
   });
 
   test('自动备份关闭时入队仍留下决策日志', () async {

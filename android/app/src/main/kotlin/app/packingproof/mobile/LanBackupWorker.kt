@@ -107,7 +107,10 @@ internal class LanBackupWorker(
             setForeground(foreground(job, 0))
             val uploadId = createResponse.getString("uploadId")
             val encodedUploadId = URLEncoder.encode(uploadId, Charsets.UTF_8.name())
-            var offset = createResponse.optLong("offset", 0L).coerceIn(0L, file.length())
+            var offset = resolveInitialUploadOffset(
+                createResponse.optLong("offset", 0L),
+                file.length(),
+            )
             val chunkSize = createResponse.optInt("chunkSize", DEFAULT_CHUNK_SIZE)
                 .coerceIn(256 * 1024, 8 * 1024 * 1024)
 
@@ -587,6 +590,10 @@ internal class LanBackupWorker(
     private fun notificationId(job: JSONObject): Int =
         job.getString("id").take(8).hashCode()
 }
+
+/** 上传续传起点只以主机 create 响应为准，job.uploadedBytes 仅用于展示。 */
+internal fun resolveInitialUploadOffset(hostOffset: Long, fileLength: Long): Long =
+    hostOffset.coerceIn(0L, fileLength)
 
 private class BackupHttpException(
     val statusCode: Int,
