@@ -207,6 +207,24 @@ void main() {
     );
   });
 
+  test('WAV 提示音源声明 audio/wav MIME', () {
+    final BytesSource source = DeviceSpeechOutput.buildWavBytesSource(
+      DeviceSpeechOutput.buildShortBeepWav(),
+    );
+
+    expect(source, isA<BytesSource>());
+    expect(source.mimeType, 'audio/wav');
+  });
+
+  test('固定语音源声明 audio/mpeg MIME 且路径不变', () {
+    const String path = 'audio/tts/duplicate_order_warning.mp3';
+    final AssetSource source = DeviceSpeechOutput.buildSpeechAssetSource(path);
+
+    expect(source, isA<AssetSource>());
+    expect(source.path, path);
+    expect(source.mimeType, 'audio/mpeg');
+  });
+
   test('识别短滴声跟随语音提示开关且不打断播报', () async {
     final _InterruptibleSpeechOutput output = _InterruptibleSpeechOutput();
     final SpeechPromptService service = SpeechPromptService(output: output);

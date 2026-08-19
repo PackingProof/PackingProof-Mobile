@@ -343,6 +343,8 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
 }
 
 class DeviceSpeechOutput implements SpeechOutput {
+  static const Duration _sourceStartTimeout = Duration(seconds: 3);
+
   DeviceSpeechOutput({AudioPlayer? audioPlayer, FlutterTts? systemTts})
     : _audioPlayer = audioPlayer ?? AudioPlayer(),
       _systemTts = systemTts ?? FlutterTts() {
@@ -374,18 +376,28 @@ class DeviceSpeechOutput implements SpeechOutput {
     );
   }
 
-  @override
-  Future<void> playAsset(String assetPath) => _play(AssetSource(assetPath));
+  @visibleForTesting
+  static BytesSource buildWavBytesSource(Uint8List bytes) =>
+      BytesSource(bytes, mimeType: 'audio/wav');
+
+  @visibleForTesting
+  static AssetSource buildSpeechAssetSource(String assetPath) =>
+      AssetSource(assetPath, mimeType: 'audio/mpeg');
 
   @override
-  Future<void> playRemarkTone() => _play(BytesSource(_remarkToneWav()));
+  Future<void> playAsset(String assetPath) =>
+      _play(buildSpeechAssetSource(assetPath));
 
   @override
-  Future<void> playWarningTone() => _play(BytesSource(_warningToneWav()));
+  Future<void> playRemarkTone() => _play(buildWavBytesSource(_remarkToneWav()));
+
+  @override
+  Future<void> playWarningTone() =>
+      _play(buildWavBytesSource(_warningToneWav()));
 
   @override
   Future<void> playIndustrialAlarm() =>
-      _play(BytesSource(_industrialAlarmWav()));
+      _play(buildWavBytesSource(_industrialAlarmWav()));
 
   @override
   Future<void> playShortBeep() {
@@ -421,7 +433,7 @@ class DeviceSpeechOutput implements SpeechOutput {
       }
       debugPrint('[speech_prompt] beep_play');
       await player
-          .play(BytesSource(_shortBeepWav ??= buildShortBeepWav()))
+          .play(buildWavBytesSource(_shortBeepWav ??= buildShortBeepWav()))
           .timeout(const Duration(seconds: 3));
     } on Object catch (error) {
       debugPrint('[speech_prompt] beep_failed: $error');
@@ -656,7 +668,7 @@ class DeviceSpeechOutput implements SpeechOutput {
     final StreamSubscription<void> subscription = _audioPlayer.onPlayerComplete
         .listen((_) => _completePlayback());
     try {
-      await _audioPlayer.play(source).timeout(const Duration(seconds: 10));
+      await _audioPlayer.play(source).timeout(_sourceStartTimeout);
       await completion.future.timeout(const Duration(seconds: 30));
     } on Object {
       await _stopAudioPlayerBounded();
