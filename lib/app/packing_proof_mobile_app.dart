@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../models/app_settings.dart';
 import '../screens/packing_home_screen.dart';
@@ -57,6 +58,9 @@ class _PackingProofMobileAppState extends State<PackingProofMobileApp> {
     return MaterialApp(
       title: widget.buildConfig.appTitle,
       debugShowCheckedModeBanner: false,
+      locale: const Locale('zh', 'CN'),
+      supportedLocales: const <Locale>[Locale('zh', 'CN')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       theme: PackingProofTheme.light(),
       darkTheme: PackingProofTheme.dark(),
       themeMode: PackingProofMobileApp.themeMode,
