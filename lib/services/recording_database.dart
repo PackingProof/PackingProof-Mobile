@@ -290,25 +290,19 @@ class RecordingDatabase {
     final Database db = await _db;
     final int normalizedPage = page < 1 ? 1 : page;
     final int normalizedSize = pageSize.clamp(1, 100);
-    final List<Map<String, Object?>> pathRows = await db.rawQuery(
-      'SELECT DISTINCT file_path FROM recording_sessions '
-      'WHERE is_deleted = 0 ORDER BY file_path '
-      'LIMIT ? OFFSET ?',
-      <Object?>[normalizedSize, (normalizedPage - 1) * normalizedSize],
-    );
-    final List<String> paths = pathRows
-        .map((Map<String, Object?> row) => row['file_path']! as String)
-        .toList(growable: false);
-    if (paths.isEmpty) return <RecordingSession>[];
-    final String placeholders = List<String>.filled(
-      paths.length,
-      '?',
-    ).join(',');
     final List<Map<String, Object?>> rows = await db.rawQuery(
-      'SELECT payload_json FROM recording_sessions '
-      'WHERE is_deleted = 0 AND file_path IN ($placeholders) '
+      'SELECT payload_json, file_path, started_at, id FROM ('
+      '  SELECT payload_json, file_path, started_at, id, '
+      '         DENSE_RANK() OVER (ORDER BY file_path) AS file_rank '
+      '  FROM recording_sessions '
+      '  WHERE is_deleted = 0'
+      ') '
+      'WHERE file_rank > ? AND file_rank <= ? '
       'ORDER BY file_path, started_at, id',
-      paths,
+      <Object?>[
+        (normalizedPage - 1) * normalizedSize,
+        normalizedPage * normalizedSize,
+      ],
     );
     return rows.map(_sessionFromRow).toList(growable: false);
   }
