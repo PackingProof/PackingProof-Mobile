@@ -24,7 +24,7 @@
 
 - [x] `lib/services/session_repository.dart`：`_resolveAndRepair` 每批只扫描一次录像目录，建立临时 `basename -> path` 映射，避免每条缺失录像重复递归扫描。
 - [x] 实施前先确认 basename 是否保证唯一；不把 `basename` 直接当作永久数据库唯一键，除非现有命名规则能证明唯一。
-- [ ] `lib/services/recording_database.dart`：`queryBackupBatch` 的 `DISTINCT file_path` 分页 + `IN` 二次查询，可择机合并，但不进入第一阶段核心改造。
+- [x] `lib/services/recording_database.dart`：`queryBackupBatch` 的 `DISTINCT file_path` 分页 + `IN` 二次查询，可择机合并，但不进入第一阶段核心改造。
 
 ## 明确不做
 
