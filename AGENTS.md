@@ -57,6 +57,8 @@ from `android/`.
 
 本地 Release 调试包可直接双击仓库根目录的 `双击构建Release调试版.bat`。该入口自动读取 `pubspec.yaml` 版本，使用调试证书生成可安装的 ARM64 Release APK，并输出到 `dist/android/PackingProof-Mobile.apk`；它不用于正式发布。
 
+更新已安装的 Android debug 包时，不要使用 `flutter install`：当前 Flutter 工具会先卸载旧版本，导致应用私有目录里的录像索引、设置和本机录像一并丢失。需要保留应用数据时使用 `flutter run -d <device-id> --debug`，或先用 `flutter build apk --debug` 生成 APK 后执行 `adb install -r <apk>`。
+
 Format only files changed for the current task:
 
 ```powershell
