@@ -63,7 +63,7 @@ flutter run
 flutter build apk --debug
 ```
 
-也可以双击根目录的 `双击构建Debug包.bat`：使用 Android 调试证书一键构建并输出到 `dist/android/PackingProof-Mobile-debug.apk`，无需任何签名配置。
+也可以双击根目录的 `双击构建Debug包.bat`：使用 Android 调试证书一键构建并输出到 `dist/android/PackingProof-Mobile-debug-v<versionName>+<versionCode>.apk`，无需任何签名配置。
 
 生成本地诊断 APK（调试签名）：
 
@@ -92,6 +92,6 @@ pwsh -NoProfile -File Tools\Publish-Android.ps1 `
 
 脚本会生成或复用内置语音，依次运行静态检查和全部测试，再构建仅支持 `arm64-v8a` 的统一安装包。本地诊断包使用 Android 调试证书签名，可以直接安装，但不能覆盖正式签名版本，也不能用于正式发布。
 
-在不提交的根目录 `.env` 中配置 `PACKING_PROOF_SIGNING_DIRECTORY=<仓库外的签名目录>` 后，双击 `双击构建Release包.bat` 可生成能够直接覆盖同一签名已安装版本的 Release 测试 APK。该脚本读取 `pubspec.yaml` 版本并覆盖固定位置的 `dist/android/PackingProof-Mobile.apk`，不创建 Git 标签或发布记录。
+在不提交的根目录 `.env` 中配置 `PACKING_PROOF_SIGNING_DIRECTORY=<仓库外的签名目录>` 后，双击 `双击构建Release调试版.bat` 可生成能够直接覆盖同一签名已安装版本的 Release 测试 APK。该脚本读取 `pubspec.yaml` 版本并输出 `dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk`，不创建 Git 标签或发布记录。
 
-产物位于 `dist/android/`，包括 `PackingProof-Mobile.apk`、`SHA256SUMS.txt` 和 `build-manifest.json`，不会生成 ZIP 压缩包。
+产物位于 `dist/android/`，包括 `PackingProof-Mobile-v<versionName>+<versionCode>.apk`、`SHA256SUMS.txt` 和 `build-manifest.json`，不会生成 ZIP 压缩包。

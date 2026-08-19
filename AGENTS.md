@@ -13,7 +13,7 @@ PackingProof-Mobile is a Flutter app for continuous package-recording and shippi
 - `android/` and `ios/` contain platform projects.
 - `Tools/Publish-Android.ps1` is the formal Android release entry point. It resolves the version from the exact Git tag and delegates compilation and validation to `Tools/Build-Android.ps1`.
 - `Tools/Build-Android.ps1` is the underlying Android builder and may also produce a debug-signed local diagnostic APK.
-- `双击构建Release调试版.bat` builds a formally signed Release test APK from the `pubspec.yaml` version and overwrites the fixed `dist/android/PackingProof-Mobile.apk` output so it can replace an installed app with the same signing certificate.
+- `双击构建Release调试版.bat` builds a formally signed Release test APK from the `pubspec.yaml` version and outputs `dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk` so it can replace an installed app with the same signing certificate.
 - `dist/android/` contains generated release artifacts and must not be committed.
 
 ## Product Constraints
@@ -55,7 +55,9 @@ Flutter and Dart are already available through the Windows system `PATH`. Invoke
 routine repository work. Run Android Gradle tasks with the repository wrapper
 from `android/`.
 
-本地 Release 调试包可直接双击仓库根目录的 `双击构建Release调试版.bat`。该入口自动读取 `pubspec.yaml` 版本，使用调试证书生成可安装的 ARM64 Release APK，并输出到 `dist/android/PackingProof-Mobile.apk`；它不用于正式发布。
+本地 Release 调试包可直接双击仓库根目录的 `双击构建Release调试版.bat`。该入口自动读取 `pubspec.yaml` 版本，使用调试证书生成可安装的 ARM64 Release APK，并输出到 `dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk`；它不用于正式发布。
+
+iOS IPA 打包脚本为 `Tools/Build-iOS.sh`，默认使用 `app-store` 导出方式，并输出到 `dist/ios/PackingProof-Mobile-v<versionName>+<versionCode>.ipa`；需要临时内部分发时可传入 `ad-hoc` 或 `development`。
 
 更新已安装的 Android debug 包时，不要使用 `flutter install`：当前 Flutter 工具会先卸载旧版本，导致应用私有目录里的录像索引、设置和本机录像一并丢失。需要保留应用数据时使用 `flutter run -d <device-id> --debug`，或先用 `flutter build apk --debug` 生成 APK 后执行 `adb install -r <apk>`。
 
@@ -102,7 +104,7 @@ pwsh -NoProfile -File Tools\Publish-Android.ps1 `
 - Prefer release tags in the form `v<versionName>+<increasing-versionCode>`, for example `v0.5.4+11004`. A plain `v<versionName>` tag is accepted only when `pubspec.yaml` has the same version name and supplies the version code.
 - The formal release script must reject a dirty worktree, a missing or ambiguous tag, and a missing external signing configuration.
 - Complete and record the release-readiness audit (technical debt, performance, concurrency/race conditions) before creating the release tag.
-- Create and upload the GitHub Release (tag, APK, `SHA256SUMS.txt`, release notes) with the GitHub plugin or `gh`; create and upload the Gitee Release with the `gitee` CLI (`gitee auth status`, `gitee release create --tag <tag> --name "..." --notes "..."`, `gitee release upload <tag> dist/android/PackingProof-Mobile.apk SHA256SUMS.txt`).
+- Create and upload the GitHub Release (tag, APK, `SHA256SUMS.txt`, release notes) with the GitHub plugin or `gh`; create and upload the Gitee Release with the `gitee` CLI (`gitee auth status`, `gitee release create --tag <tag> --name "..." --notes "..."`, `gitee release upload <tag> dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk SHA256SUMS.txt`).
 - 发布笔记必须使用仓库根目录的 `RELEASE_NOTES_TEMPLATE.md`：更新内容按“功能与体验 / 问题修复 / 兼容与工程”三类填写，并包含下载与更新说明、未验证事项；禁止自创格式，GitHub 与 Gitee 的 Release 笔记保持一致。Release 标题固定为“`v<X.Y.Z+VVVV> <一句话内容>`”（版本号开头，不加产品名或“发布”等前缀）。更新日志范围：预览版只写本预览版增量内容，正式版必须汇总上一个正式版以来（含中间所有预览版）的全部更新内容。
 - Release builds fingerprint tracked Android configuration, dependency files, and the Flutter SDK. Matching inputs reuse Gradle/native caches, while every build still regenerates Flutter Release output and verifies the Git revision and timestamp inside `libapp.so`.
 - Pass `-ForceClean` to `Tools/Publish-Android.ps1` or `Tools/Build-Release-Diagnostic.ps1` when diagnosing a toolchain or cache problem that requires a full `flutter clean`.
@@ -110,7 +112,7 @@ pwsh -NoProfile -File Tools\Publish-Android.ps1 `
 - Release a single `arm64-v8a` APK; 32-bit ARM and x86 are intentionally unsupported and packaging must fail if either reappears.
 - Keep keystores and `签名凭据.txt` outside the repository.
 - Never print, commit, copy, or package signing credentials.
-- Release output is `dist/android/PackingProof-Mobile.apk`, with `SHA256SUMS.txt` and `build-manifest.json`.
+- Release output is `dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk`, with `SHA256SUMS.txt` and `build-manifest.json`.
 - Do not create a ZIP archive for the Android release.
 - Treat the build as successful only when bundled speech assets, metadata, Git revision, formal signature, and SHA256 validation all pass.
 

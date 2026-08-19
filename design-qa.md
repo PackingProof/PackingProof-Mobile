@@ -27,7 +27,7 @@
 ## Validation history
 
 - Release APK rebuilt after `flutter clean` to eliminate the stale Dart snapshot.
-- Installed from the stable path `dist/android/PackingProof-Mobile.apk`.
+- Installed from the versioned path `dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk`.
 - Confirmed package version `0.3.1`, version code `9002` on the connected device.
 - Captured and inspected the recording, history, settings, barcode-search, and source-filter states.
 

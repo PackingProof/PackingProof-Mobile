@@ -63,7 +63,7 @@ Build an Android debug APK:
 flutter build apk --debug
 ```
 
-Alternatively, double-click `双击构建Debug包.bat` to build a debug-signed APK at `dist/android/PackingProof-Mobile-debug.apk` with no signing configuration.
+Alternatively, double-click `双击构建Debug包.bat` to build a debug-signed APK at `dist/android/PackingProof-Mobile-debug-v<versionName>+<versionCode>.apk` with no signing configuration.
 
 Build a local diagnostic APK with the Android debug certificate:
 
@@ -90,6 +90,6 @@ The formal release script requires a clean worktree and an exact version tag on 
 
 The release workflow generates or reuses bundled speech assets, runs static analysis and the full test suite, and then creates one unified `arm64-v8a` APK. A locally built diagnostic APK uses the Android debug certificate: it cannot replace a formally signed installation and must not be distributed as an official release.
 
-To build a Release test APK that can replace an installed build signed with the same certificate, set `PACKING_PROOF_SIGNING_DIRECTORY=<external-signing-directory>` in the untracked root `.env` file and run `双击构建Release包.bat`. This helper reads the version from `pubspec.yaml`, overwrites `dist/android/PackingProof-Mobile.apk`, and does not create a Git tag or release.
+To build a Release test APK that can replace an installed build signed with the same certificate, set `PACKING_PROOF_SIGNING_DIRECTORY=<external-signing-directory>` in the untracked root `.env` file and run `双击构建Release调试版.bat`. This helper reads the version from `pubspec.yaml`, outputs `dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk`, and does not create a Git tag or release.
 
-Release artifacts are written to `dist/android/` as `PackingProof-Mobile.apk`, `SHA256SUMS.txt`, and `build-manifest.json`. No ZIP archive is generated.
+Release artifacts are written to `dist/android/` as `PackingProof-Mobile-v<versionName>+<versionCode>.apk`, `SHA256SUMS.txt`, and `build-manifest.json`. No ZIP archive is generated.

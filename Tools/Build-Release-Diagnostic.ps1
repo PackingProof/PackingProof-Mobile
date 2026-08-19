@@ -58,7 +58,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "正式签名 Release 测试安装包构建失败，退出代码：$LASTEXITCODE"
 }
 
-$apkPath = Join-Path $repo 'dist/android/PackingProof-Mobile.apk'
+$apkPath = Join-Path $repo "dist/android/PackingProof-Mobile-v${versionName}+${versionCode}.apk"
 if (-not (Test-Path -LiteralPath $apkPath -PathType Leaf)) {
     throw "构建完成但找不到安装包：$apkPath"
 }

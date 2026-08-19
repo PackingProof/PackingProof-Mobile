@@ -402,7 +402,7 @@ try {
     if ($signing) {
         Assert-ApkSignature -ApkPath $source -ApkSigner $apkSigner -ExpectedSha256 $signingCertificateSha256
     }
-    $fileName = 'PackingProof-Mobile.apk'
+    $fileName = "PackingProof-Mobile-v${VersionName}+${VersionCode}.apk"
     $destination = Join-Path $temporaryOutput $fileName
     Copy-Item -LiteralPath $source -Destination $destination
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $destination).Hash.ToLowerInvariant()

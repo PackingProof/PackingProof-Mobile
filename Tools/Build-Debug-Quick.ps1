@@ -49,7 +49,7 @@ try {
 
     $outputDir = Join-Path $repo 'dist/android'
     New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
-    $destination = Join-Path $outputDir 'PackingProof-Mobile-debug.apk'
+    $destination = Join-Path $outputDir "PackingProof-Mobile-debug-v$version.apk"
     Copy-Item -LiteralPath $source -Destination $destination -Force
 
     $sizeMb = [Math]::Round((Get-Item -LiteralPath $destination).Length / 1MB, 1)
