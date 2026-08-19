@@ -831,6 +831,74 @@ void main() {
     expect(toggleLogs.last['enabled'], isFalse);
   });
 
+  test('批量注册录像只刷新一次快照并保留每条入队日志', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-batch-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final File first = File('${root.path}/first.mp4');
+    final File second = File('${root.path}/second.mp4');
+    await first.writeAsBytes(<int>[1, 2, 3]);
+    await second.writeAsBytes(<int>[4, 5, 6]);
+    final MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/lan_backup_batch_test_${root.path.hashCode}',
+    );
+    int enqueueCalls = 0;
+    int snapshotCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'enqueue') {
+            enqueueCalls++;
+          } else if (call.method == 'snapshot') {
+            snapshotCalls++;
+          }
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    final List<({String kind, Map<String, Object?> extra})> events =
+        <({String kind, Map<String, Object?> extra})>[];
+    final LanBackupService service = LanBackupService(
+      channel: channel,
+      logEvent: (String kind, Map<String, Object?> extra) async {
+        events.add((kind: kind, extra: extra));
+      },
+    );
+    addTearDown(service.dispose);
+    await service.setAutoEnabled(false);
+    final DateTime startedAt = DateTime.utc(2026, 7, 25, 10);
+
+    await service.enqueueFinalizedFiles(<String, List<RecordingSession>>{
+      first.path: <RecordingSession>[
+        RecordingSession(
+          id: 'session-batch-1',
+          filePath: first.path,
+          startedAt: startedAt,
+          endedAt: startedAt.add(const Duration(seconds: 1)),
+          markers: const <BarcodeMarker>[],
+        ),
+      ],
+      second.path: <RecordingSession>[
+        RecordingSession(
+          id: 'session-batch-2',
+          filePath: second.path,
+          startedAt: startedAt,
+          endedAt: startedAt.add(const Duration(seconds: 1)),
+          markers: const <BarcodeMarker>[],
+        ),
+      ],
+    });
+
+    expect(enqueueCalls, 2);
+    expect(snapshotCalls, 1);
+    expect(
+      events.where((event) => event.kind == 'backup_enqueue'),
+      hasLength(2),
+    );
+  });
+
   test('备份失败日志只记录状态边沿变化', () async {
     final List<({String kind, Map<String, Object?> extra})> events =
         <({String kind, Map<String, Object?> extra})>[];

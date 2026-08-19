@@ -155,6 +155,10 @@ abstract interface class LanBackupSink implements Listenable {
     String filePath,
     List<RecordingSession> sessions,
   );
+  Future<void> enqueueFinalizedFiles(
+    Map<String, List<RecordingSession>> grouped, {
+    bool startUpload = false,
+  });
   Future<void> backupAll(
     List<RecordingSession> sessions, {
     bool forceRestart = false,
@@ -864,35 +868,61 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   Future<void> enqueueFinalizedFile(
     String filePath,
     List<RecordingSession> sessions,
-  ) => _enqueue(filePath, sessions, startUpload: _snapshot.autoEnabled);
+  ) => _enqueueBatch(<({String filePath, List<RecordingSession> sessions})>[
+    (filePath: filePath, sessions: sessions),
+  ], startUpload: _snapshot.autoEnabled);
 
-  Future<void> _enqueue(
-    String filePath,
-    List<RecordingSession> sessions, {
+  @override
+  Future<void> enqueueFinalizedFiles(
+    Map<String, List<RecordingSession>> grouped, {
+    bool startUpload = false,
+  }) => _enqueueBatch(
+    grouped.entries
+        .map(
+          (MapEntry<String, List<RecordingSession>> entry) =>
+              (filePath: entry.key, sessions: entry.value),
+        )
+        .toList(growable: false),
+    startUpload: startUpload,
+  );
+
+  Future<void> _enqueueBatch(
+    List<({String filePath, List<RecordingSession> sessions})> entries, {
     required bool startUpload,
     bool forceRestart = false,
   }) async {
-    final File source = File(filePath);
-    try {
-      if (!source.existsSync() || source.lengthSync() <= 0) return;
-    } on FileSystemException {
-      return;
+    final List<({String filePath, List<RecordingSession> sessions})> valid =
+        <({String filePath, List<RecordingSession> sessions})>[];
+    for (final ({String filePath, List<RecordingSession> sessions}) entry
+        in entries) {
+      final File source = File(entry.filePath);
+      try {
+        if (!source.existsSync() || source.lengthSync() <= 0) {
+          continue;
+        }
+      } on FileSystemException {
+        continue;
+      }
+      await _platform.enqueueJob(<String, Object?>{
+        'filePath': entry.filePath,
+        'sessions': entry.sessions
+            .map(recordingSessionBackupMap)
+            .toList(growable: false),
+        'startUpload': startUpload,
+        'forceRestart': forceRestart,
+      });
+      valid.add(entry);
     }
-    await _platform.enqueueJob(<String, Object?>{
-      'filePath': filePath,
-      'sessions': sessions
-          .map(recordingSessionBackupMap)
-          .toList(growable: false),
-      'startUpload': startUpload,
-      'forceRestart': forceRestart,
-    });
     await refresh();
-    _log('backup_enqueue', <String, Object?>{
-      'filePath': filePath,
-      'sessionCount': sessions.length,
-      'startUpload': startUpload,
-      'forceRestart': forceRestart,
-    });
+    for (final ({String filePath, List<RecordingSession> sessions}) entry
+        in valid) {
+      _log('backup_enqueue', <String, Object?>{
+        'filePath': entry.filePath,
+        'sessionCount': entry.sessions.length,
+        'startUpload': startUpload,
+        'forceRestart': forceRestart,
+      });
+    }
   }
 
   @override
@@ -913,18 +943,20 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       'forceRestart': forceRestart,
     });
     final Map<String, LanBackupJob> jobsByFile = _backupJobsByFile();
+    final List<({String filePath, List<RecordingSession> sessions})> eligible =
+        <({String filePath, List<RecordingSession> sessions})>[];
     for (final MapEntry<String, List<RecordingSession>> entry
         in grouped.entries) {
       if (!forceRestart && await _shouldSkipBackupAll(entry.key, jobsByFile)) {
         continue;
       }
-      await _enqueue(
-        entry.key,
-        entry.value,
-        startUpload: true,
-        forceRestart: forceRestart,
-      );
+      eligible.add((filePath: entry.key, sessions: entry.value));
     }
+    await _enqueueBatch(
+      eligible,
+      startUpload: true,
+      forceRestart: forceRestart,
+    );
   }
 
   /// 仅当任务快照能证明该文件无需重新入队时才跳过（native 仍保留最终裁决权）：

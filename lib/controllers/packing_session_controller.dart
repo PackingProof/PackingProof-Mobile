@@ -3218,10 +3218,7 @@ class PackingSessionController extends ChangeNotifier {
           .putIfAbsent(session.filePath, () => <RecordingSession>[])
           .add(session);
     }
-    for (final MapEntry<String, List<RecordingSession>> entry
-        in grouped.entries) {
-      await _lanBackupService.enqueueFinalizedFile(entry.key, entry.value);
-    }
+    await _lanBackupService.enqueueFinalizedFiles(grouped);
   }
 
   Map<String, LanBackupJob> _backupJobsByFile() {
