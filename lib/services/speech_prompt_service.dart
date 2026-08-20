@@ -352,7 +352,6 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
 class DeviceSpeechOutput implements SpeechOutput {
   static const Duration _sourceStartTimeout = Duration(seconds: 3);
   static const String _warningToneKey = 'duplicate_warning_tone';
-  static const String _duplicateSpeechKey = 'duplicate_order_warning';
 
   DeviceSpeechOutput({
     AudioPlayer? audioPlayer,
@@ -387,6 +386,7 @@ class DeviceSpeechOutput implements SpeechOutput {
   bool _beepContextConfigured = false;
   bool _warningTonePrepared = false;
   bool _duplicateSpeechPrepared = false;
+  final Set<String> _preparedPromptAssets = <String>{};
 
   /// 录像期间播放提示音时，iOS 也必须保留录音能力。
   ///
@@ -414,7 +414,7 @@ class DeviceSpeechOutput implements SpeechOutput {
   Future<void> prepareDuplicateOrderWarning() async {
     await Future.wait<void>(<Future<void>>[
       _prepareWarningTone(),
-      _prepareDuplicateSpeech(),
+      _prepareAllFixedSpeech(),
     ]);
   }
 
@@ -458,22 +458,7 @@ class DeviceSpeechOutput implements SpeechOutput {
     if (_duplicateSpeechPrepared) return;
     final PromptAudioPlatform? promptAudio = _promptAudio;
     if (promptAudio != null) {
-      try {
-        final ByteData asset = await rootBundle.load(
-          SpeechPrompt.duplicateOrderWarning.assetPath,
-        );
-        await promptAudio.prepare(
-          key: _duplicateSpeechKey,
-          bytes: asset.buffer.asUint8List(
-            asset.offsetInBytes,
-            asset.lengthInBytes,
-          ),
-          mimeType: 'audio/mpeg',
-        );
-        _duplicateSpeechPrepared = true;
-      } on Object {
-        _duplicateSpeechPrepared = false;
-      }
+      await _prepareAllFixedSpeech();
       return;
     }
     final AudioPlayer player = _duplicateSpeechPlayer ??= AudioPlayer();
@@ -496,6 +481,37 @@ class DeviceSpeechOutput implements SpeechOutput {
       _duplicateSpeechPrepared = false;
       await _stopPlayerBounded(player);
     }
+  }
+
+  Future<void> _prepareAllFixedSpeech() async {
+    final PromptAudioPlatform? promptAudio = _promptAudio;
+    if (promptAudio == null) {
+      await _prepareDuplicateSpeech();
+      return;
+    }
+    for (final SpeechPrompt prompt in SpeechPrompt.values) {
+      final String key = prompt.audioPlayerAssetPath;
+      if (_preparedPromptAssets.contains(key)) {
+        continue;
+      }
+      try {
+        final ByteData asset = await rootBundle.load(prompt.assetPath);
+        await promptAudio.prepare(
+          key: key,
+          bytes: asset.buffer.asUint8List(
+            asset.offsetInBytes,
+            asset.lengthInBytes,
+          ),
+          mimeType: 'audio/mpeg',
+        );
+        _preparedPromptAssets.add(key);
+      } on Object {
+        // One prompt must not prevent the remaining prompts from being prepared.
+      }
+    }
+    _duplicateSpeechPrepared = _preparedPromptAssets.contains(
+      SpeechPrompt.duplicateOrderWarning.audioPlayerAssetPath,
+    );
   }
 
   Future<void> _preparePlayer(
@@ -557,10 +573,8 @@ class DeviceSpeechOutput implements SpeechOutput {
   @override
   Future<void> playAsset(String assetPath) {
     final PromptAudioPlatform? promptAudio = _promptAudio;
-    if (_duplicateSpeechPrepared &&
-        promptAudio != null &&
-        assetPath == SpeechPrompt.duplicateOrderWarning.audioPlayerAssetPath) {
-      return promptAudio.play(_duplicateSpeechKey);
+    if (promptAudio != null && _preparedPromptAssets.contains(assetPath)) {
+      return promptAudio.play(assetPath);
     }
     final AudioPlayer? player = _duplicateSpeechPlayer;
     if (_duplicateSpeechPrepared &&
