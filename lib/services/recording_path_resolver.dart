@@ -116,6 +116,9 @@ class RecordingPathResolver {
     )) {
       if (++visited > maximumSearchEntries) break;
       if (entry is! File) continue;
+      if (entry.path.contains('${p.separator}.pending${p.separator}')) {
+        continue;
+      }
       final String basename = p.basename(entry.path);
       index.putIfAbsent(basename, () => entry.path);
     }
