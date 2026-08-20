@@ -27,7 +27,7 @@ X-EPM-Access-Key: <access-key>
 
 ## 最小录像元数据
 
-APP 不上传订单留言、卖家备注、商品、退款信息或手机本地文件路径。同一物理文件可以包含多段逻辑录像，完成上传时提交：
+APP 不上传订单留言、卖家备注、商品、退款信息或手机本地文件路径。一个独立视频只对应一个单号和一条录像记录；`sessions` 是现有协议字段，但每次完成上传时必须且只能包含一个元素：
 
 ```json
 {
@@ -65,7 +65,7 @@ APP 不上传订单留言、卖家备注、商品、退款信息或手机本地�
   "features": {
     "videoLibrary": true,
     "rangePlayback": true,
-    "multipleSessionsPerFile": true
+    "multipleSessionsPerFile": false
   },
   "retryPolicy": {
     "chunkMaxAttempts": 5,
@@ -143,9 +143,9 @@ X-Chunk-SHA256: <当前分块 SHA256>
 }
 ```
 
-APP 只有收到 `status=verified` 且 SHA256 与本地一致时，才显示“电脑校验完成，备份成功”。若响应丢失，使用相同 `sourceDeviceId + sessions[].id` 再次完成会返回相同录像记录，并将 `alreadyCompleted` 设为 `true`。
+APP 只有收到 `status=verified` 且 SHA256 与本地一致时，才显示“电脑校验完成，备份成功”。若响应丢失，使用相同 `sourceDeviceId + sessions[0].id` 再次完成会返回相同录像记录，并将 `alreadyCompleted` 设为 `true`。
 
-一个视频文件只对应一条录像记录。旧版本一次上传包含多条录像记录时，响应会额外返回 `recordIds` 数组，仅作旧数据兼容。
+电脑端必须拒绝 `sessions` 缺失、为空或包含多个元素的完成请求，不得为同一视频创建多条录像记录。完成响应只返回一个 `recordId`，不提供多记录数组。
 
 ## 远程录像库与播放
 
