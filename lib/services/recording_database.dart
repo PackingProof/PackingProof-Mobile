@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/recording_session.dart';
@@ -19,6 +20,18 @@ class LocalRecordingPage {
   final int total;
 
   int get pageCount => total <= 0 ? 0 : (total + pageSize - 1) ~/ pageSize;
+}
+
+class RecordingBackupRow {
+  const RecordingBackupRow({
+    required this.updatedAt,
+    required this.id,
+    required this.session,
+  });
+
+  final int updatedAt;
+  final String id;
+  final RecordingSession session;
 }
 
 class RecordingDeleteLog {
@@ -113,6 +126,20 @@ class RecordingDatabase {
 
   Future<void> initialize() async {
     await _db;
+  }
+
+  @visibleForTesting
+  Future<void> setUpdatedAtForTesting({
+    required String id,
+    required int updatedAt,
+  }) async {
+    final Database db = await _db;
+    await db.update(
+      'recording_sessions',
+      <String, Object?>{'updated_at': updatedAt},
+      where: 'id = ?',
+      whereArgs: <Object?>[id],
+    );
   }
 
   Future<void> close() async {
@@ -305,6 +332,81 @@ class RecordingDatabase {
       ],
     );
     return rows.map(_sessionFromRow).toList(growable: false);
+  }
+
+  Future<List<RecordingBackupRow>> queryBackupRows({
+    required int? afterUpdatedAt,
+    required String? afterId,
+    required int? highUpdatedAt,
+    required String? highId,
+    required int pageSize,
+  }) async {
+    final Database db = await _db;
+    final List<String> conditions = <String>['is_deleted = 0'];
+    final List<Object?> args = <Object?>[];
+    if (afterUpdatedAt != null && afterId != null) {
+      conditions.add('(updated_at > ? OR (updated_at = ? AND id > ?))');
+      args.addAll(<Object?>[afterUpdatedAt, afterUpdatedAt, afterId]);
+    }
+    if (highUpdatedAt != null && highId != null) {
+      conditions.add('(updated_at < ? OR (updated_at = ? AND id <= ?))');
+      args.addAll(<Object?>[highUpdatedAt, highUpdatedAt, highId]);
+    }
+    final String where = conditions.join(' AND ');
+    final int normalizedSize = pageSize.clamp(1, 1000);
+    final List<Map<String, Object?>> rows = await db.query(
+      'recording_sessions',
+      columns: <String>['payload_json', 'updated_at', 'id'],
+      where: where,
+      whereArgs: args,
+      orderBy: 'updated_at ASC, id ASC',
+      limit: normalizedSize,
+    );
+    return rows
+        .map(
+          (Map<String, Object?> row) => RecordingBackupRow(
+            updatedAt: row['updated_at']! as int,
+            id: row['id']! as String,
+            session: _sessionFromRow(row),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<({int updatedAt, String id})?> loadBackupHighWatermark() async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.query(
+      'recording_sessions',
+      columns: <String>['updated_at', 'id'],
+      where: 'is_deleted = 0',
+      orderBy: 'updated_at DESC, id DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return (
+      updatedAt: rows.first['updated_at']! as int,
+      id: rows.first['id']! as String,
+    );
+  }
+
+  Future<String?> readMetadataValue(String key) async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.query(
+      'recording_metadata',
+      columns: <String>['value'],
+      where: 'key = ?',
+      whereArgs: <Object?>[key],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first['value'] as String?;
+  }
+
+  Future<void> writeMetadataValue(String key, String value) async {
+    final Database db = await _db;
+    await db.insert('recording_metadata', <String, Object?>{
+      'key': key,
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> upsertSessions(List<RecordingSession> sessions) async {

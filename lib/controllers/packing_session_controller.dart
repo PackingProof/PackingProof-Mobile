@@ -3173,6 +3173,13 @@ class PackingSessionController extends ChangeNotifier {
         extra: <String, Object?>{'reason': reason},
       ),
     );
+    if (reason == 'app_start') {
+      await _processStartupBackupIncrement(
+        (List<RecordingSession> sessions) =>
+            _lanBackupService.backupAll(sessions, forceRestart: false),
+      );
+      return;
+    }
     await _forEachRepositoryBackupBatch(
       (List<RecordingSession> sessions) => _lanBackupService.backupAll(
         sessions,
@@ -3182,7 +3189,39 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   Future<void> _registerRepositorySessionsForRetention() =>
-      _forEachRepositoryBackupBatch(_registerSessionsForRetention);
+      _processStartupBackupIncrement(_registerSessionsForRetention);
+
+  Future<void> _processStartupBackupIncrement(
+    Future<void> Function(List<RecordingSession> sessions) action,
+  ) async {
+    final BackupRegistrationCursor? cursor = await _repository
+        .loadBackupRegistrationCursor();
+    final BackupRegistrationCursor? highWatermark = await _repository
+        .loadBackupRegistrationHighWatermark();
+    if (highWatermark == null) {
+      return;
+    }
+    BackupRegistrationCursor? after = cursor;
+    try {
+      while (!_disposed) {
+        final BackupIncrementPage? page = await _repository.loadBackupIncrement(
+          after: after,
+          highWatermark: highWatermark,
+        );
+        if (page == null) break;
+        await action(page.sessions);
+        after = page.nextAfter;
+      }
+      await _repository.saveBackupRegistrationCursor(highWatermark);
+    } on Object catch (error) {
+      unawaited(
+        _runtimeLog.log(
+          kind: 'backup_increment_failed',
+          extra: <String, Object?>{'error': error.toString()},
+        ),
+      );
+    }
+  }
 
   Future<void> _forEachRepositoryBackupBatch(
     Future<void> Function(List<RecordingSession> sessions) action,

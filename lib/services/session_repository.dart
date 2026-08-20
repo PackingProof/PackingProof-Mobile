@@ -26,6 +26,34 @@ abstract final class DeletionReason {
   static const String userManual = '手动删除';
 }
 
+class BackupRegistrationCursor {
+  const BackupRegistrationCursor({required this.updatedAt, required this.id});
+
+  final int updatedAt;
+  final String id;
+
+  String encode() => '$updatedAt:$id';
+
+  static BackupRegistrationCursor? tryParse(String? value) {
+    if (value == null || value.isEmpty) return null;
+    final int separator = value.indexOf(':');
+    if (separator <= 0 || separator == value.length - 1) return null;
+    final int? updatedAt = int.tryParse(value.substring(0, separator));
+    if (updatedAt == null) return null;
+    return BackupRegistrationCursor(
+      updatedAt: updatedAt,
+      id: value.substring(separator + 1),
+    );
+  }
+}
+
+class BackupIncrementPage {
+  const BackupIncrementPage({required this.sessions, required this.nextAfter});
+
+  final List<RecordingSession> sessions;
+  final BackupRegistrationCursor nextAfter;
+}
+
 class SessionRepository {
   SessionRepository({Directory? rootDirectory}) : this._(rootDirectory);
 
@@ -323,6 +351,64 @@ class SessionRepository {
         .queryBackupBatch(page: page, pageSize: pageSize);
     return _resolveAndRepair(sessions);
   }
+
+  Future<BackupRegistrationCursor?> loadBackupRegistrationCursor() async {
+    await initialize();
+    final String? value = await _recordingDatabase.readMetadataValue(
+      backupRegistrationCursorKey,
+    );
+    return BackupRegistrationCursor.tryParse(value);
+  }
+
+  Future<void> saveBackupRegistrationCursor(
+    BackupRegistrationCursor cursor,
+  ) async {
+    await initialize();
+    await _recordingDatabase.writeMetadataValue(
+      backupRegistrationCursorKey,
+      cursor.encode(),
+    );
+  }
+
+  Future<BackupRegistrationCursor?>
+  loadBackupRegistrationHighWatermark() async {
+    await initialize();
+    final ({int updatedAt, String id})? value = await _recordingDatabase
+        .loadBackupHighWatermark();
+    if (value == null) return null;
+    return BackupRegistrationCursor(updatedAt: value.updatedAt, id: value.id);
+  }
+
+  Future<BackupIncrementPage?> loadBackupIncrement({
+    required BackupRegistrationCursor? after,
+    required BackupRegistrationCursor highWatermark,
+    int pageSize = 100,
+  }) async {
+    await initialize();
+    final List<RecordingBackupRow> rows = await _recordingDatabase
+        .queryBackupRows(
+          afterUpdatedAt: after?.updatedAt,
+          afterId: after?.id,
+          highUpdatedAt: highWatermark.updatedAt,
+          highId: highWatermark.id,
+          pageSize: pageSize,
+        );
+    if (rows.isEmpty) return null;
+    final List<RecordingSession> sessions = await _resolveAndRepair(
+      rows.map((RecordingBackupRow row) => row.session).toList(growable: false),
+    );
+    final RecordingBackupRow last = rows.last;
+    return BackupIncrementPage(
+      sessions: sessions,
+      nextAfter: BackupRegistrationCursor(
+        updatedAt: last.updatedAt,
+        id: last.id,
+      ),
+    );
+  }
+
+  static const String backupRegistrationCursorKey =
+      'backup_registration_cursor';
 
   Future<List<RecordingSession>> _loadRecentSessionsUnlocked() async =>
       (await _recordingDatabase.queryActiveSessions(
