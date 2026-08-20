@@ -112,4 +112,27 @@ void main() {
     expect(cursor!.updatedAt, updatedAt);
     expect(cursor.id, id);
   });
+
+  test('历史统计直接从数据库聚合本机录像', () async {
+    final DateTime today = DateTime.now();
+    final RecordingSession todaySession = await addSession(
+      'today-stats',
+      today,
+    );
+    final RecordingSession olderSession = await addSession(
+      'older-stats',
+      today.subtract(const Duration(days: 2)),
+    );
+
+    final LocalRecordingStatistics stats = await database
+        .loadLocalRecordingStatistics();
+
+    expect(stats.total, 2);
+    expect(stats.today, 1);
+    expect(
+      stats.totalBytes,
+      await File(todaySession.filePath).length() +
+          await File(olderSession.filePath).length(),
+    );
+  });
 }

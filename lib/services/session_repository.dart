@@ -407,6 +407,11 @@ class SessionRepository {
     );
   }
 
+  Future<LocalRecordingStatistics> loadLocalRecordingStatistics() async {
+    await initialize();
+    return _recordingDatabase.loadLocalRecordingStatistics();
+  }
+
   static const String backupRegistrationCursorKey =
       'backup_registration_cursor';
 

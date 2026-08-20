@@ -204,6 +204,7 @@ class RecordingsScreen extends StatefulWidget {
     this.active = true,
     this.focusBackupRevision = 0,
     this.capabilities,
+    this.recordingStatistics,
     super.key,
   });
 
@@ -294,6 +295,7 @@ class RecordingsScreen extends StatefulWidget {
   final bool active;
   final int focusBackupRevision;
   final PlatformCapabilities? capabilities;
+  final LocalRecordingStatistics? recordingStatistics;
 
   @override
   State<RecordingsScreen> createState() => _RecordingsScreenState();
@@ -1768,11 +1770,17 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
             ] else ...<Widget>[
               if (!_managing) ...<Widget>[
                 _HistorySummary(
-                  total: existingLocalSessions.length,
-                  today: existingLocalSessions
-                      .where((item) => _isToday(item.startedAt))
-                      .length,
-                  totalBytes: _localRecordingBytes,
+                  total:
+                      widget.recordingStatistics?.total ??
+                      existingLocalSessions.length,
+                  today:
+                      widget.recordingStatistics?.today ??
+                      existingLocalSessions
+                          .where((item) => _isToday(item.startedAt))
+                          .length,
+                  totalBytes:
+                      widget.recordingStatistics?.totalBytes ??
+                      _localRecordingBytes,
                 ),
                 const SizedBox(height: 12),
                 _ComputerBackupSettings(

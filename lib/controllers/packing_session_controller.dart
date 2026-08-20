@@ -153,6 +153,8 @@ class PackingSessionController extends ChangeNotifier {
   List<NativeCameraLens> _backCameraLenses = const <NativeCameraLens>[];
   PackingSessionPhase _phase = PackingSessionPhase.initializing;
   List<RecordingSession> _sessions = <RecordingSession>[];
+  LocalRecordingStatistics _localRecordingStatistics =
+      const LocalRecordingStatistics();
   DateTime _lastAnalysisAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _elapsedTimer;
   Timer? _feedbackTimer;
@@ -237,6 +239,8 @@ class PackingSessionController extends ChangeNotifier {
   PackingSessionPhase get phase => _phase;
   List<RecordingSession> get sessions =>
       List<RecordingSession>.unmodifiable(_sessions);
+  LocalRecordingStatistics get localRecordingStatistics =>
+      _localRecordingStatistics;
   Duration get elapsed => _elapsed;
   BarcodeMarker? get lastMarker => _lastMarker;
   String get candidateCode => _candidateCode;
@@ -2181,11 +2185,13 @@ class PackingSessionController extends ChangeNotifier {
 
   Future<void> updateSession(RecordingSession session) async {
     _sessions = await _repository.updateSession(session);
+    await _refreshLocalStatistics();
     notifyListeners();
   }
 
   Future<void> deleteSessions(Set<String> sessionIds) async {
     _sessions = await _repository.deleteSessions(sessionIds);
+    await _refreshLocalStatistics();
     notifyListeners();
   }
 
@@ -3164,6 +3170,16 @@ class PackingSessionController extends ChangeNotifier {
 
   Future<void> _reloadRecentSessions() async {
     _sessions = (await _repository.querySessions(page: 1, pageSize: 50)).data;
+    await _refreshLocalStatistics();
+  }
+
+  Future<void> _refreshLocalStatistics() async {
+    try {
+      _localRecordingStatistics = await _repository
+          .loadLocalRecordingStatistics();
+    } on Object {
+      // Statistics must never block history or recording operations.
+    }
   }
 
   Future<void> _backupAllRepositorySessions(String reason) async {
@@ -3305,6 +3321,7 @@ class PackingSessionController extends ChangeNotifier {
     _sessions = await _repository.pruneMissingSessions(
       retainedMissingPaths: backedPaths,
     );
+    await _refreshLocalStatistics();
     if (notify && !_disposed) notifyListeners();
   }
 

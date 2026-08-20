@@ -34,6 +34,18 @@ class RecordingBackupRow {
   final RecordingSession session;
 }
 
+class LocalRecordingStatistics {
+  const LocalRecordingStatistics({
+    this.total = 0,
+    this.today = 0,
+    this.totalBytes = 0,
+  });
+
+  final int total;
+  final int today;
+  final int totalBytes;
+}
+
 class RecordingDeleteLog {
   const RecordingDeleteLog({
     required this.filePath,
@@ -386,6 +398,35 @@ class RecordingDatabase {
     return (
       updatedAt: rows.first['updated_at']! as int,
       id: rows.first['id']! as String,
+    );
+  }
+
+  Future<LocalRecordingStatistics> loadLocalRecordingStatistics() async {
+    final Database db = await _db;
+    final DateTime now = DateTime.now();
+    final int todayStart = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).millisecondsSinceEpoch;
+    final List<Map<String, Object?>> rows = await db.rawQuery(
+      '''
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) AS today,
+        SUM(file_size_bytes) AS total_bytes
+      FROM recording_sessions
+      WHERE is_deleted = 0 AND missing_at IS NULL
+      ''',
+      <Object?>[todayStart],
+    );
+    if (rows.isEmpty) {
+      return const LocalRecordingStatistics();
+    }
+    return LocalRecordingStatistics(
+      total: (rows.first['total'] as num?)?.toInt() ?? 0,
+      today: (rows.first['today'] as num?)?.toInt() ?? 0,
+      totalBytes: (rows.first['total_bytes'] as num?)?.toInt() ?? 0,
     );
   }
 

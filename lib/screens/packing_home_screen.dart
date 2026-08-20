@@ -630,6 +630,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
           : '',
       capabilities: _controller.capabilities,
       sessions: _controller.sessions,
+      recordingStatistics: _controller.localRecordingStatistics,
       workMode: _controller.workMode,
       speechEnabled: _controller.speechEnabled,
       orderSpeechEnabled: _controller.orderSpeechEnabled,
