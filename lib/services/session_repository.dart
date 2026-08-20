@@ -70,11 +70,28 @@ class SessionRepository {
   bool _initialized = false;
   Future<void> _sessionMutationTail = Future<void>.value();
   Future<void> _settingsMutationTail = Future<void>.value();
+  Future<void>? _initializeFuture;
 
   Future<void> initialize() async {
     if (_initialized) {
       return;
     }
+    final Future<void>? active = _initializeFuture;
+    if (active != null) {
+      return active;
+    }
+    final Future<void> future = _initializeImpl();
+    _initializeFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_initializeFuture, future)) {
+        _initializeFuture = null;
+      }
+    }
+  }
+
+  Future<void> _initializeImpl() async {
     _rootDirectory ??= await getApplicationDocumentsDirectory();
     _recordingsDirectory = Directory(
       p.join(_rootDirectory!.path, 'recordings'),
