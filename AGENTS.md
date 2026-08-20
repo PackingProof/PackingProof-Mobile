@@ -11,9 +11,6 @@ PackingProof-Mobile is a Flutter app for continuous package-recording and shippi
 - `lib/screens/` and `lib/widgets/` contain the Flutter UI.
 - `test/` contains unit and widget regression tests; `integration_test/` contains device-level flows.
 - `android/` and `ios/` contain platform projects.
-- `Tools/Publish-Android.ps1` is the formal Android release entry point. It resolves the version from the exact Git tag and delegates compilation and validation to `Tools/Build-Android.ps1`.
-- `Tools/Build-Android.ps1` is the underlying Android builder and may also produce a debug-signed local diagnostic APK.
-- `双击构建Release调试版.bat` builds a formally signed Release test APK from the `pubspec.yaml` version and outputs `dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk` so it can replace an installed app with the same signing certificate.
 - `dist/android/` contains generated release artifacts and must not be committed.
 
 ## Product Constraints
@@ -38,85 +35,19 @@ PackingProof-Mobile is a Flutter app for continuous package-recording and shippi
 - `PlatformCapabilities` 声明、平台适配器和 UI 入口必须三者一致；新增平台边界时同时核对这三处并补充测试。
 - 现有 iOS 占位实现（存储回收、Wi-Fi 检测、网络诊断、解码能力探测等）按审计清单逐步替换为真实现，禁止再新增同类占位。
 
-## Development Commands
+## 必读专项文档
 
-Run commands from the repository root:
-
-```powershell
-flutter pub get
-flutter analyze
-flutter test
-flutter run
-flutter build apk --debug
-```
-
-Flutter and Dart are already available through the Windows system `PATH`. Invoke
-`flutter` and `dart` directly; do not install another SDK or rewrite `PATH` for
-routine repository work. Run Android Gradle tasks with the repository wrapper
-from `android/`.
-
-本地 Release 调试包可直接双击仓库根目录的 `双击构建Release调试版.bat`。该入口自动读取 `pubspec.yaml` 版本，使用调试证书生成可安装的 ARM64 Release APK，并输出到 `dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk`；它不用于正式发布。
-
-iOS IPA 打包脚本为 `Tools/Build-iOS.sh`，默认使用 `app-store` 导出方式，并输出到 `dist/ios/PackingProof-Mobile-v<versionName>+<versionCode>.ipa`；需要临时内部分发时可传入 `ad-hoc` 或 `development`。
-
-更新已安装的 Android debug 包时，不要使用 `flutter install`：当前 Flutter 工具会先卸载旧版本，导致应用私有目录里的录像索引、设置和本机录像一并丢失。需要保留应用数据时使用 `flutter run -d <device-id> --debug`，或先用 `flutter build apk --debug` 生成 APK 后执行 `adb install -r <apk>`。
-
-Format only files changed for the current task:
-
-```powershell
-dart format <changed-files>
-```
-
-## 本地开发与测试环境
-
-- 日常构建测试优先使用本机或局域网编译机，不依赖 GitHub CI；具体机器地址、账号和连接方式只记录在本机本地笔记，禁止提交仓库或推送到远端。
-- Mac 提供 iOS、Xcode 和 CocoaPods 构建验证能力；Windows 提供 Android 原生 Gradle/JVM 测试、APK 构建及 Android 真机验证能力。两台机器是对等互通的编译节点：AI 当前无论运行在 Mac 还是 Windows，都可按照本机私有笔记通过局域网 SSH 控制另一台机器，补跑另一平台的构建和测试并读取结果。
-- 当前机器缺少目标平台工具链时，不要把它误判为代码失败，也不要为单次验证临时安装或改写工具链；应先查看本机私有连接说明，在当前功能形成可同步提交后，让另一台机器通过 rebase 取得完全相同的提交再执行验证。Flutter/Dart 平台无关的分析和测试可在任一具备项目 SDK 的机器运行。双机同步只使用 rebase（见“分支整合与同步”），不产生 merge 提交。
-- 修改 `ios/Podfile`、Flutter iOS 插件或 CocoaPods 依赖后，在 Mac 执行 `flutter pub get` 和 `cd ios && pod install`，并提交对应的 `ios/Podfile.lock`。`Podfile.lock` 的 `PODFILE CHECKSUM` 必须与 `shasum ios/Podfile` 一致；本地存在 `ios/Pods/Manifest.lock` 时，还应确认它与 `Podfile.lock` 一致。不要把正确的 checksum 更新当成生成噪音恢复掉；若仅出现 CocoaPods 版本、工程注释或空数组等环境差异，应先查明原因并只保留任务所需改动。
+- 日常命令、保留数据的 Android 安装、Mac/Windows 对等 SSH 验证或跨机同步：必须阅读 `docs/cross-machine-development.md`
+- 修改 iOS、Xcode、CocoaPods、Flutter iOS 插件或 IPA 构建：必须阅读 `docs/ios-development.md`
+- 修改局域网发现、配对、鉴权、上传、回执、远程播放或清理：必须阅读 `docs/mobile-backup-v1.md`
+- 构建本地 Release 测试 APK、准备版本、签名、打 tag 或发布：必须阅读 `docs/android-release.md` 和 `RELEASE_NOTES_TEMPLATE.md`
 
 ## Testing
 
 - Add or update focused tests for every behavior change.
 - Run the affected test file while iterating.
 - Before committing, run `flutter analyze` and the relevant tests.
-- Before a formal release, use `Tools/Publish-Android.ps1`; it runs the full analysis and test suite through `Tools/Build-Android.ps1` before packaging.
-- Before every release, audit the complete change set since the previous release for newly introduced technical debt, performance problems (CPU, battery, IO, UI), and race conditions (thread visibility, interleaving, lifecycle races), as well as omitted requirements, unresolved defects or TODOs, and resource-lifetime regressions, especially around recording, camera lifecycle, storage cleanup, enrollment, backup, upload receipts, and local-file deletion. Record the audit conclusion before tagging. Investigate every failing or flaky test instead of dismissing it as unrelated, and treat credible correctness, data-safety, compatibility, performance, or race issues as release blockers until fixed or explicitly accepted by the user as documented exceptions. Passing analysis and tests alone is not sufficient to declare the release ready.
-- Before every release, compare the About page credits with direct runtime dependencies in `pubspec.yaml` and `android/app/build.gradle.kts`; update the credits and their widget assertions when a credited dependency is added, replaced, or removed.
-- The release script must validate and reuse matching speech assets, generating only missing or changed fixed prompts before packaging.
 - Recording, camera, audio, permissions, background lifecycle, installation upgrades, and LAN backup changes still require real-device validation when affected.
-
-## Cross-Device Backup Compatibility
-
-- Treat every change to discovery, enrollment, device-token authentication, upload, or verified receipts as a two-sided protocol change. The phone and host must exchange explicit protocol, enrollment, authentication, application-version, and build capabilities.
-- Check host compatibility before requesting a device token. A host must reject an incompatible phone before displaying its approval prompt or issuing or rotating a token, and return a structured response that tells the user which side must update.
-- Compatibility failures may pause connection and backup only. Preserve local recordings, the database, pending backup tasks, the stable device ID, and the previous host hint so work can continue offline and resume after an update.
-- Keep concrete minimum versions and protocol numbers in the centralized compatibility policy code, not in this document. Update phone and desktop regression tests together whenever the wire contract changes.
-- Publish the compatible phone package before a desktop release raises the minimum phone version, and verify old-host, old-client, and newer-compatible combinations before release.
-
-## Android Release
-
-Create an exact tag on a clean commit, then generate one formally signed APK:
-
-```powershell
-git tag v0.5.4+11004
-pwsh -NoProfile -File Tools\Publish-Android.ps1 `
-  -SigningDirectory <external-signing-directory>
-```
-
-- Prefer release tags in the form `v<versionName>+<increasing-versionCode>`, for example `v0.5.4+11004`. A plain `v<versionName>` tag is accepted only when `pubspec.yaml` has the same version name and supplies the version code.
-- The formal release script must reject a dirty worktree, a missing or ambiguous tag, and a missing external signing configuration.
-- Complete and record the release-readiness audit (technical debt, performance, concurrency/race conditions) before creating the release tag.
-- Create and upload the GitHub Release (tag, APK, `SHA256SUMS.txt`, release notes) with the GitHub plugin or `gh`; create and upload the Gitee Release with the `gitee` CLI (`gitee auth status`, `gitee release create --tag <tag> --name "..." --notes "..."`, `gitee release upload <tag> dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk SHA256SUMS.txt`).
-- 发布笔记必须使用仓库根目录的 `RELEASE_NOTES_TEMPLATE.md`：更新内容按“功能与体验 / 问题修复 / 兼容与工程”三类填写，并包含下载与更新说明、未验证事项；禁止自创格式，GitHub 与 Gitee 的 Release 笔记保持一致。Release 标题固定为“`v<X.Y.Z+VVVV> <一句话内容>`”（版本号开头，不加产品名或“发布”等前缀）。更新日志范围：预览版只写本预览版增量内容，正式版必须汇总上一个正式版以来（含中间所有预览版）的全部更新内容。
-- Release builds fingerprint tracked Android configuration, dependency files, and the Flutter SDK. Matching inputs reuse Gradle/native caches, while every build still regenerates Flutter Release output and verifies the Git revision and timestamp inside `libapp.so`.
-- Pass `-ForceClean` to `Tools/Publish-Android.ps1` or `Tools/Build-Release-Diagnostic.ps1` when diagnosing a toolchain or cache problem that requires a full `flutter clean`.
-- Keep diagnostic defaults in `Tools/Build-Android.ps1` synchronized with `pubspec.yaml`.
-- Release a single `arm64-v8a` APK; 32-bit ARM and x86 are intentionally unsupported and packaging must fail if either reappears.
-- Keep keystores and `签名凭据.txt` outside the repository.
-- Never print, commit, copy, or package signing credentials.
-- Release output is `dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk`, with `SHA256SUMS.txt` and `build-manifest.json`.
-- Do not create a ZIP archive for the Android release.
-- Treat the build as successful only when bundled speech assets, metadata, Git revision, formal signature, and SHA256 validation all pass.
 
 ## Change Discipline
 
@@ -130,7 +61,5 @@ pwsh -NoProfile -File Tools\Publish-Android.ps1 `
 
 ## 分支整合与同步
 
-- 分支整合优先使用 rebase，保持主线直线历史；不把多个提交压缩成一个，原来有几个就保留几个。
-- 不主动生成 merge 提交；merge 仅用于：分支已推送且多人共用、需要保留整个功能分支的整合入口、发布分支或长期分支之间互相同步，或平台/保护分支强制要求时。
-- 已推送给他人使用的分支不随意 rebase 改写历史；如需线性化，先确认无人基于该分支工作。
-- Mac 与 Windows 双机同步：本机提交后，通过 bundle、patch 或远端推送让另一台 rebase 同步，禁止在本地生成 merge 提交。
+- 分支和 Mac/Windows 双机同步优先使用 rebase，保持线性历史，不 squash 原有提交；具体流程见 `docs/cross-machine-development.md`。
+- 不主动创建 merge 提交；只有共享分支、发布/长期分支、明确要求保留整合入口或平台强制要求时才允许 merge。
