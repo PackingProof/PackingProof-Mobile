@@ -3210,15 +3210,15 @@ class PackingSessionController extends ChangeNotifier {
   Future<void> _processStartupBackupIncrement(
     Future<void> Function(List<RecordingSession> sessions) action,
   ) async {
-    final BackupRegistrationCursor? cursor = await _repository
-        .loadBackupRegistrationCursor();
-    final BackupRegistrationCursor? highWatermark = await _repository
-        .loadBackupRegistrationHighWatermark();
-    if (highWatermark == null) {
-      return;
-    }
-    BackupRegistrationCursor? after = cursor;
     try {
+      final BackupRegistrationCursor? cursor = await _repository
+          .loadBackupRegistrationCursor();
+      final BackupRegistrationCursor? highWatermark = await _repository
+          .loadBackupRegistrationHighWatermark();
+      if (highWatermark == null) {
+        return;
+      }
+      BackupRegistrationCursor? after = cursor;
       while (!_disposed) {
         final BackupIncrementPage? page = await _repository.loadBackupIncrement(
           after: after,
