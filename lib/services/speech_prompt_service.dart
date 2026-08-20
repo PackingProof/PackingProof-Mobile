@@ -351,16 +351,24 @@ class DeviceSpeechOutput implements SpeechOutput {
     _systemTts.setCompletionHandler(_completePlayback);
     _systemTts.setCancelHandler(_completePlayback);
     _systemTts.setErrorHandler((_) => _completePlayback());
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      unawaited(_prepareWarningTone());
+      unawaited(_prepareDuplicateSpeech());
+    }
   }
 
   final AudioPlayer _audioPlayer;
   final FlutterTts _systemTts;
   AudioPlayer? _beepPlayer;
+  AudioPlayer? _warningTonePlayer;
+  AudioPlayer? _duplicateSpeechPlayer;
   Future<void>? _beepInFlight;
   Uint8List? _shortBeepWav;
   Completer<void>? _activePlayback;
   bool _audioContextConfigured = false;
   bool _beepContextConfigured = false;
+  bool _warningTonePrepared = false;
+  bool _duplicateSpeechPrepared = false;
 
   /// 录像期间播放提示音时，iOS 也必须保留录音能力。
   ///
@@ -384,16 +392,130 @@ class DeviceSpeechOutput implements SpeechOutput {
   static AssetSource buildSpeechAssetSource(String assetPath) =>
       AssetSource(assetPath, mimeType: 'audio/mpeg');
 
+  Future<void> _prepareWarningTone() async {
+    if (_warningTonePrepared) return;
+    final AudioPlayer player = _warningTonePlayer ??= AudioPlayer();
+    try {
+      await _preparePlayer(
+        player,
+        buildWavBytesSource(_warningToneWav()),
+        audioContext: buildSpeechAudioContext(
+          const AudioContextAndroid(
+            contentType: AndroidContentType.sonification,
+            usageType: AndroidUsageType.media,
+            audioFocus: AndroidAudioFocus.none,
+          ),
+        ),
+      );
+      _warningTonePrepared = true;
+    } on Object {
+      _warningTonePrepared = false;
+      await _stopPlayerBounded(player);
+    }
+  }
+
+  Future<void> _prepareDuplicateSpeech() async {
+    if (_duplicateSpeechPrepared) return;
+    final AudioPlayer player = _duplicateSpeechPlayer ??= AudioPlayer();
+    try {
+      await _preparePlayer(
+        player,
+        buildSpeechAssetSource(
+          SpeechPrompt.duplicateOrderWarning.audioPlayerAssetPath,
+        ),
+        audioContext: buildSpeechAudioContext(
+          const AudioContextAndroid(
+            contentType: AndroidContentType.speech,
+            usageType: AndroidUsageType.assistanceNavigationGuidance,
+            audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+          ),
+        ),
+      );
+      _duplicateSpeechPrepared = true;
+    } on Object {
+      _duplicateSpeechPrepared = false;
+      await _stopPlayerBounded(player);
+    }
+  }
+
+  Future<void> _preparePlayer(
+    AudioPlayer player,
+    Source source, {
+    required AudioContext audioContext,
+  }) async {
+    await player.setAudioContext(audioContext);
+    await player.setReleaseMode(ReleaseMode.stop);
+    await player.setSource(source).timeout(_sourceStartTimeout);
+  }
+
+  Future<void> _playPreparedPlayer(
+    AudioPlayer player, {
+    required Future<void> Function() onFailure,
+  }) async {
+    await player.stop();
+    await player.seek(Duration.zero);
+    final Completer<void> completion = Completer<void>();
+    _activePlayback = completion;
+    final StreamSubscription<void> subscription = player.onPlayerComplete
+        .listen((_) => _completePlayback());
+    try {
+      await player.resume().timeout(_sourceStartTimeout);
+      await completion.future.timeout(const Duration(seconds: 30));
+    } on Object {
+      await _stopPlayerBounded(player);
+      await onFailure();
+      rethrow;
+    } finally {
+      await subscription.cancel();
+      if (identical(_activePlayback, completion)) {
+        _activePlayback = null;
+      }
+    }
+  }
+
+  Future<void> _resetWarningTone() async {
+    _warningTonePrepared = false;
+    await _stopPlayerBounded(_warningTonePlayer);
+    unawaited(_prepareWarningTone());
+  }
+
+  Future<void> _resetDuplicateSpeech() async {
+    _duplicateSpeechPrepared = false;
+    await _stopPlayerBounded(_duplicateSpeechPlayer);
+    unawaited(_prepareDuplicateSpeech());
+  }
+
+  Future<void> _stopPlayerBounded(AudioPlayer? player) async {
+    if (player == null) return;
+    try {
+      await player.stop().timeout(const Duration(seconds: 2));
+    } on Object {
+      // Best-effort stop; a hung player must not block the speech workflow.
+    }
+  }
+
   @override
-  Future<void> playAsset(String assetPath) =>
-      _play(buildSpeechAssetSource(assetPath));
+  Future<void> playAsset(String assetPath) {
+    final AudioPlayer? player = _duplicateSpeechPlayer;
+    if (_duplicateSpeechPrepared &&
+        player != null &&
+        assetPath == SpeechPrompt.duplicateOrderWarning.audioPlayerAssetPath) {
+      return _playPreparedPlayer(player, onFailure: _resetDuplicateSpeech);
+    }
+    return _play(buildSpeechAssetSource(assetPath));
+  }
 
   @override
   Future<void> playRemarkTone() => _play(buildWavBytesSource(_remarkToneWav()));
 
   @override
-  Future<void> playWarningTone() =>
-      _play(buildWavBytesSource(_warningToneWav()));
+  Future<void> playWarningTone() {
+    final AudioPlayer? player = _warningTonePlayer;
+    if (_warningTonePrepared && player != null) {
+      return _playPreparedPlayer(player, onFailure: _resetWarningTone);
+    }
+    return _play(buildWavBytesSource(_warningToneWav()));
+  }
 
   @override
   Future<void> playIndustrialAlarm() =>
@@ -765,10 +887,19 @@ class DeviceSpeechOutput implements SpeechOutput {
   Future<void> stop() async {
     _completePlayback();
     try {
-      await Future.wait<void>(<Future<void>>[
+      final List<Future<void>> stops = <Future<void>>[
         _audioPlayer.stop(),
         _systemTts.stop().then((_) {}),
-      ]).timeout(const Duration(seconds: 2));
+      ];
+      final AudioPlayer? warningTonePlayer = _warningTonePlayer;
+      if (warningTonePlayer != null) {
+        stops.add(warningTonePlayer.stop());
+      }
+      final AudioPlayer? duplicateSpeechPlayer = _duplicateSpeechPlayer;
+      if (duplicateSpeechPlayer != null) {
+        stops.add(duplicateSpeechPlayer.stop());
+      }
+      await Future.wait<void>(stops).timeout(const Duration(seconds: 2));
     } on Object {
       // Best-effort stop; a hung player must not block the speech workflow.
     }
@@ -782,6 +913,16 @@ class DeviceSpeechOutput implements SpeechOutput {
     _beepPlayer = null;
     if (beepPlayer != null) {
       await beepPlayer.dispose();
+    }
+    final AudioPlayer? warningTonePlayer = _warningTonePlayer;
+    _warningTonePlayer = null;
+    if (warningTonePlayer != null) {
+      await warningTonePlayer.dispose();
+    }
+    final AudioPlayer? duplicateSpeechPlayer = _duplicateSpeechPlayer;
+    _duplicateSpeechPlayer = null;
+    if (duplicateSpeechPlayer != null) {
+      await duplicateSpeechPlayer.dispose();
     }
   }
 }
