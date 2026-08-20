@@ -1307,6 +1307,9 @@ class PackingSessionController extends ChangeNotifier {
     _lastAnnouncedOrderSignature = '';
     _stabilityTracker.reset();
     _speechService.resetIncidents();
+    if (_speechService case final SpeechPromptService speech) {
+      await speech.prepareDuplicateOrderWarning();
+    }
     _beginInitialPromptFlow();
 
     try {

@@ -68,6 +68,8 @@ class _QueuedSpeechPrompt {
 }
 
 abstract interface class SpeechOutput {
+  Future<void> prepareDuplicateOrderWarning();
+
   Future<void> playAsset(String assetPath);
 
   Future<void> playRemarkTone();
@@ -103,6 +105,9 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
 
   @override
   bool get enabled => _enabled;
+
+  Future<void> prepareDuplicateOrderWarning() =>
+      _output.prepareDuplicateOrderWarning();
 
   @override
   Future<void> setEnabled(bool value) async {
@@ -391,6 +396,14 @@ class DeviceSpeechOutput implements SpeechOutput {
   @visibleForTesting
   static AssetSource buildSpeechAssetSource(String assetPath) =>
       AssetSource(assetPath, mimeType: 'audio/mpeg');
+
+  @override
+  Future<void> prepareDuplicateOrderWarning() async {
+    await Future.wait<void>(<Future<void>>[
+      _prepareWarningTone(),
+      _prepareDuplicateSpeech(),
+    ]);
+  }
 
   Future<void> _prepareWarningTone() async {
     if (_warningTonePrepared) return;

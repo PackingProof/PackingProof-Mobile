@@ -43,6 +43,16 @@ void main() {
     await service.dispose();
   });
 
+  test('开始工作前可预加载重复单号提示', () async {
+    final _FakeSpeechOutput output = _FakeSpeechOutput();
+    final SpeechPromptService service = SpeechPromptService(output: output);
+
+    await service.prepareDuplicateOrderWarning();
+
+    expect(output.prepareDuplicateCount, 1);
+    await service.dispose();
+  });
+
   test('备注播报先播放提示音', () async {
     final _FakeSpeechOutput output = _FakeSpeechOutput();
     final SpeechPromptService service = SpeechPromptService(output: output);
@@ -313,6 +323,12 @@ class _FakeSpeechOutput implements SpeechOutput {
   int warningToneCount = 0;
   int industrialAlarmCount = 0;
   int shortBeepCount = 0;
+  int prepareDuplicateCount = 0;
+
+  @override
+  Future<void> prepareDuplicateOrderWarning() async {
+    prepareDuplicateCount++;
+  }
 
   @override
   Future<void> playAsset(String assetPath) async {
