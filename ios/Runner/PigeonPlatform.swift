@@ -14,6 +14,8 @@ import VideoToolbox
 
 final class PigeonPlatform {
   private static var cameraHost: IosCameraHostApi?
+  private static var promptAudioHost: IosPromptAudioHost?
+  private static var promptAudioChannel: FlutterMethodChannel?
 
   static func register(with registry: FlutterPluginRegistry) {
     guard
@@ -55,6 +57,14 @@ final class PigeonPlatform {
         eventApi: OrderReceiverEventApi(binaryMessenger: messenger)
       )
     )
+    let promptAudioHost = IosPromptAudioHost()
+    self.promptAudioHost = promptAudioHost
+    let promptAudioChannel = FlutterMethodChannel(
+      name: "app.packingproof.mobile/prompt_audio",
+      binaryMessenger: messenger
+    )
+    self.promptAudioChannel = promptAudioChannel
+    promptAudioChannel.setMethodCallHandler(promptAudioHost.handle)
   }
 
   /// App 终止时必须在 Flutter 引擎销毁前同步关闭相机。
@@ -64,6 +74,117 @@ final class PigeonPlatform {
   /// `textureFrameAvailable`，会触发 use-after-free 崩溃。
   static func shutdownForTermination() {
     cameraHost?.prepareForTermination()
+  }
+}
+
+private final class IosPromptAudioHost: NSObject {
+  private var players: [String: AVAudioPlayer] = [:]
+  private var completions: [String: FlutterResult] = [:]
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "prepare":
+      prepare(call, result: result)
+    case "play":
+      play(call, result: result)
+    case "stop":
+      stop()
+      result(nil)
+    case "dispose":
+      dispose()
+      result(nil)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func prepare(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard
+      let args = call.arguments as? [String: Any],
+      let key = args["key"] as? String,
+      let mimeType = args["mimeType"] as? String
+    else {
+      result(FlutterError(code: "bad_args", message: "提示音参数无效", details: nil))
+      return
+    }
+    let data: Data
+    if let typed = args["bytes"] as? FlutterStandardTypedData {
+      data = typed.data
+    } else if let values = args["bytes"] as? [UInt8] {
+      data = Data(values)
+    } else {
+      result(FlutterError(code: "bad_bytes", message: "提示音数据无效", details: nil))
+      return
+    }
+    let fileExtension = mimeType.contains("wav") ? "wav" : "mp3"
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("\(UUID().uuidString).\(fileExtension)")
+    do {
+      try data.write(to: fileURL)
+      let player = try AVAudioPlayer(contentsOf: fileURL)
+      player.prepareToPlay()
+      players[key] = player
+      result(nil)
+    } catch {
+      result(FlutterError(code: "prepare_failed", message: error.localizedDescription, details: nil))
+    }
+  }
+
+  private func play(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard
+      let args = call.arguments as? [String: Any],
+      let key = args["key"] as? String,
+      let player = players[key]
+    else {
+      result(FlutterError(code: "not_prepared", message: "提示音尚未准备好", details: nil))
+      return
+    }
+    do {
+      let session = AVAudioSession.sharedInstance()
+      try session.setCategory(
+        .playAndRecord,
+        mode: .videoRecording,
+        options: [.defaultToSpeaker]
+      )
+      try session.setActive(true)
+      player.currentTime = 0
+      player.delegate = self
+      completions[key] = result
+      if !player.play() {
+        completions.removeValue(forKey: key)
+        result(FlutterError(code: "play_failed", message: "提示音播放失败", details: nil))
+      }
+    } catch {
+      completions.removeValue(forKey: key)
+      result(FlutterError(code: "play_failed", message: error.localizedDescription, details: nil))
+    }
+  }
+
+  private func stop() {
+    for player in players.values {
+      player.stop()
+    }
+    for completion in completions.values {
+      completion(nil)
+    }
+    completions.removeAll()
+  }
+
+  private func dispose() {
+    stop()
+    players.removeAll()
+  }
+}
+
+extension IosPromptAudioHost: AVAudioPlayerDelegate {
+  func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+    guard
+      let entry = players.first(where: { $0.value === player }),
+      let completion = completions.removeValue(forKey: entry.key)
+    else {
+      return
+    }
+    completion(nil)
   }
 }
 

@@ -4,9 +4,11 @@ import 'dart:math' as math;
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import '../models/speech_prompt.dart';
+import 'prompt_audio_platform.dart';
 
 bool _isModeAnnouncement(SpeechPrompt? prompt) =>
     prompt == SpeechPrompt.shippingMode || prompt == SpeechPrompt.returnMode;
@@ -349,10 +351,20 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
 
 class DeviceSpeechOutput implements SpeechOutput {
   static const Duration _sourceStartTimeout = Duration(seconds: 3);
+  static const String _warningToneKey = 'duplicate_warning_tone';
+  static const String _duplicateSpeechKey = 'duplicate_order_warning';
 
-  DeviceSpeechOutput({AudioPlayer? audioPlayer, FlutterTts? systemTts})
-    : _audioPlayer = audioPlayer ?? AudioPlayer(),
-      _systemTts = systemTts ?? FlutterTts() {
+  DeviceSpeechOutput({
+    AudioPlayer? audioPlayer,
+    FlutterTts? systemTts,
+    PromptAudioPlatform? promptAudio,
+  }) : _audioPlayer = audioPlayer ?? AudioPlayer(),
+       _systemTts = systemTts ?? FlutterTts(),
+       _promptAudio =
+           promptAudio ??
+           ((!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
+               ? IosPromptAudioPlatform()
+               : null) {
     _systemTts.setCompletionHandler(_completePlayback);
     _systemTts.setCancelHandler(_completePlayback);
     _systemTts.setErrorHandler((_) => _completePlayback());
@@ -364,6 +376,7 @@ class DeviceSpeechOutput implements SpeechOutput {
 
   final AudioPlayer _audioPlayer;
   final FlutterTts _systemTts;
+  final PromptAudioPlatform? _promptAudio;
   AudioPlayer? _beepPlayer;
   AudioPlayer? _warningTonePlayer;
   AudioPlayer? _duplicateSpeechPlayer;
@@ -407,6 +420,20 @@ class DeviceSpeechOutput implements SpeechOutput {
 
   Future<void> _prepareWarningTone() async {
     if (_warningTonePrepared) return;
+    final PromptAudioPlatform? promptAudio = _promptAudio;
+    if (promptAudio != null) {
+      try {
+        await promptAudio.prepare(
+          key: _warningToneKey,
+          bytes: _warningToneWav(),
+          mimeType: 'audio/wav',
+        );
+        _warningTonePrepared = true;
+      } on Object {
+        _warningTonePrepared = false;
+      }
+      return;
+    }
     final AudioPlayer player = _warningTonePlayer ??= AudioPlayer();
     try {
       await _preparePlayer(
@@ -429,6 +456,26 @@ class DeviceSpeechOutput implements SpeechOutput {
 
   Future<void> _prepareDuplicateSpeech() async {
     if (_duplicateSpeechPrepared) return;
+    final PromptAudioPlatform? promptAudio = _promptAudio;
+    if (promptAudio != null) {
+      try {
+        final ByteData asset = await rootBundle.load(
+          SpeechPrompt.duplicateOrderWarning.assetPath,
+        );
+        await promptAudio.prepare(
+          key: _duplicateSpeechKey,
+          bytes: asset.buffer.asUint8List(
+            asset.offsetInBytes,
+            asset.lengthInBytes,
+          ),
+          mimeType: 'audio/mpeg',
+        );
+        _duplicateSpeechPrepared = true;
+      } on Object {
+        _duplicateSpeechPrepared = false;
+      }
+      return;
+    }
     final AudioPlayer player = _duplicateSpeechPlayer ??= AudioPlayer();
     try {
       await _preparePlayer(
@@ -509,6 +556,12 @@ class DeviceSpeechOutput implements SpeechOutput {
 
   @override
   Future<void> playAsset(String assetPath) {
+    final PromptAudioPlatform? promptAudio = _promptAudio;
+    if (_duplicateSpeechPrepared &&
+        promptAudio != null &&
+        assetPath == SpeechPrompt.duplicateOrderWarning.audioPlayerAssetPath) {
+      return promptAudio.play(_duplicateSpeechKey);
+    }
     final AudioPlayer? player = _duplicateSpeechPlayer;
     if (_duplicateSpeechPrepared &&
         player != null &&
@@ -523,6 +576,10 @@ class DeviceSpeechOutput implements SpeechOutput {
 
   @override
   Future<void> playWarningTone() {
+    final PromptAudioPlatform? promptAudio = _promptAudio;
+    if (_warningTonePrepared && promptAudio != null) {
+      return promptAudio.play(_warningToneKey);
+    }
     final AudioPlayer? player = _warningTonePlayer;
     if (_warningTonePrepared && player != null) {
       return _playPreparedPlayer(player, onFailure: _resetWarningTone);
@@ -912,6 +969,10 @@ class DeviceSpeechOutput implements SpeechOutput {
       if (duplicateSpeechPlayer != null) {
         stops.add(duplicateSpeechPlayer.stop());
       }
+      final PromptAudioPlatform? promptAudio = _promptAudio;
+      if (promptAudio != null) {
+        stops.add(promptAudio.stop());
+      }
       await Future.wait<void>(stops).timeout(const Duration(seconds: 2));
     } on Object {
       // Best-effort stop; a hung player must not block the speech workflow.
@@ -937,5 +998,6 @@ class DeviceSpeechOutput implements SpeechOutput {
     if (duplicateSpeechPlayer != null) {
       await duplicateSpeechPlayer.dispose();
     }
+    await _promptAudio?.dispose();
   }
 }
