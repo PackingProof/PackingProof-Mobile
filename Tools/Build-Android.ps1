@@ -373,7 +373,7 @@ try {
     $speechAssetsBefore = Get-SpeechAssetState -ManifestPath $speechManifestPath
     flutter analyze --no-pub --no-fatal-infos
     if ($LASTEXITCODE -ne 0) { throw "Flutter 分析失败，退出代码：$LASTEXITCODE" }
-    flutter test --no-pub
+    flutter test --no-pub --concurrency=1
     if ($LASTEXITCODE -ne 0) { throw "Flutter 测试失败，退出代码：$LASTEXITCODE" }
 
     $releaseFlutterOutput = Join-Path $repo 'build/app/intermediates/flutter/release'
