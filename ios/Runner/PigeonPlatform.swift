@@ -2179,6 +2179,7 @@ private final class IosCameraHostApi:
   private var currentAudioSampleCount: Int64 = 0
   private var currentAudioAppendFailedCount: Int64 = 0
   private var currentAudioLastError: String?
+  private var splitPending = false
   private var lastAudioSampleCount: Int64 = 0
   private var lastAudioAppendFailedCount: Int64 = 0
   private var lastAudioLastError: String?
@@ -2314,28 +2315,43 @@ private final class IosCameraHostApi:
         completion(.failure(pigeonError("摄像头已经关闭")))
         return
       }
+      guard !self.splitPending else {
+        completion(.failure(pigeonError("上一段录像正在保存")))
+        return
+      }
+      guard self.currentPath != nil else {
+        completion(.failure(pigeonError("当前没有正在录制的视频")))
+        return
+      }
+      self.splitPending = true
       let completedPath = self.currentPath ?? ""
       let completedStartedAt = self.currentStartedAtMs
       let boundaryAt = Int64(Date().timeIntervalSince1970 * 1000)
       self.finishCurrentWriter { [weak self] in
-        guard let self else { return }
+        guard let self else {
+          completion(.failure(pigeonError("摄像头已经关闭")))
+          return
+        }
         self.sessionQueue.async {
           do {
             try self.startWriter(path: nextPath)
+            self.splitPending = false
+            completion(.success(CameraRecordingSplitDto(
+              completedPath: completedPath,
+              nextPath: nextPath,
+              completedStartedAtMs: completedStartedAt,
+              boundaryAtMs: boundaryAt
+            )))
           } catch {
+            self.splitPending = false
             self.eventApi.nativeError(
               message: "切换录像文件失败：\(error.localizedDescription)",
               completion: { _ in }
             )
+            completion(.failure(error))
           }
         }
       }
-      completion(.success(CameraRecordingSplitDto(
-        completedPath: completedPath,
-        nextPath: nextPath,
-        completedStartedAtMs: completedStartedAt,
-        boundaryAtMs: boundaryAt
-      )))
     }
   }
 
@@ -2345,6 +2361,10 @@ private final class IosCameraHostApi:
     sessionQueue.async { [weak self] in
       guard let self, !self.isDisposed else {
         completion(.failure(pigeonError("摄像头已经关闭")))
+        return
+      }
+      if self.splitPending {
+        completion(.failure(pigeonError("请等待当前分段保存完成")))
         return
       }
       let path = self.currentPath ?? ""
