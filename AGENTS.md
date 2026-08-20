@@ -70,7 +70,9 @@ dart format <changed-files>
 ## 本地开发与测试环境
 
 - 日常构建测试优先使用本机或局域网编译机，不依赖 GitHub CI；具体机器地址、账号和连接方式只记录在本机本地笔记，禁止提交仓库或推送到远端。
-- Mac 负责 iOS/Xcode 构建；双机同步走 rebase（见“分支整合与同步”），不产生 merge 提交。
+- Mac 提供 iOS、Xcode 和 CocoaPods 构建验证能力；Windows 提供 Android 原生 Gradle/JVM 测试、APK 构建及 Android 真机验证能力。两台机器是对等互通的编译节点：AI 当前无论运行在 Mac 还是 Windows，都可按照本机私有笔记通过局域网 SSH 控制另一台机器，补跑另一平台的构建和测试并读取结果。
+- 当前机器缺少目标平台工具链时，不要把它误判为代码失败，也不要为单次验证临时安装或改写工具链；应先查看本机私有连接说明，在当前功能形成可同步提交后，让另一台机器通过 rebase 取得完全相同的提交再执行验证。Flutter/Dart 平台无关的分析和测试可在任一具备项目 SDK 的机器运行。双机同步只使用 rebase（见“分支整合与同步”），不产生 merge 提交。
+- 修改 `ios/Podfile`、Flutter iOS 插件或 CocoaPods 依赖后，在 Mac 执行 `flutter pub get` 和 `cd ios && pod install`，并提交对应的 `ios/Podfile.lock`。`Podfile.lock` 的 `PODFILE CHECKSUM` 必须与 `shasum ios/Podfile` 一致；本地存在 `ios/Pods/Manifest.lock` 时，还应确认它与 `Podfile.lock` 一致。不要把正确的 checksum 更新当成生成噪音恢复掉；若仅出现 CocoaPods 版本、工程注释或空数组等环境差异，应先查明原因并只保留任务所需改动。
 
 ## Testing
 
