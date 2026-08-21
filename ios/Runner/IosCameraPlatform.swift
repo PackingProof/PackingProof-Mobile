@@ -20,6 +20,7 @@ final class IosCameraHostApi:
   private let metadataQueue = DispatchQueue(label: "packingproof.camera.metadata")
   private let bufferLock = NSLock()
   private let stateLock = NSLock()
+  private let recordingLifecycle = IosCameraRecordingLifecycle()
 
   private var textureId: Int64 = -1
   private var latestPixelBuffer: CVPixelBuffer?
@@ -54,7 +55,6 @@ final class IosCameraHostApi:
   private var currentAudioSampleCount: Int64 = 0
   private var currentAudioAppendFailedCount: Int64 = 0
   private var currentAudioLastError: String?
-  private var splitPending = false
   private var lastAudioSampleCount: Int64 = 0
   private var lastAudioAppendFailedCount: Int64 = 0
   private var lastAudioLastError: String?
@@ -86,6 +86,7 @@ final class IosCameraHostApi:
 
   deinit {
     markDisposed()
+    recordingLifecycle.dispose()
     clearOutputDelegates()
     let session = self.session
     sessionQueue.async {
@@ -163,12 +164,25 @@ final class IosCameraHostApi:
     recordAudio: Bool,
     completion: @escaping (Result<CameraRecordingStartDto, Error>) -> Void
   ) {
-    self.recordAudio = recordAudio
     sessionQueue.async { [weak self] in
       guard let self, !self.isDisposed else {
         completion(.failure(pigeonError("摄像头已经关闭")))
         return
       }
+      let request: IosCameraRecordingLifecycle.Request
+      switch self.recordingLifecycle.begin(
+        .start,
+        onCancelled: {
+          completion(.failure(pigeonError("摄像头已经关闭")))
+        }
+      ) {
+      case .success(let value):
+        request = value
+      case .failure(let rejection):
+        completion(.failure(self.recordingRequestError(rejection, for: .start)))
+        return
+      }
+      self.recordAudio = recordAudio
       do {
         try self.ensureRunningForWork()
         try self.startWriter(path: path)
@@ -181,12 +195,16 @@ final class IosCameraHostApi:
           ),
           completion: { _ in }
         )
-        completion(.success(CameraRecordingStartDto(
-          path: path,
-          startedAtMs: startedAt
-        )))
+        if self.recordingLifecycle.complete(request, succeeded: true) {
+          completion(.success(CameraRecordingStartDto(
+            path: path,
+            startedAtMs: startedAt
+          )))
+        }
       } catch {
-        completion(.failure(error))
+        if self.recordingLifecycle.complete(request, succeeded: false) {
+          completion(.failure(error))
+        }
       }
     }
   }
@@ -200,40 +218,56 @@ final class IosCameraHostApi:
         completion(.failure(pigeonError("摄像头已经关闭")))
         return
       }
-      guard !self.splitPending else {
-        completion(.failure(pigeonError("上一段录像正在保存")))
+      let request: IosCameraRecordingLifecycle.Request
+      switch self.recordingLifecycle.begin(
+        .split,
+        onCancelled: {
+          completion(.failure(pigeonError("摄像头已经关闭")))
+        }
+      ) {
+      case .success(let value):
+        request = value
+      case .failure(let rejection):
+        completion(.failure(self.recordingRequestError(rejection, for: .split)))
         return
       }
       guard self.currentPath != nil else {
-        completion(.failure(pigeonError("当前没有正在录制的视频")))
+        if self.recordingLifecycle.complete(request, succeeded: false) {
+          completion(.failure(pigeonError("当前没有正在录制的视频")))
+        }
         return
       }
-      self.splitPending = true
       let completedPath = self.currentPath ?? ""
       let completedStartedAt = self.currentStartedAtMs
       let boundaryAt = Int64(Date().timeIntervalSince1970 * 1000)
       self.finishCurrentWriter { [weak self] in
         guard let self else {
-          completion(.failure(pigeonError("摄像头已经关闭")))
           return
         }
         self.sessionQueue.async {
+          guard !self.isDisposed,
+                self.recordingLifecycle.isPending(request) else {
+            self.recordingLifecycle.dispose()
+            return
+          }
           do {
             try self.startWriter(path: nextPath)
-            self.splitPending = false
-            completion(.success(CameraRecordingSplitDto(
-              completedPath: completedPath,
-              nextPath: nextPath,
-              completedStartedAtMs: completedStartedAt,
-              boundaryAtMs: boundaryAt
-            )))
+            if self.recordingLifecycle.complete(request, succeeded: true) {
+              completion(.success(CameraRecordingSplitDto(
+                completedPath: completedPath,
+                nextPath: nextPath,
+                completedStartedAtMs: completedStartedAt,
+                boundaryAtMs: boundaryAt
+              )))
+            }
           } catch {
-            self.splitPending = false
             self.eventApi.nativeError(
               message: "切换录像文件失败：\(error.localizedDescription)",
               completion: { _ in }
             )
-            completion(.failure(error))
+            if self.recordingLifecycle.complete(request, succeeded: false) {
+              completion(.failure(error))
+            }
           }
         }
       }
@@ -248,20 +282,54 @@ final class IosCameraHostApi:
         completion(.failure(pigeonError("摄像头已经关闭")))
         return
       }
-      if self.splitPending {
-        completion(.failure(pigeonError("请等待当前分段保存完成")))
+      let request: IosCameraRecordingLifecycle.Request
+      switch self.recordingLifecycle.begin(
+        .stop,
+        onCancelled: {
+          completion(.failure(pigeonError("摄像头已经关闭")))
+        }
+      ) {
+      case .success(let value):
+        request = value
+      case .failure(let rejection):
+        completion(.failure(self.recordingRequestError(rejection, for: .stop)))
         return
       }
       let path = self.currentPath ?? ""
       let startedAt = self.currentStartedAtMs
       let endedAt = Int64(Date().timeIntervalSince1970 * 1000)
-      self.finishCurrentWriter {
+      self.finishCurrentWriter { [weak self] in
+        guard let self,
+              self.recordingLifecycle.complete(request, succeeded: true) else {
+          return
+        }
         completion(.success(CameraRecordingStopDto(
           path: path,
           startedAtMs: startedAt,
           endedAtMs: endedAt
         )))
       }
+    }
+  }
+
+  private func recordingRequestError(
+    _ rejection: IosCameraRecordingLifecycle.Rejection,
+    for operation: IosCameraRecordingLifecycle.Operation
+  ) -> Error {
+    switch rejection {
+    case .disposed:
+      return pigeonError("摄像头已经关闭")
+    case .alreadyRecording:
+      return pigeonError("当前已有正在录制的视频", code: "camera_busy")
+    case .notRecording:
+      return pigeonError("当前没有正在录制的视频", code: "camera_not_recording")
+    case .transitionInProgress:
+      let message = switch operation {
+      case .start: "录像状态正在切换"
+      case .split: "上一段录像正在保存"
+      case .stop: "请等待当前分段保存完成"
+      }
+      return pigeonError(message, code: "camera_busy")
     }
   }
 
@@ -498,6 +566,7 @@ final class IosCameraHostApi:
 
   func dispose(completion: @escaping (Result<Void, Error>) -> Void) {
     markDisposed()
+    recordingLifecycle.dispose()
     // 先移除采样回调，避免 App 终止时 AVCaptureSession 再回调到已释放的
     // self，触发 use-after-free（SIGSEGV）。
     clearOutputDelegates()
@@ -522,6 +591,7 @@ final class IosCameraHostApi:
   /// 终止前同步停止相机并解除纹理注册，保证之后 Flutter 引擎可安全销毁。
   func prepareForTermination() {
     markDisposed()
+    recordingLifecycle.dispose()
     clearOutputDelegates()
     if let observer = runtimeErrorObserver {
       NotificationCenter.default.removeObserver(observer)
@@ -1209,6 +1279,7 @@ final class IosCameraHostApi:
     stateLock.lock()
     disposed = false
     stateLock.unlock()
+    recordingLifecycle.resetAfterDispose()
   }
 
   private var currentTextureId: Int64 {
