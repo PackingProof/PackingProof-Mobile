@@ -7,6 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.io.File
 
 class LanBackupCompletionContractTest {
     @Test
@@ -61,5 +62,35 @@ class LanBackupCompletionContractTest {
         val legacy = JSONObject(valid.toString()).put("recordIds", JSONArray().put(42L))
         assertNull(verifiedCompletionRecordId(legacy, sha256))
         assertNull(verifiedCompletionRecordId(JSONObject(valid.toString()).remove("recordId"), sha256))
+    }
+
+    @Test
+    fun sharedFixtureMatchesAndroidCompletionContract() {
+        val fixtureFile = findRepositoryFile(
+            "protocol-fixtures/mobile-backup-v2-complete.json",
+        )
+        val fixture = JSONObject(fixtureFile.readText(Charsets.UTF_8))
+        val request = fixture.getJSONObject("request")
+        val expectedSessions = request.getJSONArray("sessions")
+        val actualSessions = canonicalCompletionSessions(expectedSessions)
+        val response = fixture.getJSONObject("response")
+
+        assertEquals(1, actualSessions.length())
+        assertEquals(expectedSessions.toString(), actualSessions.toString())
+        assertEquals(
+            42L,
+            verifiedCompletionRecordId(response, request.getString("fileSha256")),
+        )
+        assertFalse(response.has("recordIds"))
+    }
+
+    private fun findRepositoryFile(relativePath: String): File {
+        var directory: File? = File(System.getProperty("user.dir")).absoluteFile
+        while (directory != null) {
+            val candidate = File(directory, relativePath)
+            if (candidate.isFile) return candidate
+            directory = directory.parentFile
+        }
+        throw IllegalStateException("找不到共享契约夹具：$relativePath")
     }
 }

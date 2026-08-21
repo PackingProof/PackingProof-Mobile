@@ -13,6 +13,30 @@ class RunnerTests: XCTestCase {
     XCTAssertLessThan(compareLanBackupVersions("invalid", "0.5.11"), 0)
   }
 
+  func testSharedFixtureMatchesIosCompletionContract() throws {
+    let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    let fixtureURL = testsDirectory
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .appendingPathComponent("protocol-fixtures/mobile-backup-v2-complete.json")
+    let fixture = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: Data(contentsOf: fixtureURL))
+        as? [String: Any]
+    )
+    let request = try XCTUnwrap(fixture["request"] as? [String: Any])
+    let expectedSessions = try XCTUnwrap(request["sessions"] as? [Any])
+    let expectedSession = try XCTUnwrap(expectedSessions.first as? [String: Any])
+    let actualSession = try XCTUnwrap(
+      IosBackupHostApi.backupCompletionSession(expectedSession)
+    )
+    let response = try XCTUnwrap(fixture["response"] as? [String: Any])
+
+    XCTAssertEqual(expectedSessions.count, 1)
+    XCTAssertEqual(actualSession as NSDictionary, expectedSession as NSDictionary)
+    XCTAssertEqual((response["recordId"] as? NSNumber)?.int64Value, 42)
+    XCTAssertNil(response["recordIds"])
+  }
+
   func testRequiredUsageDescriptionsPresent() {
     let requiredKeys = [
       "NSCameraUsageDescription",

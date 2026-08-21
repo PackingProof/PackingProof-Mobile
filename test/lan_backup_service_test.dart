@@ -448,6 +448,56 @@ void main() {
     expect(value, isNot(contains('orderInfo')));
   });
 
+  test('备份元数据与四端共享契约夹具一致', () async {
+    final Map<String, Object?> fixture = Map<String, Object?>.from(
+      jsonDecode(
+            await File(
+              'protocol-fixtures/mobile-backup-v2-complete.json',
+            ).readAsString(),
+          )
+          as Map,
+    );
+    final Map<String, Object?> request = Map<String, Object?>.from(
+      fixture['request']! as Map,
+    );
+    final Map<String, Object?> expectedSession = Map<String, Object?>.from(
+      (request['sessions']! as List<Object?>).single! as Map,
+    );
+    final Map<String, Object?> response = Map<String, Object?>.from(
+      fixture['response']! as Map,
+    );
+    final DateTime startedAt = DateTime.parse(
+      expectedSession['startedAt']! as String,
+    );
+    final Map<String, Object?> marker = Map<String, Object?>.from(
+      (expectedSession['markers']! as List<Object?>).single! as Map,
+    );
+    final RecordingSession session = RecordingSession(
+      id: expectedSession['id']! as String,
+      filePath: '${Directory.systemTemp.path}/contract.mp4',
+      startedAt: startedAt,
+      endedAt: DateTime.parse(expectedSession['endedAt']! as String),
+      markers: <BarcodeMarker>[
+        BarcodeMarker(
+          code: marker['code']! as String,
+          occurredAt: DateTime.parse(marker['occurredAt']! as String),
+          offset: Duration(milliseconds: (marker['offsetMs']! as num).toInt()),
+        ),
+      ],
+      mediaStart: Duration(
+        milliseconds: (expectedSession['mediaStartMs']! as num).toInt(),
+      ),
+      mediaEnd: Duration(
+        milliseconds: (expectedSession['mediaEndMs']! as num).toInt(),
+      ),
+    );
+
+    expect(recordingSessionBackupMap(session), expectedSession);
+    expect(request['sessions'], hasLength(1));
+    expect(response['recordId'], 42);
+    expect(response, isNot(contains('recordIds')));
+  });
+
   test('立即备份会要求原生任务强制重启', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing-proof-backup-',

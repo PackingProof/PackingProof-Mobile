@@ -1087,7 +1087,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
     return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
   }
 
-  private static func backupCompletionSession(_ value: Any) -> [String: Any]? {
+  static func backupCompletionSession(_ value: Any) -> [String: Any]? {
     guard
       let source = value as? [String: Any],
       let id = source["id"] as? String,
