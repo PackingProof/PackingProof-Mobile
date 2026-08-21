@@ -361,6 +361,16 @@ void main() {
     expect(orderReceiver.initializeStarted.isCompleted, isFalse);
   });
 
+  test('平台未声明相机能力协商时忽略手动探针', () async {
+    await controller.initialize();
+
+    await controller.retryCapabilityProbe();
+
+    expect(camera.probeSequenceCalls, 0);
+    expect(controller.phase, PackingSessionPhase.ready);
+    expect(controller.showCameraCapabilityCard, isFalse);
+  });
+
   test('用户切到长焦后开始工作不会切回主摄', () async {
     await controller.initialize();
     await controller.switchToCamera('tele');

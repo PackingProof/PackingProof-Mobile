@@ -5,6 +5,7 @@
 /// `Platform.isAndroid` 判断。
 enum PlatformCapability {
   continuousCameraRecording,
+  cameraCapabilityNegotiation,
   lanBackup,
   orderInfoReceiver,
   videoWatermark,

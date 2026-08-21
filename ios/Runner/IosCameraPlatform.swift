@@ -2,6 +2,33 @@ import AVFoundation
 import Flutter
 import UIKit
 
+/// iOS 始终使用同一个 AVFoundation 完整管线，不提供 Android 的三档
+/// surface 组合探测或运行时模式切换。
+enum IosCameraCapabilityPolicy {
+  static func validateInitializationMode(_ mode: String) throws {
+    guard mode == "unverified" || mode == "full" else {
+      throw pigeonError(
+        "iOS 相机不支持能力模式 \(mode)",
+        code: "camera_capability_mode_unsupported"
+      )
+    }
+  }
+
+  static func probeUnsupportedError(sequence: String) -> PigeonError {
+    pigeonError(
+      "iOS 相机使用固定完整管线，不支持能力序列探测：\(sequence)",
+      code: "camera_capability_probe_unsupported"
+    )
+  }
+
+  static func modeSwitchUnsupportedError(mode: String) -> PigeonError {
+    pigeonError(
+      "iOS 相机使用固定完整管线，不支持能力模式切换：\(mode)",
+      code: "camera_capability_mode_unsupported"
+    )
+  }
+}
+
 /// iOS 连续相机原生实现：
 /// 保持一个 `AVCaptureSession` 常开，用 `AVAssetWriter` 按单号轮换输出文件，
 /// 不重启预览，达到接近 Android 连续录像的体验。
@@ -115,6 +142,14 @@ final class IosCameraHostApi:
     request: CameraInitializeRequest,
     completion: @escaping (Result<CameraInitializationDto, Error>) -> Void
   ) {
+    do {
+      try IosCameraCapabilityPolicy.validateInitializationMode(
+        request.capabilityMode
+      )
+    } catch {
+      completion(.failure(error))
+      return
+    }
     preferredVideoCodec = request.videoCodec
     recordingSpecName = request.recordingSpec
     recordingOrientationName = ["landscapeLeft", "landscapeRight"].contains(request.recordingOrientation)
@@ -555,13 +590,13 @@ final class IosCameraHostApi:
     budgetMs: Int64,
     completion: @escaping (Result<[String?: Any?]?, Error>) -> Void
   ) {
-    // iOS 首版先返回空探针，由 Dart 策略保留为 unverified，
-    // 不阻塞真实预览与录像；后续再补齐 AVFoundation 能力探测。
-    completion(.success(nil))
+    completion(.failure(
+      IosCameraCapabilityPolicy.probeUnsupportedError(sequence: sequence)
+    ))
   }
 
   func setCapabilityMode(mode: String) throws {
-    // 当前 iOS 实现不切换 Android 那种三档能力模式。
+    throw IosCameraCapabilityPolicy.modeSwitchUnsupportedError(mode: mode)
   }
 
   func dispose(completion: @escaping (Result<Void, Error>) -> Void) {

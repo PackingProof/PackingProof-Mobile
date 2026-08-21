@@ -44,6 +44,10 @@ void main() {
       ios.capabilities.supports(PlatformCapability.alertVolumeBoost),
       isFalse,
     );
+    expect(
+      ios.capabilities.supports(PlatformCapability.cameraCapabilityNegotiation),
+      isFalse,
+    );
 
     for (final String operatingSystem in <String>[
       'linux',

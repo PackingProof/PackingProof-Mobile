@@ -6,6 +6,40 @@ import XCTest
 
 class RunnerTests: XCTestCase {
 
+  func testIosCameraCapabilityPolicyAcceptsOnlyFixedPipelineInitialization() {
+    XCTAssertNoThrow(
+      try IosCameraCapabilityPolicy.validateInitializationMode("unverified")
+    )
+    XCTAssertNoThrow(
+      try IosCameraCapabilityPolicy.validateInitializationMode("full")
+    )
+
+    for mode in ["encoder_analysis", "alternating", "unknown"] {
+      XCTAssertThrowsError(
+        try IosCameraCapabilityPolicy.validateInitializationMode(mode)
+      ) { error in
+        XCTAssertEqual(
+          (error as? PigeonError)?.code,
+          "camera_capability_mode_unsupported"
+        )
+      }
+    }
+  }
+
+  func testIosCameraCapabilityOperationsFailWithTypedErrors() {
+    let probeError = IosCameraCapabilityPolicy.probeUnsupportedError(
+      sequence: "full"
+    )
+    XCTAssertEqual(probeError.code, "camera_capability_probe_unsupported")
+
+    for mode in ["full", "encoder_analysis", "alternating", "unknown"] {
+      XCTAssertEqual(
+        IosCameraCapabilityPolicy.modeSwitchUnsupportedError(mode: mode).code,
+        "camera_capability_mode_unsupported"
+      )
+    }
+  }
+
   func testLanBackupVersionComparison() {
     XCTAssertEqual(compareLanBackupVersions("v0.5.11+11011", "0.5.11"), 0)
     XCTAssertGreaterThan(compareLanBackupVersions("0.5.12", "0.5.11"), 0)

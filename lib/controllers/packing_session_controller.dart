@@ -272,9 +272,10 @@ class PackingSessionController extends ChangeNotifier
   bool get capabilityProbeRunning => _capabilityProbeRunning;
   String? get capabilityProbeMessage => _capabilityProbeMessage;
   bool get showCameraCapabilityCard =>
-      (_capabilityMode != CameraCapabilityMode.unverified &&
-          _capabilityMode != CameraCapabilityMode.full) ||
-      _nativeRecordingFallback;
+      _supportsCameraCapabilityNegotiation &&
+      ((_capabilityMode != CameraCapabilityMode.unverified &&
+              _capabilityMode != CameraCapabilityMode.full) ||
+          _nativeRecordingFallback);
   bool get alternatingRecording =>
       _capabilityMode == CameraCapabilityMode.alternating && isRecording;
   bool get canFinishCurrentOrder =>
@@ -337,6 +338,8 @@ class PackingSessionController extends ChangeNotifier
   @override
   bool get _supportsNativeCamera =>
       _capabilities.supports(PlatformCapability.continuousCameraRecording);
+  bool get _supportsCameraCapabilityNegotiation =>
+      _capabilities.supports(PlatformCapability.cameraCapabilityNegotiation);
   String? get activeCameraId => _nativeInitialization?.cameraId;
   bool get frontCameraActive =>
       _supportsNativeCamera && _nativeInitialization?.isFrontCamera == true;
@@ -690,7 +693,12 @@ class PackingSessionController extends ChangeNotifier
 
   /// 设置页「重新检测」：仅空闲时可用，探测期间阻塞开始工作。
   Future<void> retryCapabilityProbe() async {
-    if (_disposed || !_supportsNativeCamera || _nativeCamera == null) return;
+    if (_disposed ||
+        !_supportsNativeCamera ||
+        !_supportsCameraCapabilityNegotiation ||
+        _nativeCamera == null) {
+      return;
+    }
     if (isWorking || isBusy || _capabilityProbeRunning) return;
     _errorMessage = null;
     _setPhase(PackingSessionPhase.initializing);
@@ -847,7 +855,12 @@ class PackingSessionController extends ChangeNotifier
   }
 
   Future<void> _resolveCameraCapability() async {
-    if (_disposed || !_supportsNativeCamera || _nativeCamera == null) return;
+    if (_disposed ||
+        !_supportsNativeCamera ||
+        !_supportsCameraCapabilityNegotiation ||
+        _nativeCamera == null) {
+      return;
+    }
     final Map<String, Object?> identity = await _currentCameraIdentity();
     if (identity.isEmpty) return;
     final Map<String, Object?>? cached = _capabilityState;

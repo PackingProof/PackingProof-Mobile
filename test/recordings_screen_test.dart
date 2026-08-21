@@ -611,6 +611,22 @@ void main() {
         home: settings(
           const PlatformCapabilities(<PlatformCapability>{
             PlatformCapability.continuousCameraRecording,
+          }),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const Key('camera-capability-settings-card')),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: settings(
+          const PlatformCapabilities(<PlatformCapability>{
+            PlatformCapability.continuousCameraRecording,
+            PlatformCapability.cameraCapabilityNegotiation,
             PlatformCapability.orderInfoReceiver,
           }),
         ),

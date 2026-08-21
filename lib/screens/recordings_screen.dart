@@ -1622,7 +1622,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
               ),
               if (widget.showCameraCapabilityCard &&
                   widget.capabilities?.supports(
-                        PlatformCapability.continuousCameraRecording,
+                        PlatformCapability.cameraCapabilityNegotiation,
                       ) !=
                       false &&
                   widget.capabilityMode != null) ...<Widget>[

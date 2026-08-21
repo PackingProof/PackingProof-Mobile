@@ -265,6 +265,7 @@ void main() {
       videoWatermarkService: _FakeWatermarkSink(),
       capabilities: const PlatformCapabilities(<PlatformCapability>{
         PlatformCapability.continuousCameraRecording,
+        PlatformCapability.cameraCapabilityNegotiation,
       }),
       cameraService: ContinuousCameraService(platform: camera),
     );
@@ -316,6 +317,7 @@ void main() {
       videoWatermarkService: _FakeWatermarkSink(),
       capabilities: const PlatformCapabilities(<PlatformCapability>{
         PlatformCapability.continuousCameraRecording,
+        PlatformCapability.cameraCapabilityNegotiation,
       }),
       cameraService: ContinuousCameraService(platform: camera),
     );

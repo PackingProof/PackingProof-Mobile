@@ -40,11 +40,13 @@ abstract interface class CameraPlatform {
 
   Future<ContinuousCameraInitialization> switchToCamera(String cameraId);
 
+  /// 仅在平台声明 cameraCapabilityNegotiation 时调用。
   Future<Map<Object?, Object?>?> probeSequence(
     String sequence, {
     required int budgetMs,
   });
 
+  /// 仅在平台声明 cameraCapabilityNegotiation 时调用。
   Future<void> setCapabilityMode(String mode);
 
   Future<void> dispose();
