@@ -16,6 +16,7 @@
 		8BA526826CE81074CA37E522 /* PigeonPlatform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09FDFC3154D80CE5B78AA049 /* PigeonPlatform.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* IosBackupPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F40516273849A5B6C7 /* IosBackupPersistence.swift */; };
 		A2B3C4D5E6F708192A3B4C5D /* IosBackupPlatform.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D3E4F5061728394A5B6C7D /* IosBackupPlatform.swift */; };
+		D5E6F708192A3B4C5D6E7F80 /* IosCameraPlatform.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5F60718293A4B5C6D7E8F90 /* IosCameraPlatform.swift */; };
 		930872EA173376407B2C201B /* PlatformApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3379857305BCA598D4039F5D /* PlatformApi.swift */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
@@ -51,6 +52,7 @@
 		09FDFC3154D80CE5B78AA049 /* PigeonPlatform.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PigeonPlatform.swift; sourceTree = "<group>"; };
 		C1D2E3F40516273849A5B6C7 /* IosBackupPersistence.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosBackupPersistence.swift; sourceTree = "<group>"; };
 		C2D3E4F5061728394A5B6C7D /* IosBackupPlatform.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosBackupPlatform.swift; sourceTree = "<group>"; };
+		E5F60718293A4B5C6D7E8F90 /* IosCameraPlatform.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosCameraPlatform.swift; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		15AA95A630075CB44A63380E /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -169,6 +171,7 @@
 				C3B358335144A53A27AC5CEE /* Generated */,
 				C1D2E3F40516273849A5B6C7 /* IosBackupPersistence.swift */,
 				C2D3E4F5061728394A5B6C7D /* IosBackupPlatform.swift */,
+				E5F60718293A4B5C6D7E8F90 /* IosCameraPlatform.swift */,
 				09FDFC3154D80CE5B78AA049 /* PigeonPlatform.swift */,
 			);
 			path = Runner;
@@ -418,6 +421,7 @@
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* IosBackupPersistence.swift in Sources */,
 				A2B3C4D5E6F708192A3B4C5D /* IosBackupPlatform.swift in Sources */,
+				D5E6F708192A3B4C5D6E7F80 /* IosCameraPlatform.swift in Sources */,
 				8BA526826CE81074CA37E522 /* PigeonPlatform.swift in Sources */,
 				930872EA173376407B2C201B /* PlatformApi.swift in Sources */,
 			);

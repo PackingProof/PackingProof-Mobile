@@ -35,6 +35,6 @@ fi
 
 # 职责拆分后应同步降低对应上限，不得为新增代码提高基线。
 check_limit lib/screens/recordings_screen.dart 3806
-check_limit ios/Runner/PigeonPlatform.swift 2395
+check_limit ios/Runner/PigeonPlatform.swift 1075
 check_limit lib/controllers/packing_session_controller.dart 3488
 check_limit android/app/src/main/kotlin/app/packingproof/mobile/ContinuousSegmentCamera.kt 3373
