@@ -243,6 +243,9 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private let jobStore: Result<IosBackupJobStore, Error>
   private let eventApi: BackupNativeEventApiProtocol
   private let recordingsRoot: URL?
+  private let availableStorageBytesOverride: (() -> Int64)?
+  private let storageAttestationOverride:
+    (([String: Any], String, Int64) async -> String?)?
   private let networkMonitor = NWPathMonitor()
   private let networkQueue = DispatchQueue(label: "ios.backup.network")
   private var lastLanReachable = false
@@ -289,7 +292,10 @@ final class IosBackupHostApi: BackupNativeHostApi {
     defaults: UserDefaults = .standard,
     credentialStore: IosBackupCredentialStore? = nil,
     jobStore: Result<IosBackupJobStore, Error>? = nil,
-    recordingsRoot: URL? = nil
+    recordingsRoot: URL? = nil,
+    availableStorageBytesOverride: (() -> Int64)? = nil,
+    storageAttestationOverride:
+      (([String: Any], String, Int64) async -> String?)? = nil
   ) {
     self.eventApi = eventApi
     self.defaults = defaults
@@ -297,6 +303,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
       credentialStore ?? IosBackupCredentialStore(defaults: defaults)
     self.jobStore = jobStore ?? Result { try IosBackupJobStore() }
     self.recordingsRoot = recordingsRoot
+    self.availableStorageBytesOverride = availableStorageBytesOverride
+    self.storageAttestationOverride = storageAttestationOverride
     networkMonitor.pathUpdateHandler = { [weak self] path in
       self?.lastLanReachable =
         path.status == .satisfied && !path.usesInterfaceType(.cellular)
@@ -445,76 +453,112 @@ final class IosBackupHostApi: BackupNativeHostApi {
   func reclaimStorageIfNeeded(
     completion: @escaping (Result<[String?: Any?], Error>) -> Void
   ) {
-    do {
-      let minimumBytes: Int64 = 2 * 1024 * 1024 * 1024
-      let targetBytes: Int64 = 3 * 1024 * 1024 * 1024
-      let before = availableStorageBytes()
-      var current = before
-      var deletedCount = 0
-      var freedBytes: Int64 = 0
-      if current < minimumBytes {
-        let recordingsRoot = recordingsDirectory().path + "/"
-        for var job in try jobs() where current < targetBytes {
-          guard
-            job["state"] as? String == "completed",
-            (job["verificationVersion"] as? Int ?? 0) >= Self.verificationVersion,
-            let remoteId = job["remoteRecordId"] as? NSNumber,
-            remoteId.int64Value > 0,
-            let receipt = job["verificationReceipt"] as? String,
-            !receipt.isEmpty,
-            IosBackupCleanupGate.hasSingleSession(job),
-            let lastAttested = job["lastAttestedAt"] as? String,
-            let attestedDate = Self.isoFormatter.date(from: lastAttested),
-            Date().timeIntervalSince(attestedDate) <= Self.storageAttestationFreshness,
-            let path = job["filePath"] as? String,
-            path.hasPrefix(recordingsRoot)
-          else {
-            continue
-          }
-          let file = URL(fileURLWithPath: path)
-          guard FileManager.default.fileExists(atPath: path) else { continue }
-          if let expected = job["contentSha256"] as? String, !expected.isEmpty {
-            if sha256(file: file) != expected {
-              job["errorMessage"] = "录像文件已被替换，已取消空间清理"
-              try upsert(job)
-              continue
-            }
-          }
-          let size = Int64(
-            (try? FileManager.default.attributesOfItem(
-              atPath: path
-            )[.size] as? Int64) ?? 0
-          )
-          do {
-            try FileManager.default.removeItem(at: file)
-            deletedCount += 1
-            freedBytes += size
-            job["localDeletedAt"] = ISO8601DateFormatter().string(from: Date())
-            job["cleanupReason"] = "存储空间不足提前清理"
-            try upsert(job)
-          } catch {
-            job["errorMessage"] = "空间清理失败，已保留本机录像"
-            try upsert(job)
-          }
-          current = availableStorageBytes()
-        }
+    Task {
+      do {
+        completion(.success(try await performStorageReclaim()))
+      } catch {
+        // broad-catch: 将清理策略、文件或 SQLite 错误完整传回 Pigeon 调用方。
+        completion(.failure(error))
       }
-      emitSnapshot()
-      completion(
-        .success(
-          [
-            "availableBytes": current,
-            "availableBytesBefore": before,
-            "freedBytes": freedBytes,
-            "deletedCount": deletedCount,
-            "warning": current < targetBytes,
-            "insufficient": current < minimumBytes,
-          ]
-        )
-      )
-    } catch {
-      completion(.failure(error))
     }
+  }
+
+  private func performStorageReclaim() async throws -> [String?: Any?] {
+    let minimumBytes: Int64 = 2 * 1024 * 1024 * 1024
+    let targetBytes: Int64 = 3 * 1024 * 1024 * 1024
+    let before = availableStorageBytes()
+    var current = before
+    var deletedCount = 0
+    var freedBytes: Int64 = 0
+    if current < minimumBytes {
+      let recordingsRoot = recordingsDirectory().path + "/"
+      for job in try jobs() where current < targetBytes {
+        guard
+          job["state"] as? String == "completed",
+          IosBackupCleanupGate.hasVerifiedRetentionEvidence(
+            job,
+            minimumVersion: Self.verificationVersion
+          ),
+          let expectedSha256 = job["contentSha256"] as? String,
+          let totalBytes = job["totalBytes"] as? Int64,
+          let lastAttested = job["lastAttestedAt"] as? String,
+          let attestedDate = Self.isoFormatter.date(from: lastAttested),
+          Date().timeIntervalSince(attestedDate) <= Self.storageAttestationFreshness,
+          let path = job["filePath"] as? String,
+          path.hasPrefix(recordingsRoot)
+        else {
+          continue
+        }
+        let file = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: path) else { continue }
+        guard sha256(file: file) == expectedSha256 else {
+          var updated = job
+          updated["errorMessage"] = "录像文件已被替换，已取消空间清理"
+          try upsert(updated)
+          continue
+        }
+
+        let attestation = await storageAttestation(
+          job,
+          contentSha256: expectedSha256,
+          totalBytes: totalBytes
+        )
+        guard let receiptSignature = attestation else {
+          var updated = job
+          updated["errorMessage"] = "暂时无法向电脑确认备份，已保留本地录像"
+          try upsert(updated)
+          continue
+        }
+
+        guard
+          var currentJob = try readJobById(job["id"] as? String ?? ""),
+          (currentJob["generation"] as? String) == (job["generation"] as? String),
+          currentJob["state"] as? String == "completed",
+          currentJob["localDeletedAt"] as? String == nil,
+          IosBackupCleanupGate.hasVerifiedRetentionEvidence(
+            currentJob,
+            minimumVersion: Self.verificationVersion
+          ),
+          currentJob["contentSha256"] as? String == expectedSha256
+        else { continue }
+
+        currentJob["verificationReceipt"] = receiptSignature
+        currentJob["lastAttestedAt"] = Self.isoFormatter.string(from: Date())
+        switch deleteExpected(
+          file: file,
+          expectedBytes: totalBytes,
+          expectedLastModified: currentJob["lastModified"] as? Int64 ?? -1,
+          expectedSha256: expectedSha256
+        ) {
+        case .deleted:
+          deletedCount += 1
+          freedBytes += totalBytes
+          currentJob["localDeletedAt"] = Self.isoFormatter.string(from: Date())
+          currentJob["cleanupReason"] = "存储空间不足提前清理"
+        case .missing:
+          continue
+        case .stale:
+          currentJob["errorMessage"] = "录像文件已被替换，已取消空间清理"
+          try upsert(currentJob)
+          continue
+        case .failed:
+          currentJob["errorMessage"] = "空间清理失败，已保留本机录像"
+          try upsert(currentJob)
+          continue
+        }
+        try upsert(currentJob)
+        current = availableStorageBytes()
+      }
+    }
+    emitSnapshot()
+    return [
+      "availableBytes": current,
+      "availableBytesBefore": before,
+      "freedBytes": freedBytes,
+      "deletedCount": deletedCount,
+      "warning": current < targetBytes,
+      "insufficient": current < minimumBytes,
+    ]
   }
 
   private func recordingsDirectory() -> URL {
@@ -527,10 +571,27 @@ final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   private func availableStorageBytes() -> Int64 {
+    if let availableStorageBytesOverride { return availableStorageBytesOverride() }
     let values = try? FileManager.default.attributesOfFileSystem(
       forPath: recordingsDirectory().path
     )
     return (values?[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
+  }
+
+  private func storageAttestation(
+    _ job: [String: Any],
+    contentSha256: String,
+    totalBytes: Int64
+  ) async -> String? {
+    if let storageAttestationOverride {
+      return await storageAttestationOverride(job, contentSha256, totalBytes)
+    }
+    guard case .confirmed(let receiptSignature) = await attestBackedJob(
+      job,
+      contentSha256: contentSha256,
+      totalBytes: totalBytes
+    ) else { return nil }
+    return receiptSignature
   }
 
   private func sha256(file: URL) -> String? {
