@@ -14,7 +14,7 @@ check_diff_stream() {
     }
 
     function is_broad_catch(line, typed) {
-      if (line ~ /on[[:space:]]+(Object|Exception|dynamic)[[:space:]]+catch/) {
+      if (line ~ /on[[:space:]]+(Object|Exception|dynamic)[[:space:]]*(catch|\{)/) {
         return 1
       }
       typed = line ~ /on[[:space:]]+[A-Za-z0-9_.<>]+[[:space:]]+catch/
@@ -101,6 +101,19 @@ diff --git a/lib/bad.dart b/lib/bad.dart
 EOF
   then
     echo "宽泛 catch 失败夹具未被拒绝" >&2
+    exit 1
+  fi
+  if check_diff_stream 2>/dev/null <<'EOF'
+diff --git a/lib/bad_without_variable.dart b/lib/bad_without_variable.dart
+--- a/lib/bad_without_variable.dart
++++ b/lib/bad_without_variable.dart
+@@ -1,0 +1,3 @@
++try {
++} on Object {
++  return null;
+EOF
+  then
+    echo "无变量宽泛 catch 失败夹具未被拒绝" >&2
     exit 1
   fi
   echo "宽泛 catch 守门自测通过"
