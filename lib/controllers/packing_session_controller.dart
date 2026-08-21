@@ -49,6 +49,7 @@ import '../services/video_watermark_service.dart';
 
 part 'packing_session_backup_coordinator.dart';
 part 'packing_session_storage_coordinator.dart';
+part 'packing_session_watermark_coordinator.dart';
 
 enum PackingSessionPhase {
   initializing,
@@ -76,7 +77,10 @@ String _codecFallbackMessage(String reason) => switch (reason) {
 };
 
 class PackingSessionController extends ChangeNotifier
-    with _PackingSessionBackupCoordinator, _PackingSessionStorageCoordinator {
+    with
+        _PackingSessionBackupCoordinator,
+        _PackingSessionStorageCoordinator,
+        _PackingSessionWatermarkCoordinator {
   PackingSessionController({
     SessionRepository? repository,
     SpeechPromptSink? speechService,
@@ -133,6 +137,7 @@ class PackingSessionController extends ChangeNotifier
   final MaxVolumeSink _maxVolumeService;
   @override
   late final LanBackupSink _lanBackupService;
+  @override
   final VideoWatermarkSink _videoWatermarkService;
   final PlatformCapabilities _capabilities;
   final OrderInfoReceiverSink _orderInfoReceiver;
@@ -162,6 +167,7 @@ class PackingSessionController extends ChangeNotifier
 
   CameraController? _cameraController;
   ContinuousCameraService? _nativeCamera;
+  @override
   ContinuousCameraInitialization? _nativeInitialization;
   List<NativeCameraLens> _backCameraLenses = const <NativeCameraLens>[];
   PackingSessionPhase _phase = PackingSessionPhase.initializing;
@@ -195,8 +201,10 @@ class PackingSessionController extends ChangeNotifier
   String? _capabilityNoticeMessage;
   String? _alternatingLastCompletedCode;
   DateTime? _alternatingNoCodeSince;
+  @override
   RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
   RecordingSpecPreset _recordingSpec = RecordingSpecPreset.hd1080p30;
+  @override
   RecordingOrientation _recordingOrientation = RecordingOrientation.portrait;
   int _minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength;
   int _historyPageSize = AppSettings.defaultHistoryPageSize;
@@ -1907,72 +1915,6 @@ class PackingSessionController extends ChangeNotifier
     return <RecordingSession>[session];
   }
 
-  Future<void> _watermarkAndBackup(
-    String savedPath,
-    RecordingSession session,
-  ) async {
-    final String trackingNumber = _firstTrackingNumber(<RecordingSession>[
-      session,
-    ]);
-    try {
-      final String watermarkedPath =
-          await (_videoWatermarkService is OrientedVideoWatermarkSink
-              ? (_videoWatermarkService as OrientedVideoWatermarkSink)
-                    .applyWithOrientation(
-                      inputPath: savedPath,
-                      startedAt: session.startedAt,
-                      trackingNumber: trackingNumber,
-                      // 相机可能因设备不支持偏好编码而回退，水印必须跟随实际录制的编码。
-                      videoCodec: recordingVideoCodecFromMime(
-                        _nativeInitialization?.videoMime,
-                        fallback: _preferredVideoCodec,
-                      ),
-                      recordingOrientation: _recordingOrientation,
-                    )
-              : _videoWatermarkService.apply(
-                  inputPath: savedPath,
-                  startedAt: session.startedAt,
-                  trackingNumber: trackingNumber,
-                  videoCodec: recordingVideoCodecFromMime(
-                    _nativeInitialization?.videoMime,
-                    fallback: _preferredVideoCodec,
-                  ),
-                ));
-      final String finalPath = await _repository.finalizeVideo(
-        sourcePath: watermarkedPath,
-        sessionId: session.id,
-        startedAt: session.startedAt,
-        trackingNumber: trackingNumber,
-        operationMode: session.operationMode,
-      );
-      final RecordingSession finalized = finalPath == session.filePath
-          ? session
-          : _sessionWithPath(session, finalPath);
-      if (finalized.filePath != session.filePath) {
-        _sessions = await _repository.updateSession(finalized);
-        await _repository.deleteFileIfUnreferenced(savedPath);
-      }
-      await _enqueueBackupIfNeeded(finalPath, <RecordingSession>[finalized]);
-    } on Object catch (error, stackTrace) {
-      // The original recording is already safely indexed. A failed watermark
-      // must not keep the work button blocked or discard the video.
-      await _runtimeLog.log(
-        kind: 'watermark_failed',
-        extra: <String, Object?>{
-          'sessionId': session.id,
-          'filePath': savedPath,
-          'errorType': error.runtimeType.toString(),
-          'error': error.toString(),
-          'stackTrace': stackTrace.toString(),
-        },
-      );
-      if (await File(savedPath).exists()) {
-        await _enqueueBackupIfNeeded(savedPath, <RecordingSession>[session]);
-      }
-    }
-    if (!_disposed) notifyListeners();
-  }
-
   void _startElapsedTimer() {
     _elapsedTimer?.cancel();
     _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -2274,12 +2216,6 @@ class PackingSessionController extends ChangeNotifier
   }) {
     _handleNativeRecordingFallback(info, persist: persist);
   }
-
-  @visibleForTesting
-  Future<void> watermarkAndBackupForTesting(
-    String savedPath,
-    RecordingSession session,
-  ) => _watermarkAndBackup(savedPath, session);
 
   Future<void> _processFrame(CameraImage image) async {
     if (_processingFrame || !isWorking || isBusy || _handlingBarcode) {
@@ -2801,7 +2737,8 @@ class PackingSessionController extends ChangeNotifier
     );
   }
 
-  static String _firstTrackingNumber(List<RecordingSession> sessions) {
+  @override
+  String _firstTrackingNumber(List<RecordingSession> sessions) {
     for (final RecordingSession session in sessions) {
       if (session.markers.isNotEmpty && session.markers.first.code.isNotEmpty) {
         return session.markers.first.code;
@@ -2810,7 +2747,8 @@ class PackingSessionController extends ChangeNotifier
     return '';
   }
 
-  static RecordingSession _sessionWithPath(
+  @override
+  RecordingSession _sessionWithPath(
     RecordingSession session,
     String filePath, {
     OrderInfo? orderInfo,
