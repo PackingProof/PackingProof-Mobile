@@ -72,6 +72,16 @@ jobs:
         run: |
           mkdir -p build/test-results
           flutter test --exclude-tags golden --file-reporter json:build/test-results/flutter-tests.json
+      - name: Run home golden tests
+        id: home_goldens
+        run: flutter test test/home_golden_test.dart
+      - name: Upload home golden diffs
+        if: failure() && steps.home_goldens.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: home-golden-diffs-macos
+          path: test/failures
+          if-no-files-found: warn
       - name: Install iOS pods
         working-directory: ios
         run: pod install
