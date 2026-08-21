@@ -348,6 +348,71 @@ class RunnerTests: XCTestCase {
     XCTAssertFalse(IosBackupCleanupGate.hasSingleSession(job))
   }
 
+  func testBackupRetentionEvidenceRequiresLocallyVerifiedReceipt() {
+    var job = makeBackupJob(id: "retention-receipt")
+    job["contentSha256"] = String(repeating: "a", count: 64)
+    job["verificationVersion"] = 3
+    job["remoteRecordId"] = NSNumber(value: 42)
+    job["totalBytes"] = Int64(1_024)
+
+    XCTAssertFalse(
+      IosBackupCleanupGate.hasVerifiedRetentionEvidence(job, minimumVersion: 3)
+    )
+    job["verificationReceipt"] = "verified-receipt"
+    XCTAssertTrue(
+      IosBackupCleanupGate.hasVerifiedRetentionEvidence(job, minimumVersion: 3)
+    )
+    job["sessions"] = []
+    XCTAssertFalse(
+      IosBackupCleanupGate.hasVerifiedRetentionEvidence(job, minimumVersion: 3)
+    )
+  }
+
+  func testRetentionCleanupKeepsLegacyPseudoVerifiedFileWithoutReceipt()
+    async throws
+  {
+    let fixture = try makeRetentionCleanupFixture(id: "legacy-pseudo-verified")
+    defer { removeRetentionCleanupFixture(fixture) }
+    var job = fixture.job
+    job["verificationVersion"] = 3
+    job["remoteRecordId"] = NSNumber(value: 42)
+    try fixture.store.upsert(job)
+
+    try await fixture.api.performCleanup()
+
+    XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.file.path))
+    let updated = try XCTUnwrap(fixture.store.allJobs().first)
+    XCTAssertEqual(updated["waitingCleanup"] as? Bool, true)
+    XCTAssertNil(updated["localDeletedAt"])
+    XCTAssertEqual(
+      updated["errorMessage"] as? String,
+      "备份记录缺少安全校验信息，需重新备份后才能自动清理"
+    )
+  }
+
+  func testRetentionCleanupKeepsVerifiedFileWhenRemoteIsUnreachable()
+    async throws
+  {
+    let fixture = try makeRetentionCleanupFixture(id: "remote-unreachable")
+    defer { removeRetentionCleanupFixture(fixture) }
+    var job = fixture.job
+    job["verificationVersion"] = 3
+    job["verificationReceipt"] = "locally-verified-receipt"
+    job["remoteRecordId"] = NSNumber(value: 42)
+    try fixture.store.upsert(job)
+
+    try await fixture.api.performCleanup()
+
+    XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.file.path))
+    let updated = try XCTUnwrap(fixture.store.allJobs().first)
+    XCTAssertEqual(updated["waitingCleanup"] as? Bool, true)
+    XCTAssertNil(updated["localDeletedAt"])
+    XCTAssertEqual(
+      updated["errorMessage"] as? String,
+      "暂时无法向电脑确认备份，已保留本地录像"
+    )
+  }
+
   func testSystemIosKeychainClientRoundTrip() throws {
     let client = SystemIosKeychainClient()
     let service = "RunnerTests.keychain.\(UUID().uuidString)"
@@ -443,6 +508,61 @@ class RunnerTests: XCTestCase {
     try? FileManager.default.removeItem(at: fixture.root)
   }
 
+  private typealias RetentionCleanupFixture = (
+    root: URL, defaults: UserDefaults, suiteName: String, store: IosBackupJobStore,
+    api: IosBackupHostApi, file: URL, job: [String: Any]
+  )
+
+  private func makeRetentionCleanupFixture(
+    id: String
+  ) throws -> RetentionCleanupFixture {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent(
+        "retention-cleanup-\(UUID().uuidString)", isDirectory: true
+      )
+    let recordings = root.appendingPathComponent("recordings", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: recordings, withIntermediateDirectories: true
+    )
+    let file = recordings.appendingPathComponent("\(id).mp4")
+    let contents = Data("retention-cleanup-fixture".utf8)
+    try contents.write(to: file)
+    let snapshot = try IosBackupFileSnapshot.read(from: file)
+    let suiteName = "RunnerTests.retention-cleanup.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defaults.removePersistentDomain(forName: suiteName)
+    let store = try IosBackupJobStore(
+      databaseURL: root.appendingPathComponent("lan_backup.db"), defaults: defaults
+    )
+    let credentialStore = IosBackupCredentialStore(
+      defaults: defaults,
+      keychain: FakeIosKeychainClient(),
+      service: suiteName,
+      account: "access-key"
+    )
+    let api = IosBackupHostApi(
+      eventApi: FakeBackupNativeEventApi(),
+      defaults: defaults,
+      credentialStore: credentialStore,
+      jobStore: .success(store),
+      recordingsRoot: recordings
+    )
+    var job = makeBackupJob(id: id)
+    job["filePath"] = file.path
+    job["state"] = "completed"
+    job["totalBytes"] = snapshot.byteCount
+    job["lastModified"] = snapshot.modifiedAtMilliseconds
+    job["contentSha256"] = SHA256.hash(data: contents)
+      .map { String(format: "%02x", $0) }.joined()
+    job["backupCompletedAt"] = "2020-01-01T00:00:00Z"
+    return (root, defaults, suiteName, store, api, file, job)
+  }
+
+  private func removeRetentionCleanupFixture(_ fixture: RetentionCleanupFixture) {
+    fixture.defaults.removePersistentDomain(forName: fixture.suiteName)
+    try? FileManager.default.removeItem(at: fixture.root)
+  }
+
   private func makeBackupJob(id: String) -> [String: Any] {
     [
       "id": id,
@@ -456,6 +576,15 @@ class RunnerTests: XCTestCase {
     ]
   }
 
+}
+
+private final class FakeBackupNativeEventApi: BackupNativeEventApiProtocol {
+  func snapshotChanged(
+    snapshot: [String?: Any?],
+    completion: @escaping (Result<Void, PigeonError>) -> Void
+  ) {
+    completion(.success(()))
+  }
 }
 
 private final class FakeIosKeychainClient: IosKeychainClient {

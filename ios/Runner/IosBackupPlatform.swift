@@ -199,13 +199,31 @@ enum IosBackupCleanupGate {
   static func hasSingleSession(_ job: [String: Any]) -> Bool {
     (job["sessions"] as? [Any])?.count == 1
   }
+
+  static func hasVerifiedRetentionEvidence(
+    _ job: [String: Any],
+    minimumVersion: Int
+  ) -> Bool {
+    let contentSha256 = job["contentSha256"] as? String
+    let version = job["verificationVersion"] as? Int ?? 0
+    let recordId = job["remoteRecordId"] as? NSNumber
+    let totalBytes = job["totalBytes"] as? Int64 ?? -1
+    let receipt = job["verificationReceipt"] as? String
+    return version >= minimumVersion &&
+      contentSha256?.count == 64 &&
+      totalBytes > 0 &&
+      (recordId?.int64Value ?? 0) > 0 &&
+      !(receipt?.isEmpty ?? true) &&
+      hasSingleSession(job)
+  }
 }
 
 final class IosBackupHostApi: BackupNativeHostApi {
-  private let defaults = UserDefaults.standard
-  private let credentialStore = IosBackupCredentialStore()
+  private let defaults: UserDefaults
+  private let credentialStore: IosBackupCredentialStore
   private let jobStore: Result<IosBackupJobStore, Error>
-  private let eventApi: BackupNativeEventApi
+  private let eventApi: BackupNativeEventApiProtocol
+  private let recordingsRoot: URL?
   private let networkMonitor = NWPathMonitor()
   private let networkQueue = DispatchQueue(label: "ios.backup.network")
   private var lastLanReachable = false
@@ -247,9 +265,19 @@ final class IosBackupHostApi: BackupNativeHostApi {
     case failed
   }
 
-  init(eventApi: BackupNativeEventApi) {
+  init(
+    eventApi: BackupNativeEventApiProtocol,
+    defaults: UserDefaults = .standard,
+    credentialStore: IosBackupCredentialStore? = nil,
+    jobStore: Result<IosBackupJobStore, Error>? = nil,
+    recordingsRoot: URL? = nil
+  ) {
     self.eventApi = eventApi
-    jobStore = Result { try IosBackupJobStore() }
+    self.defaults = defaults
+    self.credentialStore =
+      credentialStore ?? IosBackupCredentialStore(defaults: defaults)
+    self.jobStore = jobStore ?? Result { try IosBackupJobStore() }
+    self.recordingsRoot = recordingsRoot
     networkMonitor.pathUpdateHandler = { [weak self] path in
       self?.lastLanReachable =
         path.status == .satisfied && !path.usesInterfaceType(.cellular)
@@ -474,6 +502,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   private func recordingsDirectory() -> URL {
+    if let recordingsRoot { return recordingsRoot }
     let root = FileManager.default.urls(
       for: .documentDirectory,
       in: .userDomainMask
@@ -1235,7 +1264,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
     }
   }
 
-  private func performCleanup() async throws {
+  func performCleanup() async throws {
     let root = recordingsDirectory().path + "/"
     let now = Date()
     var changed = false
@@ -1252,23 +1281,18 @@ final class IosBackupHostApi: BackupNativeHostApi {
       guard let due = dueAt(job), now >= due else { continue }
 
       let completedAt = job["backupCompletedAt"] as? String
-      var unconfirmedCleanup = false
       var baseJob = job
 
       if completedAt != nil {
         let contentSha256 = job["contentSha256"] as? String
-        let version = job["verificationVersion"] as? Int ?? 0
-        let recordId = job["remoteRecordId"] as? NSNumber
         let totalBytes = job["totalBytes"] as? Int64 ?? -1
-        let hasEvidence =
-          version >= Self.verificationVersion &&
-          contentSha256?.count == 64 &&
-          totalBytes > 0 &&
-          (recordId?.int64Value ?? 0) > 0 &&
-          IosBackupCleanupGate.hasSingleSession(job)
+        let hasEvidence = IosBackupCleanupGate.hasVerifiedRetentionEvidence(
+          job,
+          minimumVersion: Self.verificationVersion
+        )
 
         if !hasEvidence {
-          baseJob["waitingCleanup"] = false
+          baseJob["waitingCleanup"] = true
           baseJob["errorMessage"] = "备份记录缺少安全校验信息，需重新备份后才能自动清理"
           try upsert(baseJob)
           changed = true
@@ -1320,7 +1344,11 @@ final class IosBackupHostApi: BackupNativeHostApi {
           changed = true
           continue
         case .unreachable:
-          unconfirmedCleanup = true
+          baseJob["waitingCleanup"] = true
+          baseJob["errorMessage"] = "暂时无法向电脑确认备份，已保留本地录像"
+          try upsert(baseJob)
+          changed = true
+          continue
         }
       }
 
@@ -1353,8 +1381,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
         baseJob["cleanupReason"] = "未备份录像保留策略清理"
         baseJob["state"] = "expired"
         baseJob["errorMessage"] = "未备份录像已按保留策略清理"
-      } else if unconfirmedCleanup {
-        baseJob["cleanupReason"] = "已备份未确认清理（电脑离线）"
       } else {
         baseJob["cleanupReason"] = "已备份录像保留策略清理"
       }
