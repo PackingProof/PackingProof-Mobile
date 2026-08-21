@@ -206,6 +206,17 @@ class RunnerTests: XCTestCase {
     XCTAssertTrue(try reopened.allJobs().isEmpty)
   }
 
+  func testBackupCleanupGateRequiresExactlyOneSession() {
+    var job = makeBackupJob(id: "cleanup-cardinality")
+    XCTAssertTrue(IosBackupCleanupGate.hasSingleSession(job))
+    job["sessions"] = []
+    XCTAssertFalse(IosBackupCleanupGate.hasSingleSession(job))
+    job["sessions"] = [["id": "first"], ["id": "second"]]
+    XCTAssertFalse(IosBackupCleanupGate.hasSingleSession(job))
+    job.removeValue(forKey: "sessions")
+    XCTAssertFalse(IosBackupCleanupGate.hasSingleSession(job))
+  }
+
   private typealias ReceiptFixture = (
     response: [String: Any], accessKey: String, host: String, device: String,
     session: String, sha256: String, fileSize: Int64, recordId: Int64, now: Int64

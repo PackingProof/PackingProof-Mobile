@@ -1136,6 +1136,12 @@ enum IosBackupReceiptVerifier {
   }
 }
 
+enum IosBackupCleanupGate {
+  static func hasSingleSession(_ job: [String: Any]) -> Bool {
+    (job["sessions"] as? [Any])?.count == 1
+  }
+}
+
 private final class IosBackupHostApi: BackupNativeHostApi {
   private let defaults = UserDefaults.standard
   private let jobStore: Result<IosBackupJobStore, Error>
@@ -1340,6 +1346,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
             remoteId.int64Value > 0,
             let receipt = job["verificationReceipt"] as? String,
             !receipt.isEmpty,
+            IosBackupCleanupGate.hasSingleSession(job),
             let lastAttested = job["lastAttestedAt"] as? String,
             let attestedDate = Self.isoFormatter.date(from: lastAttested),
             Date().timeIntervalSince(attestedDate) <= Self.storageAttestationFreshness,
@@ -2177,14 +2184,13 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         let contentSha256 = job["contentSha256"] as? String
         let version = job["verificationVersion"] as? Int ?? 0
         let recordId = job["remoteRecordId"] as? NSNumber
-        let sessions = job["sessions"] as? [Any]
         let totalBytes = job["totalBytes"] as? Int64 ?? -1
         let hasEvidence =
           version >= Self.verificationVersion &&
           contentSha256?.count == 64 &&
           totalBytes > 0 &&
           (recordId?.int64Value ?? 0) > 0 &&
-          !(sessions?.isEmpty ?? true)
+          IosBackupCleanupGate.hasSingleSession(job)
 
         if !hasEvidence {
           baseJob["waitingCleanup"] = false
@@ -2297,6 +2303,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       let accessKey = defaults.string(forKey: keys.accessKey),
       let recordId = job["remoteRecordId"] as? NSNumber,
       let sessions = job["sessions"] as? [Any],
+      IosBackupCleanupGate.hasSingleSession(job),
       let session = sessions.first as? [String: Any],
       let sessionId = session["id"] as? String
     else {
