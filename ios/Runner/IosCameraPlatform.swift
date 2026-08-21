@@ -29,6 +29,52 @@ enum IosCameraCapabilityPolicy {
   }
 }
 
+enum IosCameraWriterFinishPolicy {
+  static func result(
+    status: AVAssetWriter.Status,
+    writerError: String?
+  ) -> Result<Void, Error> {
+    switch status {
+    case .completed:
+      return .success(())
+    case .failed:
+      return .failure(pigeonError(
+        writerError ?? "录像文件写入失败",
+        code: "camera_recording_finish_failed"
+      ))
+    case .cancelled:
+      return .failure(pigeonError(
+        writerError ?? "录像文件写入已取消",
+        code: "camera_recording_finish_cancelled"
+      ))
+    case .unknown, .writing:
+      return .failure(pigeonError(
+        writerError ?? "录像文件尚未完成写入",
+        code: "camera_recording_finish_incomplete"
+      ))
+    @unknown default:
+      return .failure(pigeonError(
+        writerError ?? "录像文件写入状态未知",
+        code: "camera_recording_finish_incomplete"
+      ))
+    }
+  }
+
+  static func timeoutError() -> PigeonError {
+    pigeonError(
+      "录像写入超时",
+      code: "camera_recording_finish_timeout"
+    )
+  }
+
+  static func missingWriterError() -> PigeonError {
+    pigeonError(
+      "录像写入器不存在",
+      code: "camera_recording_writer_missing"
+    )
+  }
+}
+
 /// iOS 连续相机原生实现：
 /// 保持一个 `AVCaptureSession` 常开，用 `AVAssetWriter` 按单号轮换输出文件，
 /// 不重启预览，达到接近 Android 连续录像的体验。
@@ -267,7 +313,7 @@ final class IosCameraHostApi:
       let completedPath = self.currentPath ?? ""
       let completedStartedAt = self.currentStartedAtMs
       let boundaryAt = Int64(Date().timeIntervalSince1970 * 1000)
-      self.finishCurrentWriter { [weak self] in
+      self.finishCurrentWriter { [weak self] finishResult in
         guard let self else {
           return
         }
@@ -275,6 +321,12 @@ final class IosCameraHostApi:
           guard !self.isDisposed,
                 self.recordingLifecycle.isPending(request) else {
             self.recordingLifecycle.dispose()
+            return
+          }
+          if case .failure(let error) = finishResult {
+            if self.recordingLifecycle.complete(request, succeeded: false) {
+              completion(.failure(error))
+            }
             return
           }
           do {
@@ -325,16 +377,26 @@ final class IosCameraHostApi:
       let path = self.currentPath ?? ""
       let startedAt = self.currentStartedAtMs
       let endedAt = Int64(Date().timeIntervalSince1970 * 1000)
-      self.finishCurrentWriter { [weak self] in
-        guard let self,
-              self.recordingLifecycle.complete(request, succeeded: true) else {
+      self.finishCurrentWriter { [weak self] finishResult in
+        guard let self else {
           return
         }
-        completion(.success(CameraRecordingStopDto(
-          path: path,
-          startedAtMs: startedAt,
-          endedAtMs: endedAt
-        )))
+        switch finishResult {
+        case .success:
+          guard self.recordingLifecycle.complete(request, succeeded: true) else {
+            return
+          }
+          completion(.success(CameraRecordingStopDto(
+            path: path,
+            startedAtMs: startedAt,
+            endedAtMs: endedAt
+          )))
+        case .failure(let error):
+          guard self.recordingLifecycle.complete(request, succeeded: false) else {
+            return
+          }
+          completion(.failure(error))
+        }
       }
     }
   }
@@ -602,7 +664,7 @@ final class IosCameraHostApi:
         completion(.success(()))
         return
       }
-      self.finishCurrentWriter {}
+      self.finishCurrentWriter { _ in }
       if self.session.isRunning {
         self.session.stopRunning()
       }
@@ -626,7 +688,7 @@ final class IosCameraHostApi:
     }
     sessionQueue.sync { [weak self] in
       guard let self else { return }
-      self.finishCurrentWriter(false) {}
+      self.finishCurrentWriter(false) { _ in }
       if self.session.isRunning {
         self.session.stopRunning()
       }
@@ -1133,10 +1195,10 @@ final class IosCameraHostApi:
   private func finishCurrentWriter(
     _ sendEvents: Bool = true,
     timeout: TimeInterval = 5,
-    completion: @escaping () -> Void
+    completion: @escaping (Result<Void, Error>) -> Void
   ) {
     guard let writer else {
-      completion()
+      completion(.failure(IosCameraWriterFinishPolicy.missingWriterError()))
       return
     }
     let completedPath = currentPath
@@ -1188,7 +1250,7 @@ final class IosCameraHostApi:
           completion: { _ in }
         )
       }
-      completion()
+      completion(.failure(IosCameraWriterFinishPolicy.timeoutError()))
     }
     sessionQueue.asyncAfter(deadline: .now() + timeout, execute: timeoutItem)
 
@@ -1203,6 +1265,10 @@ final class IosCameraHostApi:
       timeoutItem.cancel()
       let writerStatus = writer.status
       let writerError = writer.error?.localizedDescription
+      let finishResult = IosCameraWriterFinishPolicy.result(
+        status: writerStatus,
+        writerError: writerError
+      )
       self?.recordLastSegmentResult(
         serial: completedSegmentSerial,
         writerStatus: Self.writerStatusName(writerStatus),
@@ -1214,10 +1280,10 @@ final class IosCameraHostApi:
       )
       if sendEvents {
         guard let self else {
-          completion()
+          completion(finishResult)
           return
         }
-        if writer.status == .completed, let completedPath, !completedSegmentId.isEmpty {
+        if writerStatus == .completed, let completedPath, !completedSegmentId.isEmpty {
           self.eventApi.segmentCompleted(
             event: CameraSegmentCompletedDto(
               sessionId: self.sessionId,
@@ -1239,7 +1305,7 @@ final class IosCameraHostApi:
           )
         }
       }
-      completion()
+      completion(finishResult)
     }
   }
 

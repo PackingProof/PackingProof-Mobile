@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import Runner
 
@@ -155,5 +156,62 @@ final class IosCameraRecordingLifecycleTests: XCTestCase {
   ) -> IosCameraRecordingLifecycle.Rejection? {
     guard case .failure(let rejection) = result else { return nil }
     return rejection
+  }
+}
+
+final class IosCameraWriterFinishPolicyTests: XCTestCase {
+  func testOnlyCompletedWriterStatusSucceeds() throws {
+    XCTAssertNoThrow(try IosCameraWriterFinishPolicy.result(
+      status: .completed,
+      writerError: nil
+    ).get())
+
+    assertFailure(status: .unknown, code: "camera_recording_finish_incomplete")
+    assertFailure(status: .writing, code: "camera_recording_finish_incomplete")
+    assertFailure(status: .failed, code: "camera_recording_finish_failed")
+    assertFailure(status: .cancelled, code: "camera_recording_finish_cancelled")
+  }
+
+  func testFailurePreservesWriterReasonAndOperationalErrorsAreTyped() {
+    let failed = failure(from: IosCameraWriterFinishPolicy.result(
+      status: .failed,
+      writerError: "磁盘空间不足"
+    ))
+    XCTAssertEqual(failed.code, "camera_recording_finish_failed")
+    XCTAssertEqual(failed.message, "磁盘空间不足")
+    XCTAssertEqual(
+      IosCameraWriterFinishPolicy.timeoutError().code,
+      "camera_recording_finish_timeout"
+    )
+    XCTAssertEqual(
+      IosCameraWriterFinishPolicy.missingWriterError().code,
+      "camera_recording_writer_missing"
+    )
+  }
+
+  private func assertFailure(
+    status: AVAssetWriter.Status,
+    code: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let error = failure(from: IosCameraWriterFinishPolicy.result(
+      status: status,
+      writerError: nil
+    ), file: file, line: line)
+    XCTAssertEqual(error.code, code, file: file, line: line)
+  }
+
+  private func failure(
+    from result: Result<Void, Error>,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) -> PigeonError {
+    guard case .failure(let error) = result,
+          let pigeonError = error as? PigeonError else {
+      XCTFail("Expected a typed PigeonError", file: file, line: line)
+      return PigeonError(code: "test_failure", message: nil, details: nil)
+    }
+    return pigeonError
   }
 }
