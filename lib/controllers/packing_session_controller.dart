@@ -2093,9 +2093,19 @@ class PackingSessionController extends ChangeNotifier {
         await _repository.deleteFileIfUnreferenced(savedPath);
       }
       await _enqueueBackupIfNeeded(finalPath, <RecordingSession>[finalized]);
-    } on Object {
+    } on Object catch (error, stackTrace) {
       // The original recording is already safely indexed. A failed watermark
       // must not keep the work button blocked or discard the video.
+      await _runtimeLog.log(
+        kind: 'watermark_failed',
+        extra: <String, Object?>{
+          'sessionId': session.id,
+          'filePath': savedPath,
+          'errorType': error.runtimeType.toString(),
+          'error': error.toString(),
+          'stackTrace': stackTrace.toString(),
+        },
+      );
       if (await File(savedPath).exists()) {
         await _enqueueBackupIfNeeded(savedPath, <RecordingSession>[session]);
       }
@@ -2397,6 +2407,12 @@ class PackingSessionController extends ChangeNotifier {
   void handleNativeRecordingFallbackForTesting(Map<Object?, Object?> info) {
     _handleNativeRecordingFallback(info);
   }
+
+  @visibleForTesting
+  Future<void> watermarkAndBackupForTesting(
+    String savedPath,
+    RecordingSession session,
+  ) => _watermarkAndBackup(savedPath, session);
 
   Future<void> _processFrame(CameraImage image) async {
     if (_processingFrame || !isWorking || isBusy || _handlingBarcode) {

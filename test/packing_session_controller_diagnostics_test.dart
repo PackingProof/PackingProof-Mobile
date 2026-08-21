@@ -5,13 +5,16 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:packing_proof_mobile/app/app_build_config.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/models/app_settings.dart';
+import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
+import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
 import 'package:packing_proof_mobile/services/camera_diagnostics_service.dart';
 import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 import 'package:packing_proof_mobile/services/diagnostics_log_service.dart';
 import 'package:packing_proof_mobile/services/session_repository.dart';
 import 'package:packing_proof_mobile/services/speech_prompt_service.dart';
+import 'package:packing_proof_mobile/services/video_watermark_service.dart';
 import 'package:packing_proof_mobile/platform/platform_capabilities.dart';
 
 import 'test_repository.dart';
@@ -61,6 +64,38 @@ void main() {
     final String content = await _waitForInitFailed(file);
     expect(content, contains('"kind":"init_failed"'));
     expect(content, contains('"code":"unknown"'));
+  });
+
+  test('水印失败保留原片并记录结构化诊断', () async {
+    final File source = File('${root.path}/original.mp4');
+    await source.writeAsBytes(<int>[1, 2, 3]);
+    final DateTime startedAt = DateTime(2026, 8, 21, 10);
+    final RecordingSession session = RecordingSession(
+      id: 'session-watermark-failed',
+      filePath: source.path,
+      startedAt: startedAt,
+      endedAt: startedAt.add(const Duration(seconds: 5)),
+      markers: const <Never>[],
+    );
+    final PackingSessionController controller = PackingSessionController(
+      repository: testRepository(root),
+      speechService: _FakeSpeechSink(),
+      videoWatermarkService: _FailingWatermarkSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+
+    await controller.watermarkAndBackupForTesting(source.path, session);
+
+    expect(await source.exists(), isTrue);
+    final File log = File('${root.path}/diagnostics/runtime.jsonl');
+    final String content = await _waitForRuntimeKind(log, 'watermark_failed');
+    expect(content, contains('"sessionId":"session-watermark-failed"'));
+    expect(content, contains('"errorType":"StateError"'));
+    expect(content, contains('watermark test failure'));
   });
 
   test('备份触发原因决定是否强制重启上传', () {
@@ -471,4 +506,16 @@ class _FakeSpeechSink implements SpeechPromptSink {
 
   @override
   Future<void> dispose() async {}
+}
+
+class _FailingWatermarkSink implements VideoWatermarkSink {
+  @override
+  Future<String> apply({
+    required String inputPath,
+    required DateTime startedAt,
+    required String trackingNumber,
+    RecordingVideoCodec videoCodec = RecordingVideoCodec.hevc,
+  }) {
+    throw StateError('watermark test failure');
+  }
 }
