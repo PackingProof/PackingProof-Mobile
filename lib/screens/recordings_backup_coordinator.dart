@@ -8,7 +8,6 @@ mixin _RecordingsBackupCoordinator on State<RecordingsScreen> {
   late final bool _ownsBackupHostDiscovery;
   LanBackupDiscoverySnapshot _backupDiscoverySnapshot =
       const LanBackupDiscoverySnapshot();
-  bool _remoteCacheDirty = false;
   bool _backupDiscoveryStarted = false;
   bool _autoConnectStarted = false;
   bool _approvalRequestInFlight = false;
@@ -17,6 +16,8 @@ mixin _RecordingsBackupCoordinator on State<RecordingsScreen> {
   bool get _lanBackupSupported;
   bool get _loadingRemote;
   set _loadingRemote(bool value);
+  bool get _remoteCacheDirty;
+  set _remoteCacheDirty(bool value);
   List<RemoteRecording> get _remoteRecordings;
   Map<int, List<RemoteRecording>> get _remotePages;
   set _remoteTotal(int value);
