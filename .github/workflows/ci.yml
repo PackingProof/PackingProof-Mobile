@@ -53,6 +53,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Check video_player_android fork drift
+        run: ./tool/check_video_player_android_fork.sh
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
