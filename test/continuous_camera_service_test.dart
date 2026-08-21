@@ -412,6 +412,7 @@ void main() {
     expect(calls.single.arguments, <String, Object>{
       'videoCodec': 'h264',
       'recordingSpec': 'smooth720p30',
+      'recordingOrientation': 'portrait',
       'capabilityMode': 'unverified',
     });
   });
@@ -450,6 +451,7 @@ void main() {
     expect(calls.single.arguments, <String, Object>{
       'videoCodec': 'hevc',
       'recordingSpec': 'hd1080p30',
+      'recordingOrientation': 'portrait',
       'capabilityMode': 'encoder_analysis',
     });
   });
@@ -489,6 +491,7 @@ void main() {
     expect(calls.single.arguments, <String, Object>{
       'videoCodec': 'hevc',
       'recordingSpec': 'hd1080p30',
+      'recordingOrientation': 'portrait',
       'capabilityMode': 'unverified',
     });
   });
