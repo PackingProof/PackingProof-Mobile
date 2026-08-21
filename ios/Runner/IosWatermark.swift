@@ -103,13 +103,18 @@ struct IosWatermarkStyle {
     _ value: String,
     fontSize: CGFloat
   ) -> NSAttributedString {
-    NSAttributedString(
+    let paragraphStyle = NSMutableParagraphStyle()
+    let lineHeight = fontSize * 1.25
+    paragraphStyle.minimumLineHeight = lineHeight
+    paragraphStyle.maximumLineHeight = lineHeight
+    return NSAttributedString(
       string: value,
       attributes: [
         .font: UIFont.boldSystemFont(ofSize: fontSize),
         .foregroundColor: UIColor.white,
         .strokeColor: UIColor.black,
         .strokeWidth: -10,
+        .paragraphStyle: paragraphStyle,
       ]
     )
   }

@@ -1375,11 +1375,15 @@ class _CameraWatermarkPreview extends StatelessWidget {
     required this.timestamp,
     required this.trackingNumber,
     required this.orientation,
+    required this.fontSize,
+    required this.strokeWidth,
   });
 
   final DateTime timestamp;
   final String trackingNumber;
   final RecordingOrientation orientation;
+  final double fontSize;
+  final double strokeWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -1387,8 +1391,8 @@ class _CameraWatermarkPreview extends StatelessWidget {
       _watermarkTimestamp(timestamp),
       if (trackingNumber.isNotEmpty) 'Order:$trackingNumber',
     ].join('\n');
-    const TextStyle baseStyle = TextStyle(
-      fontSize: 16,
+    final TextStyle baseStyle = TextStyle(
+      fontSize: fontSize,
       height: 1.25,
       fontWeight: FontWeight.w700,
     );
@@ -1411,10 +1415,11 @@ class _CameraWatermarkPreview extends StatelessWidget {
                 text,
                 key: const Key('camera-watermark-outline'),
                 textAlign: TextAlign.right,
+                textScaler: TextScaler.noScaling,
                 style: baseStyle.copyWith(
                   foreground: Paint()
                     ..style = PaintingStyle.stroke
-                    ..strokeWidth = 3
+                    ..strokeWidth = strokeWidth
                     ..strokeJoin = StrokeJoin.round
                     ..color = Colors.black,
                 ),
@@ -1423,6 +1428,7 @@ class _CameraWatermarkPreview extends StatelessWidget {
                 text,
                 key: const Key('camera-watermark-fill'),
                 textAlign: TextAlign.right,
+                textScaler: TextScaler.noScaling,
                 style: baseStyle.copyWith(color: Colors.white),
               ),
             ],
@@ -1450,6 +1456,11 @@ class _CameraWatermarkPlacement extends StatelessWidget {
       builder: (BuildContext context, BoxConstraints constraints) {
         final Size viewport = constraints.biggest;
         final Size watermarkSize = const Size(250, 44);
+        final WatermarkPreviewMetrics metrics = watermarkPreviewMetrics(
+          orientation: view.recordingOrientation,
+          viewportWidth: viewport.width,
+          sourceVideoSize: view.nativePreviewSize ?? const Size(1080, 1920),
+        );
         final WatermarkGeometry geometry = watermarkGeometry(
           orientation: view.recordingOrientation,
           videoSize: viewport,
@@ -1466,6 +1477,8 @@ class _CameraWatermarkPlacement extends StatelessWidget {
                 timestamp: view.watermarkTimestamp ?? DateTime.now(),
                 trackingNumber: view.currentCode,
                 orientation: view.recordingOrientation,
+                fontSize: metrics.fontSize,
+                strokeWidth: metrics.strokeWidth,
               ),
             ),
           ],

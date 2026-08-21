@@ -17,6 +17,50 @@ class WatermarkGeometry {
   final Rect outputRect;
 }
 
+class WatermarkPreviewMetrics {
+  const WatermarkPreviewMetrics({
+    required this.fontSize,
+    required this.strokeWidth,
+  });
+
+  final double fontSize;
+  final double strokeWidth;
+}
+
+WatermarkPreviewMetrics watermarkPreviewMetrics({
+  required RecordingOrientation orientation,
+  required double viewportWidth,
+  required Size sourceVideoSize,
+}) {
+  if (!viewportWidth.isFinite || viewportWidth <= 0) {
+    return const WatermarkPreviewMetrics(fontSize: 0, strokeWidth: 0);
+  }
+  final Size resolvedSourceVideoSize =
+      sourceVideoSize.width.isFinite &&
+          sourceVideoSize.height.isFinite &&
+          sourceVideoSize.width > 0 &&
+          sourceVideoSize.height > 0
+      ? sourceVideoSize
+      : const Size(1080, 1920);
+  final double portraitWidth = math.min(
+    resolvedSourceVideoSize.width,
+    resolvedSourceVideoSize.height,
+  );
+  final double portraitHeight = math.max(
+    resolvedSourceVideoSize.width,
+    resolvedSourceVideoSize.height,
+  );
+  final double outputHeight = orientation == RecordingOrientation.portrait
+      ? portraitHeight
+      : portraitWidth;
+  final double outputFontSize = (outputHeight * 0.032).clamp(35, 61);
+  final double previewScale = viewportWidth / portraitWidth;
+  return WatermarkPreviewMetrics(
+    fontSize: outputFontSize * previewScale,
+    strokeWidth: outputFontSize * 0.1 * previewScale,
+  );
+}
+
 WatermarkGeometry watermarkGeometry({
   required RecordingOrientation orientation,
   required Size videoSize,

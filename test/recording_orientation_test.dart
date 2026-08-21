@@ -28,4 +28,65 @@ void main() {
       );
     }
   });
+
+  test('预览水印按实际采集尺寸映射竖屏与横屏字号描边', () {
+    final WatermarkPreviewMetrics portrait = watermarkPreviewMetrics(
+      orientation: RecordingOrientation.portrait,
+      viewportWidth: 390,
+      sourceVideoSize: const Size(1080, 1920),
+    );
+    expect(portrait.fontSize, closeTo(61 * 390 / 1080, 0.0001));
+    expect(portrait.strokeWidth, closeTo(6.1 * 390 / 1080, 0.0001));
+
+    for (final RecordingOrientation orientation in <RecordingOrientation>[
+      RecordingOrientation.landscapeLeft,
+      RecordingOrientation.landscapeRight,
+    ]) {
+      final WatermarkPreviewMetrics landscape = watermarkPreviewMetrics(
+        orientation: orientation,
+        viewportWidth: 390,
+        sourceVideoSize: const Size(1080, 1920),
+      );
+      expect(landscape.fontSize, closeTo(35 * 390 / 1080, 0.0001));
+      expect(landscape.strokeWidth, closeTo(3.5 * 390 / 1080, 0.0001));
+    }
+
+    final WatermarkPreviewMetrics smoothLandscape = watermarkPreviewMetrics(
+      orientation: RecordingOrientation.landscapeLeft,
+      viewportWidth: 390,
+      sourceVideoSize: const Size(1280, 720),
+    );
+    expect(smoothLandscape.fontSize, closeTo(35 * 390 / 720, 0.0001));
+    expect(smoothLandscape.strokeWidth, closeTo(3.5 * 390 / 720, 0.0001));
+  });
+
+  test('预览水印拒绝无效视口并为无效采集尺寸使用安全回退', () {
+    for (final Size sourceVideoSize in <Size>[
+      Size.zero,
+      const Size(double.infinity, 720),
+    ]) {
+      final WatermarkPreviewMetrics fallback = watermarkPreviewMetrics(
+        orientation: RecordingOrientation.portrait,
+        viewportWidth: 390,
+        sourceVideoSize: sourceVideoSize,
+      );
+      expect(fallback.fontSize, closeTo(61 * 390 / 1080, 0.0001));
+      expect(fallback.strokeWidth, closeTo(6.1 * 390 / 1080, 0.0001));
+    }
+
+    for (final double viewportWidth in <double>[
+      0,
+      -1,
+      double.nan,
+      double.infinity,
+    ]) {
+      final WatermarkPreviewMetrics invalidViewport = watermarkPreviewMetrics(
+        orientation: RecordingOrientation.portrait,
+        viewportWidth: viewportWidth,
+        sourceVideoSize: const Size(1080, 1920),
+      );
+      expect(invalidViewport.fontSize, 0);
+      expect(invalidViewport.strokeWidth, 0);
+    }
+  });
 }

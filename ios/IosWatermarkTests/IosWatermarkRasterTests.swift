@@ -6,6 +6,25 @@ import UIKit
 import XCTest
 
 final class IosWatermarkRasterTests: XCTestCase {
+  func testAttributedTextUsesFixedPreviewLineHeight() throws {
+    let fontSize: CGFloat = 40
+    let text = IosWatermarkStyle.attributedText(
+      "2026/08/21 12:34:56\nOrder:TRACK-001",
+      fontSize: fontSize
+    )
+    let attributes = text.attributes(at: 0, effectiveRange: nil)
+    let paragraphStyle = try XCTUnwrap(
+      attributes[.paragraphStyle] as? NSParagraphStyle
+    )
+    let font = try XCTUnwrap(attributes[.font] as? UIFont)
+
+    XCTAssertEqual(paragraphStyle.minimumLineHeight, fontSize * 1.25)
+    XCTAssertEqual(paragraphStyle.maximumLineHeight, fontSize * 1.25)
+    XCTAssertEqual(font.pointSize, fontSize)
+    XCTAssertTrue(font.fontDescriptor.symbolicTraits.contains(.traitBold))
+    XCTAssertEqual(attributes[.strokeWidth] as? Int, -10)
+  }
+
   func testVideoTextLayerUsesFinalPixelScale() {
     let layer = IosWatermarkStyle.textLayer(
       text: IosWatermarkStyle.attributedText("watermark", fontSize: 35),

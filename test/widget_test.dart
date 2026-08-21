@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/app/packing_proof_mobile_app.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
+import 'package:packing_proof_mobile/models/recording_orientation.dart';
 import 'package:packing_proof_mobile/screens/packing_home_screen.dart';
 import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 
@@ -454,6 +455,11 @@ void main() {
     expect(watermarkOutline.textAlign, TextAlign.right);
     expect(watermarkOutline.style?.foreground?.style, PaintingStyle.stroke);
     expect(watermarkOutline.style?.foreground?.color, Colors.black);
+    expect(watermarkOutline.style?.fontSize, closeTo(61 * 390 / 1080, 0.0001));
+    expect(
+      watermarkOutline.style?.foreground?.strokeWidth,
+      closeTo(6.1 * 390 / 1080, 0.0001),
+    );
     expect(watermarkFill.textAlign, TextAlign.right);
     expect(watermarkFill.style?.color, Colors.white);
     expect(
@@ -508,6 +514,48 @@ void main() {
     expect(
       stopButton.style?.backgroundColor?.resolve(<WidgetState>{}),
       const Color(0xFFD92D20),
+    );
+  });
+
+  testWidgets('横屏预览水印使用成片比例且不随系统文字缩放', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (BuildContext context, Widget? child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(1.2)),
+          child: child!,
+        ),
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 8),
+          currentCode: '770017871213193',
+          recordingOrientation: RecordingOrientation.landscapeLeft,
+          nativePreviewSize: const Size(1080, 1920),
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    final Text outline = tester.widget<Text>(
+      find.byKey(const Key('camera-watermark-outline')),
+    );
+    final Text fill = tester.widget<Text>(
+      find.byKey(const Key('camera-watermark-fill')),
+    );
+    expect(outline.textScaler, TextScaler.noScaling);
+    expect(fill.textScaler, TextScaler.noScaling);
+    expect(outline.style?.fontSize, closeTo(35 * 390 / 1080, 0.0001));
+    expect(
+      outline.style?.foreground?.strokeWidth,
+      closeTo(3.5 * 390 / 1080, 0.0001),
     );
   });
 
