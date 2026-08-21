@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreGraphics
 import Foundation
 import QuartzCore
@@ -5,6 +6,25 @@ import UIKit
 import XCTest
 
 final class IosWatermarkRasterTests: XCTestCase {
+  func testInterruptedClassificationFindsNestedAvFoundationError() {
+    let interrupted = NSError(
+      domain: AVFoundationErrorDomain,
+      code: AVError.Code.operationInterrupted.rawValue
+    )
+    let wrapper = NSError(
+      domain: "PackingProof.WatermarkTests",
+      code: 1,
+      userInfo: [NSUnderlyingErrorKey: interrupted]
+    )
+
+    XCTAssertTrue(iosWatermarkErrorIsInterrupted(wrapper))
+    XCTAssertFalse(
+      iosWatermarkErrorIsInterrupted(
+        NSError(domain: AVFoundationErrorDomain, code: AVError.Code.unknown.rawValue)
+      )
+    )
+  }
+
   func testRecordingTransformKeepsPortraitBuffersAndMapsSemanticDirections() {
     let cases: [(name: String, radians: CGFloat, displayedSize: CGSize)] = [
       ("portrait", 0, CGSize(width: 1080, height: 1920)),

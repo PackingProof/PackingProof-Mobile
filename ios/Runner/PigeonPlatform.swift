@@ -245,7 +245,18 @@ private final class IosMediaProcessingHostApi: MediaProcessingHostApi {
       case .success(let output):
         completion(.success(output.path))
       case .failure(let error as IosMediaProcessingCoreError):
-        completion(.failure(pigeonError(error.message)))
+        completion(
+          .failure(pigeonError(error.message, code: error.code ?? "ios_unavailable"))
+        )
+      case .failure(let error) where iosWatermarkErrorIsInterrupted(error):
+        completion(
+          .failure(
+            pigeonError(
+              "水印导出被系统中断，返回前台后将自动重试",
+              code: "watermark_interrupted"
+            )
+          )
+        )
       case .failure(let error):
         completion(.failure(error))
       }

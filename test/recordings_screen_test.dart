@@ -66,6 +66,77 @@ void main() {
     );
   });
 
+  testWidgets('待处理和失败水印录像显示状态且禁止播放原片', (WidgetTester tester) async {
+    final DateTime startedAt = DateTime(2026, 8, 21, 10);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Row(
+            children: <Widget>[
+              RecordingWatermarkStatusChip(
+                status: WatermarkProcessingStatus.pending,
+              ),
+              RecordingWatermarkStatusChip(
+                status: WatermarkProcessingStatus.failed,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('recording-watermark-pending-chip')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('recording-watermark-failed-chip')),
+      findsOneWidget,
+    );
+    expect(
+      recordingWatermarkPlaybackBlockMessage(
+        RecordingSession(
+          id: 'pending',
+          filePath: '/recordings/pending.mp4',
+          startedAt: startedAt,
+          endedAt: startedAt.add(const Duration(seconds: 5)),
+          markers: const <BarcodeMarker>[],
+          watermarkStatus: WatermarkProcessingStatus.pending,
+        ),
+        localAvailable: true,
+      ),
+      '水印处理中，完成后即可播放',
+    );
+    expect(
+      recordingWatermarkPlaybackBlockMessage(
+        RecordingSession(
+          id: 'failed',
+          filePath: '/recordings/failed.mp4',
+          startedAt: startedAt,
+          endedAt: startedAt.add(const Duration(seconds: 5)),
+          markers: const <BarcodeMarker>[],
+          watermarkStatus: WatermarkProcessingStatus.failed,
+        ),
+        localAvailable: true,
+      ),
+      '水印处理失败，原片已安全保留',
+    );
+    expect(
+      recordingWatermarkPlaybackBlockMessage(
+        RecordingSession(
+          id: 'completed',
+          filePath: '/recordings/completed.mp4',
+          startedAt: startedAt,
+          endedAt: startedAt.add(const Duration(seconds: 5)),
+          markers: const <BarcodeMarker>[],
+        ),
+        localAvailable: true,
+      ),
+      isNull,
+    );
+  });
+
   test('条码按宽度精确省略并保留末尾', () {
     const TextStyle style = TextStyle(fontSize: 16);
     expect(

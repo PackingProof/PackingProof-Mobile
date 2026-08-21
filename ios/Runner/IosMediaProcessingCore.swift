@@ -12,6 +12,31 @@ struct IosWatermarkExportRequest {
 
 struct IosMediaProcessingCoreError: Error {
   let message: String
+  let code: String?
+
+  init(message: String, code: String? = nil) {
+    self.message = message
+    self.code = code
+  }
+}
+
+func iosWatermarkErrorIsInterrupted(_ error: Error?) -> Bool {
+  guard let error else { return false }
+  var pending: [NSError] = [error as NSError]
+  var visited = Set<ObjectIdentifier>()
+  while let current = pending.popLast() {
+    let identity = ObjectIdentifier(current)
+    if !visited.insert(identity).inserted { continue }
+    if current.domain == AVFoundationErrorDomain,
+      current.code == AVError.Code.operationInterrupted.rawValue
+    {
+      return true
+    }
+    if let underlying = current.userInfo[NSUnderlyingErrorKey] as? Error {
+      pending.append(underlying as NSError)
+    }
+  }
+  return false
 }
 
 final class IosMediaProcessingCore {
@@ -158,12 +183,41 @@ final class IosMediaProcessingCore {
         session.exportAsynchronously {
           switch session.status {
           case .completed:
-            completion(.success(output))
+            do {
+              let attributes = try FileManager.default.attributesOfItem(
+                atPath: output.path
+              )
+              let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+              let outputAsset = AVAsset(url: output)
+              let duration = outputAsset.duration.seconds
+              guard fileSize > 0,
+                !outputAsset.tracks(withMediaType: .video).isEmpty,
+                duration.isFinite,
+                duration > 0
+              else {
+                throw IosMediaProcessingCoreError(
+                  message: "水印成片校验失败，原片已保留"
+                )
+              }
+              completion(.success(output))
+            } catch {
+              try? FileManager.default.removeItem(at: output)
+              completion(.failure(error))
+            }
           case .failed:
             completion(
               .failure(
                 session.error
                   ?? IosMediaProcessingCoreError(message: "水印视频生成失败")
+              )
+            )
+          case .cancelled:
+            completion(
+              .failure(
+                IosMediaProcessingCoreError(
+                  message: "水印导出被系统中断，返回前台后将自动重试",
+                  code: "watermark_interrupted"
+                )
               )
             )
           default:

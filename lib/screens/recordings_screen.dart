@@ -111,6 +111,20 @@ String friendlyBackupConnectionError(Object error) {
   return '暂时无法连接保存主机，请稍后再试';
 }
 
+@visibleForTesting
+String? recordingWatermarkPlaybackBlockMessage(
+  RecordingSession session, {
+  required bool localAvailable,
+}) {
+  if (!localAvailable ||
+      session.watermarkStatus == WatermarkProcessingStatus.completed) {
+    return null;
+  }
+  return session.watermarkStatus == WatermarkProcessingStatus.pending
+      ? '水印处理中，完成后即可播放'
+      : '水印处理失败，原片已安全保留';
+}
+
 class _RecordingsHistoryTitle extends StatelessWidget {
   const _RecordingsHistoryTitle({
     required this.deviceName,
@@ -1310,7 +1324,10 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                           (remoteAvailable &&
                               _isRemoteFromThisDevice(item.remote!)) ||
                           completedBackupJob != null,
-                      localThumbnail: localAvailable
+                      localThumbnail:
+                          localAvailable &&
+                              session.watermarkStatus ==
+                                  WatermarkProcessingStatus.completed
                           ? _localThumbnail(session.filePath)
                           : null,
                       remoteThumbnail: item.remote?.thumbnailUri,
@@ -1326,6 +1343,18 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                           return;
                         }
                         FocusManager.instance.primaryFocus?.unfocus();
+                        final String? watermarkBlockMessage =
+                            recordingWatermarkPlaybackBlockMessage(
+                              session,
+                              localAvailable:
+                                  item.local != null && localAvailable,
+                            );
+                        if (watermarkBlockMessage != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(watermarkBlockMessage)),
+                          );
+                          return;
+                        }
                         if (unavailable) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('录像已清理或文件不存在，无法播放')),
@@ -1426,9 +1455,8 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                   canLoadMore: pagination.page + 1 < pagination.pageCount,
                   onPrevious: pagination.page == 0
                       ? null
-                      : () => setState(
-                          () => _historyPage = pagination.page - 1,
-                        ),
+                      : () =>
+                            setState(() => _historyPage = pagination.page - 1),
                   onNext: pagination.page + 1 < pagination.pageCount
                       ? () => _showNextHistoryPage(pagination.pageCount)
                       : null,

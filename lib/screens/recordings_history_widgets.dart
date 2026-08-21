@@ -155,12 +155,14 @@ class _RecordingThumbnail extends StatelessWidget {
     this.remoteUri,
     required this.remoteHeaders,
     required this.unavailable,
+    required this.watermarkStatus,
   });
 
   final Future<String?>? localPath;
   final Uri? remoteUri;
   final Map<String, String> remoteHeaders;
   final bool unavailable;
+  final WatermarkProcessingStatus watermarkStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -174,8 +176,19 @@ class _RecordingThumbnail extends StatelessWidget {
         borderRadius: BorderRadius.circular(9),
       ),
       child: Icon(
-        unavailable ? Icons.videocam_off_rounded : Icons.play_arrow_rounded,
-        color: unavailable ? colors.onSurfaceVariant : colors.primary,
+        unavailable
+            ? Icons.videocam_off_rounded
+            : switch (watermarkStatus) {
+                WatermarkProcessingStatus.pending =>
+                  Icons.hourglass_top_rounded,
+                WatermarkProcessingStatus.failed => Icons.error_outline_rounded,
+                WatermarkProcessingStatus.completed => Icons.play_arrow_rounded,
+              },
+        color:
+            unavailable ||
+                watermarkStatus != WatermarkProcessingStatus.completed
+            ? colors.onSurfaceVariant
+            : colors.primary,
       ),
     );
 
@@ -287,6 +300,7 @@ class _RecordingTile extends StatelessWidget {
                             remoteUri: remoteThumbnail,
                             remoteHeaders: remoteHeaders,
                             unavailable: unavailable,
+                            watermarkStatus: session.watermarkStatus,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -367,7 +381,15 @@ class _RecordingTile extends StatelessWidget {
                                         identity: sourceIdentity,
                                       ),
                                     ],
-                                    if (backedUp) ...<Widget>[
+                                    if (localRecording &&
+                                        session.watermarkStatus !=
+                                            WatermarkProcessingStatus
+                                                .completed) ...<Widget>[
+                                      const SizedBox(width: 8),
+                                      RecordingWatermarkStatusChip(
+                                        status: session.watermarkStatus,
+                                      ),
+                                    ] else if (backedUp) ...<Widget>[
                                       const SizedBox(width: 8),
                                       const _StatusChip(
                                         key: Key('recording-backed-up-chip'),
@@ -433,6 +455,28 @@ class _RecordingTile extends StatelessWidget {
       ),
     );
   }
+}
+
+@visibleForTesting
+class RecordingWatermarkStatusChip extends StatelessWidget {
+  const RecordingWatermarkStatusChip({required this.status, super.key});
+
+  final WatermarkProcessingStatus status;
+
+  @override
+  Widget build(BuildContext context) => switch (status) {
+    WatermarkProcessingStatus.pending => const _StatusChip(
+      key: Key('recording-watermark-pending-chip'),
+      label: '水印处理中',
+      tone: _StatusChipTone.backupUploading,
+    ),
+    WatermarkProcessingStatus.failed => const _StatusChip(
+      key: Key('recording-watermark-failed-chip'),
+      label: '水印失败',
+      tone: _StatusChipTone.error,
+    ),
+    WatermarkProcessingStatus.completed => const SizedBox.shrink(),
+  };
 }
 
 class _HistoryPagination extends StatelessWidget {

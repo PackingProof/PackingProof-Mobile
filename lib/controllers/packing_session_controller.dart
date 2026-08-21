@@ -329,6 +329,7 @@ class PackingSessionController extends ChangeNotifier
     } on Object {
       // Runtime metadata is diagnostic and must not delay camera availability.
     }
+    await _resumePendingWatermarks();
     if (_capabilities.supports(PlatformCapability.lanBackup)) {
       if (!_backupListenerAttached) {
         _lanBackupService.addListener(_handleBackupChanged);
@@ -1016,7 +1017,10 @@ class PackingSessionController extends ChangeNotifier
       draft: draft,
     );
     _sessions = await _repository.addSession(session);
-    _runInBackground(_watermarkAndBackup(savedPath, session));
+    final RecordingOrientation recordingOrientation = _recordingOrientation;
+    _runInBackground(
+      _watermarkAndBackup(savedPath, session, recordingOrientation),
+    );
     _elapsed = stopped.endedAt.difference(_timeline.recordingStartedAt!);
     _timeline.reset();
     _recordingId = null;
@@ -1057,6 +1061,7 @@ class PackingSessionController extends ChangeNotifier
     if (needsInitialization && _phase != PackingSessionPhase.saving) {
       await initialize();
     }
+    await _resumePendingWatermarks();
     await _orderInfoReceiver.setBackgroundKeepAlive(false);
     unawaited(_lanBackupService.refresh());
     if (isWorking) {
@@ -1243,7 +1248,10 @@ class PackingSessionController extends ChangeNotifier
       orderInfo: completedOrderInfo,
     );
     _sessions = await _repository.addSession(completed);
-    _runInBackground(_watermarkAndBackup(savedPath, completed));
+    final RecordingOrientation recordingOrientation = _recordingOrientation;
+    _runInBackground(
+      _watermarkAndBackup(savedPath, completed, recordingOrientation),
+    );
     _activeSegmentId = nextId;
     _segmentIndex = nextIndex;
     return transition.marker;
@@ -1292,7 +1300,10 @@ class PackingSessionController extends ChangeNotifier
         orderInfo: _activeOrderInfo,
       );
       _sessions = await _repository.addSession(completed);
-      _runInBackground(_watermarkAndBackup(savedPath, completed));
+      final RecordingOrientation recordingOrientation = _recordingOrientation;
+      _runInBackground(
+        _watermarkAndBackup(savedPath, completed, recordingOrientation),
+      );
 
       _timeline.reset();
       _timeline.start(boundaryAt);
@@ -1336,6 +1347,8 @@ class PackingSessionController extends ChangeNotifier
       markers: List<BarcodeMarker>.unmodifiable(draft.markers),
       orderInfo: orderInfo ?? _activeOrderInfo,
       operationMode: _operationMode,
+      recordingOrientation: _recordingOrientation,
+      watermarkStatus: WatermarkProcessingStatus.pending,
     );
   }
 
@@ -1349,7 +1362,6 @@ class PackingSessionController extends ChangeNotifier
     return '';
   }
 
-  @override
   RecordingSession _sessionWithPath(
     RecordingSession session,
     String filePath, {
@@ -1364,6 +1376,9 @@ class PackingSessionController extends ChangeNotifier
     mediaEnd: session.mediaEnd,
     orderInfo: orderInfo ?? session.orderInfo,
     operationMode: session.operationMode,
+    recordingOrientation: session.recordingOrientation,
+    watermarkStatus: session.watermarkStatus,
+    watermarkAttemptCount: session.watermarkAttemptCount,
   );
 
   @override

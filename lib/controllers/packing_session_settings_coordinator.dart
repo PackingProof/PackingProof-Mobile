@@ -21,7 +21,6 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
   @override
   RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
   RecordingSpecPreset _recordingSpec = RecordingSpecPreset.hd1080p30;
-  @override
   RecordingOrientation _recordingOrientation = RecordingOrientation.portrait;
   @override
   int _minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength;

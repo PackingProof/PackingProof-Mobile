@@ -585,6 +585,26 @@ class SessionRepository {
     return _loadRecentSessionsUnlocked();
   });
 
+  Future<List<RecordingSession>> loadPendingWatermarkSessions() async {
+    await initialize();
+    final List<RecordingSession> sessions = await _recordingDatabase
+        .loadPendingWatermarkSessions();
+    return _resolveAndRepair(sessions);
+  }
+
+  Future<WatermarkAttemptClaim?> claimPendingWatermarkAttempt({
+    required String sessionId,
+    required int expectedAttempt,
+    required int maximumAttempts,
+  }) async {
+    await initialize();
+    return _recordingDatabase.claimPendingWatermarkAttempt(
+      sessionId: sessionId,
+      expectedAttempt: expectedAttempt,
+      maximumAttempts: maximumAttempts,
+    );
+  }
+
   Future<List<RecordingSession>> deleteSessions(
     Set<String> sessionIds,
   ) => _serializeSessionMutation(() async {

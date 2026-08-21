@@ -46,4 +46,38 @@ void main() {
     expect(await input.readAsBytes(), <int>[1, 2, 3]);
     expect(calls.single.arguments, containsPair('videoCodec', 'h264'));
   });
+
+  test('水印输出为空文件时拒绝发布并保留原录像', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing_proof_watermark_empty_test',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    const MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/video_watermark_empty_test',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          final Map<Object?, Object?> arguments =
+              call.arguments! as Map<Object?, Object?>;
+          final File output = File(arguments['outputPath']! as String);
+          await output.create();
+          return output.path;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final File input = File('${root.path}${Platform.pathSeparator}source.mp4');
+    await input.writeAsBytes(<int>[1, 2, 3], flush: true);
+
+    await expectLater(
+      VideoWatermarkService(channel: channel, isIOS: true).apply(
+        inputPath: input.path,
+        startedAt: DateTime(2026, 8, 21, 10),
+        trackingNumber: 'DEMO',
+      ),
+      throwsStateError,
+    );
+    expect(await input.readAsBytes(), <int>[1, 2, 3]);
+  });
 }

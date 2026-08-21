@@ -1,6 +1,21 @@
 import 'barcode_marker.dart';
 import 'order_info.dart';
 import 'recording_operation_mode.dart';
+import 'recording_orientation.dart';
+
+enum WatermarkProcessingStatus { pending, completed, failed }
+
+extension WatermarkProcessingStatusValue on WatermarkProcessingStatus {
+  String get storageValue => name;
+}
+
+WatermarkProcessingStatus watermarkProcessingStatusFromStorage(Object? value) {
+  return switch (value) {
+    'pending' => WatermarkProcessingStatus.pending,
+    'failed' => WatermarkProcessingStatus.failed,
+    _ => WatermarkProcessingStatus.completed,
+  };
+}
 
 class RecordingSession {
   const RecordingSession({
@@ -13,6 +28,9 @@ class RecordingSession {
     this.mediaEnd,
     this.orderInfo,
     this.operationMode = RecordingOperationMode.shipping,
+    this.recordingOrientation = RecordingOrientation.portrait,
+    this.watermarkStatus = WatermarkProcessingStatus.completed,
+    this.watermarkAttemptCount = 0,
   });
 
   static const String unrecognizedLabel = '未识别面单';
@@ -26,6 +44,9 @@ class RecordingSession {
   final Duration? mediaEnd;
   final OrderInfo? orderInfo;
   final RecordingOperationMode operationMode;
+  final RecordingOrientation recordingOrientation;
+  final WatermarkProcessingStatus watermarkStatus;
+  final int watermarkAttemptCount;
 
   Duration get duration => endedAt.difference(startedAt);
 
@@ -36,7 +57,11 @@ class RecordingSession {
   String get displayCode =>
       markers.isEmpty ? unrecognizedLabel : markers.first.code;
 
-  RecordingSession copyWith({String? filePath}) => RecordingSession(
+  RecordingSession copyWith({
+    String? filePath,
+    WatermarkProcessingStatus? watermarkStatus,
+    int? watermarkAttemptCount,
+  }) => RecordingSession(
     id: id,
     filePath: filePath ?? this.filePath,
     startedAt: startedAt,
@@ -46,6 +71,9 @@ class RecordingSession {
     mediaEnd: mediaEnd,
     orderInfo: orderInfo,
     operationMode: operationMode,
+    recordingOrientation: recordingOrientation,
+    watermarkStatus: watermarkStatus ?? this.watermarkStatus,
+    watermarkAttemptCount: watermarkAttemptCount ?? this.watermarkAttemptCount,
   );
 
   RecordingSession trimmed({
@@ -90,6 +118,9 @@ class RecordingSession {
       mediaEnd: mediaEnd,
       orderInfo: orderInfo,
       operationMode: operationMode,
+      recordingOrientation: recordingOrientation,
+      watermarkStatus: watermarkStatus,
+      watermarkAttemptCount: watermarkAttemptCount,
     );
   }
 
@@ -103,6 +134,9 @@ class RecordingSession {
     'mediaEndMilliseconds': playbackEnd.inMilliseconds,
     if (orderInfo != null) 'orderInfo': orderInfo!.toJson(),
     'operationMode': operationMode.storageValue,
+    'recordingOrientation': recordingOrientation.storageValue,
+    'watermarkStatus': watermarkStatus.storageValue,
+    'watermarkAttemptCount': watermarkAttemptCount,
   };
 
   factory RecordingSession.fromJson(Map<String, Object?> json) {
@@ -133,6 +167,14 @@ class RecordingSession {
             )
           : null,
       operationMode: recordingOperationModeFromStorage(json['operationMode']),
+      recordingOrientation: recordingOrientationFromStorage(
+        json['recordingOrientation'],
+      ),
+      watermarkStatus: watermarkProcessingStatusFromStorage(
+        json['watermarkStatus'],
+      ),
+      watermarkAttemptCount:
+          (json['watermarkAttemptCount'] as num?)?.toInt() ?? 0,
     );
   }
 }

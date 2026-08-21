@@ -51,8 +51,15 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
     String filePath,
     List<RecordingSession> sessions,
   ) async {
+    final List<RecordingSession> finalized = sessions
+        .where(
+          (RecordingSession session) =>
+              session.watermarkStatus == WatermarkProcessingStatus.completed,
+        )
+        .toList(growable: false);
+    if (finalized.isEmpty) return;
     try {
-      await _lanBackupService.enqueueFinalizedFile(filePath, sessions);
+      await _lanBackupService.enqueueFinalizedFile(filePath, finalized);
     } on Object catch (error) {
       // broad-catch: Local recording persistence has already succeeded; backup
       // enqueue failure is diagnostic-only and must not fail the saved recording.

@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/recording_session.dart';
+import '../models/recording_orientation.dart';
 
 class LocalRecordingPage {
   const LocalRecordingPage({
@@ -33,6 +34,18 @@ class RecordingBackupRow {
   final int updatedAt;
   final String id;
   final RecordingSession session;
+}
+
+class WatermarkAttemptClaim {
+  const WatermarkAttemptClaim({
+    required this.session,
+    required this.claimed,
+    required this.exhausted,
+  });
+
+  final RecordingSession session;
+  final bool claimed;
+  final bool exhausted;
 }
 
 class LocalRecordingStatistics {
@@ -71,9 +84,17 @@ class RecordingDatabase {
   final String path;
   Database? _database;
 
+  static const List<String> _sessionPayloadColumns = <String>[
+    'payload_json',
+    'file_path',
+    'recording_orientation',
+    'watermark_status',
+    'watermark_attempt_count',
+  ];
+
   Future<Database> get _db async => _database ??= await openDatabase(
     path,
-    version: 1,
+    version: 2,
     onConfigure: (Database db) async {
       // Android treats journal_mode as a result-returning PRAGMA and rejects
       // execute(); sqflite's helper falls back to rawQuery on that platform.
@@ -98,7 +119,10 @@ class RecordingDatabase {
           delete_reason TEXT NOT NULL DEFAULT '',
           missing_at INTEGER,
           created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
+          updated_at INTEGER NOT NULL,
+          recording_orientation TEXT NOT NULL DEFAULT 'portrait',
+          watermark_status TEXT NOT NULL DEFAULT 'completed',
+          watermark_attempt_count INTEGER NOT NULL DEFAULT 0
         )
       ''');
       await db.execute('''
@@ -134,6 +158,22 @@ class RecordingDatabase {
         'CREATE INDEX idx_recording_order '
         'ON recording_sessions(order_id)',
       );
+    },
+    onUpgrade: (Database db, int oldVersion, int newVersion) async {
+      if (oldVersion < 2) {
+        await db.execute(
+          "ALTER TABLE recording_sessions ADD COLUMN recording_orientation "
+          "TEXT NOT NULL DEFAULT 'portrait'",
+        );
+        await db.execute(
+          "ALTER TABLE recording_sessions ADD COLUMN watermark_status "
+          "TEXT NOT NULL DEFAULT 'completed'",
+        );
+        await db.execute(
+          "ALTER TABLE recording_sessions ADD COLUMN watermark_attempt_count "
+          'INTEGER NOT NULL DEFAULT 0',
+        );
+      }
     },
   );
 
@@ -239,7 +279,7 @@ class RecordingDatabase {
     final Database db = await _db;
     final List<Map<String, Object?>> rows = await db.query(
       'recording_sessions',
-      columns: <String>['payload_json'],
+      columns: _sessionPayloadColumns,
       where: 'is_deleted = 0',
       orderBy: 'started_at DESC, id DESC',
     );
@@ -295,7 +335,7 @@ class RecordingDatabase {
     final int total = Sqflite.firstIntValue(countRows) ?? 0;
     final List<Map<String, Object?>> rows = await db.query(
       'recording_sessions',
-      columns: <String>['payload_json'],
+      columns: _sessionPayloadColumns,
       where: where,
       whereArgs: args,
       orderBy: 'started_at DESC, id DESC',
@@ -335,8 +375,8 @@ class RecordingDatabase {
     final int normalizedSize = pageSize.clamp(1, 100);
     final List<Map<String, Object?>> rows = await db.query(
       'recording_sessions',
-      columns: <String>['payload_json'],
-      where: 'is_deleted = 0',
+      columns: _sessionPayloadColumns,
+      where: "is_deleted = 0 AND watermark_status = 'completed'",
       orderBy: 'started_at ASC, id ASC',
       limit: normalizedSize,
       offset: (normalizedPage - 1) * normalizedSize,
@@ -352,7 +392,10 @@ class RecordingDatabase {
     required int pageSize,
   }) async {
     final Database db = await _db;
-    final List<String> conditions = <String>['is_deleted = 0'];
+    final List<String> conditions = <String>[
+      'is_deleted = 0',
+      "watermark_status = 'completed'",
+    ];
     final List<Object?> args = <Object?>[];
     if (afterUpdatedAt != null && afterId != null) {
       conditions.add('(updated_at > ? OR (updated_at = ? AND id > ?))');
@@ -366,7 +409,7 @@ class RecordingDatabase {
     final int normalizedSize = pageSize.clamp(1, 1000);
     final List<Map<String, Object?>> rows = await db.query(
       'recording_sessions',
-      columns: <String>['payload_json', 'updated_at', 'id'],
+      columns: <String>[..._sessionPayloadColumns, 'updated_at', 'id'],
       where: where,
       whereArgs: args,
       orderBy: 'updated_at ASC, id ASC',
@@ -388,7 +431,7 @@ class RecordingDatabase {
     final List<Map<String, Object?>> rows = await db.query(
       'recording_sessions',
       columns: <String>['updated_at', 'id'],
-      where: 'is_deleted = 0',
+      where: "is_deleted = 0 AND watermark_status = 'completed'",
       orderBy: 'updated_at DESC, id DESC',
       limit: 1,
     );
@@ -530,11 +573,109 @@ class RecordingDatabase {
     final Database db = await _db;
     final String placeholders = List<String>.filled(ids.length, '?').join(',');
     final List<Map<String, Object?>> rows = await db.rawQuery(
-      'SELECT payload_json FROM recording_sessions '
+      'SELECT ${_sessionPayloadColumns.join(', ')} FROM recording_sessions '
       'WHERE is_deleted = 0 AND id IN ($placeholders)',
       ids.toList(growable: false),
     );
     return rows.map(_sessionFromRow).toList(growable: false);
+  }
+
+  Future<List<RecordingSession>> loadPendingWatermarkSessions() async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.query(
+      'recording_sessions',
+      columns: _sessionPayloadColumns,
+      where: "is_deleted = 0 AND watermark_status = 'pending'",
+      orderBy: 'started_at ASC, id ASC',
+    );
+    return rows.map(_sessionFromRow).toList(growable: false);
+  }
+
+  Future<WatermarkAttemptClaim?> claimPendingWatermarkAttempt({
+    required String sessionId,
+    required int expectedAttempt,
+    required int maximumAttempts,
+  }) async {
+    final Database db = await _db;
+    return db.transaction((Transaction txn) async {
+      Future<RecordingSession?> loadCurrent() async {
+        final List<Map<String, Object?>> rows = await txn.query(
+          'recording_sessions',
+          columns: _sessionPayloadColumns,
+          where: 'id = ? AND is_deleted = 0',
+          whereArgs: <Object?>[sessionId],
+          limit: 1,
+        );
+        return rows.isEmpty ? null : _sessionFromRow(rows.single);
+      }
+
+      final RecordingSession? current = await loadCurrent();
+      if (current == null ||
+          current.watermarkStatus != WatermarkProcessingStatus.pending) {
+        return null;
+      }
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      if (current.watermarkAttemptCount >= maximumAttempts) {
+        final RecordingSession failed = current.copyWith(
+          watermarkStatus: WatermarkProcessingStatus.failed,
+        );
+        await txn.update(
+          'recording_sessions',
+          <String, Object?>{
+            'payload_json': jsonEncode(failed.toJson()),
+            'watermark_status': failed.watermarkStatus.storageValue,
+            'updated_at': now,
+          },
+          where:
+              "id = ? AND is_deleted = 0 AND watermark_status = 'pending' "
+              'AND watermark_attempt_count >= ?',
+          whereArgs: <Object?>[sessionId, maximumAttempts],
+        );
+        final RecordingSession latest = (await loadCurrent()) ?? failed;
+        return WatermarkAttemptClaim(
+          session: latest,
+          claimed: false,
+          exhausted: latest.watermarkStatus == WatermarkProcessingStatus.failed,
+        );
+      }
+      if (current.watermarkAttemptCount != expectedAttempt) {
+        return WatermarkAttemptClaim(
+          session: current,
+          claimed: false,
+          exhausted: false,
+        );
+      }
+      final RecordingSession claimed = current.copyWith(
+        watermarkAttemptCount: current.watermarkAttemptCount + 1,
+      );
+      final int updated = await txn.update(
+        'recording_sessions',
+        <String, Object?>{
+          'payload_json': jsonEncode(claimed.toJson()),
+          'watermark_attempt_count': claimed.watermarkAttemptCount,
+          'updated_at': now,
+        },
+        where:
+            "id = ? AND is_deleted = 0 AND watermark_status = 'pending' "
+            'AND watermark_attempt_count = ? AND watermark_attempt_count < ?',
+        whereArgs: <Object?>[sessionId, expectedAttempt, maximumAttempts],
+      );
+      if (updated == 1) {
+        return WatermarkAttemptClaim(
+          session: claimed,
+          claimed: true,
+          exhausted: false,
+        );
+      }
+      final RecordingSession? latest = await loadCurrent();
+      return latest == null
+          ? null
+          : WatermarkAttemptClaim(
+              session: latest,
+              claimed: false,
+              exhausted: false,
+            );
+    });
   }
 
   Future<void> markDeleted(
@@ -784,6 +925,9 @@ class RecordingDatabase {
       'missing_at': metadata.exists ? null : timestamp,
       'created_at': timestamp,
       'updated_at': timestamp,
+      'recording_orientation': session.recordingOrientation.storageValue,
+      'watermark_status': session.watermarkStatus.storageValue,
+      'watermark_attempt_count': session.watermarkAttemptCount,
     };
   }
 
@@ -802,12 +946,24 @@ class RecordingDatabase {
   static String _normalizedFilePath(String filePath) =>
       filePath.replaceAll('\\', '/');
 
-  static RecordingSession _sessionFromRow(Map<String, Object?> row) =>
-      RecordingSession.fromJson(
-        Map<String, Object?>.from(
-          jsonDecode(row['payload_json']! as String) as Map<Object?, Object?>,
-        ),
-      );
+  static RecordingSession _sessionFromRow(Map<String, Object?> row) {
+    final Map<String, Object?> payload = Map<String, Object?>.from(
+      jsonDecode(row['payload_json']! as String) as Map<Object?, Object?>,
+    );
+    if (row['file_path'] case final String filePath) {
+      payload['filePath'] = filePath;
+    }
+    if (row['recording_orientation'] case final String orientation) {
+      payload['recordingOrientation'] = orientation;
+    }
+    if (row['watermark_status'] case final String status) {
+      payload['watermarkStatus'] = status;
+    }
+    if (row['watermark_attempt_count'] case final int attemptCount) {
+      payload['watermarkAttemptCount'] = attemptCount;
+    }
+    return RecordingSession.fromJson(payload);
+  }
 
   Future<void> _validateDistinctFileReferences(
     Database db,
@@ -839,7 +995,7 @@ class RecordingDatabase {
   Future<void> _materializeSharedFileReferences(Database db) async {
     final List<Map<String, Object?>> rows = await db.query(
       'recording_sessions',
-      columns: <String>['id', 'file_path', 'payload_json'],
+      columns: <String>['id', ..._sessionPayloadColumns],
       where: 'is_deleted = 0',
       orderBy: 'file_path ASC, started_at ASC, id ASC',
     );

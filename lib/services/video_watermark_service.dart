@@ -109,7 +109,10 @@ class VideoWatermarkService
       videoCodec: videoCodec.storageValue,
       recordingOrientation: recordingOrientation.storageValue,
     );
-    if (result.isEmpty || !await File(result).exists()) {
+    final File output = File(result);
+    if (result.isEmpty ||
+        !await output.exists() ||
+        await output.length() <= 0) {
       throw StateError('水印视频生成失败');
     }
     return result;
