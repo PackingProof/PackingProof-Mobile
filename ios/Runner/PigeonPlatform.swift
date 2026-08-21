@@ -541,7 +541,17 @@ private final class IosAlertAudioSessionHostApi: AlertAudioSessionHostApi {
 
 /// 备份任务的 SQLite 存储：与 Android 端 `backup_jobs` 表保持同一 schema 与字段语义，
 /// 替代旧版把全部任务塞进一个 UserDefaults 数组、每次写入全量重写的方式。
-private final class IosBackupJobStore {
+struct IosBackupStoreError: Error, LocalizedError {
+  let operation: String
+  let code: Int32
+  let message: String
+
+  var errorDescription: String? {
+    "iOS 备份数据库\(operation)失败（SQLite \(code)：\(message)）"
+  }
+}
+
+final class IosBackupJobStore {
   private static let legacyDefaultsKey = "ios_backup_jobs"
   private static let sqliteTransient = unsafeBitCast(
     -1,
@@ -550,53 +560,81 @@ private final class IosBackupJobStore {
 
   private var db: OpaquePointer?
   private let lock = NSLock()
+  private let defaults: UserDefaults
 
-  init() {
+  convenience init() throws {
     let directory = FileManager.default.urls(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask
+      for: .applicationSupportDirectory, in: .userDomainMask
     ).first ?? FileManager.default.temporaryDirectory
-    try? FileManager.default.createDirectory(
-      at: directory,
-      withIntermediateDirectories: true
+    do {
+      try FileManager.default.createDirectory(
+        at: directory, withIntermediateDirectories: true
+      )
+    } catch {
+      throw IosBackupStoreError(
+        operation: "创建目录", code: SQLITE_CANTOPEN, message: error.localizedDescription
+      )
+    }
+    try self.init(
+      databaseURL: directory.appendingPathComponent("lan_backup.db"),
+      defaults: .standard
     )
-    let path = directory.appendingPathComponent("lan_backup.db").path
-    sqlite3_open(path, &db)
-    createSchema()
-    migrateLegacyJobsIfNeeded()
+  }
+
+  init(databaseURL: URL, defaults: UserDefaults) throws {
+    self.defaults = defaults
+    let openCode = sqlite3_open_v2(
+      databaseURL.path, &db,
+      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil
+    )
+    guard openCode == SQLITE_OK else {
+      let error = databaseError(operation: "打开", code: openCode)
+      sqlite3_close(db)
+      db = nil
+      throw error
+    }
+    do {
+      try createSchema()
+      try migrateLegacyJobsIfNeeded()
+    } catch {
+      sqlite3_close(db)
+      db = nil
+      throw error
+    }
   }
 
   deinit {
     sqlite3_close(db)
   }
 
-  func allJobs() -> [[String: Any]] {
+  func allJobs() throws -> [[String: Any]] {
     lock.lock()
     defer { lock.unlock() }
-    return queryJobsUnlocked()
+    return try queryJobsUnlocked()
   }
 
-  func upsert(_ rawJob: [String: Any]) {
+  func upsert(_ rawJob: [String: Any]) throws {
     lock.lock()
     defer { lock.unlock() }
-    upsertUnlocked(rawJob)
+    try upsertUnlocked(rawJob)
   }
 
-  func updateJob(id: String, mutate: (inout [String: Any]) -> Void) {
+  func updateJob(id: String, mutate: (inout [String: Any]) -> Void) throws -> Bool {
     lock.lock()
     defer { lock.unlock() }
-    guard var job = readJobUnlocked(id) else { return }
+    guard var job = try readJobUnlocked(id) else { return false }
     mutate(&job)
-    upsertUnlocked(job)
+    try upsertUnlocked(job)
+    return true
   }
 
-  func deleteJob(id: String) {
+  func deleteJob(id: String) throws {
     lock.lock()
     defer { lock.unlock() }
-    deleteUnlocked(id)
+    try deleteUnlocked(id)
   }
 
-  private func createSchema() {
+  private func createSchema() throws {
     let sql = """
       CREATE TABLE IF NOT EXISTS backup_jobs (
         id TEXT PRIMARY KEY,
@@ -624,51 +662,74 @@ private final class IosBackupJobStore {
         sessions TEXT
       );
     """
-    sqlite3_exec(db, sql, nil, nil, nil)
+    try execute(sql, operation: "建表")
   }
 
-  private func migrateLegacyJobsIfNeeded() {
+  private func migrateLegacyJobsIfNeeded() throws {
     lock.lock()
     defer { lock.unlock() }
     guard
-      let legacy = UserDefaults.standard.array(
+      let legacy = defaults.array(
         forKey: Self.legacyDefaultsKey
       ) as? [[String: Any]],
       !legacy.isEmpty
     else { return }
-    for job in legacy {
-      upsertUnlocked(job)
+    try execute("BEGIN IMMEDIATE", operation: "开始旧任务迁移")
+    do {
+      for job in legacy {
+        try upsertUnlocked(job)
+      }
+      let migratedIds = Set(try queryJobsUnlocked().compactMap { $0["id"] as? String })
+      let expectedIds = Set(legacy.compactMap { $0["id"] as? String })
+      guard expectedIds.count == legacy.count,
+            !expectedIds.contains(""),
+            expectedIds.isSubset(of: migratedIds)
+      else {
+        throw IosBackupStoreError(
+          operation: "校验旧任务迁移", code: SQLITE_CORRUPT,
+          message: "迁移后的任务数量或 ID 不完整"
+        )
+      }
+      try execute("COMMIT", operation: "提交旧任务迁移")
+    } catch {
+      try? execute("ROLLBACK", operation: "回滚旧任务迁移")
+      throw error
     }
-    UserDefaults.standard.removeObject(forKey: Self.legacyDefaultsKey)
+    defaults.removeObject(forKey: Self.legacyDefaultsKey)
   }
 
-  private func readJobUnlocked(_ id: String) -> [String: Any]? {
+  private func readJobUnlocked(_ id: String) throws -> [String: Any]? {
     let sql = "SELECT * FROM backup_jobs WHERE id = ? LIMIT 1"
     var stmt: OpaquePointer?
-    guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-      return nil
-    }
-    bindText(stmt, 1, id)
+    try prepare(sql, statement: &stmt, operation: "读取任务")
+    try bindText(stmt, 1, id, operation: "绑定任务 ID")
     defer { sqlite3_finalize(stmt) }
-    guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
-    return jobFromRow(stmt)
+    let stepCode = sqlite3_step(stmt)
+    if stepCode == SQLITE_DONE { return nil }
+    guard stepCode == SQLITE_ROW else {
+      throw databaseError(operation: "读取任务", code: stepCode)
+    }
+    return try jobFromRow(stmt)
   }
 
-  private func queryJobsUnlocked() -> [[String: Any]] {
+  private func queryJobsUnlocked() throws -> [[String: Any]] {
     let sql = "SELECT * FROM backup_jobs ORDER BY last_modified DESC"
     var stmt: OpaquePointer?
-    guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-      return []
-    }
+    try prepare(sql, statement: &stmt, operation: "查询任务")
     defer { sqlite3_finalize(stmt) }
     var jobs: [[String: Any]] = []
-    while sqlite3_step(stmt) == SQLITE_ROW {
-      jobs.append(jobFromRow(stmt))
+    while true {
+      let stepCode = sqlite3_step(stmt)
+      if stepCode == SQLITE_DONE { break }
+      guard stepCode == SQLITE_ROW else {
+        throw databaseError(operation: "查询任务", code: stepCode)
+      }
+      jobs.append(try jobFromRow(stmt))
     }
     return jobs
   }
 
-  private func upsertUnlocked(_ rawJob: [String: Any]) {
+  private func upsertUnlocked(_ rawJob: [String: Any]) throws {
     let job = IosBackupHostApi.migratedJob(rawJob)
     let sql = """
       INSERT OR REPLACE INTO backup_jobs (
@@ -681,56 +742,68 @@ private final class IosBackupJobStore {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     var stmt: OpaquePointer?
-    guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-      return
-    }
+    try prepare(sql, statement: &stmt, operation: "保存任务")
     defer { sqlite3_finalize(stmt) }
-    let row = jobRow(job)
-    bindText(stmt, 1, row["id"] as? String)
-    bindText(stmt, 2, row["generation"] as? String)
-    bindText(stmt, 3, row["file_path"] as? String)
-    bindText(stmt, 4, row["file_name"] as? String)
-    bindText(stmt, 5, row["destination_computer_id"] as? String)
-    bindText(stmt, 6, row["state"] as? String)
-    bindInt(stmt, 7, (row["uploaded_bytes"] as? NSNumber)?.int64Value ?? 0)
-    bindInt(stmt, 8, (row["total_bytes"] as? NSNumber)?.int64Value ?? 0)
-    bindInt(stmt, 9, (row["last_modified"] as? NSNumber)?.int64Value ?? 0)
-    bindText(stmt, 10, row["file_created_at"] as? String)
-    bindText(stmt, 11, row["backup_completed_at"] as? String)
-    bindText(stmt, 12, row["scheduled_cleanup_at"] as? String)
-    bindText(stmt, 13, row["local_deleted_at"] as? String)
-    bindInt(stmt, 14, ((row["waiting_cleanup"] as? Bool) ?? false) ? 1 : 0)
-    bindText(stmt, 15, row["remote_record_ids"] as? String)
-    bindText(stmt, 16, row["content_sha256"] as? String)
-    bindInt(stmt, 17, Int64((row["verification_version"] as? NSNumber)?.intValue ?? 0))
-    bindText(stmt, 18, row["verification_receipt"] as? String)
-    bindText(stmt, 19, row["last_attested_at"] as? String)
-    bindText(stmt, 20, row["cleanup_reason"] as? String)
-    bindText(stmt, 21, row["error_message"] as? String)
-    bindText(stmt, 22, row["failure_kind"] as? String)
-    bindText(stmt, 23, row["sessions"] as? String)
-    sqlite3_step(stmt)
+    let row = try jobRow(job)
+    try bindText(stmt, 1, row["id"] as? String)
+    try bindText(stmt, 2, row["generation"] as? String)
+    try bindText(stmt, 3, row["file_path"] as? String)
+    try bindText(stmt, 4, row["file_name"] as? String)
+    try bindText(stmt, 5, row["destination_computer_id"] as? String)
+    try bindText(stmt, 6, row["state"] as? String)
+    try bindInt(stmt, 7, (row["uploaded_bytes"] as? NSNumber)?.int64Value ?? 0)
+    try bindInt(stmt, 8, (row["total_bytes"] as? NSNumber)?.int64Value ?? 0)
+    try bindInt(stmt, 9, (row["last_modified"] as? NSNumber)?.int64Value ?? 0)
+    try bindText(stmt, 10, row["file_created_at"] as? String)
+    try bindText(stmt, 11, row["backup_completed_at"] as? String)
+    try bindText(stmt, 12, row["scheduled_cleanup_at"] as? String)
+    try bindText(stmt, 13, row["local_deleted_at"] as? String)
+    try bindInt(stmt, 14, ((row["waiting_cleanup"] as? Bool) ?? false) ? 1 : 0)
+    try bindText(stmt, 15, row["remote_record_ids"] as? String)
+    try bindText(stmt, 16, row["content_sha256"] as? String)
+    try bindInt(stmt, 17, Int64((row["verification_version"] as? NSNumber)?.intValue ?? 0))
+    try bindText(stmt, 18, row["verification_receipt"] as? String)
+    try bindText(stmt, 19, row["last_attested_at"] as? String)
+    try bindText(stmt, 20, row["cleanup_reason"] as? String)
+    try bindText(stmt, 21, row["error_message"] as? String)
+    try bindText(stmt, 22, row["failure_kind"] as? String)
+    try bindText(stmt, 23, row["sessions"] as? String)
+    let stepCode = sqlite3_step(stmt)
+    guard stepCode == SQLITE_DONE else {
+      throw databaseError(operation: "保存任务", code: stepCode)
+    }
   }
 
-  private func deleteUnlocked(_ id: String) {
+  private func deleteUnlocked(_ id: String) throws {
     let sql = "DELETE FROM backup_jobs WHERE id = ?"
     var stmt: OpaquePointer?
-    guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-      return
+    try prepare(sql, statement: &stmt, operation: "删除任务")
+    defer { sqlite3_finalize(stmt) }
+    try bindText(stmt, 1, id)
+    let stepCode = sqlite3_step(stmt)
+    guard stepCode == SQLITE_DONE else {
+      throw databaseError(operation: "删除任务", code: stepCode)
     }
-    bindText(stmt, 1, id)
-    sqlite3_step(stmt)
-    sqlite3_finalize(stmt)
   }
 
-  private func jobRow(_ job: [String: Any]) -> [String: Any?] {
-    [
-      "id": job["id"] as? String ?? "",
-      "generation": job["generation"] as? String ?? "",
-      "file_path": job["filePath"] as? String ?? "",
+  private func jobRow(_ job: [String: Any]) throws -> [String: Any?] {
+    guard let id = nonEmptyText(job["id"]),
+          let generation = nonEmptyText(job["generation"]),
+          let filePath = nonEmptyText(job["filePath"]),
+          let state = nonEmptyText(job["state"])
+    else {
+      throw IosBackupStoreError(
+        operation: "校验任务", code: SQLITE_CONSTRAINT,
+        message: "任务缺少 id、generation、filePath 或 state"
+      )
+    }
+    return [
+      "id": id,
+      "generation": generation,
+      "file_path": filePath,
       "file_name": job["fileName"] as? String,
       "destination_computer_id": job["destinationComputerId"] as? String,
-      "state": job["state"] as? String ?? "",
+      "state": state,
       "uploaded_bytes": (job["uploadedBytes"] as? NSNumber)?.int64Value ?? 0,
       "total_bytes": (job["totalBytes"] as? NSNumber)?.int64Value ?? 0,
       "last_modified": (job["lastModified"] as? NSNumber)?.int64Value ?? 0,
@@ -747,11 +820,11 @@ private final class IosBackupJobStore {
       "cleanup_reason": job["cleanupReason"] as? String,
       "error_message": job["errorMessage"] as? String,
       "failure_kind": job["failureKind"] as? String,
-      "sessions": Self.jsonText(job["sessions"]),
+      "sessions": try Self.jsonText(job["sessions"]),
     ]
   }
 
-  private func jobFromRow(_ stmt: OpaquePointer?) -> [String: Any] {
+  private func jobFromRow(_ stmt: OpaquePointer?) throws -> [String: Any] {
     var job: [String: Any] = [:]
     job["id"] = text(stmt, 0) ?? ""
     job["generation"] = text(stmt, 1) ?? ""
@@ -775,7 +848,7 @@ private final class IosBackupJobStore {
     job["cleanupReason"] = text(stmt, 19)
     job["errorMessage"] = text(stmt, 20)
     job["failureKind"] = text(stmt, 21)
-    job["sessions"] = Self.jsonArray(text(stmt, 22))
+    job["sessions"] = try Self.jsonArray(text(stmt, 22))
     return job
   }
 
@@ -788,44 +861,71 @@ private final class IosBackupJobStore {
     sqlite3_column_int64(stmt, index)
   }
 
-  private func bindText(_ stmt: OpaquePointer?, _ index: Int32, _ value: String?) {
-    guard let stmt else { return }
+  private func bindText(
+    _ stmt: OpaquePointer?, _ index: Int32, _ value: String?,
+    operation: String = "绑定文本"
+  ) throws {
+    guard let stmt else {
+      throw databaseError(operation: operation, code: SQLITE_MISUSE)
+    }
+    let code: Int32
     if let value {
-      sqlite3_bind_text(stmt, index, value, -1, Self.sqliteTransient)
+      code = sqlite3_bind_text(stmt, index, value, -1, Self.sqliteTransient)
     } else {
-      sqlite3_bind_null(stmt, index)
+      code = sqlite3_bind_null(stmt, index)
+    }
+    guard code == SQLITE_OK else {
+      throw databaseError(operation: operation, code: code)
     }
   }
 
-  private func bindInt(_ stmt: OpaquePointer?, _ index: Int32, _ value: Int64) {
-    guard let stmt else { return }
-    sqlite3_bind_int64(stmt, index, value)
-  }
-
-  private static func jsonText(_ value: Any?) -> String? {
-    guard let value, JSONSerialization.isValidJSONObject(value) else { return nil }
-    return (try? JSONSerialization.data(withJSONObject: value))
-      .flatMap { String(data: $0, encoding: .utf8) }
-  }
-
-  private static func jsonArray(_ value: String?) -> [Any] {
-    guard let value,
-          let data = value.data(using: .utf8),
-          let array = try? JSONSerialization.jsonObject(with: data) as? [Any]
-    else {
-      return []
+  private func bindInt(_ stmt: OpaquePointer?, _ index: Int32, _ value: Int64) throws {
+    guard let stmt else {
+      throw databaseError(operation: "绑定整数", code: SQLITE_MISUSE)
     }
-    return array
+    let code = sqlite3_bind_int64(stmt, index, value)
+    guard code == SQLITE_OK else {
+      throw databaseError(operation: "绑定整数", code: code)
+    }
   }
 
-  private static func jsonObject(_ value: String?) -> [String: Any]? {
-    guard let value,
-          let data = value.data(using: .utf8),
-          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    else {
-      return nil
+  private static func jsonText(_ value: Any?) throws -> String? {
+    guard let value else { return nil }
+    guard value is [Any], JSONSerialization.isValidJSONObject(value) else {
+      throw IosBackupStoreError(
+        operation: "编码任务", code: SQLITE_MISMATCH, message: "sessions 不是有效的 JSON 数组"
+      )
     }
-    return object
+    let data = try JSONSerialization.data(withJSONObject: value)
+    guard let text = String(data: data, encoding: .utf8) else {
+      throw IosBackupStoreError(
+        operation: "编码任务", code: SQLITE_MISMATCH, message: "JSON 不是 UTF-8"
+      )
+    }
+    return text
+  }
+
+  private static func jsonArray(_ value: String?) throws -> [Any] {
+    guard let value else { return [] }
+    guard let data = value.data(using: .utf8) else {
+      throw IosBackupStoreError(
+        operation: "解码任务", code: SQLITE_CORRUPT, message: "sessions 不是 UTF-8"
+      )
+    }
+    do {
+      guard let array = try JSONSerialization.jsonObject(with: data) as? [Any] else {
+        throw IosBackupStoreError(
+          operation: "解码任务", code: SQLITE_CORRUPT, message: "sessions 不是 JSON 数组"
+        )
+      }
+      return array
+    } catch let error as IosBackupStoreError {
+      throw error
+    } catch {
+      throw IosBackupStoreError(
+        operation: "解码任务", code: SQLITE_CORRUPT, message: "sessions JSON 已损坏"
+      )
+    }
   }
 
   private static func recordId(_ value: String?) -> NSNumber? {
@@ -837,6 +937,37 @@ private final class IosBackupJobStore {
           let number = legacy.first as? NSNumber
     else { return nil }
     return number
+  }
+
+  private func nonEmptyText(_ value: Any?) -> String? {
+    guard let text = value as? String,
+          !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else { return nil }
+    return text
+  }
+
+  private func execute(_ sql: String, operation: String) throws {
+    let code = sqlite3_exec(db, sql, nil, nil, nil)
+    guard code == SQLITE_OK else {
+      throw databaseError(operation: operation, code: code)
+    }
+  }
+
+  private func prepare(
+    _ sql: String,
+    statement: inout OpaquePointer?,
+    operation: String
+  ) throws {
+    let code = sqlite3_prepare_v2(db, sql, -1, &statement, nil)
+    guard code == SQLITE_OK else {
+      throw databaseError(operation: operation, code: code)
+    }
+  }
+
+  private func databaseError(operation: String, code: Int32) -> IosBackupStoreError {
+    let message = db.map { String(cString: sqlite3_errmsg($0)) }
+      ?? String(cString: sqlite3_errstr(code))
+    return IosBackupStoreError(operation: operation, code: code, message: message)
   }
 }
 
@@ -1006,7 +1137,7 @@ enum IosBackupReceiptVerifier {
 
 private final class IosBackupHostApi: BackupNativeHostApi {
   private let defaults = UserDefaults.standard
-  private let jobStore = IosBackupJobStore()
+  private let jobStore: Result<IosBackupJobStore, Error>
   private let eventApi: BackupNativeEventApi
   private let networkMonitor = NWPathMonitor()
   private let networkQueue = DispatchQueue(label: "ios.backup.network")
@@ -1052,6 +1183,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
 
   init(eventApi: BackupNativeEventApi) {
     self.eventApi = eventApi
+    jobStore = Result { try IosBackupJobStore() }
     networkMonitor.pathUpdateHandler = { [weak self] path in
       self?.lastLanReachable =
         path.status == .satisfied && !path.usesInterfaceType(.cellular)
@@ -1065,7 +1197,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
 
   func snapshot(completion: @escaping (Result<[String?: Any?]?, Error>) -> Void) {
     triggerCleanupIfDue()
-    completion(.success(currentSnapshot()))
+    completion(Result { try currentSnapshot() })
   }
 
   func initialize(
@@ -1077,7 +1209,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       backed: (request["backedRetentionDays"] as? Int) ?? -1
     )
     triggerCleanup()
-    completion(.success(currentSnapshot()))
+    completion(Result { try currentSnapshot() })
   }
 
   func loadAccessKey(completion: @escaping (Result<String?, Error>) -> Void) {
@@ -1122,10 +1254,14 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     job["totalBytes"] = fileSize
     job.removeValue(forKey: "errorMessage")
     job.removeValue(forKey: "failureKind")
-    upsert(job)
-    startUpload(job)
-    emitSnapshot()
-    completion(.success(()))
+    do {
+      try upsert(job)
+      startUpload(job)
+      emitSnapshot()
+      completion(.success(()))
+    } catch {
+      completion(.failure(error))
+    }
   }
 
   func requeueJob(
@@ -1136,16 +1272,20 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     activeUploads[jobId]?.cancel()
     activeUploads.removeValue(forKey: jobId)
     uploadsLock.unlock()
-    updateJob(jobId) { job in
-      job["state"] = "pending"
-      job.removeValue(forKey: "errorMessage")
-      job.removeValue(forKey: "failureKind")
+    do {
+      try updateJob(jobId, mutate: { job in
+        job["state"] = "pending"
+        job.removeValue(forKey: "errorMessage")
+        job.removeValue(forKey: "failureKind")
+      })
+      if let job = try jobs().first(where: { $0["id"] as? String == jobId }) {
+        startUpload(job)
+      }
+      emitSnapshot()
+      completion(.success(()))
+    } catch {
+      completion(.failure(error))
     }
-    if let job = jobs().first(where: { $0["id"] as? String == jobId }) {
-      startUpload(job)
-    }
-    emitSnapshot()
-    completion(.success(()))
   }
 
   func cancelJob(
@@ -1156,11 +1296,15 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     activeUploads[jobId]?.cancel()
     activeUploads.removeValue(forKey: jobId)
     uploadsLock.unlock()
-    updateJob(jobId) { job in
-      job["state"] = "paused"
+    do {
+      try updateJob(jobId, mutate: { job in
+        job["state"] = "paused"
+      })
+      emitSnapshot()
+      completion(.success(()))
+    } catch {
+      completion(.failure(error))
     }
-    emitSnapshot()
-    completion(.success(()))
   }
 
   func updateRetentionSchedule(
@@ -1178,71 +1322,75 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   func reclaimStorageIfNeeded(
     completion: @escaping (Result<[String?: Any?], Error>) -> Void
   ) {
-    let minimumBytes: Int64 = 2 * 1024 * 1024 * 1024
-    let targetBytes: Int64 = 3 * 1024 * 1024 * 1024
-    let before = availableStorageBytes()
-    var current = before
-    var deletedCount = 0
-    var freedBytes: Int64 = 0
-    if current < minimumBytes {
-      let recordingsRoot = recordingsDirectory().path + "/"
-      for var job in jobs() where current < targetBytes {
-        guard
-          job["state"] as? String == "completed",
-          (job["verificationVersion"] as? Int ?? 0) >= Self.verificationVersion,
-          let remoteId = job["remoteRecordId"] as? NSNumber,
-          remoteId.int64Value > 0,
-          let receipt = job["verificationReceipt"] as? String,
-          !receipt.isEmpty,
-          let lastAttested = job["lastAttestedAt"] as? String,
-          let attestedDate = Self.isoFormatter.date(from: lastAttested),
-          Date().timeIntervalSince(attestedDate) <= Self.storageAttestationFreshness,
-          let path = job["filePath"] as? String,
-          path.hasPrefix(recordingsRoot)
-        else {
-          continue
-        }
-        let file = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: path) else { continue }
-        if let expected = job["contentSha256"] as? String, !expected.isEmpty {
-          if sha256(file: file) != expected {
-            job["errorMessage"] = "录像文件已被替换，已取消空间清理"
-            upsert(job)
+    do {
+      let minimumBytes: Int64 = 2 * 1024 * 1024 * 1024
+      let targetBytes: Int64 = 3 * 1024 * 1024 * 1024
+      let before = availableStorageBytes()
+      var current = before
+      var deletedCount = 0
+      var freedBytes: Int64 = 0
+      if current < minimumBytes {
+        let recordingsRoot = recordingsDirectory().path + "/"
+        for var job in try jobs() where current < targetBytes {
+          guard
+            job["state"] as? String == "completed",
+            (job["verificationVersion"] as? Int ?? 0) >= Self.verificationVersion,
+            let remoteId = job["remoteRecordId"] as? NSNumber,
+            remoteId.int64Value > 0,
+            let receipt = job["verificationReceipt"] as? String,
+            !receipt.isEmpty,
+            let lastAttested = job["lastAttestedAt"] as? String,
+            let attestedDate = Self.isoFormatter.date(from: lastAttested),
+            Date().timeIntervalSince(attestedDate) <= Self.storageAttestationFreshness,
+            let path = job["filePath"] as? String,
+            path.hasPrefix(recordingsRoot)
+          else {
             continue
           }
+          let file = URL(fileURLWithPath: path)
+          guard FileManager.default.fileExists(atPath: path) else { continue }
+          if let expected = job["contentSha256"] as? String, !expected.isEmpty {
+            if sha256(file: file) != expected {
+              job["errorMessage"] = "录像文件已被替换，已取消空间清理"
+              try upsert(job)
+              continue
+            }
+          }
+          let size = Int64(
+            (try? FileManager.default.attributesOfItem(
+              atPath: path
+            )[.size] as? Int64) ?? 0
+          )
+          do {
+            try FileManager.default.removeItem(at: file)
+            deletedCount += 1
+            freedBytes += size
+            job["localDeletedAt"] = ISO8601DateFormatter().string(from: Date())
+            job["cleanupReason"] = "存储空间不足提前清理"
+            try upsert(job)
+          } catch {
+            job["errorMessage"] = "空间清理失败，已保留本机录像"
+            try upsert(job)
+          }
+          current = availableStorageBytes()
         }
-        let size = Int64(
-          (try? FileManager.default.attributesOfItem(
-            atPath: path
-          )[.size] as? Int64) ?? 0
-        )
-        do {
-          try FileManager.default.removeItem(at: file)
-          deletedCount += 1
-          freedBytes += size
-          job["localDeletedAt"] = ISO8601DateFormatter().string(from: Date())
-          job["cleanupReason"] = "存储空间不足提前清理"
-          upsert(job)
-        } catch {
-          job["errorMessage"] = "空间清理失败，已保留本机录像"
-          upsert(job)
-        }
-        current = availableStorageBytes()
       }
-    }
-    emitSnapshot()
-    completion(
-      .success(
-        [
-          "availableBytes": current,
-          "availableBytesBefore": before,
-          "freedBytes": freedBytes,
-          "deletedCount": deletedCount,
-          "warning": current < targetBytes,
-          "insufficient": current < minimumBytes,
-        ]
+      emitSnapshot()
+      completion(
+        .success(
+          [
+            "availableBytes": current,
+            "availableBytesBefore": before,
+            "freedBytes": freedBytes,
+            "deletedCount": deletedCount,
+            "warning": current < targetBytes,
+            "insufficient": current < minimumBytes,
+          ]
+        )
       )
-    )
+    } catch {
+      completion(.failure(error))
+    }
   }
 
   private func recordingsDirectory() -> URL {
@@ -1278,12 +1426,12 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     completion(.success(["wifiConnected": lastLanReachable]))
   }
 
-  private func currentSnapshot() -> [String?: Any?] {
+  private func currentSnapshot() throws -> [String?: Any?] {
     [
       "deviceId": deviceId(),
       "deviceName": deviceName(),
       "connection": defaults.dictionary(forKey: keys.connection),
-      "jobs": jobs().map(slimJob),
+      "jobs": try jobs().map(slimJob),
     ]
   }
 
@@ -1368,16 +1516,21 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     return result
   }
 
-  private func jobs() -> [[String: Any]] {
-    jobStore.allJobs()
+  private func jobs() throws -> [[String: Any]] {
+    try jobStore.get().allJobs()
   }
 
-  private func upsert(_ job: [String: Any]) {
-    jobStore.upsert(job)
+  private func upsert(_ job: [String: Any]) throws {
+    try jobStore.get().upsert(job)
   }
 
-  private func updateJob(_ id: String, mutate: (inout [String: Any]) -> Void) {
-    jobStore.updateJob(id: id, mutate: mutate)
+  private func updateJob(
+    _ id: String,
+    mutate: (inout [String: Any]) -> Void
+  ) throws {
+    guard try jobStore.get().updateJob(id: id, mutate: mutate) else {
+      throw pigeonError("备份任务不存在", code: "backup_job_missing")
+    }
   }
 
   private func emitSnapshot() {
@@ -1393,7 +1546,8 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       self.emitLock.lock()
       self.emitScheduled = false
       self.emitLock.unlock()
-      self.eventApi.snapshotChanged(snapshot: self.currentSnapshot()) { _ in }
+      guard let snapshot = try? self.currentSnapshot() else { return }
+      self.eventApi.snapshotChanged(snapshot: snapshot) { _ in }
     }
   }
 
@@ -1527,7 +1681,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
             offsetResyncAttempts += 1
             guard offsetResyncAttempts <= 3 else { throw transfer }
             offset = expected
-            updateJob(jobId) { current in
+            try updateJob(jobId) { current in
               current["state"] = "uploading"
               current["uploadedBytes"] = offset
             }
@@ -1558,7 +1712,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         }
         offsetResyncAttempts = 0
         offset = nextOffset
-        updateJob(jobId) { current in
+        try updateJob(jobId) { current in
           current["state"] = "uploading"
           current["uploadedBytes"] = offset
         }
@@ -1624,7 +1778,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         )
       }
       let completedAt = Self.isoFormatter.string(from: Date())
-      updateJob(jobId) { current in
+      try updateJob(jobId) { current in
         current["state"] = "completed"
         current["uploadedBytes"] = totalBytes
         current["contentSha256"] = fileSha256
@@ -1638,7 +1792,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       triggerCleanup()
     } catch {
       let failure = Self.backupFailureInfo(error)
-      updateJob(jobId) { current in
+      try? updateJob(jobId) { current in
         current["state"] = "paused"
         current["errorMessage"] = failure.message
         current["failureKind"] = failure.failureKind
@@ -1936,8 +2090,8 @@ private final class IosBackupHostApi: BackupNativeHostApi {
 
   // MARK: - 保留策略清理
 
-  private func readJobById(_ id: String) -> [String: Any]? {
-    jobs().first(where: { $0["id"] as? String == id })
+  private func readJobById(_ id: String) throws -> [String: Any]? {
+    try jobs().first(where: { $0["id"] as? String == id })
   }
 
   private func dueAt(_ job: [String: Any]) -> Date? {
@@ -1982,7 +2136,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
 
     Task.detached { [weak self] in
       guard let self else { return }
-      await self.performCleanup()
+      try? await self.performCleanup()
       self.cleanupLock.lock()
       self.cleanupRunning = false
       self.cleanupLock.unlock()
@@ -1998,12 +2152,12 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     }
   }
 
-  private func performCleanup() async {
+  private func performCleanup() async throws {
     let root = recordingsDirectory().path + "/"
     let now = Date()
     var changed = false
 
-    for job in jobs() {
+    for job in try jobs() {
       guard
         let id = job["id"] as? String,
         let path = job["filePath"] as? String,
@@ -2034,7 +2188,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         if !hasEvidence {
           baseJob["waitingCleanup"] = false
           baseJob["errorMessage"] = "备份记录缺少安全校验信息，需重新备份后才能自动清理"
-          upsert(baseJob)
+          try upsert(baseJob)
           changed = true
           continue
         }
@@ -2054,7 +2208,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
 
         // 远端确认期间任务可能被重新上传，重新读取并校验代次后再落地。
         guard
-          let current = readJobById(id),
+          let current = try readJobById(id),
           (current["generation"] as? String) == (job["generation"] as? String),
           (current["backupCompletedAt"] as? String) == completedAt,
           current["localDeletedAt"] as? String == nil
@@ -2068,19 +2222,19 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         case .missing:
           baseJob["waitingCleanup"] = false
           baseJob["errorMessage"] = "远端缺失，待重新备份"
-          upsert(baseJob)
+          try upsert(baseJob)
           changed = true
           continue
         case .unauthorized:
           baseJob["waitingCleanup"] = false
           baseJob["errorMessage"] = "需要重新扫码授权"
-          upsert(baseJob)
+          try upsert(baseJob)
           changed = true
           continue
         case .notReady:
           baseJob["waitingCleanup"] = true
           baseJob["errorMessage"] = "电脑端尚未完成校验"
-          upsert(baseJob)
+          try upsert(baseJob)
           changed = true
           continue
         case .unreachable:
@@ -2098,12 +2252,12 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       case .stale:
         baseJob["waitingCleanup"] = false
         baseJob["errorMessage"] = "录像文件已被替换，已取消本次自动清理"
-        upsert(baseJob)
+        try upsert(baseJob)
         changed = true
         continue
       case .failed:
         baseJob["waitingCleanup"] = true
-        upsert(baseJob)
+        try upsert(baseJob)
         changed = true
         continue
       case .deleted, .missing:
@@ -2122,7 +2276,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       } else {
         baseJob["cleanupReason"] = "已备份录像保留策略清理"
       }
-      upsert(baseJob)
+      try upsert(baseJob)
       changed = true
     }
 

@@ -114,6 +114,94 @@ class RunnerTests: XCTestCase {
     XCTAssertThrowsError(try reader.read(offset: 0, count: 32))
   }
 
+  func testBackupJobStorePersistsCrudAcrossRestart() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let job = makeBackupJob(id: "job-1")
+
+    do {
+      let store = try IosBackupJobStore(
+        databaseURL: fixture.databaseURL, defaults: fixture.defaults
+      )
+      try store.upsert(job)
+      XCTAssertEqual(try store.allJobs().count, 1)
+      XCTAssertTrue(try store.updateJob(id: "job-1") { current in
+        current["state"] = "paused"
+        current["uploadedBytes"] = 512
+      })
+      XCTAssertFalse(try store.updateJob(id: "missing") { _ in })
+    }
+
+    let reopened = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL, defaults: fixture.defaults
+    )
+    let restored = try XCTUnwrap(reopened.allJobs().first)
+    XCTAssertEqual(restored["state"] as? String, "paused")
+    XCTAssertEqual((restored["uploadedBytes"] as? NSNumber)?.int64Value, 512)
+    XCTAssertEqual((restored["sessions"] as? [Any])?.count, 1)
+    try reopened.deleteJob(id: "job-1")
+    XCTAssertTrue(try reopened.allJobs().isEmpty)
+  }
+
+  func testBackupJobStoreRejectsUnopenableAndCorruptDatabases() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let directoryURL = fixture.root.appendingPathComponent("database-directory")
+    try FileManager.default.createDirectory(
+      at: directoryURL, withIntermediateDirectories: true
+    )
+    XCTAssertThrowsError(
+      try IosBackupJobStore(databaseURL: directoryURL, defaults: fixture.defaults)
+    ) { error in
+      XCTAssertTrue(error is IosBackupStoreError)
+    }
+
+    try Data("not-a-sqlite-database".utf8).write(to: fixture.databaseURL)
+    XCTAssertThrowsError(
+      try IosBackupJobStore(databaseURL: fixture.databaseURL, defaults: fixture.defaults)
+    ) { error in
+      XCTAssertTrue(error is IosBackupStoreError)
+    }
+  }
+
+  func testBackupJobStoreCommitsLegacyMigrationBeforeDeletingSource() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    fixture.defaults.set(
+      [makeBackupJob(id: "legacy-1")], forKey: "ios_backup_jobs"
+    )
+
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL, defaults: fixture.defaults
+    )
+    XCTAssertEqual(try store.allJobs().first?["id"] as? String, "legacy-1")
+    XCTAssertNil(fixture.defaults.object(forKey: "ios_backup_jobs"))
+  }
+
+  func testBackupJobStoreRollsBackInterruptedLegacyMigration() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    var invalid = makeBackupJob(id: "legacy-invalid")
+    invalid["sessions"] = [Date()]
+    fixture.defaults.set(
+      [makeBackupJob(id: "legacy-valid"), invalid],
+      forKey: "ios_backup_jobs"
+    )
+
+    XCTAssertThrowsError(
+      try IosBackupJobStore(databaseURL: fixture.databaseURL, defaults: fixture.defaults)
+    ) { error in
+      XCTAssertTrue(error is IosBackupStoreError)
+    }
+    XCTAssertNotNil(fixture.defaults.object(forKey: "ios_backup_jobs"))
+
+    fixture.defaults.removeObject(forKey: "ios_backup_jobs")
+    let reopened = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL, defaults: fixture.defaults
+    )
+    XCTAssertTrue(try reopened.allJobs().isEmpty)
+  }
+
   private typealias ReceiptFixture = (
     response: [String: Any], accessKey: String, host: String, device: String,
     session: String, sha256: String, fileSize: Int64, recordId: Int64, now: Int64
@@ -167,6 +255,38 @@ class RunnerTests: XCTestCase {
       recordId: fixture.recordId,
       now: Date(timeIntervalSince1970: TimeInterval(fixture.now))
     )
+  }
+
+  private typealias BackupStoreFixture = (
+    root: URL, databaseURL: URL, defaults: UserDefaults, suiteName: String
+  )
+
+  private func makeBackupStoreFixture() throws -> BackupStoreFixture {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("backup-store-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let suiteName = "RunnerTests.backup-store.\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defaults.removePersistentDomain(forName: suiteName)
+    return (root, root.appendingPathComponent("lan_backup.db"), defaults, suiteName)
+  }
+
+  private func removeBackupStoreFixture(_ fixture: BackupStoreFixture) {
+    fixture.defaults.removePersistentDomain(forName: fixture.suiteName)
+    try? FileManager.default.removeItem(at: fixture.root)
+  }
+
+  private func makeBackupJob(id: String) -> [String: Any] {
+    [
+      "id": id,
+      "generation": "generation-\(id)",
+      "filePath": "/recordings/\(id).mp4",
+      "state": "pending",
+      "uploadedBytes": 0,
+      "totalBytes": 1024,
+      "lastModified": 1_800_000_000_000,
+      "sessions": [["id": "session-\(id)", "trackingNumber": "tracking-\(id)"]],
+    ]
   }
 
 }
