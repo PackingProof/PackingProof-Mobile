@@ -51,6 +51,7 @@ part 'packing_session_backup_coordinator.dart';
 part 'packing_session_barcode_coordinator.dart';
 part 'packing_session_camera_coordinator.dart';
 part 'packing_session_order_coordinator.dart';
+part 'packing_session_pairing_coordinator.dart';
 part 'packing_session_storage_coordinator.dart';
 part 'packing_session_watermark_coordinator.dart';
 
@@ -62,16 +63,6 @@ enum PackingSessionPhase {
   recording,
   saving,
   error,
-}
-
-class ComputerReplacementPrompt {
-  const ComputerReplacementPrompt({
-    required this.currentComputer,
-    required this.newComputer,
-  });
-
-  final String currentComputer;
-  final String newComputer;
 }
 
 String _codecFallbackMessage(String reason) => switch (reason) {
@@ -86,6 +77,7 @@ class PackingSessionController extends ChangeNotifier
         _PackingSessionWatermarkCoordinator,
         _PackingSessionBarcodeCoordinator,
         _PackingSessionOrderCoordinator,
+        _PackingSessionPairingCoordinator,
         _PackingSessionCameraCoordinator {
   PackingSessionController({
     SessionRepository? repository,
@@ -188,7 +180,6 @@ class PackingSessionController extends ChangeNotifier
   Timer? _feedbackTimer;
   Timer? _rejectedBarcodeTimer;
   Timer? _initialPromptTimer;
-  Timer? _pairingFeedbackTimer;
   Duration _elapsed = Duration.zero;
   BarcodeMarker? _lastMarker;
   @override
@@ -219,23 +210,14 @@ class PackingSessionController extends ChangeNotifier
   String? _rejectedBarcodeMessage;
   @override
   bool _disposed = false;
-  int _pairingAttemptRevision = 0;
   bool _backupListenerAttached = false;
   bool _backgroundServicesInitialized = false;
-  String? _pairingMessage;
   String? _recordingId;
   String? _activeSegmentId;
   int _segmentIndex = 1;
   bool _torchEnabled = false;
   bool _workActive = false;
   int _operationGeneration = 0;
-  int _pairingSuccessRevision = 0;
-  int _pairingFailureRevision = 0;
-  String? _pairingFailureMessage;
-  int _pairingReplacementRevision = 0;
-  ComputerReplacementPrompt? _pairingReplacementPrompt;
-  String? _pendingReplacementQr;
-  LanBackupPairingConfirmation? _pendingReplacementConfirmation;
   Set<int> _hiddenRemoteRecordingIds = <int>{};
 
   CameraController? get cameraController => _cameraController;
@@ -290,24 +272,6 @@ class PackingSessionController extends ChangeNotifier
   int get minimumBarcodeLength => _minimumBarcodeLength;
   int get historyPageSize => _historyPageSize;
   LanBackupSnapshot get backupSnapshot => _lanBackupService.snapshot;
-  bool get pairingScanActive => _pairingScanActive;
-  int get pairingSuccessRevision => _pairingSuccessRevision;
-  int get pairingFailureRevision => _pairingFailureRevision;
-  int get pairingReplacementRevision => _pairingReplacementRevision;
-  String? get pairingMessage => _pairingMessage;
-
-  Future<void> connectBackupHost(
-    Uri baseUri, {
-    LanBackupPairingConfirmation? replacementConfirmation,
-  }) async {
-    await _lanBackupService.connectToHost(
-      baseUri,
-      replacementConfirmation: replacementConfirmation,
-    );
-    _pairingSuccessRevision++;
-    notifyListeners();
-  }
-
   bool get historyScanActive => _historyScanActive;
   bool get flashAvailable => _supportsNativeCamera
       ? _nativeInitialization?.flashAvailable == true
@@ -337,18 +301,6 @@ class PackingSessionController extends ChangeNotifier
     final String? message = _capabilityNoticeMessage;
     _capabilityNoticeMessage = null;
     return message;
-  }
-
-  String? takePairingFailureForDisplay() {
-    final String? message = _pairingFailureMessage;
-    _pairingFailureMessage = null;
-    return message;
-  }
-
-  ComputerReplacementPrompt? takeComputerReplacementPrompt() {
-    final ComputerReplacementPrompt? prompt = _pairingReplacementPrompt;
-    _pairingReplacementPrompt = null;
-    return prompt;
   }
 
   String? get scanWarningMessage =>
@@ -1030,30 +982,6 @@ class PackingSessionController extends ChangeNotifier
     }
   }
 
-  void beginComputerPairing() {
-    if (isWorking || isBusy) {
-      return;
-    }
-    _pairingAttemptRevision++;
-    _clearPendingComputerReplacement();
-    _pairingScanActive = true;
-    _pairingMessage = '将电脑上的二维码放入框内';
-    _stabilityTracker.reset();
-    unawaited(_nativeCamera?.setPairingScanEnabled(true));
-    notifyListeners();
-  }
-
-  void cancelComputerPairing() {
-    _pairingFeedbackTimer?.cancel();
-    _pairingAttemptRevision++;
-    _pairingScanActive = false;
-    _pairingMessage = null;
-    _clearPendingComputerReplacement();
-    _lanBackupService.cancelPairing();
-    unawaited(_nativeCamera?.setPairingScanEnabled(false));
-    notifyListeners();
-  }
-
   void beginHistoryBarcodeScan() {
     if (isWorking || isBusy) return;
     _historyScanResult = null;
@@ -1588,145 +1516,6 @@ class PackingSessionController extends ChangeNotifier
   }
 
   @override
-  Future<void> _tryPairComputer(String value) async {
-    if (_pairingBusy || !_pairingScanActive) {
-      return;
-    }
-    final int revision = _pairingAttemptRevision;
-    _pairingBusy = true;
-    final bool isComputerQr = _looksLikeComputerPairingQr(value);
-    if (isComputerQr) {
-      _pairingMessage = '已识别电脑二维码，正在连接…';
-      notifyListeners();
-    }
-    try {
-      await _lanBackupService.pair(value);
-      if (revision != _pairingAttemptRevision || !_pairingScanActive) return;
-      await _completePairingSuccess(revision);
-    } on LanBackupHostMismatchException catch (error) {
-      if (revision != _pairingAttemptRevision) return;
-      await _queueComputerReplacement(value, error);
-    } on FormatException catch (error) {
-      if (revision != _pairingAttemptRevision) return;
-      if (isComputerQr) {
-        await _completePairingFailure(error.message.toString());
-      }
-      // Ordinary waybill barcodes remain silent while waiting for a computer QR.
-    } on Object catch (error) {
-      if (revision != _pairingAttemptRevision) return;
-      await _completePairingFailure(
-        error.toString().replaceFirst('Exception: ', ''),
-      );
-    } finally {
-      _pairingBusy = false;
-    }
-  }
-
-  Future<void> confirmPendingComputerReplacement() async {
-    final String? qrValue = _pendingReplacementQr;
-    final LanBackupPairingConfirmation? confirmation =
-        _pendingReplacementConfirmation;
-    if (_pairingBusy || qrValue == null || confirmation == null) return;
-    final int revision = _pairingAttemptRevision;
-    _pairingBusy = true;
-    _pairingMessage = '正在确认新的备份电脑…';
-    notifyListeners();
-    try {
-      await _lanBackupService.pair(
-        qrValue,
-        replacementConfirmation: confirmation,
-      );
-      if (revision != _pairingAttemptRevision) return;
-      await _completePairingSuccess(revision);
-    } on LanBackupHostMismatchException catch (error) {
-      if (revision != _pairingAttemptRevision) return;
-      await _queueComputerReplacement(qrValue, error);
-    } on FormatException catch (error) {
-      if (revision != _pairingAttemptRevision) return;
-      await _completePairingFailure(error.message.toString());
-    } on Object catch (error) {
-      if (revision != _pairingAttemptRevision) return;
-      await _completePairingFailure(
-        error.toString().replaceFirst('Exception: ', ''),
-      );
-    } finally {
-      _pairingBusy = false;
-    }
-  }
-
-  void cancelPendingComputerReplacement() {
-    _clearPendingComputerReplacement();
-    _pairingMessage = null;
-    notifyListeners();
-  }
-
-  Future<void> _queueComputerReplacement(
-    String qrValue,
-    LanBackupHostMismatchException error,
-  ) async {
-    _pairingScanActive = false;
-    _pairingMessage = null;
-    _pendingReplacementQr = qrValue;
-    _pendingReplacementConfirmation = error.confirmation;
-    _pairingReplacementPrompt = ComputerReplacementPrompt(
-      currentComputer: _endpointDisplayName(error.currentEndpoint),
-      newComputer: _endpointDisplayName(error.candidateEndpoint),
-    );
-    _pairingReplacementRevision++;
-    try {
-      await _nativeCamera?.setPairingScanEnabled(false);
-    } on Object {
-      // The confirmation prompt must still be shown when camera teardown fails.
-    }
-    notifyListeners();
-  }
-
-  Future<void> _completePairingSuccess(int revision) async {
-    if (revision != _pairingAttemptRevision) return;
-    _clearPendingComputerReplacement();
-    _pairingScanActive = false;
-    _pairingSuccessRevision++;
-    await _nativeCamera?.setPairingScanEnabled(false);
-    final LanBackupEndpoint? endpoint = _lanBackupService.snapshot.endpoint;
-    _pairingMessage = endpoint == null
-        ? '电脑连接成功'
-        : '电脑连接成功 · ${endpoint.computerName} · ${endpoint.displayAddress}';
-    _pairingFeedbackTimer?.cancel();
-    _pairingFeedbackTimer = Timer(const Duration(seconds: 3), () {
-      if (_disposed) return;
-      _pairingMessage = null;
-      notifyListeners();
-    });
-    await _backupAllRepositorySessions('pairing_completed');
-    notifyListeners();
-  }
-
-  void _clearPendingComputerReplacement() {
-    _pendingReplacementQr = null;
-    _pendingReplacementConfirmation = null;
-    _pairingReplacementPrompt = null;
-  }
-
-  static String _endpointDisplayName(LanBackupEndpoint endpoint) {
-    final String name = endpoint.computerName.trim();
-    return name.isNotEmpty ? name : endpoint.displayAddress;
-  }
-
-  Future<void> _completePairingFailure(String message) async {
-    _pairingScanActive = false;
-    _pairingMessage = null;
-    _clearPendingComputerReplacement();
-    _pairingFailureMessage = message;
-    _pairingFailureRevision++;
-    try {
-      await _nativeCamera?.setPairingScanEnabled(false);
-    } on Object {
-      // Returning to history and showing the actionable error must still proceed.
-    }
-    notifyListeners();
-  }
-
-  @override
   Future<void> _reloadRecentSessions() async {
     _sessions = (await _repository.querySessions(page: 1, pageSize: 50)).data;
     await _refreshLocalStatistics();
@@ -2025,11 +1814,6 @@ class PackingSessionController extends ChangeNotifier
     unawaited(shutdown());
     super.dispose();
   }
-}
-
-bool _looksLikeComputerPairingQr(String value) {
-  final String normalized = value.trim().toLowerCase();
-  return normalized.startsWith('http://') || normalized.startsWith('https://');
 }
 
 /// 备份触发原因是否要求强制重启已有上传任务：只有用户手动“立即备份”需要，

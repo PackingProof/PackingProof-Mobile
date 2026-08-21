@@ -16,6 +16,8 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   RecordingOperationMode get _operationMode;
   set _operationMode(RecordingOperationMode value);
   Duration get _analysisInterval;
+  bool get _pairingScanActive;
+  bool get _pairingBusy;
 
   Future<void> _tryPairComputer(String value);
   void _showRejectedBarcodeNotice(
@@ -57,9 +59,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   String? _lastTriggeredCommandCode;
   bool _processingFrame = false;
   bool _handlingBarcode = false;
-  bool _pairingScanActive = false;
   bool _historyScanActive = false;
-  bool _pairingBusy = false;
   String? _historyScanResult;
 
   void _processNativeBarcodeFrame(List<NativeBarcodeCandidate> candidates) {
