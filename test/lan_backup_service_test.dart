@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/barcode_marker.dart';
 import 'package:packing_proof_mobile/models/lan_backup.dart';
+import 'package:packing_proof_mobile/models/order_info.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/services/lan_backup_service.dart';
@@ -431,6 +432,11 @@ void main() {
       mediaStart: const Duration(seconds: 2),
       mediaEnd: const Duration(seconds: 10),
       operationMode: RecordingOperationMode.returnGoods,
+      orderInfo: const OrderInfo(
+        orderId: 'private-order',
+        trackingNumber: 'SF1234567890',
+        buyerMessage: 'private-message',
+      ),
     );
 
     final Map<String, Object?> value = recordingSessionBackupMap(session);
@@ -439,6 +445,7 @@ void main() {
     expect(value['mediaEndMs'], 10000);
     expect(value['markers'], hasLength(1));
     expect(value['mode'], 'return');
+    expect(value, isNot(contains('orderInfo')));
   });
 
   test('立即备份会要求原生任务强制重启', () async {
@@ -737,7 +744,7 @@ void main() {
     expect(job.id, 'job-slim');
     expect(job.lastModified?.millisecondsSinceEpoch, 1000);
     expect(job.contentSha256, 'sha-slim');
-    expect(job.remoteRecordIds, isEmpty);
+    expect(job.remoteRecordId, isNull);
     expect(job.destinationComputerId, '');
   });
 
@@ -822,7 +829,7 @@ void main() {
     expect(enqueueLogs, isNotEmpty);
     expect(enqueueLogs.last['startUpload'], isFalse);
     expect(enqueueLogs.last['forceRestart'], isFalse);
-    expect(enqueueLogs.last['sessionCount'], 1);
+    expect(enqueueLogs.last['sessionId'], 'session-log');
     final List<Map<String, Object?>> toggleLogs = events
         .where((event) => event.kind == 'backup_auto_toggle')
         .map((event) => event.extra)
@@ -897,6 +904,51 @@ void main() {
       events.where((event) => event.kind == 'backup_enqueue'),
       hasLength(2),
     );
+  });
+
+  test('入队边界拒绝空或多条录像记录', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-cardinality-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final File video = File('${root.path}/video.mp4');
+    await video.writeAsBytes(<int>[1, 2, 3]);
+    final MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/lan_backup_cardinality_${root.path.hashCode}',
+    );
+    var enqueueCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'enqueue') enqueueCalls++;
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final LanBackupService service = LanBackupService(channel: channel);
+    addTearDown(service.dispose);
+    final DateTime startedAt = DateTime.utc(2026, 7, 25, 10);
+    RecordingSession session(String id) => RecordingSession(
+      id: id,
+      filePath: video.path,
+      startedAt: startedAt,
+      endedAt: startedAt.add(const Duration(seconds: 1)),
+      markers: const <BarcodeMarker>[],
+    );
+
+    await expectLater(
+      service.enqueueFinalizedFile(video.path, const <RecordingSession>[]),
+      throwsA(isA<StateError>()),
+    );
+    await expectLater(
+      service.enqueueFinalizedFile(video.path, <RecordingSession>[
+        session('first'),
+        session('second'),
+      ]),
+      throwsA(isA<StateError>()),
+    );
+    expect(enqueueCalls, 0);
   });
 
   test('备份失败日志只记录状态边沿变化', () async {

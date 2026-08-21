@@ -210,14 +210,14 @@ internal class LanBackupCleanupWorker(
                 } else {
                     val connection = store.connection()
                     val credential = credentials.load()
-                    val recordIds = snapshot.optJSONArray("remoteRecordIds")
+                    val recordId = snapshot.optLong("remoteRecordId").takeIf { it > 0 }
                     val sessions = snapshot.optJSONArray("sessions")
                     val sha256 =
                         LanBackupCleanupScheduler.nullableText(snapshot, "contentSha256")
                     if (
                         connection == null || credential.isNullOrBlank() ||
-                        recordIds == null || recordIds.length() == 0 ||
-                        sessions == null || sessions.length() == 0 ||
+                        recordId == null ||
+                        sessions == null || sessions.length() != 1 ||
                         sha256 == null
                     ) {
                         null
@@ -226,7 +226,7 @@ internal class LanBackupCleanupWorker(
                             connection,
                             credential,
                             store.deviceId(),
-                            recordIds.getLong(0),
+                            recordId,
                             sessions.getJSONObject(0).getString("id"),
                             sha256,
                             snapshot.optLong("totalBytes", -1L),
@@ -283,14 +283,14 @@ internal class LanBackupCleanupWorker(
             var unconfirmedCleanup = false
 
             if (completedAt != null) {
-                val recordIds = job.optJSONArray("remoteRecordIds")
+                val recordId = job.optLong("remoteRecordId").takeIf { it > 0 }
                 val sessions = job.optJSONArray("sessions")
                 val hasTrustedEvidence =
                     job.optInt("verificationVersion") >= BackupRequestAuthentication.VERSION &&
                         contentSha256 != null && contentSha256.length == 64 &&
                         job.optLong("totalBytes", -1L) > 0 &&
-                        recordIds != null && recordIds.length() > 0 &&
-                        sessions != null && sessions.length() > 0
+                        recordId != null &&
+                        sessions != null && sessions.length() == 1
                 if (!hasTrustedEvidence) {
                     Log.w(
                         CLEANUP_TAG,

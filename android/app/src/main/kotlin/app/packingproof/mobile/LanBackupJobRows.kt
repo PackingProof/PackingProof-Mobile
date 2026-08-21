@@ -8,6 +8,8 @@ import org.json.JSONObject
 /** 备份任务行（SQLite 列名 → 值）与任务 JSONObject 的双向映射，字段名与旧版任务文件一致。 */
 internal fun lanBackupJobToRow(job: JSONObject): Map<String, Any?> {
     fun text(key: String): String? = LanBackupCleanupScheduler.normalizeNullableText(job.opt(key))
+    val remoteRecordId = job.optLong("remoteRecordId").takeIf { it > 0 }
+        ?: job.optJSONArray("remoteRecordIds")?.optLong(0)?.takeIf { it > 0 }
     return linkedMapOf(
         "id" to job.optString("id"),
         "generation" to job.optString("generation"),
@@ -23,7 +25,7 @@ internal fun lanBackupJobToRow(job: JSONObject): Map<String, Any?> {
         "scheduled_cleanup_at" to text("scheduledCleanupAt"),
         "local_deleted_at" to text("localDeletedAt"),
         "waiting_cleanup" to if (job.optBoolean("waitingCleanup")) 1 else 0,
-        "remote_record_ids" to job.optJSONArray("remoteRecordIds")?.toString(),
+        "remote_record_id" to remoteRecordId,
         "content_sha256" to text("contentSha256"),
         "verification_version" to job.optInt("verificationVersion"),
         "verification_receipt" to job.opt("verificationReceipt")
@@ -64,7 +66,11 @@ internal fun lanBackupRowToJob(row: Map<String, Any?>): JSONObject {
     for ((column, key) in textColumns) {
         job.put(key, row[column] as? String ?: JSONObject.NULL)
     }
-    job.put("remoteRecordIds", row["remote_record_ids"].parseJsonArray() ?: JSONArray())
+    job.put(
+        "remoteRecordId",
+        (row["remote_record_id"] as? Number)?.toLong()?.takeIf { it > 0 }
+            ?: JSONObject.NULL,
+    )
     job.put(
         "verificationReceipt",
         row["verification_receipt"]?.let {

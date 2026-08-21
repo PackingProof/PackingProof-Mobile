@@ -114,6 +114,13 @@ internal class LanBackupPlugin(
                 }
                 "enqueue" -> {
                     val path = call.argument<String>("filePath") ?: error("缺少录像路径")
+                    val sessions = JSONArray(
+                        call.argument<List<Map<String, Any?>>>("sessions")
+                            ?: emptyList<Map<String, Any?>>(),
+                    )
+                    require(sessions.length() == 1) {
+                        "每个备份任务必须且只能包含一条录像记录"
+                    }
                     val source = File(path)
                     val sourceStatus = LanBackupSourcePolicy.inspect(source, -1L, -1L)
                     if (sourceStatus != LanBackupSourceStatus.AVAILABLE) {
@@ -124,10 +131,6 @@ internal class LanBackupPlugin(
                         result.success(null)
                         return
                     }
-                    val sessions = JSONArray(
-                        call.argument<List<Map<String, Any?>>>("sessions")
-                            ?: emptyList<Map<String, Any?>>(),
-                    )
                     val upsert = store.upsertJob(path, sessions)
                     var job = upsert.job
                     val forceRestart = call.argument<Boolean>("forceRestart") == true
@@ -146,7 +149,7 @@ internal class LanBackupPlugin(
                                 .put("uploadedBytes", 0L)
                                 .put("backupCompletedAt", JSONObject.NULL)
                                 .put("contentSha256", JSONObject.NULL)
-                                .put("remoteRecordIds", JSONArray())
+                                .put("remoteRecordId", JSONObject.NULL)
                                 .put("errorMessage", JSONObject.NULL)
                                 .put("failureKind", JSONObject.NULL)
                             true
@@ -342,9 +345,6 @@ internal class LanBackupPlugin(
 
 /** 快照瘦身：只下发 Dart 实际消费的字段，避免 sessions 等大字段每秒跨通道传输。 */
 private fun org.json.JSONObject.toSnapshotValue(): Map<String, Any?> {
-    val remoteRecordIds = optJSONArray("remoteRecordIds")?.let { array ->
-        (0 until array.length()).map { array.getLong(it) }
-    } ?: emptyList<Long>()
     fun nullable(key: String): Any? = LanBackupCleanupScheduler.nullableText(this, key)
     return mapOf(
         "id" to getString("id"),
@@ -361,7 +361,7 @@ private fun org.json.JSONObject.toSnapshotValue(): Map<String, Any?> {
         "scheduledCleanupAt" to nullable("scheduledCleanupAt"),
         "localDeletedAt" to nullable("localDeletedAt"),
         "waitingCleanup" to optBoolean("waitingCleanup"),
-        "remoteRecordIds" to remoteRecordIds,
+        "remoteRecordId" to optLong("remoteRecordId").takeIf { it > 0 },
         "destinationComputerId" to optString("destinationComputerId"),
         "cleanupReason" to nullable("cleanupReason"),
     )

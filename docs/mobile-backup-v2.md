@@ -1,6 +1,6 @@
-# mobile-backup-v1
+# mobile-backup-v2
 
-本文档约定 PackingProof-Mobile 与 ExpressPackingMonitoring 电脑端之间的录像备份和远程录像库协议。协议版本固定为 `1`。
+本文档约定 PackingProof-Mobile 与 ExpressPackingMonitoring 电脑端之间的录像备份和远程录像库协议。协议版本固定为 `2`。
 
 ## 协议变更纪律
 
@@ -14,7 +14,7 @@
 
 ## 连接与鉴权
 
-手机从“手机/电脑连接”二维码取得电脑的局域网地址和访问密钥。所有 `mobile-backup-v1` 请求必须携带：
+手机从“手机/电脑连接”二维码取得电脑的局域网地址和访问密钥。所有 `mobile-backup-v2` 请求必须携带：
 
 ```http
 X-EPM-Access-Key: <access-key>
@@ -42,6 +42,7 @@ APP 不上传订单留言、卖家备注、商品、退款信息或手机本地�
       "endedAt": "2026-07-19T10:00:12Z",
       "mediaStartMs": 0,
       "mediaEndMs": 12345,
+      "mode": "shipping",
       "markers": []
     }
   ]
@@ -56,8 +57,8 @@ APP 不上传订单留言、卖家备注、商品、退款信息或手机本地�
 
 ```json
 {
-  "protocol": "mobile-backup-v1",
-  "version": 1,
+  "protocol": "mobile-backup-v2",
+  "version": 2,
   "computerId": "stable-computer-id",
   "computerName": "仓库电脑",
   "maxChunkBytes": 4194304,

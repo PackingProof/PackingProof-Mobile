@@ -157,18 +157,26 @@ internal class LanBackupStateStore(private val context: Context) {
                     .put("uploadedBytes", 0L)
                     .put("backupCompletedAt", JSONObject.NULL)
                     .put("contentSha256", JSONObject.NULL)
-                    .put("remoteRecordIds", JSONArray())
+                    .put("remoteRecordId", JSONObject.NULL)
             }
             writeJobUnlocked(job)
         }
     }
 
     fun upsertJob(filePath: String, sessions: JSONArray): LanBackupUpsertResult = withJobLock {
+        require(sessions.length() == 1) {
+            "每个备份任务必须且只能包含一条录像记录"
+        }
         val file = File(filePath)
         val id = stableId(file.canonicalPath)
         val existing = readJobUnlocked(id)
         val destinationComputerId = connection()?.optString("computerId").orEmpty()
+        val sourceSessionId = sessions.getJSONObject(0).getString("id")
+        val existingSessions = existing?.optJSONArray("sessions")
+        val sameSession = existingSessions?.length() == 1 &&
+            existingSessions.getJSONObject(0).optString("id") == sourceSessionId
         if (existing != null &&
+            sameSession &&
             existing.optLong("totalBytes") == file.length() &&
             existing.optLong("lastModified") == file.lastModified() &&
             existing.optString("destinationComputerId") == destinationComputerId
@@ -182,7 +190,13 @@ internal class LanBackupStateStore(private val context: Context) {
             if (!existing.has("scheduledCleanupAt")) existing.put("scheduledCleanupAt", JSONObject.NULL)
             if (!existing.has("localDeletedAt")) existing.put("localDeletedAt", JSONObject.NULL)
             if (!existing.has("waitingCleanup")) existing.put("waitingCleanup", false)
-            if (!existing.has("remoteRecordIds")) existing.put("remoteRecordIds", JSONArray())
+            if (!existing.has("remoteRecordId")) {
+                val legacyRecordId = existing.optJSONArray("remoteRecordIds")
+                    ?.optLong(0)
+                    ?.takeIf { it > 0 }
+                existing.put("remoteRecordId", legacyRecordId ?: JSONObject.NULL)
+                existing.remove("remoteRecordIds")
+            }
             if (!existing.has("contentSha256")) existing.put("contentSha256", JSONObject.NULL)
             if (!existing.has("verificationVersion")) existing.put("verificationVersion", 0)
             if (!existing.has("verificationReceipt")) existing.put("verificationReceipt", JSONObject.NULL)
@@ -210,7 +224,7 @@ internal class LanBackupStateStore(private val context: Context) {
             .put("scheduledCleanupAt", JSONObject.NULL)
             .put("localDeletedAt", JSONObject.NULL)
             .put("waitingCleanup", false)
-            .put("remoteRecordIds", JSONArray())
+            .put("remoteRecordId", JSONObject.NULL)
             .put("contentSha256", JSONObject.NULL)
             .put("verificationVersion", 0)
             .put("verificationReceipt", JSONObject.NULL)

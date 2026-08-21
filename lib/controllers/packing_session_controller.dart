@@ -3314,9 +3314,7 @@ class PackingSessionController extends ChangeNotifier {
       if (_hasRegisteredRetentionJob(session.filePath, stat, jobsByFile)) {
         continue;
       }
-      grouped
-          .putIfAbsent(session.filePath, () => <RecordingSession>[])
-          .add(session);
+      grouped[session.filePath] = <RecordingSession>[session];
     }
     await _lanBackupService.enqueueFinalizedFiles(grouped);
   }

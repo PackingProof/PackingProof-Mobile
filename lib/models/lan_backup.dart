@@ -124,7 +124,7 @@ class LanBackupJob {
     this.scheduledCleanupAt,
     this.localDeletedAt,
     this.waitingCleanup = false,
-    this.remoteRecordIds = const <int>[],
+    this.remoteRecordId,
     this.destinationComputerId = '',
     this.cleanupReason,
   });
@@ -148,10 +148,7 @@ class LanBackupJob {
       scheduledCleanupAt: _dateTime(map['scheduledCleanupAt']),
       localDeletedAt: _dateTime(map['localDeletedAt']),
       waitingCleanup: map['waitingCleanup'] == true,
-      remoteRecordIds: ((map['remoteRecordIds'] as List<Object?>?) ?? const [])
-          .whereType<num>()
-          .map((num value) => value.toInt())
-          .toList(growable: false),
+      remoteRecordId: (map['remoteRecordId'] as num?)?.toInt(),
       destinationComputerId: '${map['destinationComputerId'] ?? ''}',
       cleanupReason: map['cleanupReason'] as String?,
     );
@@ -171,7 +168,7 @@ class LanBackupJob {
   final DateTime? scheduledCleanupAt;
   final DateTime? localDeletedAt;
   final bool waitingCleanup;
-  final List<int> remoteRecordIds;
+  final int? remoteRecordId;
   final String destinationComputerId;
   final String? cleanupReason;
 
@@ -496,7 +493,6 @@ Map<String, Object?> recordingSessionBackupMap(RecordingSession session) {
           },
         )
         .toList(growable: false),
-    if (session.orderInfo != null) 'orderInfo': session.orderInfo!.toJson(),
   };
 }
 

@@ -12,7 +12,6 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import org.json.JSONObject
-import org.json.JSONArray
 import java.io.File
 import java.io.EOFException
 import java.io.IOException
@@ -22,6 +21,31 @@ import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
 import kotlin.math.min
+
+internal fun canonicalCompletionSessions(sessions: org.json.JSONArray): org.json.JSONArray {
+    require(sessions.length() == 1) {
+        "每个备份任务必须且只能包含一条录像记录"
+    }
+    val source = sessions.getJSONObject(0)
+    val completed = JSONObject()
+        .put("id", source.getString("id"))
+        .put("trackingNumber", source.optString("trackingNumber"))
+        .put("startedAt", source.getString("startedAt"))
+        .put("endedAt", source.getString("endedAt"))
+        .put("mediaStartMs", source.getLong("mediaStartMs"))
+        .put("mediaEndMs", source.getLong("mediaEndMs"))
+        .put("mode", source.optString("mode", "shipping"))
+        .put("markers", source.optJSONArray("markers") ?: org.json.JSONArray())
+    return org.json.JSONArray().put(completed)
+}
+
+internal fun verifiedCompletionRecordId(response: JSONObject, fileSha256: String): Long? {
+    if (response.optString("status") != "verified" ||
+        response.optString("fileSha256") != fileSha256 ||
+        response.has("recordIds")
+    ) return null
+    return response.optLong("recordId").takeIf { it > 0 }
+}
 
 internal class LanBackupWorker(
     appContext: Context,
@@ -192,11 +216,14 @@ internal class LanBackupWorker(
                 }
             }
             requireAvailable(job)
+            val completionSessions = canonicalCompletionSessions(
+                job.getJSONArray("sessions"),
+            )
             val completionBody = JSONObject()
                 .put("fileSha256", sha256)
                 .put("sourceDeviceId", store.deviceId())
                 .put("sourceDeviceName", store.deviceName())
-                .put("sessions", completionSessions(job.getJSONArray("sessions")))
+                .put("sessions", completionSessions)
             val completion = try {
                 postJson(
                     "$baseUrl/api/mobile-backup/uploads/$encodedUploadId/complete",
@@ -211,11 +238,8 @@ internal class LanBackupWorker(
                     completionBody,
                 )
             }
-            val recordIds = completion.optJSONArray("recordIds") ?: JSONArray()
-            if (completion.optString("status") != "verified" ||
-                completion.optString("fileSha256") != sha256 ||
-                recordIds.length() == 0
-            ) {
+            val recordId = verifiedCompletionRecordId(completion, sha256)
+            if (recordId == null) {
                 return fail(
                     job,
                     generation,
@@ -223,23 +247,22 @@ internal class LanBackupWorker(
                     LanBackupFailureKind.VERIFICATION_FAILED,
                 )
             }
-            val firstSessionId = job.getJSONArray("sessions").getJSONObject(0).getString("id")
-            val firstRecordId = recordIds.getLong(0)
+            val sourceSessionId = completionSessions.getJSONObject(0).getString("id")
             val signedVerification = BackupRequestAuthentication.verifyReceipt(
                 response = completion,
                 credential = storedCredential,
                 hostNodeId = connection.optString("computerId"),
                 sourceDeviceId = store.deviceId(),
-                sourceSessionId = firstSessionId,
+                sourceSessionId = sourceSessionId,
                 fileSha256 = sha256,
                 fileSizeBytes = file.length(),
-                recordId = firstRecordId,
+                recordId = recordId,
             )
             complete(
                 job,
                 generation,
                 file.length(),
-                recordIds,
+                recordId,
                 sha256,
                 if (signedVerification) BackupRequestAuthentication.VERSION else 0,
                 completion.optString("receiptSignature"),
@@ -310,7 +333,7 @@ internal class LanBackupWorker(
         job: JSONObject,
         generation: String,
         total: Long,
-        recordIds: JSONArray,
+        recordId: Long,
         contentSha256: String,
         verificationVersion: Int,
         verificationReceipt: String,
@@ -320,7 +343,7 @@ internal class LanBackupWorker(
                 .put("uploadedBytes", total)
                 .put("backupCompletedAt", java.time.Instant.now().toString())
                 .put("contentSha256", contentSha256)
-                .put("remoteRecordIds", recordIds)
+                .put("remoteRecordId", recordId)
                 .put("verificationVersion", verificationVersion)
                 .put("verificationReceipt", verificationReceipt.takeIf { verificationVersion > 0 } ?: JSONObject.NULL)
                 .put("lastAttestedAt", if (verificationVersion > 0) java.time.Instant.now().toString() else JSONObject.NULL)
@@ -332,36 +355,12 @@ internal class LanBackupWorker(
         Log.i(
             TAG,
             "Backup completed id=${job.getString("id").take(8)} " +
-                "bytes=$total records=${recordIds.length()}",
+                "bytes=$total recordId=$recordId",
         )
         if (current != null) {
             LanBackupCleanupScheduler.reschedule(applicationContext, store, current)
         }
         return Result.success()
-    }
-
-    private fun completionSessions(sessions: JSONArray): JSONArray {
-        val result = JSONArray()
-        for (index in 0 until sessions.length()) {
-            val source = sessions.getJSONObject(index)
-            val duration = (source.optLong("mediaEndMs") - source.optLong("mediaStartMs"))
-                .takeIf { it > 0 }
-                ?: runCatching {
-                    java.time.Duration.between(
-                        java.time.Instant.parse(source.getString("startedAt")),
-                        java.time.Instant.parse(source.getString("endedAt")),
-                    ).toMillis()
-                }.getOrDefault(1L)
-            val completed = JSONObject()
-                    .put("sessionId", source.getString("id"))
-                    .put("trackingNumber", source.optString("trackingNumber"))
-                    .put("startedAt", source.getString("startedAt"))
-                    .put("durationMilliseconds", duration.coerceAtLeast(1L))
-                    .put("mode", source.optString("mode", "shipping"))
-            source.optJSONObject("orderInfo")?.let { completed.put("orderInfo", it) }
-            result.put(completed)
-        }
-        return result
     }
 
     private fun fail(

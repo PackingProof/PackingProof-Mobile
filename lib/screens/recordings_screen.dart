@@ -738,11 +738,11 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       .where(
         (LanBackupJob job) =>
             job.state == LanBackupJobState.completed &&
-            job.remoteRecordIds.isNotEmpty,
+            job.remoteRecordId != null,
       )
       .map(
         (LanBackupJob job) =>
-            '${job.id}:${job.destinationComputerId}:${job.remoteRecordIds.join(',')}',
+            '${job.id}:${job.destinationComputerId}:${job.remoteRecordId}',
       )
       .toSet();
 
@@ -1013,7 +1013,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   job.destinationComputerId ==
                   _backupSnapshot.endpoint?.computerId,
             )
-            .expand((job) => job.remoteRecordIds),
+            .map((job) => job.remoteRecordId)
+            .whereType<int>(),
       );
     if (ids.isEmpty) return;
     try {
@@ -2096,7 +2097,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                         if (deleted == true && mounted && item.local != null) {
                           final Set<int> hiddenIds = <int>{
                             if (item.remote != null) item.remote!.id,
-                            if (backupJob != null) ...backupJob.remoteRecordIds,
+                            if (backupJob?.remoteRecordId case final int id) id,
                           };
                           setState(() {
                             _hiddenRemoteIds.addAll(hiddenIds);
@@ -2310,15 +2311,13 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   }
 
   bool _isJobKnownAvailable(LanBackupJob job) {
-    if (job.state != LanBackupJobState.completed ||
-        job.remoteRecordIds.isEmpty) {
+    final int? remoteRecordId = job.remoteRecordId;
+    if (job.state != LanBackupJobState.completed || remoteRecordId == null) {
       return false;
     }
-    return job.remoteRecordIds.every((int id) {
-      final status = _remoteStatuses[id];
-      return status == null ||
-          (status.status == RemoteRecordingStatus.available && status.exists);
-    });
+    final status = _remoteStatuses[remoteRecordId];
+    return status == null ||
+        (status.status == RemoteRecordingStatus.available && status.exists);
   }
 }
 

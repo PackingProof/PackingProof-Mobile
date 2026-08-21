@@ -16,7 +16,7 @@ internal class LanBackupJobDatabase(private val context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "lan_backup.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 2
         const val TABLE = "backup_jobs"
         private const val MIGRATION_PREFS = "lan_backup_migration"
         private const val MIGRATION_DONE_KEY = "legacy_files_migrated"
@@ -36,7 +36,7 @@ internal class LanBackupJobDatabase(private val context: Context) :
             "scheduled_cleanup_at",
             "local_deleted_at",
             "waiting_cleanup",
-            "remote_record_ids",
+            "remote_record_id",
             "content_sha256",
             "verification_version",
             "verification_receipt",
@@ -65,7 +65,7 @@ internal class LanBackupJobDatabase(private val context: Context) :
                 scheduled_cleanup_at TEXT,
                 local_deleted_at TEXT,
                 waiting_cleanup INTEGER NOT NULL DEFAULT 0,
-                remote_record_ids TEXT,
+                remote_record_id INTEGER,
                 content_sha256 TEXT,
                 verification_version INTEGER NOT NULL DEFAULT 0,
                 verification_receipt TEXT,
@@ -93,7 +93,23 @@ internal class LanBackupJobDatabase(private val context: Context) :
         migrateLegacyFilesIfNeeded(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN remote_record_id INTEGER")
+            db.rawQuery("SELECT id, remote_record_ids FROM $TABLE", null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val legacy = cursor.getString(1)?.let {
+                        runCatching { org.json.JSONArray(it) }.getOrNull()
+                    }
+                    val recordId = legacy?.optLong(0)?.takeIf { it > 0 } ?: continue
+                    db.execSQL(
+                        "UPDATE $TABLE SET remote_record_id = ? WHERE id = ?",
+                        arrayOf(recordId, cursor.getString(0)),
+                    )
+                }
+            }
+        }
+    }
 
     /** 旧版任务文件一次性导入；带锁且以 SharedPreferences 标记保证只执行一次。 */
     private fun migrateLegacyFilesIfNeeded(db: SQLiteDatabase) {

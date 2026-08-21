@@ -891,6 +891,20 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     required bool startUpload,
     bool forceRestart = false,
   }) async {
+    final Set<String> fileIdentities = <String>{};
+    for (final ({String filePath, List<RecordingSession> sessions}) entry
+        in entries) {
+      if (entry.sessions.length != 1) {
+        throw StateError('每个备份任务必须且只能包含一条录像记录');
+      }
+      final RecordingSession session = entry.sessions.single;
+      if (!isSameLanBackupFile(entry.filePath, session.filePath)) {
+        throw StateError('备份录像记录与文件路径不一致');
+      }
+      if (!fileIdentities.add(lanBackupFileIdentity(entry.filePath))) {
+        throw StateError('一条录像文件只能创建一个备份任务');
+      }
+    }
     final List<({String filePath, List<RecordingSession> sessions})> valid =
         <({String filePath, List<RecordingSession> sessions})>[];
     for (final ({String filePath, List<RecordingSession> sessions}) entry
@@ -918,7 +932,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
         in valid) {
       _log('backup_enqueue', <String, Object?>{
         'filePath': entry.filePath,
-        'sessionCount': entry.sessions.length,
+        'sessionId': entry.sessions.single.id,
         'startUpload': startUpload,
         'forceRestart': forceRestart,
       });
@@ -930,27 +944,23 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     List<RecordingSession> sessions, {
     bool forceRestart = false,
   }) async {
-    final Map<String, List<RecordingSession>> grouped =
-        <String, List<RecordingSession>>{};
-    for (final RecordingSession session in sessions) {
-      grouped
-          .putIfAbsent(session.filePath, () => <RecordingSession>[])
-          .add(session);
-    }
     _log('backup_all_batch', <String, Object?>{
-      'fileCount': grouped.length,
+      'fileCount': sessions.length,
       'sessionCount': sessions.length,
       'forceRestart': forceRestart,
     });
     final Map<String, LanBackupJob> jobsByFile = _backupJobsByFile();
     final List<({String filePath, List<RecordingSession> sessions})> eligible =
         <({String filePath, List<RecordingSession> sessions})>[];
-    for (final MapEntry<String, List<RecordingSession>> entry
-        in grouped.entries) {
-      if (!forceRestart && await _shouldSkipBackupAll(entry.key, jobsByFile)) {
+    for (final RecordingSession session in sessions) {
+      if (!forceRestart &&
+          await _shouldSkipBackupAll(session.filePath, jobsByFile)) {
         continue;
       }
-      eligible.add((filePath: entry.key, sessions: entry.value));
+      eligible.add((
+        filePath: session.filePath,
+        sessions: <RecordingSession>[session],
+      ));
     }
     await _enqueueBatch(
       eligible,
@@ -1817,7 +1827,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
         ..write(',')
         ..write(job.waitingCleanup)
         ..write(',')
-        ..write(job.remoteRecordIds.join('-'))
+        ..write(job.remoteRecordId)
         ..write(',')
         ..write(job.destinationComputerId)
         ..write(',')
