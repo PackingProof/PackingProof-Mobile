@@ -4,6 +4,7 @@ part of 'packing_session_controller.dart';
 mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   set _hiddenRemoteRecordingIds(Set<int> value);
   set _nativeCamera(ContinuousCameraService? value);
+  ContinuousCameraService Function() get _cameraServiceFactory;
   @override
   ContinuousCameraInitialization? get _nativeInitialization;
   set _nativeInitialization(ContinuousCameraInitialization? value);
@@ -105,7 +106,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       );
       if (_supportsNativeCamera) {
         final ContinuousCameraService nativeCamera =
-            _nativeCamera ?? ContinuousCameraService();
+            _nativeCamera ?? _cameraServiceFactory();
         nativeCamera.onBarcodeFrame = _processNativeBarcodeFrame;
         nativeCamera.onError = (String message) {
           _errorMessage = message;

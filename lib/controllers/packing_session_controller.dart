@@ -92,6 +92,7 @@ class PackingSessionController extends ChangeNotifier
     CameraDiagnosticsService? cameraDiagnostics,
     PlatformCapabilities? capabilities,
     ContinuousCameraService? cameraService,
+    ContinuousCameraService Function()? cameraServiceFactory,
     Future<PackageInfo> Function()? packageInfoLoader,
     // Named parameters cannot use a private initializing formal.
     // ignore: prefer_initializing_formals
@@ -105,6 +106,8 @@ class PackingSessionController extends ChangeNotifier
        _capabilities =
            capabilities ?? AppContainer.forCurrentPlatform().capabilities,
        _nativeCamera = cameraService,
+       _cameraServiceFactory =
+           cameraServiceFactory ?? ContinuousCameraService.new,
        _packageInfoLoader = packageInfoLoader ?? PackageInfo.fromPlatform,
        // ignore: prefer_initializing_formals
        _buildConfig = buildConfig,
@@ -170,6 +173,8 @@ class PackingSessionController extends ChangeNotifier
   CameraController? _cameraController;
   @override
   ContinuousCameraService? _nativeCamera;
+  @override
+  final ContinuousCameraService Function() _cameraServiceFactory;
   @override
   ContinuousCameraInitialization? _nativeInitialization;
   @override

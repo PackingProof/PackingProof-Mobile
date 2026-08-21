@@ -130,14 +130,6 @@ final class IosCameraHostApi:
 
   // MARK: - CameraHostApi
 
-  private func captureVideoOrientation() -> AVCaptureVideoOrientation {
-    switch recordingOrientationName {
-    case "landscapeLeft": return .landscapeLeft
-    case "landscapeRight": return .landscapeRight
-    default: return .portrait
-    }
-  }
-
   func initialize(
     request: CameraInitializeRequest,
     completion: @escaping (Result<CameraInitializationDto, Error>) -> Void
@@ -742,7 +734,9 @@ final class IosCameraHostApi:
       if self.session.canAddOutput(videoOutput) {
         self.session.addOutput(videoOutput)
         if let connection = videoOutput.connection(with: .video) {
-          connection.videoOrientation = captureVideoOrientation()
+          // Flutter 纹理和写入器都使用固定 1080x1920 缓冲；最终方向只写入
+          // AVAssetWriterInput.transform，避免横屏设置物理旋转采集帧。
+          connection.videoOrientation = .portrait
           connection.isVideoMirrored = false
         }
         self.videoOutput = videoOutput
@@ -982,9 +976,9 @@ final class IosCameraHostApi:
         self.videoDeviceInput = input
         self.session.commitConfiguration()
         if let connection = self.videoOutput?.connection(with: .video) {
-          // 切换镜头后重新固定竖屏方向，前置镜头同时开启镜像，
-          // 避免切换后预览被拉伸或未镜像。
-          connection.videoOrientation = captureVideoOrientation()
+          // 切换镜头后仍保持竖屏采集，前置镜头同时开启镜像，避免预览
+          // 尺寸随录像方向变化或切换后未镜像。
+          connection.videoOrientation = .portrait
           connection.isVideoMirrored = device.position == .front
         }
         completion(.success(self.initializationDto()))
@@ -1048,6 +1042,7 @@ final class IosCameraHostApi:
     ]
     let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
     videoInput.expectsMediaDataInRealTime = true
+    videoInput.transform = iosRecordingTransform(for: recordingOrientationName)
     let adaptor = AVAssetWriterInputPixelBufferAdaptor(
       assetWriterInput: videoInput,
       sourcePixelBufferAttributes: [

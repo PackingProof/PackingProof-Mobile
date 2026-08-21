@@ -2,6 +2,18 @@ import Foundation
 import QuartzCore
 import UIKit
 
+/// 保持固定 1080x1920 竖屏采集缓冲不变，仅用 MP4 轨道元数据表达最终录像方向。
+func iosRecordingTransform(for recordingOrientation: String) -> CGAffineTransform {
+  switch recordingOrientation {
+  case "landscapeLeft":
+    return CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 1920, ty: 0)
+  case "landscapeRight":
+    return CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 1080)
+  default:
+    return .identity
+  }
+}
+
 struct IosWatermarkTimeline {
   let startedAtMs: Int64
   let trackingNumber: String

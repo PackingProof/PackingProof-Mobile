@@ -137,7 +137,14 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
     _recordingOrientation = orientation;
     notifyListeners();
     await _repository.saveRecordingOrientation(orientation);
-    if (_supportsNativeCamera && !isWorking) await retryInitialize();
+    if (_supportsNativeCamera && _phase != PackingSessionPhase.saving) {
+      // 原生写入器在相机初始化时读取方向；工作中切换时必须先等待当前
+      // 录像完成保存，再重建相机，避免未完成文件被 dispose 截断。
+      if (isWorking) {
+        await stopWork();
+      }
+      await retryInitialize();
+    }
   }
 
   Future<void> setMinimumBarcodeLength(int value) async {

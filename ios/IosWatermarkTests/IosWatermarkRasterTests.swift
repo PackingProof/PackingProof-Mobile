@@ -5,21 +5,51 @@ import UIKit
 import XCTest
 
 final class IosWatermarkRasterTests: XCTestCase {
+  func testRecordingTransformKeepsPortraitBuffersAndMapsSemanticDirections() {
+    let cases: [(name: String, radians: CGFloat, displayedSize: CGSize)] = [
+      ("portrait", 0, CGSize(width: 1080, height: 1920)),
+      ("landscapeLeft", .pi / 2, CGSize(width: 1920, height: 1080)),
+      ("landscapeRight", -.pi / 2, CGSize(width: 1920, height: 1080)),
+    ]
+
+    for fixture in cases {
+      let transform = iosRecordingTransform(for: fixture.name)
+      let displayedBounds = CGRect(
+        origin: .zero,
+        size: CGSize(width: 1080, height: 1920)
+      ).applying(transform).standardized
+      XCTAssertEqual(transform.a, cos(fixture.radians), accuracy: 0.0001)
+      XCTAssertEqual(transform.b, sin(fixture.radians), accuracy: 0.0001)
+      XCTAssertEqual(transform.c, -sin(fixture.radians), accuracy: 0.0001)
+      XCTAssertEqual(transform.d, cos(fixture.radians), accuracy: 0.0001)
+      XCTAssertEqual(displayedBounds.origin, .zero, fixture.name)
+      XCTAssertEqual(displayedBounds.size, fixture.displayedSize, fixture.name)
+      XCTAssertEqual(
+        IosWatermarkLayout.resolvedRenderSize(
+          naturalSize: CGSize(width: 1080, height: 1920),
+          preferredTransform: transform
+        ),
+        fixture.displayedSize,
+        fixture.name
+      )
+    }
+  }
+
   func testNativeRasterKeepsChangingWatermarkUncroppedInAllOrientations()
     throws
   {
-    let sourceSize = CGSize(width: 540, height: 960)
+    let sourceSize = CGSize(width: 1080, height: 1920)
     let fixtures: [(name: String, transform: CGAffineTransform, expected: CGSize)] = [
-      ("portrait", .identity, sourceSize),
+      ("portrait", iosRecordingTransform(for: "portrait"), sourceSize),
       (
         "landscape-left",
-        CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 960, ty: 0),
-        CGSize(width: 960, height: 540)
+        iosRecordingTransform(for: "landscapeLeft"),
+        CGSize(width: 1920, height: 1080)
       ),
       (
         "landscape-right",
-        CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 540),
-        CGSize(width: 960, height: 540)
+        iosRecordingTransform(for: "landscapeRight"),
+        CGSize(width: 1920, height: 1080)
       ),
     ]
     let timeline = IosWatermarkTimeline(

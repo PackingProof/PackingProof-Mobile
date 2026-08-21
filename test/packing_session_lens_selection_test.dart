@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/models/order_info.dart';
+import 'package:packing_proof_mobile/models/recording_orientation.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
 import 'package:packing_proof_mobile/platform/contracts/camera_platform.dart';
@@ -12,6 +13,7 @@ import 'package:packing_proof_mobile/platform/platform_capabilities.dart';
 import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 import 'package:packing_proof_mobile/services/max_volume_service.dart';
 import 'package:packing_proof_mobile/services/order_info_receiver_service.dart';
+import 'package:packing_proof_mobile/services/session_repository.dart';
 import 'package:packing_proof_mobile/services/speech_prompt_service.dart';
 import 'package:packing_proof_mobile/services/video_watermark_service.dart';
 import 'package:wakelock_plus_platform_interface/src/method_channel_wakelock_plus.dart';
@@ -20,10 +22,14 @@ import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interfac
 import 'test_repository.dart';
 
 class _FakeLensCameraPlatform implements CameraPlatform {
+  int initializeCalls = 0;
+  int stopWorkCalls = 0;
+  int disposeCalls = 0;
   int switchToCameraCalls = 0;
   int switchCameraCalls = 0;
   int probeSequenceCalls = 0;
   final List<String> scanStateEvents = <String>[];
+  final List<String> recordingLifecycleEvents = <String>[];
   Completer<void>? previewDeactivationBlocker;
   final Completer<void> previewDeactivationStarted = Completer<void>();
 
@@ -44,6 +50,8 @@ class _FakeLensCameraPlatform implements CameraPlatform {
     String recordingSpec = 'hd1080p30',
     String capabilityMode = 'unverified',
   }) async {
+    initializeCalls++;
+    recordingLifecycleEvents.add('initialize');
     return const ContinuousCameraInitialization(
       textureId: 1,
       previewWidth: 1920,
@@ -66,6 +74,7 @@ class _FakeLensCameraPlatform implements CameraPlatform {
     String path, {
     required bool recordAudio,
   }) async {
+    recordingLifecycleEvents.add('start');
     return NativeRecordingStart(path: path, startedAt: DateTime.now());
   }
 
@@ -76,6 +85,8 @@ class _FakeLensCameraPlatform implements CameraPlatform {
 
   @override
   Future<NativeRecordingStop> stopWork() async {
+    stopWorkCalls++;
+    recordingLifecycleEvents.add('stop');
     return NativeRecordingStop(
       path: '',
       startedAt: DateTime.now(),
@@ -116,6 +127,7 @@ class _FakeLensCameraPlatform implements CameraPlatform {
   @override
   Future<void> setWorkScanEnabled(bool enabled) async {
     scanStateEvents.add('work:$enabled');
+    recordingLifecycleEvents.add('work:$enabled');
   }
 
   @override
@@ -170,7 +182,10 @@ class _FakeLensCameraPlatform implements CameraPlatform {
   }
 
   @override
-  Future<void> dispose() async {}
+  Future<void> dispose() async {
+    disposeCalls++;
+    recordingLifecycleEvents.add('dispose');
+  }
 }
 
 class _FakeSpeechSink implements SpeechPromptSink {
@@ -256,15 +271,17 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late Directory root;
+  late SessionRepository repository;
   late _FakeLensCameraPlatform camera;
   late PackingSessionController controller;
 
   setUp(() async {
     WakelockPlusPlatformInterface.instance = _FakeWakelock();
     root = await Directory.systemTemp.createTemp('packing-proof-lens-');
+    repository = testRepository(root);
     camera = _FakeLensCameraPlatform();
     controller = PackingSessionController(
-      repository: testRepository(root),
+      repository: repository,
       speechService: _FakeSpeechSink(),
       maxVolumeService: _FakeMaxVolumeSink(),
       orderInfoReceiver: _FakeOrderReceiverSink(),
@@ -273,6 +290,7 @@ void main() {
         PlatformCapability.continuousCameraRecording,
       }),
       cameraService: ContinuousCameraService(platform: camera),
+      cameraServiceFactory: () => ContinuousCameraService(platform: camera),
     );
   });
 
@@ -395,6 +413,30 @@ void main() {
     expect(controller.activeCameraId, 'wide');
     expect(camera.switchToCameraCalls, 0);
     expect(camera.switchCameraCalls, 0);
+  });
+
+  test('工作中切换录像方向会先持久化并结束工作再重建相机', () async {
+    await controller.initialize();
+    await controller.startWork();
+    await controller.setRecordingOrientation(
+      RecordingOrientation.landscapeLeft,
+    );
+
+    expect(
+      (await repository.loadSettings()).recordingOrientation,
+      RecordingOrientation.landscapeLeft,
+    );
+    expect(controller.isWorking, isFalse);
+    expect(controller.phase, PackingSessionPhase.ready);
+    expect(camera.stopWorkCalls, 0);
+    expect(camera.initializeCalls, 2);
+    expect(camera.recordingLifecycleEvents, <String>[
+      'initialize',
+      'work:true',
+      'work:false',
+      'dispose',
+      'initialize',
+    ]);
   });
 
   test('从历史页返回后开始工作会等待预览恢复再开启扫码', () async {
