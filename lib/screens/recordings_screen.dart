@@ -1746,25 +1746,11 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                     thickness: 1,
                     color: colors.outlineVariant,
                   ),
-                  ListTile(
-                    title: const Text('录像方向'),
-                    subtitle: const Text('水印会随录像变换，保持成片右上角正向可读'),
-                    trailing: DropdownButton<RecordingOrientation>(
-                      value: _recordingOrientation,
-                      onChanged: (value) {
-                        if (value != null) {
-                          unawaited(_setRecordingOrientation(value));
-                        }
-                      },
-                      items: RecordingOrientation.values
-                          .map(
-                            (value) => DropdownMenuItem(
-                              value: value,
-                              child: Text(value.label),
-                            ),
-                          )
-                          .toList(),
-                    ),
+                  _RecordingOrientationSettings(
+                    orientation: _recordingOrientation,
+                    onChanged: (value) {
+                      unawaited(_setRecordingOrientation(value));
+                    },
                   ),
                   Divider(
                     height: 1,
@@ -3419,6 +3405,60 @@ class _RecordingSpecSettings extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             spec.description,
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecordingOrientationSettings extends StatelessWidget {
+  const _RecordingOrientationSettings({
+    required this.orientation,
+    required this.onChanged,
+  });
+
+  final RecordingOrientation orientation;
+  final ValueChanged<RecordingOrientation> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Padding(
+      key: const Key('recording-orientation-settings'),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            '录像方向',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<RecordingOrientation>(
+              showSelectedIcon: false,
+              segments: RecordingOrientation.values
+                  .map(
+                    (value) => ButtonSegment<RecordingOrientation>(
+                      value: value,
+                      label: Text(value.label),
+                    ),
+                  )
+                  .toList(growable: false),
+              selected: <RecordingOrientation>{orientation},
+              onSelectionChanged: (values) => onChanged(values.single),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '水印随录像变换，成片始终位于视觉右上角并保持正向可读',
             style: TextStyle(
               color: colors.onSurfaceVariant,
               fontSize: 13,
