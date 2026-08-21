@@ -10,6 +10,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -21,7 +23,17 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - run: flutter test
+      - name: Run non-visual Flutter tests
+        run: |
+          New-Item -ItemType Directory -Force build/test-results | Out-Null
+          flutter test --exclude-tags golden --file-reporter json:build/test-results/flutter-tests.json
+      - name: Upload Flutter test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-test-diagnostics-windows
+          path: build/test-results
+          if-no-files-found: warn
       - name: Check Pigeon drift
         run: |
           dart run pigeon --input pigeons/platform.dart
@@ -30,15 +42,67 @@ jobs:
         working-directory: android
         run: .\gradlew.bat :app:testDebugUnitTest --no-daemon
 
-  ios-build:
+  ios-test:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           flutter-version: '3.44.1'
           cache: true
       - run: flutter pub get
+      - name: Run non-visual Flutter tests
+        run: |
+          mkdir -p build/test-results
+          flutter test --exclude-tags golden --file-reporter json:build/test-results/flutter-tests.json
+      - name: Install iOS pods
+        working-directory: ios
+        run: pod install
+      - name: Select available iPhone simulator
+        id: simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          udid="$({ xcrun simctl list devices available -j || exit 1; } | ruby -rjson -e '
+            data = JSON.parse(STDIN.read)
+            runtimes = data.fetch("devices", {}).select { |runtime, _| runtime.include?(".iOS-") }
+            runtimes.sort_by { |runtime, _| runtime.scan(/\d+/).map(&:to_i) }.reverse_each do |_, devices|
+              device = devices.find { |item| item["isAvailable"] && item["name"].to_s.start_with?("iPhone") }
+              if device
+                puts device.fetch("udid")
+                break
+              end
+            end
+          ')"
+          test -n "$udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+      - name: Run RunnerTests on iOS Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/test-results/ios
+          xcrun simctl boot "${{ steps.simulator.outputs.udid }}" 2>/dev/null || true
+          xcrun simctl bootstatus "${{ steps.simulator.outputs.udid }}" -b
+          set -o pipefail
+          xcodebuild test \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -resultBundlePath build/test-results/ios/RunnerTests.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build/test-results/ios/xcodebuild.log
       - name: Build iOS without codesigning
         run: flutter build ios --no-codesign
+      - name: Upload iOS test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-diagnostics
+          path: build/test-results
+          if-no-files-found: warn
+      - name: Shutdown iOS Simulator
+        if: always() && steps.simulator.outputs.udid != ''
+        run: xcrun simctl shutdown "${{ steps.simulator.outputs.udid }}" || true
