@@ -60,8 +60,9 @@ class LanBackupCompletionContractTest {
         assertEquals(42L, verifiedCompletionRecordId(valid, sha256))
 
         val legacy = JSONObject(valid.toString()).put("recordIds", JSONArray().put(42L))
+        val missingRecordId = JSONObject(valid.toString()).apply { remove("recordId") }
         assertNull(verifiedCompletionRecordId(legacy, sha256))
-        assertNull(verifiedCompletionRecordId(JSONObject(valid.toString()).remove("recordId"), sha256))
+        assertNull(verifiedCompletionRecordId(missingRecordId, sha256))
     }
 
     @Test
