@@ -313,7 +313,8 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         notifyListeners();
       }
     } on Object {
-      // A malformed analysis frame should not interrupt recording.
+      // broad-catch: A malformed analysis frame is isolated so it cannot
+      // interrupt the active recording.
     } finally {
       _processingFrame = false;
     }
@@ -456,6 +457,8 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         if (duplicate) _showDuplicateOrderWarning(code);
         _announceOrderInfo(orderInfo);
       } on Object catch (error) {
+        // broad-catch: Start failures are converted to visible error state and
+        // a fixed offline speech incident below.
         _timeline.reset();
         _errorMessage = '无法开始录像，请重新对准面单\n$error';
         _setPhase(PackingSessionPhase.waitingForBarcode);
@@ -524,6 +527,8 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
             _announceOrderInfo(nextOrderInfo);
           }
         } on Object catch (error) {
+          // broad-catch: Split failures keep the current recording recoverable
+          // and surface both UI and offline speech errors below.
           _errorMessage = '录像分段保存失败\n$error';
           _speechService.enqueue(
             SpeechPrompt.segmentSaveFailed,

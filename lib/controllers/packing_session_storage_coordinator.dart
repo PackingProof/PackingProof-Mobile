@@ -92,6 +92,8 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
       }
       return result;
     } on Object {
+      // broad-catch: Storage inspection failure must not delete files or stop
+      // an otherwise healthy recording; the next periodic check retries it.
       return const StorageSpaceResult(
         availableBytes: 1 << 62,
         availableBytesBefore: 1 << 62,
