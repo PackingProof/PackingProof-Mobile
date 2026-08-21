@@ -39,6 +39,61 @@ class RunnerTests: XCTestCase {
     )
   }
 
+  func testWatermarkTimelineAdvancesWithCompositionTime() {
+    let timeline = IosWatermarkTimeline(
+      startedAtMs: 1_767_268_800_000,
+      trackingNumber: "TRACK-001",
+      timeZone: TimeZone(secondsFromGMT: 0)!
+    )
+
+    XCTAssertEqual(
+      timeline.text(at: 0),
+      "2026/01/01 12:00:00\nOrder:TRACK-001"
+    )
+    XCTAssertEqual(
+      timeline.text(at: 2.9),
+      "2026/01/01 12:00:02\nOrder:TRACK-001"
+    )
+    XCTAssertEqual(timeline.keyframeSeconds(duration: 2.5), [0, 1, 2, 2.5])
+  }
+
+  func testWatermarkLayoutUsesFinalVideoCoordinatesForAllOrientations() {
+    let naturalSize = CGSize(width: 1080, height: 1920)
+    let transforms = [
+      CGAffineTransform.identity,
+      CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 1920, ty: 0),
+      CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 1080),
+    ]
+
+    for transform in transforms {
+      let layout = IosWatermarkLayout.make(
+        naturalSize: naturalSize,
+        preferredTransform: transform,
+        textSize: CGSize(width: 300, height: 80)
+      )
+      XCTAssertEqual(layout.textFrame.maxX, layout.renderSize.width - 18)
+      XCTAssertEqual(layout.textFrame.maxY, layout.renderSize.height - 18)
+    }
+    XCTAssertEqual(
+      IosWatermarkLayout.make(
+        naturalSize: naturalSize,
+        preferredTransform: transforms[0],
+        textSize: CGSize(width: 300, height: 80)
+      ).renderSize,
+      CGSize(width: 1080, height: 1920)
+    )
+    for transform in transforms.dropFirst() {
+      XCTAssertEqual(
+        IosWatermarkLayout.make(
+          naturalSize: naturalSize,
+          preferredTransform: transform,
+          textSize: CGSize(width: 300, height: 80)
+        ).renderSize,
+        CGSize(width: 1920, height: 1080)
+      )
+    }
+  }
+
   func testBackupReceiptVerifierAcceptsValidReceipt() {
     let fixture = makeReceiptFixture()
     XCTAssertTrue(verifyReceipt(fixture.response, fixture: fixture))
