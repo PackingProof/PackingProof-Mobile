@@ -815,22 +815,22 @@ class RecordingDatabase {
   ) async {
     final Map<String, String> requestedOwners = <String, String>{};
     for (final RecordingSession session in sessions) {
-      final String normalized = p.normalize(session.filePath);
+      final String normalized = session.filePath;
       final String? owner = requestedOwners[normalized];
       if (owner != null && owner != session.id) {
         throw StateError('一条录像文件只能对应一条录像记录');
       }
       requestedOwners[normalized] = session.id;
     }
-    final List<Map<String, Object?>> rows = await db.query(
-      'recording_sessions',
-      columns: <String>['id', 'file_path'],
-      where: 'is_deleted = 0',
-    );
-    for (final Map<String, Object?> row in rows) {
-      final String normalized = p.normalize(row['file_path']! as String);
-      final String? requestedOwner = requestedOwners[normalized];
-      if (requestedOwner != null && requestedOwner != row['id']) {
+    for (final MapEntry<String, String> entry in requestedOwners.entries) {
+      final List<Map<String, Object?>> rows = await db.query(
+        'recording_sessions',
+        columns: <String>['id'],
+        where: 'is_deleted = 0 AND file_path = ? AND id != ?',
+        whereArgs: <Object?>[entry.key, entry.value],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) {
         throw StateError('一条录像文件只能对应一条录像记录');
       }
     }
@@ -903,7 +903,20 @@ class RecordingDatabase {
         await File(destinationPath).exists());
 
     if (await source.exists()) {
-      await source.copy(destinationPath);
+      final File temporary = File(
+        '$destinationPath.migrating-${DateTime.now().microsecondsSinceEpoch}',
+      );
+      try {
+        await source.copy(temporary.path);
+        await temporary.rename(destinationPath);
+      } on Object {
+        try {
+          if (await temporary.exists()) await temporary.delete();
+        } on FileSystemException {
+          // A partial migration copy is never referenced and can be retried later.
+        }
+        rethrow;
+      }
     }
     return destinationPath;
   }

@@ -796,5 +796,17 @@ void main() {
     for (final RecordingSession session in migrated) {
       expect(await File(session.filePath).readAsBytes(), <int>[1, 2, 3, 4]);
     }
+    final Set<String> migratedPaths = migrated
+        .map((RecordingSession session) => session.filePath)
+        .toSet();
+    await repository.dispose();
+
+    final SessionRepository reopened = testRepository(root);
+    final List<RecordingSession> restored = await reopened.loadSessions();
+    expect(
+      restored.map((RecordingSession session) => session.filePath).toSet(),
+      migratedPaths,
+    );
+    await reopened.dispose();
   });
 }
