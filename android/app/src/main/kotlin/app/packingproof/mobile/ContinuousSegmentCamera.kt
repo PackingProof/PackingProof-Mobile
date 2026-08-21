@@ -20,7 +20,6 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaRecorder
-import android.media.MediaMuxer
 import android.os.Bundle
 import android.os.Build
 import android.os.Handler
@@ -200,14 +199,13 @@ class ContinuousSegmentCamera(
     private var splitResult: MethodChannel.Result? = null
     private var pendingStartPath: String? = null
     private var pendingSplitPath: String? = null
-    private val pendingAudio = mutableListOf<EncodedSample>()
-
-    private var muxer: MediaMuxer? = null
-    private var videoTrack = -1
-    private var audioTrack = -1
-    private var currentPath: String? = null
-    private var segmentStartedAtMs = 0L
-    private val muxTimeline = MuxTimelinePolicy()
+    private val recordingMuxPipeline = RecordingMuxPipeline(
+        AndroidSegmentMuxerFactory(
+            videoFormat = { videoOutputFormat },
+            audioFormat = { audioOutputFormat },
+            onWriteCompleted = ::recordMuxWrite,
+        ),
+    )
     private var storageFailureReported = false
 
     private var scannerBusy = false
@@ -324,8 +322,7 @@ class ContinuousSegmentCamera(
             pendingStartPath = path
             startResult = result
             audioOutputFormat = null
-            muxTimeline.beginRecording()
-            pendingAudio.clear()
+            recordingMuxPipeline.beginRecording()
             setVideoSuspended(false)
             if (recordAudio) {
                 startAudioPipeline()
@@ -387,7 +384,7 @@ class ContinuousSegmentCamera(
             return
         }
         handler.post {
-            if (!recordingActive || muxer == null) {
+            if (!recordingActive || !recordingMuxPipeline.hasActiveMuxer) {
                 replyError(result, "not_recording", "当前没有正在录制的视频")
                 return@post
             }
@@ -406,11 +403,11 @@ class ContinuousSegmentCamera(
             ensureParent(path)
             pendingSplitPath = path
             splitResult = result
-            pendingAudio.clear()
+            recordingMuxPipeline.beginSplit()
             requestSyncFrame()
             handler.postDelayed({
                 if (splitResult === result) {
-                    flushPendingAudioToCurrent()
+                    recordingMuxPipeline.flushPendingAudio()
                     pendingSplitPath = null
                     splitResult = null
                     replyError(result, "split_timeout", "等待关键帧超时，当前录像仍在继续")
@@ -705,7 +702,7 @@ class ContinuousSegmentCamera(
             recordingRequested = false
             recordingActive = false
             initialized = false
-            closeMuxer(deleteEmpty = false)
+            recordingMuxPipeline.close(deleteOutput = false)
             try {
                 videoEncoder?.stop()
             } catch (_: Throwable) {
@@ -2018,7 +2015,7 @@ class ContinuousSegmentCamera(
                         output.limit(info.offset + info.size)
                         val bytes = ByteArray(info.size)
                         output.get(bytes)
-                        val sample = EncodedSample(bytes, info.presentationTimeUs, info.flags)
+                        val sample = EncodedMuxSample(bytes, info.presentationTimeUs, info.flags)
                         muxHandler?.post { handleAudioSample(sample) }
                     }
                     outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
@@ -2065,16 +2062,22 @@ class ContinuousSegmentCamera(
         if (startResult != null && recordingRequested && isKeyFrame && formatsReady()) {
             val path = pendingStartPath ?: return
             try {
-                openMuxer(path, info.presentationTimeUs, System.currentTimeMillis())
+                recordingMuxPipeline.openSegment(
+                    path,
+                    info.presentationTimeUs,
+                    System.currentTimeMillis(),
+                    orientationHintDegrees(),
+                    recordAudio,
+                )
                 recordingActive = true
-                flushPendingAudioToCurrent()
+                recordingMuxPipeline.flushPendingAudio()
                 val result = startResult
                 startResult = null
                 pendingStartPath = null
                 if (result != null) {
                     replySuccess(result, mapOf(
                         "path" to path,
-                        "startedAtMs" to segmentStartedAtMs,
+                        "startedAtMs" to recordingMuxPipeline.segmentStartedAtMs,
                     ))
                 }
             } catch (error: Throwable) {
@@ -2084,26 +2087,23 @@ class ContinuousSegmentCamera(
             }
         }
 
-        if (!recordingActive || muxer == null) return
+        if (!recordingActive || !recordingMuxPipeline.hasActiveMuxer) return
 
         if (splitResult != null && pendingSplitPath != null && isKeyFrame) {
             rotateMuxerAtKeyFrame(buffer, info)
             return
         }
-        writeVideo(buffer, info.presentationTimeUs, info.flags)
+        recordingMuxPipeline.writeVideo(buffer, info.presentationTimeUs, info.flags)
     }
 
-    private fun handleAudioSample(sample: EncodedSample) {
+    private fun handleAudioSample(sample: EncodedMuxSample) {
         try {
-            if (!recordingActive || muxer == null) {
-                if (recordingRequested) pendingAudio.add(sample)
-                return
-            }
-            if (splitResult != null) {
-                pendingAudio.add(sample)
-                return
-            }
-            writeAudio(sample)
+            recordingMuxPipeline.acceptAudio(
+                sample,
+                recordingRequested,
+                recordingActive,
+                splitResult != null,
+            )
         } catch (error: Throwable) {
             notifyWriteError("声音写入失败", error)
         }
@@ -2112,31 +2112,26 @@ class ContinuousSegmentCamera(
     private fun rotateMuxerAtKeyFrame(buffer: ByteBuffer, info: MediaCodec.BufferInfo) {
         val result = splitResult ?: return
         val nextPath = pendingSplitPath ?: return
-        val completedPath = currentPath ?: return
-        val boundaryPtsUs = info.presentationTimeUs
-        val completedStartedAt = segmentStartedAtMs
-        val boundaryAtMs = muxTimeline.boundaryAtMs(segmentStartedAtMs, boundaryPtsUs)
+        if (recordingMuxPipeline.currentPath == null) return
         try {
-            pendingAudio
-                .filter { muxTimeline.audioSourcePtsUs(it.presentationTimeUs) < boundaryPtsUs }
-                .forEach(::writeAudio)
-            closeMuxer(deleteEmpty = false)
-            openMuxer(nextPath, boundaryPtsUs, boundaryAtMs)
-            pendingAudio
-                .filter { muxTimeline.audioSourcePtsUs(it.presentationTimeUs) >= boundaryPtsUs }
-                .forEach(::writeAudio)
-            pendingAudio.clear()
-            writeVideo(buffer, info.presentationTimeUs, info.flags)
+            val rotation = recordingMuxPipeline.rotateAtKeyFrame(
+                nextPath,
+                buffer,
+                info.presentationTimeUs,
+                info.flags,
+                orientationHintDegrees(),
+                recordAudio,
+            )
             splitResult = null
             pendingSplitPath = null
             replySuccess(result, mapOf(
-                "completedPath" to completedPath,
-                "nextPath" to nextPath,
-                "completedStartedAtMs" to completedStartedAt,
-                "boundaryAtMs" to boundaryAtMs,
+                "completedPath" to rotation.completedPath,
+                "nextPath" to rotation.nextPath,
+                "completedStartedAtMs" to rotation.completedStartedAtMs,
+                "boundaryAtMs" to rotation.boundaryAtMs,
             ))
         } catch (error: Throwable) {
-            pendingAudio.clear()
+            recordingMuxPipeline.discardPendingAudio()
             splitResult = null
             pendingSplitPath = null
             replyError(result, "split_failed", "录像分段保存失败")
@@ -2153,111 +2148,33 @@ class ContinuousSegmentCamera(
         else -> 0
     }
 
-    private fun openMuxer(path: String, basePtsUs: Long, startedAtMs: Long) {
-        val outputFile = File(path)
-        outputFile.parentFile?.mkdirs()
-        if (outputFile.exists() && !outputFile.delete()) {
-            error("无法覆盖录像文件")
-        }
-        val newMuxer = MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-        newMuxer.setOrientationHint(orientationHintDegrees())
-        videoTrack = newMuxer.addTrack(videoOutputFormat!!)
-        audioTrack = if (recordAudio && audioOutputFormat != null) {
-            newMuxer.addTrack(audioOutputFormat!!)
-        } else {
-            -1
-        }
-        newMuxer.start()
-        muxer = newMuxer
-        currentPath = path
-        segmentStartedAtMs = startedAtMs
-        muxTimeline.openSegment(basePtsUs)
-    }
-
-    private fun writeVideo(buffer: ByteBuffer, sourcePtsUs: Long, flags: Int) {
-        val activeMuxer = muxer ?: return
-        val ptsUs = muxTimeline.videoPtsUs(sourcePtsUs)
-        val sample = buffer.slice()
-        val info = MediaCodec.BufferInfo().apply {
-            set(
-                0,
-                sample.remaining(),
-                ptsUs,
-                flags and MediaCodec.BUFFER_FLAG_KEY_FRAME,
-            )
-        }
-        val writeStartedAtMs = SystemClock.elapsedRealtime()
-        activeMuxer.writeSampleData(
-            videoTrack,
-            sample,
-            info,
-        )
-        recordMuxWrite(writeStartedAtMs)
-    }
-
-    private fun writeAudio(sample: EncodedSample) {
-        val activeMuxer = muxer ?: return
-        val ptsUs = muxTimeline.audioPtsUs(sample.presentationTimeUs) ?: return
-        val info = MediaCodec.BufferInfo().apply {
-            set(0, sample.bytes.size, ptsUs, 0)
-        }
-        val writeStartedAtMs = SystemClock.elapsedRealtime()
-        activeMuxer.writeSampleData(audioTrack, ByteBuffer.wrap(sample.bytes), info)
-        recordMuxWrite(writeStartedAtMs)
-    }
-
     private fun recordMuxWrite(startedAtMs: Long) {
         val elapsedMs = SystemClock.elapsedRealtime() - startedAtMs
         if (elapsedMs > muxWriteMaxMs) muxWriteMaxMs = elapsedMs
         if (elapsedMs > MUX_WRITE_STALL_THRESHOLD_MS) muxWriteStallCount++
     }
 
-    private fun flushPendingAudioToCurrent() {
-        pendingAudio.forEach(::writeAudio)
-        pendingAudio.clear()
-    }
-
     private fun finishStop() {
         val result = stopResult ?: return
-        flushPendingAudioToCurrent()
-        val path = currentPath
-        val startedAt = segmentStartedAtMs
-        val endedAt = muxTimeline.endedAtMs(startedAt, System.currentTimeMillis())
         try {
-            closeMuxer(deleteEmpty = false)
+            val summary = recordingMuxPipeline.finishStop(System.currentTimeMillis())
             setVideoSuspended(true)
             stopResult = null
             pendingStartPath = null
             pendingSplitPath = null
-            if (path == null) {
+            if (summary.path == null) {
                 replyError(result, "empty_recording", "没有生成有效录像")
             } else {
                 replySuccess(result, mapOf(
-                    "path" to path,
-                    "startedAtMs" to startedAt,
-                    "endedAtMs" to max(startedAt, endedAt),
+                    "path" to summary.path,
+                    "startedAtMs" to summary.startedAtMs,
+                    "endedAtMs" to max(summary.startedAtMs, summary.endedAtMs),
                 ))
             }
         } catch (error: Throwable) {
             stopResult = null
             replyError(result, "muxer_stop", "录像文件保存失败")
             notifyNativeError("录像文件保存失败", error)
-        }
-    }
-
-    private fun closeMuxer(deleteEmpty: Boolean) {
-        val closing = muxer
-        val path = currentPath
-        muxer = null
-        videoTrack = -1
-        audioTrack = -1
-        if (closing != null) {
-            try {
-                closing.stop()
-            } finally {
-                closing.release()
-                if (deleteEmpty && path != null) File(path).delete()
-            }
         }
     }
 
@@ -2859,11 +2776,6 @@ class ContinuousSegmentCamera(
         mainHandler.post { result.error(code, message, null) }
     }
 
-    private data class EncodedSample(
-        val bytes: ByteArray,
-        val presentationTimeUs: Long,
-        val flags: Int,
-    )
 }
 
 internal fun barcodeFormatName(format: Int): String? = when (format) {
