@@ -593,16 +593,9 @@ class ContinuousSegmentCamera(
             return cached
         }
         return buildBackLenses(defaultBackCameraId())
-            .map(::backLensMap)
+            .map(CameraDiagnosticsSnapshotMapper::backLens)
             .also { cachedBackLenses = it }
     }
-
-    private fun backLensMap(lens: BackLensInfo): Map<String, Any?> = mapOf(
-        "cameraId" to lens.cameraId,
-        "focalLength" to lens.focalLength,
-        "zoomRatio" to lens.zoomRatio,
-        "isMain" to lens.isMain,
-    )
 
     private fun buildBackLenses(mainCameraId: String? = null): List<BackLensInfo> = runCatching {
         val logicalBack = cameraManager.cameraIdList.filter(::isBackCamera)
@@ -1024,7 +1017,7 @@ class ContinuousSegmentCamera(
         selectedZoomRatio = backLenses.firstOrNull { it.cameraId == cameraId }
             ?.zoomRatio
             ?: 1.0
-        cachedBackLenses = backLenses.map(::backLensMap)
+        cachedBackLenses = backLenses.map(CameraDiagnosticsSnapshotMapper::backLens)
         cachedCameraIdList = cameraManager.cameraIdList.toList()
         cachedZoomRatioRange = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             characteristics
@@ -1042,19 +1035,23 @@ class ContinuousSegmentCamera(
         val analysisSizes = configuration.getOutputSizes(ImageFormat.YUV_420_888)
             ?.toList()
             .orEmpty()
-        supportedVideoSizes = videoSizes.map { sizeLabel(it) }
-        supportedYuvSizes = analysisSizes.map { sizeLabel(it) }
+        supportedVideoSizes = videoSizes.map {
+            CameraDiagnosticsSnapshotMapper.sizeLabel(it.width, it.height)
+        }
+        supportedYuvSizes = analysisSizes.map {
+            CameraDiagnosticsSnapshotMapper.sizeLabel(it.width, it.height)
+        }
         supportedPreviewSizes = configuration.getOutputSizes(SurfaceTexture::class.java)
             ?.toList()
             .orEmpty()
-            .map { sizeLabel(it) }
+            .map { CameraDiagnosticsSnapshotMapper.sizeLabel(it.width, it.height) }
         fpsRanges = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
             ?.toList()
             .orEmpty()
             .map { "${it.lower}-${it.upper}" }
         hardwareLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
         capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
-            ?.map(::capabilityName)
+            ?.map(CameraDiagnosticsSnapshotMapper::capabilityName)
             .orEmpty()
         physicalCameraIds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             characteristics.physicalCameraIds.toList()
@@ -2732,7 +2729,7 @@ class ContinuousSegmentCamera(
         fun attempt(index: Int, lastOutcome: String, lastDetail: String?) {
             if (disposed) {
                 onDone(
-                    capabilityProbePhaseResult(
+                    CameraDiagnosticsSnapshotMapper.probePhaseResult(
                         label,
                         null,
                         "internal_error",
@@ -2747,7 +2744,7 @@ class ContinuousSegmentCamera(
             }
             if (SystemClock.uptimeMillis() + CAPABILITY_PROBE_PHASE_BUDGET_MS > deadline) {
                 onDone(
-                    capabilityProbePhaseResult(
+                    CameraDiagnosticsSnapshotMapper.probePhaseResult(
                         label,
                         null,
                         "budget_exceeded",
@@ -2762,7 +2759,7 @@ class ContinuousSegmentCamera(
             }
             if (index >= configs.size) {
                 onDone(
-                    capabilityProbePhaseResult(
+                    CameraDiagnosticsSnapshotMapper.probePhaseResult(
                         label,
                         null,
                         lastOutcome,
@@ -2780,7 +2777,7 @@ class ContinuousSegmentCamera(
             val entry = textureEntry
             if (cameraId == null || characteristics == null || entry == null) {
                 onDone(
-                    capabilityProbePhaseResult(
+                    CameraDiagnosticsSnapshotMapper.probePhaseResult(
                         label,
                         null,
                         "internal_error",
@@ -2839,7 +2836,7 @@ class ContinuousSegmentCamera(
                 handler.removeCallbacks(configTimeout)
                 cleanup()
                 onDone(
-                    capabilityProbePhaseResult(
+                    CameraDiagnosticsSnapshotMapper.probePhaseResult(
                         label,
                         config.candidateLabel,
                         outcome,
@@ -3027,26 +3024,6 @@ class ContinuousSegmentCamera(
         attempt(0, CameraProbeOutcome.CONFIGURE_FAILED.wire, null)
     }
 
-    private fun capabilityProbePhaseResult(
-        label: String,
-        candidate: String?,
-        outcome: String,
-        detail: String?,
-        previewFrames: Int,
-        analysisFrames: Int,
-        encoderBuffers: Int,
-        durationMs: Int,
-    ): Map<String, Any?> = mapOf(
-        "phase" to label,
-        "candidate" to candidate,
-        "outcome" to outcome,
-        "detail" to detail,
-        "previewFrames" to previewFrames,
-        "analysisFrames" to analysisFrames,
-        "encoderBuffers" to encoderBuffers,
-        "durationMs" to durationMs,
-    )
-
     private fun createCapabilityProbeCodec(
         width: Int,
         height: Int,
@@ -3148,144 +3125,74 @@ class ContinuousSegmentCamera(
         }
     }
 
-    private fun capabilityProbeIdentity(): Map<String, Any?> = mapOf(
-        "cameraId" to (selectedCameraId ?: ""),
-        "videoSize" to "${videoSize.width}x${videoSize.height}",
-        "analysisSize" to "${analysisSize.width}x${analysisSize.height}",
-        "codec" to (if (selectedVideoMime == MediaFormat.MIMETYPE_VIDEO_AVC) "h264" else "hevc"),
-        "spec" to recordingSpecName,
-        "probeSchemaVersion" to CAPABILITY_PROBE_SCHEMA_VERSION,
-        "cameraPipelineVersion" to CAMERA_PIPELINE_VERSION,
-    )
-
-    private fun sizeLabel(size: Size): String = "${size.width}x${size.height}"
-
-    private fun capabilityName(capability: Int): String = when (capability) {
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BACKWARD_COMPATIBLE -> "backward_compatible"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR -> "manual_sensor"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING -> "manual_post_processing"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW -> "raw"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_PRIVATE_REPROCESSING -> "private_reprocessing"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_READ_SENSOR_SETTINGS -> "read_sensor_settings"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_BURST_CAPTURE -> "burst_capture"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT -> "depth_output"
-        // CameraCharacteristics 未公开 VIDEO_STABILIZATION 能力常量，文档值为 8。
-        8 -> "video_stabilization"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_CONSTRAINED_HIGH_SPEED_VIDEO -> "constrained_high_speed_video"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MOTION_TRACKING -> "motion_tracking"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA -> "logical_multi_camera"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MONOCHROME -> "monochrome"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_SECURE_IMAGE_DATA -> "secure_image_data"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_SYSTEM_CAMERA -> "system_camera"
-        CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR -> "ultra_high_resolution_sensor"
-        else -> "capability_$capability"
-    }
+    private fun capabilityProbeIdentity(): Map<String, Any?> =
+        CameraDiagnosticsSnapshotMapper.capabilityProbeIdentity(
+            CameraProbeIdentityDiagnostics(
+                selectedCameraId, StreamSize(videoSize.width, videoSize.height),
+                StreamSize(analysisSize.width, analysisSize.height),
+                if (selectedVideoMime == MediaFormat.MIMETYPE_VIDEO_AVC) "h264" else "hevc",
+                recordingSpecName, CAPABILITY_PROBE_SCHEMA_VERSION, CAMERA_PIPELINE_VERSION,
+            ),
+        )
 
     fun getDiagnostics(result: MethodChannel.Result) {
-        val now = SystemClock.elapsedRealtime()
-        val state = mapOf<String, Any?>(
-            "initialized" to initialized,
-            "cameraId" to selectedCameraId,
-            "zoomRatio" to selectedZoomRatio,
-            "cameraIdList" to cachedCameraIdList,
-            "zoomRatioRange" to cachedZoomRatioRange,
-            "lensFacing" to if (selectedLensFacing == CameraCharacteristics.LENS_FACING_FRONT) "front" else "back",
-            "sensorOrientation" to sensorOrientation,
-            "videoWidth" to videoSize.width,
-            "videoHeight" to videoSize.height,
-            "analysisWidth" to analysisSize.width,
-            "analysisHeight" to analysisSize.height,
-            "videoMime" to selectedVideoMime,
-            "fps" to (if (recordingRequested || recordingActive) recordingSpec.fps else "auto"),
-            "recordingSpec" to recordingSpecName,
-            "recordAudio" to recordAudio,
-            "previewActive" to previewActive,
-            "workScanEnabled" to workScanEnabled,
-            "pairingScanEnabled" to pairingScanEnabled,
-            "analysisStartedCount" to analysisStartedCount,
-            "analysisCompletedCount" to analysisCompletedCount,
-            "analysisDetectedCount" to analysisDetectedCount,
-            "analysisFailureCount" to analysisFailureCount,
-            "lastAnalysisCompletedAgeMs" to if (lastAnalysisCompletedElapsedMs == 0L) {
-                -1L
-            } else {
-                now - lastAnalysisCompletedElapsedMs
-            },
-            "lastAnalysisFailure" to lastAnalysisFailure,
-            "recordingRequested" to recordingRequested,
-            "recordingActive" to recordingActive,
-            "torchEnabled" to torchEnabled,
-            "canSwitchCamera" to canSwitchCamera,
-            "switchCount" to switchCount,
-            "lastSwitchDurationMs" to lastSwitchDurationMs,
-            "lastSwitchRestartedEncoder" to lastSwitchRestartedEncoder,
-            "previewFrameCount" to captureStartedCount,
-            "previewFrameAgeMs" to if (lastCaptureStartedAtMs == 0L) -1L else now - lastCaptureStartedAtMs,
-            "lastCaptureCompletedAgeMs" to if (lastCaptureCompletedAtMs == 0L) -1L else now - lastCaptureCompletedAtMs,
-            "storageAvailableBytes" to runCatching {
-                StatFs(activity.filesDir.path).availableBytes
-            }.getOrDefault(-1L),
-            "storageTotalBytes" to runCatching {
-                StatFs(activity.filesDir.path).totalBytes
-            }.getOrDefault(-1L),
-            "muxWriteMaxMs" to muxWriteMaxMs,
-            "muxWriteStallCount" to muxWriteStallCount,
-            "codecFallbackReason" to codecFallbackReason,
-            "lastRequestTemplate" to lastRequestTemplate,
-            "stallActive" to stallActive,
-            "stallRecoveryStage" to stallRecoveryStage,
-            "sessionConfigStage" to sessionConfigStage,
-            "sessionConfigAttempts" to sessionConfigAttempts,
-            "initFailureStage" to initFailureStage,
-            "initFailureDetail" to initFailureDetail,
-            "startFailureStage" to startFailureStage,
-            "startFailureDetail" to startFailureDetail,
-            "recordingFallbackMode" to recordingFallbackMode,
-            "capabilityMode" to capabilityMode.name.lowercase(),
-            "preferEncoderAnalysisRecording" to (
-                capabilityMode == CameraCapabilityMode.ENCODER_ANALYSIS ||
-                    sessionFallbackEncoderAnalysis
-            ),
-            "sessionSurfaces" to
-                "preview=$sessionHasPreview encoder=$sessionHasEncoder analysis=$sessionHasAnalysis",
-            "probeResults" to probeResults,
-            "probeInProgress" to probeInProgress,
-            "probeCached" to (InitProbeCache.results != null),
-            "hardwareLevel" to hardwareLevel,
-            "capabilities" to capabilities,
-            "yuvSizes" to supportedYuvSizes,
-            "videoSizes" to supportedVideoSizes,
-            "previewSizes" to supportedPreviewSizes,
-            "physicalCameraIds" to physicalCameraIds,
-            "backLenses" to (cachedBackLenses ?: emptyList<Map<String, Any?>>()),
-            "fpsRanges" to fpsRanges,
-        )
-        result.success(
-            mapOf(
-                "device" to mapOf(
-                    "manufacturer" to Build.MANUFACTURER,
-                    "model" to Build.MODEL,
-                    "sdkInt" to Build.VERSION.SDK_INT,
-                    "release" to Build.VERSION.RELEASE,
+        val snapshot = CameraDiagnosticsSnapshotMapper.snapshot(
+            SystemClock.elapsedRealtime(),
+            CameraDiagnosticsInput(
+                CameraIdentityDiagnostics(
+                    initialized, selectedCameraId, selectedZoomRatio, cachedCameraIdList,
+                    cachedZoomRatioRange, selectedLensFacing == CameraCharacteristics.LENS_FACING_FRONT,
+                    sensorOrientation,
                 ),
-                "camera" to state,
-                "process" to mapOf(
-                    "javaHeapUsedBytes" to (
-                        Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
-                    ),
-                    "javaHeapMaxBytes" to Runtime.getRuntime().maxMemory(),
-                    "nativeHeapAllocatedBytes" to Debug.getNativeHeapAllocatedSize(),
-                    "threadCount" to Thread.getAllStackTraces().size,
-                    "openFdCount" to openFileDescriptorCount(),
+                CameraStreamDiagnostics(
+                    StreamSize(videoSize.width, videoSize.height),
+                    StreamSize(analysisSize.width, analysisSize.height), selectedVideoMime,
+                    if (recordingRequested || recordingActive) recordingSpec.fps else "auto",
+                    recordingSpecName, recordAudio,
+                ),
+                CameraActivityDiagnostics(
+                    previewActive, workScanEnabled, pairingScanEnabled, recordingRequested,
+                    recordingActive, torchEnabled, canSwitchCamera,
+                ),
+                CameraAnalysisDiagnostics(
+                    analysisStartedCount, analysisCompletedCount, analysisDetectedCount,
+                    analysisFailureCount, lastAnalysisCompletedElapsedMs, lastAnalysisFailure,
+                ),
+                CameraSwitchAndFrameDiagnostics(
+                    switchCount, lastSwitchDurationMs, lastSwitchRestartedEncoder,
+                    captureStartedCount, lastCaptureStartedAtMs, lastCaptureCompletedAtMs,
+                ),
+                CameraResourceDiagnostics(
+                    runCatching { StatFs(activity.filesDir.path).availableBytes }.getOrDefault(-1L),
+                    runCatching { StatFs(activity.filesDir.path).totalBytes }.getOrDefault(-1L),
+                    muxWriteMaxMs, muxWriteStallCount,
+                ),
+                CameraRecoveryDiagnostics(
+                    codecFallbackReason, lastRequestTemplate, stallActive, stallRecoveryStage,
+                    sessionConfigStage, sessionConfigAttempts, initFailureStage, initFailureDetail,
+                    startFailureStage, startFailureDetail, recordingFallbackMode,
+                ),
+                CameraCapabilityDiagnostics(
+                    capabilityMode.name.lowercase(),
+                    capabilityMode == CameraCapabilityMode.ENCODER_ANALYSIS ||
+                        sessionFallbackEncoderAnalysis,
+                    sessionHasPreview, sessionHasEncoder, sessionHasAnalysis,
+                    probeResults, probeInProgress, InitProbeCache.results != null, hardwareLevel,
+                    capabilities, supportedYuvSizes, supportedVideoSizes, supportedPreviewSizes,
+                    physicalCameraIds, cachedBackLenses ?: emptyList(), fpsRanges,
                 ),
             ),
+            CameraDeviceDiagnostics(
+                Build.MANUFACTURER, Build.MODEL, Build.VERSION.SDK_INT, Build.VERSION.RELEASE,
+            ),
+            CameraProcessDiagnostics(
+                Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory(),
+                Runtime.getRuntime().maxMemory(),
+                Debug.getNativeHeapAllocatedSize(), Thread.getAllStackTraces().size,
+                CameraDiagnosticsSnapshotMapper.openFileDescriptorCount(),
+            ),
         )
-    }
-
-    private fun openFileDescriptorCount(): Int {
-        return runCatching {
-            File("/proc/self/fd").listFiles()?.size ?: -1
-        }.getOrDefault(-1)
+        result.success(snapshot)
     }
 
     private fun notifyNativeError(message: String, error: Throwable?) {
@@ -3313,23 +3220,17 @@ class ContinuousSegmentCamera(
         notifyNativeError(message, error)
     }
 
-    private fun initializationMap(): Map<String, Any?> = mapOf(
-        "textureId" to (textureEntry?.id() ?: -1L),
-        "previewWidth" to videoSize.width,
-        "previewHeight" to videoSize.height,
-        "sensorOrientation" to sensorOrientation,
-        "cameraId" to selectedCameraId,
-        "zoomRatio" to selectedZoomRatio,
-        "lensDirection" to if (selectedLensFacing == CameraCharacteristics.LENS_FACING_FRONT) "front" else "back",
-        "canSwitchCamera" to canSwitchCamera,
-        "fps" to recordingSpec.fps,
-        "recordingSpec" to recordingSpecName,
-        "videoMime" to selectedVideoMime,
-        "codecFallbackReason" to codecFallbackReason,
-        "flashAvailable" to (
-            selectedCameraCharacteristics?.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-        ),
-    )
+    private fun initializationMap(): Map<String, Any?> =
+        CameraDiagnosticsSnapshotMapper.initialization(
+            CameraInitializationDiagnostics(
+                textureEntry?.id() ?: -1L, StreamSize(videoSize.width, videoSize.height),
+                sensorOrientation, selectedCameraId, selectedZoomRatio,
+                selectedLensFacing == CameraCharacteristics.LENS_FACING_FRONT,
+                canSwitchCamera, recordingSpec.fps, recordingSpecName, selectedVideoMime,
+                codecFallbackReason,
+                selectedCameraCharacteristics?.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true,
+            ),
+        )
 
     private fun ensureParent(path: String) {
         File(path).parentFile?.mkdirs()
