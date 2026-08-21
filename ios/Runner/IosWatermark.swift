@@ -96,6 +96,9 @@ struct IosWatermarkLayout {
 }
 
 struct IosWatermarkStyle {
+  /// Core Animation 水印图层使用最终视频像素坐标，禁止跟随设备屏幕倍率二次缩放。
+  static let videoContentsScale: CGFloat = 1
+
   static func attributedText(
     _ value: String,
     fontSize: CGFloat
@@ -114,7 +117,7 @@ struct IosWatermarkStyle {
   static func textLayer(
     text: NSAttributedString,
     frame: CGRect,
-    contentsScale: CGFloat
+    contentsScale: CGFloat = videoContentsScale
   ) -> CATextLayer {
     let layer = CATextLayer()
     layer.string = text

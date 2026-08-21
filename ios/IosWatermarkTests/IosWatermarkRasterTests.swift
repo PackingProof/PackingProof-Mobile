@@ -6,6 +6,16 @@ import UIKit
 import XCTest
 
 final class IosWatermarkRasterTests: XCTestCase {
+  func testVideoTextLayerUsesFinalPixelScale() {
+    let layer = IosWatermarkStyle.textLayer(
+      text: IosWatermarkStyle.attributedText("watermark", fontSize: 35),
+      frame: CGRect(x: 0, y: 0, width: 240, height: 60)
+    )
+
+    XCTAssertEqual(IosWatermarkStyle.videoContentsScale, 1)
+    XCTAssertEqual(layer.contentsScale, 1)
+  }
+
   func testInterruptedClassificationFindsNestedAvFoundationError() {
     let interrupted = NSError(
       domain: AVFoundationErrorDomain,
@@ -178,8 +188,7 @@ final class IosWatermarkRasterTests: XCTestCase {
       parent.addSublayer(
         IosWatermarkStyle.textLayer(
           text: text,
-          frame: layout.textFrame,
-          contentsScale: 1
+          frame: layout.textFrame
         )
       )
       parent.render(in: context)

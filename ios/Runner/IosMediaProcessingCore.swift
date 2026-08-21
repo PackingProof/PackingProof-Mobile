@@ -1,7 +1,6 @@
 import AVFoundation
 import Foundation
 import QuartzCore
-import UIKit
 
 struct IosWatermarkExportRequest {
   let inputPath: String
@@ -138,8 +137,7 @@ final class IosMediaProcessingCore {
 
         let text = IosWatermarkStyle.textLayer(
           text: firstText,
-          frame: layout.textFrame,
-          contentsScale: UIScreen.main.scale
+          frame: layout.textFrame
         )
         let duration = asset.duration.seconds.isFinite
           ? max(0, asset.duration.seconds)
