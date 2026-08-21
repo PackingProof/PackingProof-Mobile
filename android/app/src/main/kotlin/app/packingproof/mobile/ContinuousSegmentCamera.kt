@@ -75,14 +75,8 @@ class ContinuousSegmentCamera(
         private const val CAPABILITY_PROBE_PHASE_WINDOW_MS = 1_200L
         private const val CAPABILITY_PROBE_CONFIG_TIMEOUT_MS = 2_500L
         private const val CAPABILITY_PROBE_PHASE_BUDGET_MS = 4_500L
-        private const val CAPABILITY_PROBE_MAX_CANDIDATES = 4
         private const val CAPABILITY_PROBE_SCHEMA_VERSION = 1
         private const val CAMERA_PIPELINE_VERSION = 1
-        private val CAPABILITY_PROBE_SEQUENCES = setOf(
-            "full",
-            "encoder_analysis",
-            "alternating",
-        )
         private val PROBE_TRIGGER_STAGES = setOf(
             "camera_open",
             "camera_error",
@@ -2376,32 +2370,6 @@ class ContinuousSegmentCamera(
         }
     }
 
-    private data class ProbeConfig(
-        val name: String,
-        val videoSize: Size,
-        val analysisSize: Size?,
-        val includeEncoder: Boolean,
-    )
-
-    private enum class ProbePhaseKind(
-        val includePreview: Boolean,
-        val includeAnalysis: Boolean,
-        val includeEncoder: Boolean,
-    ) {
-        IDLE(true, true, false),
-        RECORD_FULL(true, true, true),
-        RECORD_ENCODER_ANALYSIS(false, true, true),
-        RECORD_ALTERNATING(true, false, true),
-    }
-
-    private data class ProbeStreamConfig(
-        val videoWidth: Int,
-        val videoHeight: Int,
-        val analysisWidth: Int?,
-        val analysisHeight: Int?,
-        val candidateLabel: String,
-    )
-
     private data class ProbeCodecHandle(
         val codec: MediaCodec,
         val surface: Surface,
@@ -2419,7 +2387,10 @@ class ContinuousSegmentCamera(
         val handler = cameraHandler ?: return
         handler.post {
             if (disposed || InitProbeCache.results != null) return@post
-            val configs = buildProbeConfigs()
+            val configs = CameraProbePlanPolicy.initializationConfigs(
+                videoCandidates.map { StreamSize(it.width, it.height) },
+                analysisCandidates.map { StreamSize(it.width, it.height) },
+            )
             if (configs.isEmpty()) return@post
             InitProbeCache.inProgress = true
             probeInProgress = true
@@ -2427,21 +2398,6 @@ class ContinuousSegmentCamera(
             val generation = probeGeneration
             runSingleProbe(generation, configs, 0, mutableListOf())
         }
-    }
-
-    private fun buildProbeConfigs(): List<ProbeConfig> {
-        val video = videoCandidates.firstOrNull() ?: return emptyList()
-        val current = analysisCandidates.firstOrNull() ?: return emptyList()
-        val smaller = analysisCandidates.drop(1).firstOrNull()
-        val configs = mutableListOf(
-            ProbeConfig("preview_only", video, null, includeEncoder = false),
-            ProbeConfig("preview_analysis", video, current, includeEncoder = false),
-        )
-        if (smaller != null) {
-            configs += ProbeConfig("preview_analysis_small", video, smaller, includeEncoder = false)
-            configs += ProbeConfig("preview_encoder_analysis_small", video, smaller, includeEncoder = true)
-        }
-        return configs
     }
 
     private fun runSingleProbe(
@@ -2671,7 +2627,7 @@ class ContinuousSegmentCamera(
             replyError(result, "camera_busy", "录像进行中不能检测摄像头能力")
             return
         }
-        if (normalized !in CAPABILITY_PROBE_SEQUENCES) {
+        if (!CameraProbePlanPolicy.supportsCapabilitySequence(normalized)) {
             replyError(result, "invalid_sequence", "无法识别的摄像头能力探测序列")
             return
         }
@@ -2729,7 +2685,7 @@ class ContinuousSegmentCamera(
         result: MethodChannel.Result,
         phases: MutableList<Map<String, Any?>>,
     ) {
-        val specs = capabilityProbeSpecs(sequence)
+        val specs = CameraProbePlanPolicy.capabilitySpecs(sequence)
         fun step(index: Int) {
             if (disposed || generation != probeGeneration) {
                 finishCapabilityProbe(sequence, result, "error", "cancelled", phases)
@@ -2774,7 +2730,13 @@ class ContinuousSegmentCamera(
         onDone: (Map<String, Any?>) -> Unit,
     ) {
         val handler = cameraHandler ?: return
-        val configs = capabilityProbeConfigs(kind)
+        val configs = CameraProbePlanPolicy.capabilityConfigs(
+            kind = kind,
+            streamConfigPolicy = streamConfigPolicy,
+            videoCandidates = videoCandidates.map { StreamSize(it.width, it.height) },
+            analysisCandidates = analysisCandidates.map { StreamSize(it.width, it.height) },
+            alternatingAnalysisSize = StreamSize(analysisSize.width, analysisSize.height),
+        )
         if (configs.isEmpty()) {
             onDone(
                 mapOf(
@@ -3107,53 +3069,6 @@ class ContinuousSegmentCamera(
         "encoderBuffers" to encoderBuffers,
         "durationMs" to durationMs,
     )
-
-    private fun capabilityProbeSpecs(sequence: String): List<Pair<String, ProbePhaseKind>> {
-        val record = when (sequence) {
-            "full" -> ProbePhaseKind.RECORD_FULL
-            "encoder_analysis" -> ProbePhaseKind.RECORD_ENCODER_ANALYSIS
-            else -> ProbePhaseKind.RECORD_ALTERNATING
-        }
-        return listOf(
-            "idle" to ProbePhaseKind.IDLE,
-            "record" to record,
-            "idle" to ProbePhaseKind.IDLE,
-            "record" to record,
-            "idle" to ProbePhaseKind.IDLE,
-        )
-    }
-
-    private fun capabilityProbeConfigs(kind: ProbePhaseKind): List<ProbeStreamConfig> {
-        val videos = videoCandidates.map { StreamSize(it.width, it.height) }
-        val analyses = analysisCandidates.map { StreamSize(it.width, it.height) }
-        val candidates = when (kind) {
-            ProbePhaseKind.IDLE -> streamConfigPolicy.initializationCandidates(videos, analyses)
-            ProbePhaseKind.RECORD_FULL, ProbePhaseKind.RECORD_ENCODER_ANALYSIS ->
-                streamConfigPolicy.threeSurfaceCandidates(videos, analyses)
-            ProbePhaseKind.RECORD_ALTERNATING -> videos.take(2).map { video ->
-                StreamConfig(
-                    videoWidth = video.width,
-                    videoHeight = video.height,
-                    analysisWidth = analysisSize.width,
-                    analysisHeight = analysisSize.height,
-                    includeEncoder = true,
-                )
-            }
-        }
-        return candidates.take(CAPABILITY_PROBE_MAX_CANDIDATES).map { config ->
-            ProbeStreamConfig(
-                videoWidth = config.videoWidth,
-                videoHeight = config.videoHeight,
-                analysisWidth = if (kind.includeAnalysis) config.analysisWidth else null,
-                analysisHeight = if (kind.includeAnalysis) config.analysisHeight else null,
-                candidateLabel = if (kind == ProbePhaseKind.RECORD_ALTERNATING) {
-                    "${config.videoWidth}x${config.videoHeight}"
-                } else {
-                    config.label
-                },
-            )
-        }
-    }
 
     private fun createCapabilityProbeCodec(
         width: Int,
