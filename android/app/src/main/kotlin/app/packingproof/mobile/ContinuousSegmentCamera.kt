@@ -72,9 +72,6 @@ class ContinuousSegmentCamera(
             "摄像头被系统或设备策略禁用，请检查摄像头访问开关"
         private const val PROBE_TIMEOUT_MS = 2_500L
         private const val START_STALL_FALLBACK_THRESHOLD_MS = 2_500L
-        private const val CAPABILITY_PROBE_PHASE_WINDOW_MS = 1_200L
-        private const val CAPABILITY_PROBE_CONFIG_TIMEOUT_MS = 2_500L
-        private const val CAPABILITY_PROBE_PHASE_BUDGET_MS = 4_500L
         private const val CAPABILITY_PROBE_SCHEMA_VERSION = 1
         private const val CAMERA_PIPELINE_VERSION = 1
         private val PROBE_TRIGGER_STAGES = setOf(
@@ -2344,11 +2341,6 @@ class ContinuousSegmentCamera(
         }
     }
 
-    private data class ProbeCodecHandle(
-        val codec: MediaCodec,
-        val surface: Surface,
-    )
-
     private fun runInitProbesIfNeeded() {
         if (disposed) return
         val stage = initFailureStage ?: return
@@ -2641,427 +2633,45 @@ class ContinuousSegmentCamera(
                 sessionHasAnalysis = false
                 runCatching { cameraDevice?.close() }
                 cameraDevice = null
-                runCapabilityProbeSequence(
-                    normalized,
-                    generation,
-                    deadline,
-                    result,
-                    mutableListOf(),
+                val environment = CameraCapabilityProbeEnvironment(
+                    handler = cam,
+                    cameraManager = cameraManager,
+                    streamConfigPolicy = streamConfigPolicy,
+                    videoCandidates = videoCandidates.map { StreamSize(it.width, it.height) },
+                    analysisCandidates = analysisCandidates.map {
+                        StreamSize(it.width, it.height)
+                    },
+                    videoSize = StreamSize(videoSize.width, videoSize.height),
+                    analysisSize = StreamSize(analysisSize.width, analysisSize.height),
+                    selectedVideoMime = selectedVideoMime,
+                    cameraId = { selectedCameraId },
+                    cameraCharacteristics = { selectedCameraCharacteristics },
+                    surfaceTexture = { textureEntry?.surfaceTexture() },
+                    previewSurface = { previewSurface },
+                    updatePreviewSurface = { previewSurface = it },
+                    cameraDevice = { cameraDevice },
+                    updateCameraDevice = { cameraDevice = it },
+                    isDisposed = { disposed },
+                    createEncoderFormat = ::createEncoderFormat,
+                    applyAutomaticCameraControls = ::applyAutomaticCameraControls,
                 )
-            }
-        }
-    }
-
-    private fun runCapabilityProbeSequence(
-        sequence: String,
-        generation: Int,
-        deadline: Long,
-        result: MethodChannel.Result,
-        phases: MutableList<Map<String, Any?>>,
-    ) {
-        val specs = CameraProbePlanPolicy.capabilitySpecs(sequence)
-        fun step(index: Int) {
-            if (disposed || generation != probeGeneration) {
-                finishCapabilityProbe(sequence, result, "error", "cancelled", phases)
-                return
-            }
-            if (SystemClock.uptimeMillis() + CAPABILITY_PROBE_PHASE_BUDGET_MS > deadline) {
-                finishCapabilityProbe(sequence, result, "budget_exceeded", "检测时间预算不足", phases)
-                return
-            }
-            if (index >= specs.size) {
-                finishCapabilityProbe(sequence, result, "ok", null, phases)
-                return
-            }
-            val (label, kind) = specs[index]
-            runCapabilityProbePhase(label, kind, deadline) { phaseResult ->
-                phases += phaseResult
-                when (phaseResult["outcome"]) {
-                    "configured" -> step(index + 1)
-                    // 能力性失败（全部候选都无法配置）：该序列已不可能通过，
-                    // 立即停止，由 Dart 按失败处理。
-                    "configure_failed", "unsupported_combination",
-                    "codec_missing", "codec_config_failed",
-                    -> finishCapabilityProbe(sequence, result, "ok", null, phases)
-                    // 探针基础设施异常：整体返回 error_infra。
-                    else -> finishCapabilityProbe(
-                        sequence,
+                CameraCapabilityProbeRunner(
+                    AndroidCameraCapabilityProbePhaseExecutor(environment),
+                ).run(
+                    sequence = normalized,
+                    deadline = deadline,
+                    isCancelled = { disposed || generation != probeGeneration },
+                ) { probeResult ->
+                    finishCapabilityProbe(
+                        normalized,
                         result,
-                        "error",
-                        "${phaseResult["outcome"]}:${phaseResult["detail"] ?: ""}",
-                        phases,
+                        probeResult.status,
+                        probeResult.reason,
+                        probeResult.phases,
                     )
                 }
             }
         }
-        step(0)
-    }
-
-    private fun runCapabilityProbePhase(
-        label: String,
-        kind: ProbePhaseKind,
-        deadline: Long,
-        onDone: (Map<String, Any?>) -> Unit,
-    ) {
-        val handler = cameraHandler ?: return
-        val configs = CameraProbePlanPolicy.capabilityConfigs(
-            kind = kind,
-            streamConfigPolicy = streamConfigPolicy,
-            videoCandidates = videoCandidates.map { StreamSize(it.width, it.height) },
-            analysisCandidates = analysisCandidates.map { StreamSize(it.width, it.height) },
-            alternatingAnalysisSize = StreamSize(analysisSize.width, analysisSize.height),
-        )
-        if (configs.isEmpty()) {
-            onDone(
-                mapOf(
-                    "phase" to label,
-                    "candidate" to null,
-                    "outcome" to "internal_error",
-                    "detail" to "没有可用的候选组合",
-                    "previewFrames" to 0,
-                    "analysisFrames" to 0,
-                    "encoderBuffers" to 0,
-                    "durationMs" to 0,
-                ),
-            )
-            return
-        }
-        fun attempt(index: Int, lastOutcome: String, lastDetail: String?) {
-            if (disposed) {
-                onDone(
-                    CameraDiagnosticsSnapshotMapper.probePhaseResult(
-                        label,
-                        null,
-                        "internal_error",
-                        "摄像头已关闭",
-                        0,
-                        0,
-                        0,
-                        0,
-                    ),
-                )
-                return
-            }
-            if (SystemClock.uptimeMillis() + CAPABILITY_PROBE_PHASE_BUDGET_MS > deadline) {
-                onDone(
-                    CameraDiagnosticsSnapshotMapper.probePhaseResult(
-                        label,
-                        null,
-                        "budget_exceeded",
-                        "检测时间预算不足",
-                        0,
-                        0,
-                        0,
-                        0,
-                    ),
-                )
-                return
-            }
-            if (index >= configs.size) {
-                onDone(
-                    CameraDiagnosticsSnapshotMapper.probePhaseResult(
-                        label,
-                        null,
-                        lastOutcome,
-                        lastDetail,
-                        0,
-                        0,
-                        0,
-                        0,
-                    ),
-                )
-                return
-            }
-            val cameraId = selectedCameraId
-            val characteristics = selectedCameraCharacteristics
-            val entry = textureEntry
-            if (cameraId == null || characteristics == null || entry == null) {
-                onDone(
-                    CameraDiagnosticsSnapshotMapper.probePhaseResult(
-                        label,
-                        null,
-                        "internal_error",
-                        "摄像头尚未准备完成",
-                        0,
-                        0,
-                        0,
-                        0,
-                    ),
-                )
-                return
-            }
-            val config = configs[index]
-            var phaseCamera: CameraDevice? = null
-            var phaseSession: CameraCaptureSession? = null
-            var phaseReader: ImageReader? = null
-            var phaseCodec: MediaCodec? = null
-            var phaseCodecSurface: Surface? = null
-            var codecFailed = false
-            var finished = false
-            val startedAtMs = SystemClock.uptimeMillis()
-            var previewFrames = 0
-            var analysisFrames = 0
-            var encoderBuffers = 0
-            val preview = previewSurface ?: Surface(entry.surfaceTexture()).also {
-                previewSurface = it
-            }
-
-            lateinit var configTimeout: Runnable
-
-            fun cleanup() {
-                // 固定顺序：session → camera → reader → encoder → surface。
-                runCatching { phaseSession?.close() }
-                phaseSession = null
-                runCatching { phaseCamera?.close() }
-                if (phaseCamera === cameraDevice) cameraDevice = null
-                phaseCamera = null
-                runCatching { phaseReader?.close() }
-                phaseReader = null
-                runCatching { phaseCodec?.stop() }
-                runCatching { phaseCodec?.release() }
-                phaseCodec = null
-                runCatching { phaseCodecSurface?.release() }
-                phaseCodecSurface = null
-                runCatching {
-                    entry.surfaceTexture().setDefaultBufferSize(
-                        videoSize.width,
-                        videoSize.height,
-                    )
-                }
-            }
-
-            fun finish(outcome: String, detail: String?) {
-                if (finished) return
-                finished = true
-                handler.removeCallbacks(configTimeout)
-                cleanup()
-                onDone(
-                    CameraDiagnosticsSnapshotMapper.probePhaseResult(
-                        label,
-                        config.candidateLabel,
-                        outcome,
-                        detail,
-                        previewFrames,
-                        analysisFrames,
-                        encoderBuffers,
-                        (SystemClock.uptimeMillis() - startedAtMs).toInt(),
-                    ),
-                )
-            }
-
-            fun retry(nextOutcome: String, nextDetail: String?) {
-                if (finished) return
-                finished = true
-                handler.removeCallbacks(configTimeout)
-                cleanup()
-                attempt(index + 1, nextOutcome, nextDetail)
-            }
-
-            configTimeout = Runnable {
-                finish(CameraProbeOutcome.CONFIGURE_TIMEOUT.wire, null)
-            }
-            handler.postDelayed(configTimeout, CAPABILITY_PROBE_CONFIG_TIMEOUT_MS)
-            try {
-                if (kind.includeAnalysis) {
-                    phaseReader = ImageReader.newInstance(
-                        config.analysisWidth ?: analysisSize.width,
-                        config.analysisHeight ?: analysisSize.height,
-                        ImageFormat.YUV_420_888,
-                        2,
-                    ).also { reader ->
-                        reader.setOnImageAvailableListener({ source ->
-                            analysisFrames++
-                            runCatching { source.acquireLatestImage()?.close() }
-                        }, handler)
-                    }
-                }
-                if (kind.includeEncoder) {
-                    try {
-                        val codecResult = createCapabilityProbeCodec(
-                            config.videoWidth,
-                            config.videoHeight,
-                            handler,
-                            onEncoderFrame = { encoderBuffers++ },
-                            onCodecError = { codecFailed = true },
-                        )
-                        phaseCodec = codecResult.codec
-                        phaseCodecSurface = codecResult.surface
-                    } catch (error: Throwable) {
-                        val outcome = when (error) {
-                            is IllegalArgumentException ->
-                                CameraProbeOutcome.CODEC_MISSING
-                            is IllegalStateException,
-                            is MediaCodec.CodecException,
-                            -> CameraProbeOutcome.CODEC_CONFIG_FAILED
-                            else -> CameraProbeOutcome.INTERNAL_ERROR
-                        }
-                        if (outcome == CameraProbeOutcome.INTERNAL_ERROR) {
-                            finish(outcome.wire, error.message ?: outcome.wire)
-                        } else {
-                            retry(outcome.wire, error.message ?: outcome.wire)
-                        }
-                        return
-                    }
-                }
-                val surfaces = buildList {
-                    if (kind.includePreview) add(preview)
-                    if (kind.includeAnalysis) phaseReader?.surface?.let(::add)
-                    if (kind.includeEncoder) phaseCodecSurface?.let(::add)
-                }
-                val expected = (if (kind.includePreview) 1 else 0) +
-                    (if (kind.includeAnalysis) 1 else 0) +
-                    (if (kind.includeEncoder) 1 else 0)
-                if (surfaces.size < expected) {
-                    finish(CameraProbeOutcome.SURFACE_MISSING.wire, "摄像头输出表面创建失败")
-                    return@attempt
-                }
-                cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
-                    override fun onOpened(camera: CameraDevice) {
-                        if (disposed) {
-                            runCatching { camera.close() }
-                            finish(CameraProbeOutcome.INTERNAL_ERROR.wire, "摄像头已关闭")
-                            return
-                        }
-                        phaseCamera = camera
-                        cameraDevice = camera
-                        try {
-                            camera.createCaptureSession(
-                                surfaces,
-                                object : CameraCaptureSession.StateCallback() {
-                                    override fun onConfigured(session: CameraCaptureSession) {
-                                        if (disposed) {
-                                            runCatching { session.close() }
-                                            finish(CameraProbeOutcome.INTERNAL_ERROR.wire, "摄像头已关闭")
-                                            return
-                                        }
-                                        handler.removeCallbacks(configTimeout)
-                                        phaseSession = session
-                                        try {
-                                            val request = camera.createCaptureRequest(
-                                                if (kind.includeEncoder) {
-                                                    CameraDevice.TEMPLATE_RECORD
-                                                } else {
-                                                    CameraDevice.TEMPLATE_PREVIEW
-                                                },
-                                            ).apply {
-                                                if (kind.includePreview) previewSurface?.let(::addTarget)
-                                                if (kind.includeAnalysis) {
-                                                    phaseReader?.surface?.let(::addTarget)
-                                                }
-                                                if (kind.includeEncoder) {
-                                                    phaseCodecSurface?.let(::addTarget)
-                                                }
-                                                applyAutomaticCameraControls(this, characteristics)
-                                            }.build()
-                                            session.setRepeatingRequest(
-                                                request,
-                                                object : CameraCaptureSession.CaptureCallback() {
-                                                    override fun onCaptureCompleted(
-                                                        session: CameraCaptureSession,
-                                                        request: CaptureRequest,
-                                                        result: TotalCaptureResult,
-                                                    ) {
-                                                        previewFrames++
-                                                    }
-                                                },
-                                                handler,
-                                            )
-                                        } catch (error: Throwable) {
-                                            finish(
-                                                CameraProbeOutcome.INTERNAL_ERROR.wire,
-                                                error.message ?: "探针重复请求提交失败",
-                                            )
-                                            return
-                                        }
-                                        val window = Runnable {
-                                            finish(
-                                                if (codecFailed) {
-                                                    CameraProbeOutcome.INTERNAL_ERROR.wire
-                                                } else {
-                                                    CameraProbeOutcome.CONFIGURED.wire
-                                                },
-                                                null,
-                                            )
-                                        }
-                                        handler.postDelayed(window, CAPABILITY_PROBE_PHASE_WINDOW_MS)
-                                    }
-
-                                    override fun onConfigureFailed(session: CameraCaptureSession) {
-                                        runCatching { session.close() }
-                                        retry(CameraProbeOutcome.CONFIGURE_FAILED.wire, null)
-                                    }
-                                },
-                                handler,
-                            )
-                        } catch (error: Throwable) {
-                            val outcome = CameraProbeOutcomePolicy.sessionCreateError(error)
-                            if (outcome == CameraProbeOutcome.UNSUPPORTED_COMBINATION) {
-                                retry(outcome.wire, error.message ?: outcome.wire)
-                            } else {
-                                finish(outcome.wire, error.message ?: outcome.wire)
-                            }
-                        }
-                    }
-
-                    override fun onDisconnected(camera: CameraDevice) {
-                        runCatching { camera.close() }
-                        if (camera === cameraDevice) cameraDevice = null
-                        finish(CameraProbeOutcome.CAMERA_DISCONNECTED.wire, null)
-                    }
-
-                    override fun onError(camera: CameraDevice, error: Int) {
-                        runCatching { camera.close() }
-                        if (camera === cameraDevice) cameraDevice = null
-                        val outcome = CameraProbeOutcomePolicy.cameraStateError(error)
-                        finish(outcome.wire, "camera_error_$error")
-                    }
-                }, handler)
-            } catch (error: Throwable) {
-                val outcome = CameraProbeOutcomePolicy.cameraOpenError(error)
-                finish(outcome.wire, error.message ?: outcome.wire)
-            }
-        }
-        attempt(0, CameraProbeOutcome.CONFIGURE_FAILED.wire, null)
-    }
-
-    private fun createCapabilityProbeCodec(
-        width: Int,
-        height: Int,
-        handler: Handler,
-        onEncoderFrame: () -> Unit,
-        onCodecError: () -> Unit,
-    ): ProbeCodecHandle {
-        val mime = selectedVideoMime
-        val codec = MediaCodec.createEncoderByType(mime)
-        codec.setCallback(
-            object : MediaCodec.Callback() {
-                override fun onInputBufferAvailable(codec: MediaCodec, index: Int) = Unit
-
-                override fun onOutputBufferAvailable(
-                    codec: MediaCodec,
-                    index: Int,
-                    info: MediaCodec.BufferInfo,
-                ) {
-                    if (info.size > 0 &&
-                        info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0
-                    ) {
-                        onEncoderFrame()
-                    }
-                    runCatching { codec.releaseOutputBuffer(index, false) }
-                }
-
-                override fun onError(codec: MediaCodec, error: MediaCodec.CodecException) {
-                    onCodecError()
-                }
-
-                override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) = Unit
-            },
-            handler,
-        )
-        codec.configure(createEncoderFormat(mime, width, height), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        val surface = codec.createInputSurface()
-        codec.start()
-        return ProbeCodecHandle(codec, surface)
     }
 
     private fun finishCapabilityProbe(
