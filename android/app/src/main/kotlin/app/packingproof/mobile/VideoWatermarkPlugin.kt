@@ -29,12 +29,65 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-internal fun watermarkOverlayRotationDegrees(recordingOrientation: String): Float =
+internal data class WatermarkOverlayPlacement(
+    val anchorX: Float,
+    val anchorY: Float,
+    val rotationDegrees: Float,
+)
+
+internal fun watermarkOverlayPlacement(recordingOrientation: String): WatermarkOverlayPlacement =
     when (recordingOrientation) {
-        "landscapeLeft" -> -90f
-        "landscapeRight" -> 90f
-        else -> 0f
+        "landscapeLeft" -> WatermarkOverlayPlacement(-1f, 1f, -90f)
+        "landscapeRight" -> WatermarkOverlayPlacement(1f, -1f, 90f)
+        else -> WatermarkOverlayPlacement(1f, 1f, 0f)
     }
+
+@OptIn(UnstableApi::class)
+internal fun watermarkOverlaySettings(recordingOrientation: String): StaticOverlaySettings {
+    val placement = watermarkOverlayPlacement(recordingOrientation)
+    return StaticOverlaySettings.Builder()
+        .setOverlayFrameAnchor(placement.anchorX, placement.anchorY)
+        .setBackgroundFrameAnchor(placement.anchorX, placement.anchorY)
+        .setRotationDegrees(placement.rotationDegrees)
+        .build()
+}
+
+internal fun renderWatermarkTextBitmap(
+    videoHeight: Int,
+    lines: List<String>,
+): Bitmap {
+    require(videoHeight > 0)
+    require(lines.isNotEmpty())
+    val textSize = (videoHeight * 0.032f).coerceIn(35f, 61f)
+    val strokeWidth = (textSize / 10f).coerceAtLeast(3f)
+    val padding = strokeWidth + 3f
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        this.textSize = textSize
+        textAlign = Paint.Align.RIGHT
+        strokeJoin = Paint.Join.ROUND
+    }
+    val lineHeight = (paint.fontMetrics.bottom - paint.fontMetrics.top) * 1.08f
+    val contentWidth = lines.maxOf { paint.measureText(it) }
+    val width = (contentWidth + padding * 2).toInt().coerceAtLeast(1)
+    val height = (lineHeight * lines.size + padding * 2).toInt().coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    bitmap.density = Bitmap.DENSITY_NONE
+    val canvas = Canvas(bitmap)
+    val right = width - padding
+    var baseline = padding - paint.fontMetrics.top
+    for (line in lines) {
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = strokeWidth
+        paint.color = Color.BLACK
+        canvas.drawText(line, right, baseline, paint)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.WHITE
+        canvas.drawText(line, right, baseline, paint)
+        baseline += lineHeight
+    }
+    return bitmap
+}
 
 @OptIn(UnstableApi::class)
 class VideoWatermarkPlugin(
@@ -95,16 +148,7 @@ class VideoWatermarkPlugin(
         output.parentFile?.mkdirs()
         output.delete()
 
-        val (anchorX, anchorY) = when (recordingOrientation) {
-            "landscapeLeft" -> -1f to 1f
-            "landscapeRight" -> 1f to -1f
-            else -> 1f to 1f
-        }
-        val settings = StaticOverlaySettings.Builder()
-            .setOverlayFrameAnchor(anchorX, anchorY)
-            .setBackgroundFrameAnchor(anchorX, anchorY)
-            .setRotationDegrees(watermarkOverlayRotationDegrees(recordingOrientation))
-            .build()
+        val settings = watermarkOverlaySettings(recordingOrientation)
         val overlay = object : BitmapOverlay() {
             private val formatter = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.ROOT)
             private var videoSize = Size(1080, 1920)
@@ -141,35 +185,7 @@ class VideoWatermarkPlugin(
             }
 
             private fun renderOutlinedText(lines: List<String>): Bitmap {
-                val textSize = (videoSize.height * 0.032f).coerceIn(35f, 61f)
-                val strokeWidth = (textSize / 10f).coerceAtLeast(3f)
-                val padding = strokeWidth + 3f
-                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    this.textSize = textSize
-                    textAlign = Paint.Align.RIGHT
-                    strokeJoin = Paint.Join.ROUND
-                }
-                val lineHeight = (paint.fontMetrics.bottom - paint.fontMetrics.top) * 1.08f
-                val contentWidth = lines.maxOf { paint.measureText(it) }
-                val width = (contentWidth + padding * 2).toInt().coerceAtLeast(1)
-                val height = (lineHeight * lines.size + padding * 2).toInt().coerceAtLeast(1)
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                bitmap.density = Bitmap.DENSITY_NONE
-                val canvas = Canvas(bitmap)
-                val right = width - padding
-                var baseline = padding - paint.fontMetrics.top
-                for (line in lines) {
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = strokeWidth
-                    paint.color = Color.BLACK
-                    canvas.drawText(line, right, baseline, paint)
-                    paint.style = Paint.Style.FILL
-                    paint.color = Color.WHITE
-                    canvas.drawText(line, right, baseline, paint)
-                    baseline += lineHeight
-                }
-                return bitmap
+                return renderWatermarkTextBitmap(videoSize.height, lines)
             }
 
             private fun clearCache() {
