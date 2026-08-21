@@ -34,7 +34,7 @@ if [ "${1:-}" = "--self-test" ]; then
 fi
 
 # 职责拆分后应同步降低对应上限，不得为新增代码提高基线。
-check_limit lib/screens/recordings_screen.dart 3806
-check_limit ios/Runner/PigeonPlatform.swift 1075
-check_limit lib/controllers/packing_session_controller.dart 2806
+check_limit lib/screens/recordings_screen.dart 1647
+check_limit ios/Runner/PigeonPlatform.swift 982
+check_limit lib/controllers/packing_session_controller.dart 1676
 check_limit android/app/src/main/kotlin/app/packingproof/mobile/ContinuousSegmentCamera.kt 2541
