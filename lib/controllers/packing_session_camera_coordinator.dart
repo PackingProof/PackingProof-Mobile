@@ -1,18 +1,7 @@
 part of 'packing_session_controller.dart';
 
 /// 协调摄像头初始化、能力判定、镜头身份与运行诊断。
-mixin _PackingSessionCameraCoordinator on _PackingSessionPairingCoordinator {
-  PackingSessionPhase get _phase;
-  set _speechEnabled(bool value);
-  set _workMode(WorkMode value);
-  set _maxVolumeEnabled(bool value);
-  bool get _recordAudioEnabled;
-  set _recordAudioEnabled(bool value);
-  set _preferredVideoCodec(RecordingVideoCodec value);
-  RecordingSpecPreset get _recordingSpec;
-  set _recordingSpec(RecordingSpecPreset value);
-  set _recordingOrientation(RecordingOrientation value);
-  set _historyPageSize(int value);
+mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   set _hiddenRemoteRecordingIds(Set<int> value);
   set _nativeCamera(ContinuousCameraService? value);
   @override
@@ -283,6 +272,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionPairingCoordinator {
     }
   }
 
+  @override
   Future<void> retryInitialize() async {
     unawaited(_cameraDiagnostics.recordEvent(kind: 'retry_initialize'));
     await _disposeCamera();

@@ -52,6 +52,7 @@ part 'packing_session_barcode_coordinator.dart';
 part 'packing_session_camera_coordinator.dart';
 part 'packing_session_order_coordinator.dart';
 part 'packing_session_pairing_coordinator.dart';
+part 'packing_session_settings_coordinator.dart';
 part 'packing_session_storage_coordinator.dart';
 part 'packing_session_watermark_coordinator.dart';
 
@@ -78,6 +79,7 @@ class PackingSessionController extends ChangeNotifier
         _PackingSessionBarcodeCoordinator,
         _PackingSessionOrderCoordinator,
         _PackingSessionPairingCoordinator,
+        _PackingSessionSettingsCoordinator,
         _PackingSessionCameraCoordinator {
   PackingSessionController({
     SessionRepository? repository,
@@ -182,22 +184,6 @@ class PackingSessionController extends ChangeNotifier
   Timer? _initialPromptTimer;
   Duration _elapsed = Duration.zero;
   BarcodeMarker? _lastMarker;
-  @override
-  WorkMode _workMode = WorkMode.continuousScan;
-  @override
-  RecordingOperationMode _operationMode = RecordingOperationMode.shipping;
-  @override
-  bool _speechEnabled = true;
-  bool _maxVolumeEnabled = true;
-  @override
-  bool _recordAudioEnabled = true;
-  @override
-  RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
-  @override
-  RecordingSpecPreset _recordingSpec = RecordingSpecPreset.hd1080p30;
-  @override
-  RecordingOrientation _recordingOrientation = RecordingOrientation.portrait;
-  int _historyPageSize = AppSettings.defaultHistoryPageSize;
   @override
   UnbackedRetentionPolicy _unbackedRetention = UnbackedRetentionPolicy.days30;
   @override
@@ -850,138 +836,6 @@ class PackingSessionController extends ChangeNotifier
     }
   }
 
-  Future<void> setWorkMode(WorkMode mode) async {
-    if (_workMode == mode || isWorking || isBusy) {
-      return;
-    }
-    _workMode = mode;
-    notifyListeners();
-    await _repository.saveWorkMode(mode);
-  }
-
-  Future<void> setOperationMode(RecordingOperationMode mode) async {
-    if (_operationMode == mode || isWorking || isBusy) {
-      return;
-    }
-    _operationMode = mode;
-    notifyListeners();
-    _speechService.enqueue(_speechForOperationMode(mode));
-    await _repository.saveOperationMode(mode);
-  }
-
-  SpeechPrompt _speechForOperationMode(RecordingOperationMode mode) =>
-      mode == RecordingOperationMode.returnGoods
-      ? SpeechPrompt.returnMode
-      : SpeechPrompt.shippingMode;
-
-  Future<void> setSpeechEnabled(bool enabled) async {
-    if (_speechEnabled == enabled) {
-      return;
-    }
-    _speechEnabled = enabled;
-    notifyListeners();
-    await _speechService.setEnabled(enabled);
-    await _repository.saveSpeechEnabled(enabled);
-  }
-
-  Future<void> setMaxVolumeEnabled(bool enabled) async {
-    if (_maxVolumeEnabled == enabled) {
-      return;
-    }
-    _maxVolumeEnabled = enabled;
-    notifyListeners();
-    if (enabled) {
-      if (isWorking) {
-        await _beginMaxVolumeIfNeeded();
-      }
-    } else {
-      await _disableMaxVolume();
-    }
-    await _repository.saveMaxVolumeEnabled(enabled);
-  }
-
-  Future<void> setRecordAudioEnabled(bool enabled) async {
-    if (_recordAudioEnabled == enabled) {
-      return;
-    }
-    _recordAudioEnabled = enabled;
-    notifyListeners();
-    if (enabled) {
-      unawaited(_requestRecordingAudioPermission());
-    }
-    await _repository.saveRecordAudioEnabled(enabled);
-  }
-
-  Future<void> setPreferredVideoCodec(RecordingVideoCodec codec) async {
-    if (_preferredVideoCodec == codec) {
-      return;
-    }
-    _preferredVideoCodec = codec;
-    notifyListeners();
-    await _repository.savePreferredVideoCodec(codec);
-    if (_supportsNativeCamera && _phase != PackingSessionPhase.saving) {
-      // 编码器在相机初始化时创建，切换后必须重建相机才会生效；
-      // 若正在工作，先安全结束当前工作（正在录的片段会正常保存）。
-      if (isWorking) {
-        await stopWork();
-      }
-      await retryInitialize();
-    }
-  }
-
-  Future<void> setRecordingSpec(RecordingSpecPreset spec) async {
-    if (_recordingSpec == spec) {
-      return;
-    }
-    _recordingSpec = spec;
-    notifyListeners();
-    await _repository.saveRecordingSpec(spec);
-    if (_supportsNativeCamera && _phase != PackingSessionPhase.saving) {
-      // 编码器在相机初始化时创建，切换规格后必须重建相机才会生效；
-      // 若正在工作，先安全结束当前工作（正在录的片段会正常保存）。
-      if (isWorking) {
-        await stopWork();
-      }
-      await retryInitialize();
-    }
-  }
-
-  Future<void> setRecordingOrientation(RecordingOrientation orientation) async {
-    if (_recordingOrientation == orientation) return;
-    _recordingOrientation = orientation;
-    notifyListeners();
-    await _repository.saveRecordingOrientation(orientation);
-    if (_supportsNativeCamera && !isWorking) await retryInitialize();
-  }
-
-  Future<void> setMinimumBarcodeLength(int value) async {
-    final int normalized = AppSettings.normalizeBarcodeLength(value);
-    if (_minimumBarcodeLength == normalized) {
-      return;
-    }
-    _minimumBarcodeLength = normalized;
-    notifyListeners();
-    await _repository.saveMinimumBarcodeLength(normalized);
-  }
-
-  Future<void> setHistoryPageSize(int value) async {
-    final int normalized = AppSettings.normalizeHistoryPageSize(value);
-    if (_historyPageSize == normalized) {
-      return;
-    }
-    _historyPageSize = normalized;
-    notifyListeners();
-    await _repository.saveHistoryPageSize(normalized);
-  }
-
-  Future<void> _requestRecordingAudioPermission() async {
-    try {
-      await _nativeCamera?.ensurePermissions(recordAudio: true);
-    } on Object {
-      // 未授权麦克风时，开始录像阶段会给出明确提示。
-    }
-  }
-
   void beginHistoryBarcodeScan() {
     if (isWorking || isBusy) return;
     _historyScanResult = null;
@@ -1205,6 +1059,7 @@ class PackingSessionController extends ChangeNotifier
     }
   }
 
+  @override
   Future<void> _beginMaxVolumeIfNeeded() async {
     if (!_maxVolumeEnabled || !_appIsActive) {
       return;
@@ -1250,6 +1105,7 @@ class PackingSessionController extends ChangeNotifier
     }
   }
 
+  @override
   Future<void> _disableMaxVolume() async {
     try {
       await _maxVolumeService.disable();

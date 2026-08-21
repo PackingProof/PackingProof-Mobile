@@ -15,6 +15,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   WorkMode get _workMode;
   RecordingOperationMode get _operationMode;
   set _operationMode(RecordingOperationMode value);
+  int get _minimumBarcodeLength;
   Duration get _analysisInterval;
   bool get _pairingScanActive;
   bool get _pairingBusy;
@@ -53,7 +54,6 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   String _candidateCode = '';
   String? _alternatingLastCompletedCode;
   DateTime? _alternatingNoCodeSince;
-  int _minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength;
   String _lastRejectedBarcodeCode = '';
   DateTime? _lastRejectedBarcodeAt;
   String? _lastTriggeredCommandCode;

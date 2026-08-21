@@ -3,8 +3,8 @@ part of 'packing_session_controller.dart';
 /// 协调订单接收绑定、活动订单状态、订单播报与重复单号提示。
 mixin _PackingSessionOrderCoordinator on _PackingSessionBarcodeCoordinator {
   bool get _speechEnabled;
+  bool get _orderSpeechEnabled;
 
-  bool _orderSpeechEnabled = true;
   bool _orderReceiverListenerAttached = false;
   StreamSubscription<OrderInfo>? _orderInfoSubscription;
   OrderInfo? _activeOrderInfo;
@@ -12,17 +12,9 @@ mixin _PackingSessionOrderCoordinator on _PackingSessionBarcodeCoordinator {
   Timer? _scanWarningTimer;
   String? _scanWarningMessage;
 
-  bool get orderSpeechEnabled => _orderSpeechEnabled;
   OrderInfo? get activeOrderInfo => _activeOrderInfo;
   OrderInfoReceiverSnapshot get orderReceiverSnapshot =>
       _orderInfoReceiver.snapshot;
-
-  Future<void> setOrderSpeechEnabled(bool enabled) async {
-    if (_orderSpeechEnabled == enabled) return;
-    _orderSpeechEnabled = enabled;
-    notifyListeners();
-    await _repository.saveOrderSpeechEnabled(enabled);
-  }
 
   Future<void> retryOrderReceiver() => _orderInfoReceiver.retry();
 
