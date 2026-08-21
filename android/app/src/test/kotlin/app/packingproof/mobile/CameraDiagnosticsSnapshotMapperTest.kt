@@ -22,7 +22,7 @@ class CameraDiagnosticsSnapshotMapperTest {
             snapshot["device"],
         )
         assertEquals(
-            mapOf(
+            mapOf<String, Any?>(
                 "javaHeapUsedBytes" to 10L,
                 "javaHeapMaxBytes" to 20L,
                 "nativeHeapAllocatedBytes" to 30L,
