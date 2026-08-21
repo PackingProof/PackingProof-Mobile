@@ -61,7 +61,7 @@ internal data class CameraRecoveryDiagnostics(
     val codecFallbackReason: String?,
     val lastRequestTemplate: String?,
     val stallActive: Boolean,
-    val stallRecoveryStage: String?,
+    val stallRecoveryStage: Int,
     val sessionConfigStage: String?,
     val sessionConfigAttempts: Int,
     val initFailureStage: String?,

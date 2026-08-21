@@ -44,6 +44,7 @@ class CameraDiagnosticsSnapshotMapperTest {
         assertEquals(listOf(mapOf("phase" to "idle")), camera["probeResults"])
         assertEquals(100L, camera["storageAvailableBytes"])
         assertEquals(2L, camera["muxWriteStallCount"])
+        assertEquals(2, camera["stallRecoveryStage"])
         assertEquals(listOf("depth_output"), camera["capabilities"])
         assertTrue(camera["probeInProgress"] as Boolean)
         assertFalse(camera["probeCached"] as Boolean)
@@ -173,7 +174,7 @@ class CameraDiagnosticsSnapshotMapperTest {
             null,
             "record",
             false,
-            null,
+            2,
             "configured",
             2,
             null,
