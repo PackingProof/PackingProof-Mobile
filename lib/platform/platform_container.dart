@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import 'adapters/pigeon_camera_platform.dart';
 import 'adapters/pigeon_backup_platform.dart';
 import 'adapters/pigeon_thumbnail_platform.dart';
@@ -38,8 +40,20 @@ class AppContainer {
   static AppContainer? _currentPlatform;
 
   static AppContainer _createForCurrentPlatform() {
+    return forOperatingSystem(Platform.operatingSystem);
+  }
+
+  @visibleForTesting
+  static AppContainer forOperatingSystem(String operatingSystem) {
+    final _AppPlatform platform = switch (operatingSystem) {
+      'android' => _AppPlatform.android,
+      'ios' => _AppPlatform.ios,
+      _ => _AppPlatform.unsupported,
+    };
+    final bool isAndroid = platform == _AppPlatform.android;
+    final bool isMobile = isAndroid || platform == _AppPlatform.ios;
     return AppContainer(
-      capabilities: Platform.isAndroid
+      capabilities: isAndroid
           ? const PlatformCapabilities(<PlatformCapability>{
               PlatformCapability.continuousCameraRecording,
               PlatformCapability.lanBackup,
@@ -51,7 +65,8 @@ class AppContainer {
               PlatformCapability.alertAudioSession,
               PlatformCapability.alertVolumeBoost,
             })
-          : const PlatformCapabilities(<PlatformCapability>{
+          : platform == _AppPlatform.ios
+          ? const PlatformCapabilities(<PlatformCapability>{
               PlatformCapability.continuousCameraRecording,
               PlatformCapability.lanBackup,
               PlatformCapability.orderInfoReceiver,
@@ -60,26 +75,25 @@ class AppContainer {
               PlatformCapability.recordingThumbnail,
               PlatformCapability.systemVideoPlayer,
               PlatformCapability.alertAudioSession,
-            }),
-      thumbnail: Platform.isAndroid || Platform.isIOS
+            })
+          : const PlatformCapabilities(<PlatformCapability>{}),
+      thumbnail: isMobile
           ? PigeonThumbnailPlatform()
           : const UnsupportedThumbnailPlatform(),
-      orderReceiver: Platform.isAndroid || Platform.isIOS
+      orderReceiver: isMobile
           ? PigeonOrderReceiverPlatform()
           : const UnsupportedOrderReceiverPlatform(),
-      camera: Platform.isAndroid || Platform.isIOS
-          ? PigeonCameraPlatform()
-          : UnsupportedCameraPlatform(),
-      backup: Platform.isAndroid || Platform.isIOS
+      camera: isMobile ? PigeonCameraPlatform() : UnsupportedCameraPlatform(),
+      backup: isMobile
           ? PigeonBackupNativePlatform()
           : const UnsupportedBackupNativePlatform(),
-      mediaProcessing: Platform.isAndroid || Platform.isIOS
+      mediaProcessing: isMobile
           ? PigeonMediaProcessingPlatform()
           : const UnsupportedMediaProcessingPlatform(),
-      systemMediaPresenter: Platform.isAndroid || Platform.isIOS
+      systemMediaPresenter: isMobile
           ? PigeonSystemMediaPresenter()
           : const UnsupportedSystemMediaPresenter(),
-      alertAudioSession: Platform.isAndroid || Platform.isIOS
+      alertAudioSession: isMobile
           ? PigeonAlertAudioSessionPlatform()
           : const UnsupportedAlertAudioSessionPlatform(),
     );
@@ -94,3 +108,5 @@ class AppContainer {
   final SystemMediaPresenter systemMediaPresenter;
   final AlertAudioSessionPlatform alertAudioSession;
 }
+
+enum _AppPlatform { android, ios, unsupported }

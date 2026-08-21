@@ -32,7 +32,7 @@ class UnsupportedCameraPlatform implements CameraPlatform {
   }
 
   @override
-  Future<bool> ensurePermissions({required bool recordAudio}) async => false;
+  Future<bool> ensurePermissions({required bool recordAudio}) => _unsupported();
 
   @override
   Future<NativeRecordingStart> startWork(
@@ -62,21 +62,20 @@ class UnsupportedCameraPlatform implements CameraPlatform {
   }
 
   @override
-  Future<CameraDiagnosticsSnapshot?> getDiagnostics() async => null;
+  Future<CameraDiagnosticsSnapshot?> getDiagnostics() => _unsupported();
 
   @override
-  Future<void> setPairingScanEnabled(bool enabled) async {}
+  Future<void> setPairingScanEnabled(bool enabled) => _unsupported();
   @override
-  Future<void> setWorkScanEnabled(bool enabled) async {}
+  Future<void> setWorkScanEnabled(bool enabled) => _unsupported();
   @override
-  Future<void> setPreviewActive(bool active) async {}
+  Future<void> setPreviewActive(bool active) => _unsupported();
   @override
-  Future<bool> setTorchEnabled(bool enabled) async => false;
+  Future<bool> setTorchEnabled(bool enabled) => _unsupported();
   @override
   Future<ContinuousCameraInitialization> switchCamera() => initialize();
   @override
-  Future<List<NativeCameraLens>> listCameras() async =>
-      const <NativeCameraLens>[];
+  Future<List<NativeCameraLens>> listCameras() => _unsupported();
   @override
   Future<ContinuousCameraInitialization> switchToCamera(String cameraId) =>
       initialize();
@@ -84,9 +83,16 @@ class UnsupportedCameraPlatform implements CameraPlatform {
   Future<Map<Object?, Object?>?> probeSequence(
     String sequence, {
     required int budgetMs,
-  }) async => null;
+  }) => _unsupported();
   @override
-  Future<void> setCapabilityMode(String mode) async {}
+  Future<void> setCapabilityMode(String mode) => _unsupported();
   @override
   Future<void> dispose() async {}
+
+  Never _unsupported() {
+    throw const CapabilityUnavailableException(
+      PlatformCapability.continuousCameraRecording,
+      reason: '当前平台暂不支持连续录像',
+    );
+  }
 }

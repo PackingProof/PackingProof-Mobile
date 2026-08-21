@@ -34,20 +34,32 @@ class UnsupportedMediaProcessingPlatform implements MediaProcessingPlatform {
   }
 
   @override
-  Future<int> exportProgress() async => 100;
+  Future<int> exportProgress() {
+    throw const CapabilityUnavailableException(
+      PlatformCapability.videoExport,
+      reason: '当前平台暂不支持分享剪辑',
+    );
+  }
 }
 
 class UnsupportedSystemMediaPresenter implements SystemMediaPresenter {
   const UnsupportedSystemMediaPresenter();
 
   @override
-  Future<String?> getVideoTrackMime(String path) async => null;
+  Future<String?> getVideoTrackMime(String path) => _unsupported();
 
   @override
-  Future<SystemVideoDecodeSupport?> getVideoDecodeSupport() async => null;
+  Future<SystemVideoDecodeSupport?> getVideoDecodeSupport() => _unsupported();
 
   @override
-  Future<void> openWithSystemPlayer(String path) async {}
+  Future<void> openWithSystemPlayer(String path) => _unsupported();
+
+  Never _unsupported() {
+    throw const CapabilityUnavailableException(
+      PlatformCapability.systemVideoPlayer,
+      reason: '当前平台暂不支持系统播放器',
+    );
+  }
 }
 
 class UnsupportedAlertAudioSessionPlatform
@@ -55,17 +67,24 @@ class UnsupportedAlertAudioSessionPlatform
   const UnsupportedAlertAudioSessionPlatform();
 
   @override
-  Future<void> beginSession() async {}
+  Future<void> beginSession() => _unsupported();
 
   @override
-  Future<void> endSession() async {}
+  Future<void> endSession() => _unsupported();
 
   @override
-  Future<void> disable() async {}
+  Future<void> disable() => _unsupported();
 
   @override
-  Future<void> boost() async {}
+  Future<void> boost() => _unsupported();
 
   @override
   Future<void> dispose() async {}
+
+  Never _unsupported() {
+    throw const CapabilityUnavailableException(
+      PlatformCapability.alertAudioSession,
+      reason: '当前平台暂不支持提醒音频会话',
+    );
+  }
 }

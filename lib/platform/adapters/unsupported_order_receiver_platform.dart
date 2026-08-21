@@ -28,14 +28,21 @@ class UnsupportedOrderReceiverPlatform implements OrderReceiverPlatform {
   }
 
   @override
-  Future<OrderInfo?> lookup(String trackingNumber) async => null;
+  Future<OrderInfo?> lookup(String trackingNumber) => _unsupported();
 
   @override
-  Future<void> updateBackgroundDelivery(bool enabled) async {}
+  Future<void> updateBackgroundDelivery(bool enabled) => _unsupported();
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() => _unsupported();
 
   @override
   Future<void> dispose() async {}
+
+  Never _unsupported() {
+    throw const CapabilityUnavailableException(
+      PlatformCapability.orderInfoReceiver,
+      reason: '当前平台暂不支持订单语音接收',
+    );
+  }
 }

@@ -11,7 +11,7 @@ class UnsupportedBackupNativePlatform implements BackupNativePlatform {
   ) {}
 
   @override
-  Future<Map<Object?, Object?>?> snapshot() async => null;
+  Future<Map<Object?, Object?>?> snapshot() => _unsupported();
 
   @override
   Future<Map<Object?, Object?>?> initialize(Map<Object?, Object?> request) {
@@ -22,35 +22,44 @@ class UnsupportedBackupNativePlatform implements BackupNativePlatform {
   }
 
   @override
-  Future<String?> loadAccessKey() async => null;
+  Future<String?> loadAccessKey() => _unsupported();
 
   @override
-  Future<bool> isWifiConnected() async => true;
+  Future<bool> isWifiConnected() => _unsupported();
 
   @override
-  Future<void> saveConnection(Map<Object?, Object?> connection) async {}
+  Future<void> saveConnection(Map<Object?, Object?> connection) =>
+      _unsupported();
 
   @override
-  Future<void> disconnect() async {}
+  Future<void> disconnect() => _unsupported();
 
   @override
-  Future<void> enqueueJob(Map<Object?, Object?> request) async {}
+  Future<void> enqueueJob(Map<Object?, Object?> request) => _unsupported();
 
   @override
-  Future<void> requeueJob(String jobId) async {}
+  Future<void> requeueJob(String jobId) => _unsupported();
 
   @override
-  Future<void> cancelJob(String jobId) async {}
+  Future<void> cancelJob(String jobId) => _unsupported();
 
   @override
-  Future<void> updateRetentionSchedule(Map<Object?, Object?> request) async {}
+  Future<void> updateRetentionSchedule(Map<Object?, Object?> request) =>
+      _unsupported();
 
   @override
-  Future<Map<Object?, Object?>?> reclaimStorageIfNeeded() async => null;
+  Future<Map<Object?, Object?>?> reclaimStorageIfNeeded() => _unsupported();
 
   @override
-  Future<Map<Object?, Object?>?> getNetworkDiagnostics() async => null;
+  Future<Map<Object?, Object?>?> getNetworkDiagnostics() => _unsupported();
 
   @override
   Future<void> dispose() async {}
+
+  Never _unsupported() {
+    throw const CapabilityUnavailableException(
+      PlatformCapability.lanBackup,
+      reason: '当前平台暂不支持电脑备份',
+    );
+  }
 }
