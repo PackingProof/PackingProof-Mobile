@@ -206,6 +206,82 @@ class RunnerTests: XCTestCase {
     XCTAssertTrue(try reopened.allJobs().isEmpty)
   }
 
+  func testBackupCredentialStoreMigratesAndScrubsLegacyCopies() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let keychain = FakeIosKeychainClient()
+    fixture.defaults.set("legacy-access-key", forKey: "ios_backup_access_key")
+    fixture.defaults.set(
+      [
+        "baseUrl": "http://192.168.1.2:3000",
+        "computerId": "computer-1",
+        "accessKey": "embedded-access-key",
+      ],
+      forKey: "ios_backup_connection"
+    )
+    let store = IosBackupCredentialStore(
+      defaults: fixture.defaults,
+      keychain: keychain,
+      service: "RunnerTests.\(UUID().uuidString)",
+      account: "access-key"
+    )
+
+    XCTAssertEqual(try store.load(), "legacy-access-key")
+    XCTAssertEqual(keychain.data, Data("legacy-access-key".utf8))
+    XCTAssertNil(fixture.defaults.object(forKey: "ios_backup_access_key"))
+    let connection = try XCTUnwrap(
+      fixture.defaults.dictionary(forKey: "ios_backup_connection")
+    )
+    XCTAssertNil(connection["accessKey"])
+    XCTAssertEqual(connection["computerId"] as? String, "computer-1")
+  }
+
+  func testBackupCredentialStorePreservesLegacyCopiesWhenMigrationFails() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let keychain = FakeIosKeychainClient()
+    keychain.saveError = IosBackupCredentialError(operation: "保存", status: -1)
+    fixture.defaults.set("legacy-access-key", forKey: "ios_backup_access_key")
+    fixture.defaults.set(
+      ["computerId": "computer-1", "accessKey": "embedded-access-key"],
+      forKey: "ios_backup_connection"
+    )
+    let store = IosBackupCredentialStore(
+      defaults: fixture.defaults,
+      keychain: keychain,
+      service: "RunnerTests.\(UUID().uuidString)",
+      account: "access-key"
+    )
+
+    XCTAssertThrowsError(try store.load())
+    XCTAssertEqual(
+      fixture.defaults.string(forKey: "ios_backup_access_key"),
+      "legacy-access-key"
+    )
+    XCTAssertEqual(
+      fixture.defaults.dictionary(forKey: "ios_backup_connection")?["accessKey"]
+        as? String,
+      "embedded-access-key"
+    )
+  }
+
+  func testBackupCredentialStoreSavesLoadsAndDeletesSecureValue() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let keychain = FakeIosKeychainClient()
+    let store = IosBackupCredentialStore(
+      defaults: fixture.defaults,
+      keychain: keychain,
+      service: "RunnerTests.\(UUID().uuidString)",
+      account: "access-key"
+    )
+
+    try store.save("secure-access-key")
+    XCTAssertEqual(try store.load(), "secure-access-key")
+    try store.delete()
+    XCTAssertNil(try store.load())
+  }
+
   func testBackupCleanupGateRequiresExactlyOneSession() {
     var job = makeBackupJob(id: "cleanup-cardinality")
     XCTAssertTrue(IosBackupCleanupGate.hasSingleSession(job))
@@ -215,6 +291,27 @@ class RunnerTests: XCTestCase {
     XCTAssertFalse(IosBackupCleanupGate.hasSingleSession(job))
     job.removeValue(forKey: "sessions")
     XCTAssertFalse(IosBackupCleanupGate.hasSingleSession(job))
+  }
+
+  func testSystemIosKeychainClientRoundTrip() throws {
+    let client = SystemIosKeychainClient()
+    let service = "RunnerTests.keychain.\(UUID().uuidString)"
+    let account = "access-key"
+    defer { try? client.delete(service: service, account: account) }
+
+    do {
+      try client.save(
+        Data("system-keychain-value".utf8), service: service, account: account
+      )
+    } catch let error as IosBackupCredentialError where error.status == -34_018 {
+      throw XCTSkip("未签名测试包没有 Keychain entitlement")
+    }
+    XCTAssertEqual(
+      try client.read(service: service, account: account),
+      Data("system-keychain-value".utf8)
+    )
+    try client.delete(service: service, account: account)
+    XCTAssertNil(try client.read(service: service, account: account))
   }
 
   private typealias ReceiptFixture = (
@@ -304,4 +401,26 @@ class RunnerTests: XCTestCase {
     ]
   }
 
+}
+
+private final class FakeIosKeychainClient: IosKeychainClient {
+  var data: Data?
+  var readError: Error?
+  var saveError: Error?
+  var deleteError: Error?
+
+  func read(service: String, account: String) throws -> Data? {
+    if let readError { throw readError }
+    return data
+  }
+
+  func save(_ data: Data, service: String, account: String) throws {
+    if let saveError { throw saveError }
+    self.data = data
+  }
+
+  func delete(service: String, account: String) throws {
+    if let deleteError { throw deleteError }
+    data = nil
+  }
 }

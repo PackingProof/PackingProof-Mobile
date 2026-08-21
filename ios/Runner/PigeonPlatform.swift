@@ -7,6 +7,7 @@ import Flutter
 import ImageIO
 import Network
 import QuartzCore
+import Security
 import SQLite3
 import UIKit
 import UniformTypeIdentifiers
@@ -548,6 +549,158 @@ struct IosBackupStoreError: Error, LocalizedError {
 
   var errorDescription: String? {
     "iOS 备份数据库\(operation)失败（SQLite \(code)：\(message)）"
+  }
+}
+
+struct IosBackupCredentialError: Error, LocalizedError {
+  let operation: String
+  let status: OSStatus
+
+  var errorDescription: String? {
+    "iOS 备份凭据\(operation)失败（Keychain \(status)）"
+  }
+}
+
+protocol IosKeychainClient {
+  func read(service: String, account: String) throws -> Data?
+  func save(_ data: Data, service: String, account: String) throws
+  func delete(service: String, account: String) throws
+}
+
+struct SystemIosKeychainClient: IosKeychainClient {
+  func read(service: String, account: String) throws -> Data? {
+    let query = baseQuery(service: service, account: account).merging(
+      [
+        kSecReturnData as String: true,
+        kSecMatchLimit as String: kSecMatchLimitOne,
+      ],
+      uniquingKeysWith: { _, new in new }
+    )
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    if status == errSecItemNotFound { return nil }
+    guard status == errSecSuccess else {
+      throw IosBackupCredentialError(operation: "读取", status: status)
+    }
+    guard let data = result as? Data else {
+      throw IosBackupCredentialError(operation: "解码", status: errSecDecode)
+    }
+    return data
+  }
+
+  func save(_ data: Data, service: String, account: String) throws {
+    let query = baseQuery(service: service, account: account)
+    let attributes: [String: Any] = [
+      kSecValueData as String: data,
+      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+    ]
+    var addition = query
+    addition.merge(attributes, uniquingKeysWith: { _, new in new })
+    let addStatus = SecItemAdd(addition as CFDictionary, nil)
+    if addStatus == errSecDuplicateItem {
+      let updateStatus = SecItemUpdate(
+        query as CFDictionary, attributes as CFDictionary
+      )
+      guard updateStatus == errSecSuccess else {
+        throw IosBackupCredentialError(operation: "更新", status: updateStatus)
+      }
+      return
+    }
+    guard addStatus == errSecSuccess else {
+      throw IosBackupCredentialError(operation: "保存", status: addStatus)
+    }
+  }
+
+  func delete(service: String, account: String) throws {
+    let status = SecItemDelete(
+      baseQuery(service: service, account: account) as CFDictionary
+    )
+    guard status == errSecSuccess || status == errSecItemNotFound else {
+      throw IosBackupCredentialError(operation: "删除", status: status)
+    }
+  }
+
+  private func baseQuery(service: String, account: String) -> [String: Any] {
+    [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: account,
+    ]
+  }
+}
+
+final class IosBackupCredentialStore {
+  private static let legacyAccessKey = "ios_backup_access_key"
+  private static let legacyConnectionKey = "ios_backup_connection"
+
+  private let defaults: UserDefaults
+  private let keychain: IosKeychainClient
+  private let service: String
+  private let account: String
+
+  init(
+    defaults: UserDefaults = .standard,
+    keychain: IosKeychainClient = SystemIosKeychainClient(),
+    service: String = "\(Bundle.main.bundleIdentifier ?? "app.packingproof.mobile").lan-backup",
+    account: String = "access-key"
+  ) {
+    self.defaults = defaults
+    self.keychain = keychain
+    self.service = service
+    self.account = account
+  }
+
+  func load() throws -> String? {
+    if let secured = try keychain.read(service: service, account: account) {
+      let accessKey = try decode(secured)
+      removeLegacyCopies()
+      return accessKey
+    }
+    let connection = defaults.dictionary(forKey: Self.legacyConnectionKey)
+    let legacy = [
+      defaults.string(forKey: Self.legacyAccessKey),
+      connection?["accessKey"] as? String,
+    ].compactMap { $0 }.first {
+      !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    guard let legacy
+    else { return nil }
+    try save(legacy)
+    return legacy
+  }
+
+  func save(_ accessKey: String) throws {
+    guard !accessKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw IosBackupCredentialError(operation: "校验", status: errSecParam)
+    }
+    let data = Data(accessKey.utf8)
+    try keychain.save(data, service: service, account: account)
+    guard try keychain.read(service: service, account: account) == data else {
+      throw IosBackupCredentialError(operation: "校验", status: errSecDecode)
+    }
+    removeLegacyCopies()
+  }
+
+  func delete() throws {
+    try keychain.delete(service: service, account: account)
+    removeLegacyCopies()
+  }
+
+  private func decode(_ data: Data) throws -> String {
+    guard let value = String(data: data, encoding: .utf8),
+          !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+      throw IosBackupCredentialError(operation: "解码", status: errSecDecode)
+    }
+    return value
+  }
+
+  private func removeLegacyCopies() {
+    defaults.removeObject(forKey: Self.legacyAccessKey)
+    guard var connection = defaults.dictionary(forKey: Self.legacyConnectionKey),
+          connection.removeValue(forKey: "accessKey") != nil
+    else { return }
+    defaults.set(connection, forKey: Self.legacyConnectionKey)
   }
 }
 
@@ -1144,6 +1297,7 @@ enum IosBackupCleanupGate {
 
 private final class IosBackupHostApi: BackupNativeHostApi {
   private let defaults = UserDefaults.standard
+  private let credentialStore = IosBackupCredentialStore()
   private let jobStore: Result<IosBackupJobStore, Error>
   private let eventApi: BackupNativeEventApi
   private let networkMonitor = NWPathMonitor()
@@ -1162,7 +1316,6 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     deviceId: "ios_backup_device_id",
     deviceName: "ios_backup_device_name",
     connection: "ios_backup_connection",
-    accessKey: "ios_backup_access_key",
     jobs: "ios_backup_jobs",
     retention: "ios_backup_retention"
   )
@@ -1220,7 +1373,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   func loadAccessKey(completion: @escaping (Result<String?, Error>) -> Void) {
-    completion(.success(defaults.string(forKey: keys.accessKey)))
+    completion(Result { try credentialStore.load() })
   }
 
   func isWifiConnected(completion: @escaping (Result<Bool, Error>) -> Void) {
@@ -1231,18 +1384,31 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     connection: [String?: Any?],
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
-    defaults.set(normalized(connection), forKey: keys.connection)
-    defaults.set(connection["accessKey"] as? String, forKey: keys.accessKey)
-    defaults.set(connection["deviceName"] as? String, forKey: keys.deviceName)
-    emitSnapshot()
-    completion(.success(()))
+    do {
+      guard let accessKey = connection["accessKey"] as? String else {
+        throw pigeonError("备份连接缺少访问密钥", code: "credential_missing")
+      }
+      try credentialStore.save(accessKey)
+      var stored = normalized(connection)
+      stored.removeValue(forKey: "accessKey")
+      defaults.set(stored, forKey: keys.connection)
+      defaults.set(connection["deviceName"] as? String, forKey: keys.deviceName)
+      emitSnapshot()
+      completion(.success(()))
+    } catch {
+      completion(.failure(error))
+    }
   }
 
   func disconnect(completion: @escaping (Result<Void, Error>) -> Void) {
-    defaults.removeObject(forKey: keys.connection)
-    defaults.removeObject(forKey: keys.accessKey)
-    emitSnapshot()
-    completion(.success(()))
+    do {
+      try credentialStore.delete()
+      defaults.removeObject(forKey: keys.connection)
+      emitSnapshot()
+      completion(.success(()))
+    } catch {
+      completion(.failure(error))
+    }
   }
 
   func enqueueJob(
@@ -1435,7 +1601,8 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   private func currentSnapshot() throws -> [String?: Any?] {
-    [
+    _ = try credentialStore.load()
+    return [
       "deviceId": deviceId(),
       "deviceName": deviceName(),
       "connection": defaults.dictionary(forKey: keys.connection),
@@ -1596,7 +1763,6 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     guard
       let connection = defaults.dictionary(forKey: keys.connection),
       let storedBaseUrl = connection["baseUrl"] as? String,
-      let accessKey = defaults.string(forKey: keys.accessKey),
       let path = job["filePath"] as? String,
       let jobId = job["id"] as? String
     else {
@@ -1611,6 +1777,9 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     let url = URL(fileURLWithPath: path)
 
     do {
+      guard let accessKey = try credentialStore.load() else {
+        throw pigeonError("未找到备份访问密钥", code: "credential_missing")
+      }
       guard
         let rawSessions = job["sessions"] as? [Any],
         rawSessions.count == 1,
@@ -2300,13 +2469,19 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     guard
       let connection = defaults.dictionary(forKey: keys.connection),
       let baseUrl = connection["baseUrl"] as? String,
-      let accessKey = defaults.string(forKey: keys.accessKey),
       let recordId = job["remoteRecordId"] as? NSNumber,
       let sessions = job["sessions"] as? [Any],
       IosBackupCleanupGate.hasSingleSession(job),
       let session = sessions.first as? [String: Any],
       let sessionId = session["id"] as? String
     else {
+      return .unreachable
+    }
+    let accessKey: String
+    do {
+      guard let stored = try credentialStore.load() else { return .unreachable }
+      accessKey = stored
+    } catch {
       return .unreachable
     }
     return await attestRemoteRecord(
