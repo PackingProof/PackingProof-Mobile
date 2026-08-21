@@ -135,8 +135,9 @@ internal class LanBackupWorker(
                 createResponse.optLong("offset", 0L),
                 file.length(),
             )
-            val chunkSize = createResponse.optInt("chunkSize", DEFAULT_CHUNK_SIZE)
-                .coerceIn(256 * 1024, 8 * 1024 * 1024)
+            val chunkSize = boundedUploadChunkSize(
+                createResponse.optInt("chunkSize", DEFAULT_CHUNK_SIZE),
+            )
 
             var offsetResyncAttempts = 0
             RandomAccessFile(file, "r").use { input ->
@@ -593,6 +594,10 @@ internal class LanBackupWorker(
 /** 上传续传起点只以主机 create 响应为准，job.uploadedBytes 仅用于展示。 */
 internal fun resolveInitialUploadOffset(hostOffset: Long, fileLength: Long): Long =
     hostOffset.coerceIn(0L, fileLength)
+
+/** 主机可以调整分块，但单个 Worker 永远只分配有界的分块缓冲。 */
+internal fun boundedUploadChunkSize(hostChunkSize: Int): Int =
+    hostChunkSize.coerceIn(256 * 1024, 8 * 1024 * 1024)
 
 private class BackupHttpException(
     val statusCode: Int,
