@@ -1,0 +1,5 @@
+e30ecfadbba4f3f2a3fb485c42b7e59b17da6ed06562986f089c3616c512db5f  pubspec.yaml
+b5988ef37b51906126f5edb0039a1fd04667da58916c78c8fade9c40b7b4766f  android/src/main/java/io/flutter/plugins/videoplayer/HuaweiCompatibility.java
+1c5ca25ab614d40bbd641df692baf70bb0a446a0c66b21e2bd5edf489505f272  android/src/main/java/io/flutter/plugins/videoplayer/platformview/PlatformViewVideoPlayer.java
+7052b49e293a2e7626e740ec1abdee9e33330e28038c4a5826cdb1da10769dca  android/src/main/java/io/flutter/plugins/videoplayer/texture/TextureVideoPlayer.java
+a63a8166911491f6ae09d2af823b8d2bb036006eb42c71e841c2769f47c20741  android/src/test/java/io/flutter/plugins/videoplayer/HuaweiCompatibilityTest.java
