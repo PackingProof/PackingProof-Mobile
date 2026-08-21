@@ -12,7 +12,4 @@ esac
 
 base_commit="$(git rev-parse --verify "${base_ref}^{commit}")"
 
-# Pigeon currently emits 12 trailing spaces in this generated Kotlin file.
-# Keep the generated output untouched until the generator is upgraded.
-git diff --check "${base_commit}...HEAD" -- . \
-  ':(exclude)android/app/src/main/kotlin/app/packingproof/mobile/generated/PlatformApi.kt'
+git diff --check "${base_commit}...HEAD" -- .

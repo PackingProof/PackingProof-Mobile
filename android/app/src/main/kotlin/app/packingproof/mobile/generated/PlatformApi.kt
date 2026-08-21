@@ -1680,7 +1680,7 @@ class OrderReceiverEventApi(private val binaryMessenger: BinaryMessenger, privat
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
 }
@@ -2043,7 +2043,7 @@ class CameraEventApi(private val binaryMessenger: BinaryMessenger, private val m
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
   fun segmentStarted(eventArg: CameraSegmentStartedDto, callback: (Result<Unit>) -> Unit)
@@ -2060,7 +2060,7 @@ class CameraEventApi(private val binaryMessenger: BinaryMessenger, private val m
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
   fun segmentCompleted(eventArg: CameraSegmentCompletedDto, callback: (Result<Unit>) -> Unit)
@@ -2077,7 +2077,7 @@ class CameraEventApi(private val binaryMessenger: BinaryMessenger, private val m
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
   fun segmentFailed(eventArg: CameraSegmentFailedDto, callback: (Result<Unit>) -> Unit)
@@ -2094,7 +2094,7 @@ class CameraEventApi(private val binaryMessenger: BinaryMessenger, private val m
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
   fun sessionFailed(eventArg: CameraSessionFailedDto, callback: (Result<Unit>) -> Unit)
@@ -2111,7 +2111,7 @@ class CameraEventApi(private val binaryMessenger: BinaryMessenger, private val m
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
   fun barcodeBatch(candidatesArg: List<BarcodeCandidateDto>, callback: (Result<Unit>) -> Unit)
@@ -2128,7 +2128,7 @@ class CameraEventApi(private val binaryMessenger: BinaryMessenger, private val m
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
   fun nativeError(messageArg: String, callback: (Result<Unit>) -> Unit)
@@ -2145,7 +2145,7 @@ class CameraEventApi(private val binaryMessenger: BinaryMessenger, private val m
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
   fun storageCritical(callback: (Result<Unit>) -> Unit)
@@ -2162,7 +2162,7 @@ class CameraEventApi(private val binaryMessenger: BinaryMessenger, private val m
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
   fun probeFinished(resultsArg: Map<String?, Any?>, callback: (Result<Unit>) -> Unit)
@@ -2179,7 +2179,7 @@ class CameraEventApi(private val binaryMessenger: BinaryMessenger, private val m
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
   fun recordingFallback(infoArg: Map<String?, Any?>, callback: (Result<Unit>) -> Unit)
@@ -2196,7 +2196,7 @@ class CameraEventApi(private val binaryMessenger: BinaryMessenger, private val m
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
 }
@@ -2471,7 +2471,7 @@ class BackupNativeEventApi(private val binaryMessenger: BinaryMessenger, private
         }
       } else {
         callback(Result.failure(PlatformApiPigeonUtils.createConnectionError(channelName)))
-      } 
+      }
     }
   }
 }
