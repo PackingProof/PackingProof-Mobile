@@ -72,6 +72,10 @@ class RunnerTests: XCTestCase {
     invalid["receiptSignature"] = String(repeating: "0", count: 64)
     XCTAssertFalse(verifyReceipt(invalid, fixture: fixture))
 
+    var mixedContract = fixture.response
+    mixedContract["recordIds"] = [fixture.recordId]
+    XCTAssertFalse(verifyReceipt(mixedContract, fixture: fixture))
+
     for key in [
       "authVersion", "verifiedAtUnixSeconds", "hostNodeId", "sourceDeviceId",
       "sourceSessionId", "fileSha256", "fileSizeBytes", "recordId",

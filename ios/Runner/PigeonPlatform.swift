@@ -1081,6 +1081,7 @@ enum IosBackupReceiptVerifier {
           let responseSha = response["fileSha256"] as? String,
           let responseSize = int64(response["fileSizeBytes"]),
           let responseRecord = int64(response["recordId"]),
+          response["recordIds"] == nil,
           let signature = response["receiptSignature"] as? String,
           responseHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ==
             hostNodeId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
