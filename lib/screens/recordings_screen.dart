@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 
 import '../models/app_settings.dart';
 import '../models/backup_retention_policy.dart';
-import '../models/barcode_marker.dart';
 import '../models/lan_backup.dart';
 import '../models/recording_video_codec.dart';
 import '../models/recording_operation_mode.dart';
@@ -26,13 +25,12 @@ import '../services/recording_database.dart';
 import '../services/remote_playback_compat.dart';
 import '../services/remote_video_clip_service.dart';
 import '../services/system_video_player_service.dart';
+import 'recordings_history_filter.dart';
 import 'video_playback_screen.dart';
 
+export 'recordings_history_filter.dart' show RecordingSourceFilter;
+
 enum RecordingsScreenMode { history, settings }
-
-enum RecordingSourceFilter { all, local, backedUp, computer }
-
-enum _HistoryDatePreset { all, today, last7Days, last30Days, custom }
 
 @visibleForTesting
 String recordingsHistoryTitle(String deviceName, String ipAddress) {
@@ -362,37 +360,18 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   int _remoteRequestGeneration = 0;
   int _localRequestGeneration = 0;
   RecordingSourceFilter _sourceFilter = RecordingSourceFilter.all;
-  _HistoryDatePreset _datePreset = _HistoryDatePreset.all;
+  RecordingHistoryDatePreset _datePreset = RecordingHistoryDatePreset.all;
   DateTimeRange? _customDateRange;
   bool _backupDiscoveryStarted = false;
   bool _autoConnectStarted = false;
   bool _approvalRequestInFlight = false;
   LanBackupDiscoveredHost? _lastApprovalHost;
 
-  List<RecordingSession> get _filteredSessions {
-    final String query = _query.trim().toLowerCase();
-    if (query.isEmpty) {
-      return _sessions;
-    }
-    return _sessions
-        .where((RecordingSession session) {
-          final DateTime value = session.startedAt;
-          final String searchable =
-              '${session.displayCode} '
-              '${value.year}-${_two(value.month)}-${_two(value.day)} '
-              '${value.month}月${value.day}日 '
-              '${_two(value.hour)}:${_two(value.minute)} '
-              '${session.orderInfo?.orderId ?? ''} '
-              '${session.orderInfo?.buyerMessage ?? ''} '
-              '${session.orderInfo?.sellerMemo ?? ''} '
-              '${session.orderInfo?.productInfo ?? ''}';
-          return searchable.toLowerCase().contains(query);
-        })
-        .toList(growable: false);
-  }
+  List<RecordingSession> get _filteredSessions =>
+      filterRecordingSessionsByQuery(_sessions, _query);
 
   bool get _hasOtherDeviceRecordings => _visibleItems.any(
-    (_RecordingListItem item) =>
+    (RecordingHistoryItem item) =>
         item.remote != null && !_isRemoteFromThisDevice(item.remote!),
   );
 
@@ -863,63 +842,21 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       ..addAll(entries.expand((entry) => entry.value));
   }
 
-  List<_RecordingListItem> get _visibleItems {
-    final Map<String, RemoteRecording> remoteBySession =
-        <String, RemoteRecording>{
-          for (final RemoteRecording remote in _remoteRecordings)
-            if (remote.sourceSessionId.isNotEmpty &&
-                _isRemoteFromThisDevice(remote))
-              remote.sourceSessionId: remote,
-        };
-    final List<_RecordingListItem> values = _filteredSessions
-        .map(
-          (RecordingSession local) => _RecordingListItem(
-            local: local,
-            remote: remoteBySession.remove(local.id),
-          ),
-        )
-        .toList();
-    final Set<int> includedRemoteIds = values
-        .map((item) => item.remote?.id)
-        .whereType<int>()
-        .toSet();
-    for (final RemoteRecording remote in _remoteRecordings) {
-      if (!_hiddenRemoteIds.contains(remote.id) &&
-          includedRemoteIds.add(remote.id)) {
-        values.add(_RecordingListItem(remote: remote));
-      }
-    }
-    values.sort((a, b) => b.startedAt.compareTo(a.startedAt));
-    final ({DateTime start, DateTime end})? dateWindow = _activeDateWindow;
-    return values
-        .where((item) {
-          final bool inDateRange =
-              dateWindow == null ||
-              (!item.startedAt.isBefore(dateWindow.start) &&
-                  item.startedAt.isBefore(dateWindow.end));
-          final bool hasLocalFile =
-              item.local != null &&
-              _localRecordingPaths.contains(item.local!.filePath);
-          final bool backedUp =
-              (item.remote != null &&
-                  _isRemoteFromThisDevice(item.remote!) &&
-                  item.remote!.status == RemoteRecordingStatus.available &&
-                  item.remote!.exists) ||
-              (item.local != null &&
-                  _backupJobsByPath[lanBackupFileIdentity(item.local!.filePath)]
-                          ?.any(_isJobConfirmedAvailable) ==
-                      true);
-          return inDateRange &&
-              switch (_sourceFilter) {
-                RecordingSourceFilter.all => true,
-                RecordingSourceFilter.local => hasLocalFile,
-                RecordingSourceFilter.backedUp => backedUp,
-                RecordingSourceFilter.computer =>
-                  !hasLocalFile && item.remote != null,
-              };
-        })
-        .toList(growable: false);
-  }
+  List<RecordingHistoryItem> get _visibleItems =>
+      buildVisibleRecordingHistoryItems(
+        localSessions: _filteredSessions,
+        remoteRecordings: _remoteRecordings,
+        hiddenRemoteIds: _hiddenRemoteIds,
+        localRecordingPaths: _localRecordingPaths,
+        sourceFilter: _sourceFilter,
+        dateWindow: _activeDateWindow,
+        isRemoteFromThisDevice: _isRemoteFromThisDevice,
+        isLocalBackedUp: (RecordingSession local) =>
+            _backupJobsByPath[lanBackupFileIdentity(local.filePath)]?.any(
+              _isJobConfirmedAvailable,
+            ) ==
+            true,
+      );
 
   Future<void> _loadRemote({
     bool reset = false,
@@ -1262,7 +1199,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   }
 
   void _handleRecordingLongPress(
-    _RecordingListItem item,
+    RecordingHistoryItem item,
     RecordingSession session,
   ) {
     if (!_managing) {
@@ -1387,7 +1324,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                             ? Theme.of(context).colorScheme.primary
                             : null,
                       ),
-                      title: Text(_sourceFilterLabel(filter)),
+                      title: Text(recordingHistorySourceFilterLabel(filter)),
                       onTap: () => Navigator.of(context).pop(filter),
                     ),
                   )
@@ -1403,66 +1340,32 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     }
   }
 
-  ({DateTime start, DateTime end})? get _activeDateWindow {
-    final DateTime now = DateTime.now();
-    final DateTime today = DateTime(now.year, now.month, now.day);
-    return switch (_datePreset) {
-      _HistoryDatePreset.all => null,
-      _HistoryDatePreset.today => (
-        start: today,
-        end: today.add(const Duration(days: 1)),
-      ),
-      _HistoryDatePreset.last7Days => (
-        start: today.subtract(const Duration(days: 6)),
-        end: today.add(const Duration(days: 1)),
-      ),
-      _HistoryDatePreset.last30Days => (
-        start: today.subtract(const Duration(days: 29)),
-        end: today.add(const Duration(days: 1)),
-      ),
-      _HistoryDatePreset.custom => switch (_customDateRange) {
-        null => null,
-        DateTimeRange range => (
-          start: range.start,
-          end: range.end.add(const Duration(days: 1)),
-        ),
-      },
-    };
-  }
+  RecordingHistoryDateWindow? get _activeDateWindow =>
+      recordingHistoryDateWindow(
+        preset: _datePreset,
+        now: DateTime.now(),
+        customStart: _customDateRange?.start,
+        customEnd: _customDateRange?.end,
+      );
 
-  String get _dateFilterLabel => switch (_datePreset) {
-    _HistoryDatePreset.all => '全部日期',
-    _HistoryDatePreset.today => '今天',
-    _HistoryDatePreset.last7Days => '最近7天',
-    _HistoryDatePreset.last30Days => '最近30天',
-    _HistoryDatePreset.custom => switch (_customDateRange) {
-      null => '全部日期',
-      DateTimeRange range =>
-        '${range.start.month}月${range.start.day}日-'
-            '${range.end.month}月${range.end.day}日',
-    },
-  };
-
-  String _datePresetOptionLabel(_HistoryDatePreset preset) => switch (preset) {
-    _HistoryDatePreset.all => '全部日期',
-    _HistoryDatePreset.today => '今天',
-    _HistoryDatePreset.last7Days => '最近7天',
-    _HistoryDatePreset.last30Days => '最近30天',
-    _HistoryDatePreset.custom => '自定义范围',
-  };
+  String get _dateFilterLabel => recordingHistoryDateFilterLabel(
+    preset: _datePreset,
+    customStart: _customDateRange?.start,
+    customEnd: _customDateRange?.end,
+  );
 
   Future<void> _showDateFilter() async {
     FocusManager.instance.primaryFocus?.unfocus();
     await Future<void>.delayed(const Duration(milliseconds: 120));
     if (!mounted) return;
-    final _HistoryDatePreset? value =
-        await showModalBottomSheet<_HistoryDatePreset>(
+    final RecordingHistoryDatePreset? value =
+        await showModalBottomSheet<RecordingHistoryDatePreset>(
           context: context,
           showDragHandle: true,
           builder: (BuildContext context) => SafeArea(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: _HistoryDatePreset.values
+              children: RecordingHistoryDatePreset.values
                   .map(
                     (preset) => ListTile(
                       leading: Icon(
@@ -1473,7 +1376,9 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                             ? Theme.of(context).colorScheme.primary
                             : null,
                       ),
-                      title: Text(_datePresetOptionLabel(preset)),
+                      title: Text(
+                        recordingHistoryDatePresetOptionLabel(preset),
+                      ),
                       onTap: () => Navigator.of(context).pop(preset),
                     ),
                   )
@@ -1482,7 +1387,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
           ),
         );
     if (value == null || !mounted) return;
-    if (value == _HistoryDatePreset.custom) {
+    if (value == RecordingHistoryDatePreset.custom) {
       final DateTimeRange? picked = await showDateRangePicker(
         context: context,
         firstDate: DateTime(2020),
@@ -1491,7 +1396,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       );
       if (picked == null || !mounted) return;
       setState(() {
-        _datePreset = _HistoryDatePreset.custom;
+        _datePreset = RecordingHistoryDatePreset.custom;
         _customDateRange = picked;
         _historyPage = 0;
       });
@@ -1516,7 +1421,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     final List<String> codes = <String>[];
     final Set<String> seen = <String>{};
     int duplicateRows = 0;
-    for (final _RecordingListItem item in _visibleItems) {
+    for (final RecordingHistoryItem item in _visibleItems) {
       if (!_selectedIds.contains(item.session.id)) continue;
       final String code = item.session.displayCode;
       if (code.isEmpty || code == RecordingSession.unrecognizedLabel) continue;
@@ -1595,7 +1500,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final List<_RecordingListItem> visibleItems = _visibleItems;
+    final List<RecordingHistoryItem> visibleItems = _visibleItems;
     final List<RecordingSession> filteredSessions = _filteredSessions;
     final int localCount = filteredSessions
         .where((session) => _localRecordingPaths.contains(session.filePath))
@@ -1634,7 +1539,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         : _historyPage >= historyPageCount
         ? historyPageCount - 1
         : _historyPage;
-    final List<_RecordingListItem> pageItems = visibleItems
+    final List<RecordingHistoryItem> pageItems = visibleItems
         .skip(historyPage * _historyPageSize)
         .take(_historyPageSize)
         .toList(growable: false);
@@ -1941,7 +1846,9 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                             Icons.filter_alt_rounded,
                             size: 18,
                           ),
-                          label: Text(_sourceFilterLabel(_sourceFilter)),
+                          label: Text(
+                            recordingHistorySourceFilterLabel(_sourceFilter),
+                          ),
                           selected: _sourceFilter != RecordingSourceFilter.all,
                           showCheckmark: false,
                           onSelected: (_) => _showSourceFilter(),
@@ -1953,7 +1860,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                             size: 18,
                           ),
                           label: Text(_dateFilterLabel),
-                          selected: _datePreset != _HistoryDatePreset.all,
+                          selected:
+                              _datePreset != RecordingHistoryDatePreset.all,
                           showCheckmark: false,
                           onSelected: (_) => _showDateFilter(),
                         ),
@@ -1968,7 +1876,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                 const SizedBox(height: 220, child: _NoSearchResults())
               else
                 ...List<Widget>.generate(pageItems.length, (int index) {
-                  final _RecordingListItem item = pageItems[index];
+                  final RecordingHistoryItem item = pageItems[index];
                   final RecordingSession session = item.session;
                   final bool localAvailable =
                       item.local != null &&
@@ -2273,7 +2181,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     return deviceId.isNotEmpty && recording.sourceDeviceId == deviceId;
   }
 
-  String _recordingSourceLabel(_RecordingListItem item) {
+  String _recordingSourceLabel(RecordingHistoryItem item) {
     final RemoteRecording? remote = item.remote;
     if (remote != null) {
       if (remote.sourceType.toLowerCase() != 'external') {
@@ -2295,7 +2203,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     return '手机';
   }
 
-  String _recordingSourceIdentity(_RecordingListItem item) {
+  String _recordingSourceIdentity(RecordingHistoryItem item) {
     final RemoteRecording? remote = item.remote;
     if (remote != null) {
       if (remote.sourceType.toLowerCase() != 'external') return 'computer';
@@ -2318,38 +2226,6 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     final status = _remoteStatuses[remoteRecordId];
     return status == null ||
         (status.status == RemoteRecordingStatus.available && status.exists);
-  }
-}
-
-class _RecordingListItem {
-  const _RecordingListItem({this.local, this.remote})
-    : assert(local != null || remote != null);
-
-  final RecordingSession? local;
-  final RemoteRecording? remote;
-
-  DateTime get startedAt => local?.startedAt ?? remote!.startedAt;
-
-  RecordingSession get session {
-    if (local != null) return local!;
-    final RemoteRecording value = remote!;
-    return RecordingSession(
-      id: 'remote-${value.id}',
-      filePath: '',
-      startedAt: value.startedAt,
-      endedAt: value.startedAt.add(value.duration),
-      markers: value.trackingNumber.isEmpty
-          ? const <BarcodeMarker>[]
-          : <BarcodeMarker>[
-              BarcodeMarker(
-                code: value.trackingNumber,
-                occurredAt: value.startedAt,
-                offset: Duration.zero,
-              ),
-            ],
-      orderInfo: value.orderInfo,
-      operationMode: value.operationMode,
-    );
   }
 }
 
@@ -4523,10 +4399,3 @@ bool _isToday(DateTime value) {
       value.month == now.month &&
       value.day == now.day;
 }
-
-String _sourceFilterLabel(RecordingSourceFilter value) => switch (value) {
-  RecordingSourceFilter.all => '全部来源',
-  RecordingSourceFilter.local => '本地',
-  RecordingSourceFilter.backedUp => '已备份',
-  RecordingSourceFilter.computer => '电脑录像',
-};
