@@ -7,6 +7,47 @@ import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('录像水印状态严格解码已知领域枚举和旧通道字符串', () {
+    final DateTime now = DateTime.now();
+    final NativeRecordingStop typed =
+        NativeRecordingStop.fromMap(<Object?, Object?>{
+          'path': '/tmp/typed.mp4',
+          'startedAtMs': now.millisecondsSinceEpoch,
+          'endedAtMs': now.millisecondsSinceEpoch,
+          'watermarkDisposition': NativeWatermarkDisposition.completed,
+        });
+    final NativeRecordingStop legacy =
+        NativeRecordingStop.fromMap(<Object?, Object?>{
+          'path': '/tmp/legacy.mp4',
+          'startedAtMs': now.millisecondsSinceEpoch,
+          'endedAtMs': now.millisecondsSinceEpoch,
+          'watermarkDisposition': 'failedPartial',
+        });
+
+    expect(typed.watermarkDisposition, NativeWatermarkDisposition.completed);
+    expect(
+      legacy.watermarkDisposition,
+      NativeWatermarkDisposition.failedPartial,
+    );
+  });
+
+  test('录像水印状态缺失或未知时立即失败', () {
+    final Map<Object?, Object?> values = <Object?, Object?>{
+      'path': '/tmp/video.mp4',
+      'startedAtMs': 1,
+      'endedAtMs': 2,
+    };
+
+    expect(
+      () => NativeRecordingStop.fromMap(<Object?, Object?>{
+        ...values,
+        'watermarkDisposition': 'unexpected',
+      }),
+      throwsFormatException,
+    );
+    expect(() => NativeRecordingStop.fromMap(values), throwsFormatException);
+  });
+
   test('原生初始化结果包含镜头方向和切换能力', () {
     final ContinuousCameraInitialization initialization =
         ContinuousCameraInitialization.fromMap(<Object?, Object?>{

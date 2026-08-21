@@ -82,7 +82,9 @@ class PigeonCameraPlatform implements CameraPlatform {
       'nextPath': value.nextPath,
       'completedStartedAtMs': value.completedStartedAtMs,
       'boundaryAtMs': value.boundaryAtMs,
-      'watermarkDisposition': value.watermarkDisposition,
+      'watermarkDisposition': _nativeWatermarkDisposition(
+        value.watermarkDisposition,
+      ),
     });
   }
 
@@ -93,7 +95,9 @@ class PigeonCameraPlatform implements CameraPlatform {
       'path': value.path,
       'startedAtMs': value.startedAtMs,
       'endedAtMs': value.endedAtMs,
-      'watermarkDisposition': value.watermarkDisposition,
+      'watermarkDisposition': _nativeWatermarkDisposition(
+        value.watermarkDisposition,
+      ),
     });
   }
 
@@ -237,3 +241,13 @@ NativeCameraLens _lensFromDto(CameraLensDto value) =>
       'zoomRatio': value.zoomRatio,
       'isMain': value.isMain,
     });
+
+NativeWatermarkDisposition _nativeWatermarkDisposition(
+  CameraWatermarkDisposition disposition,
+) => switch (disposition) {
+  CameraWatermarkDisposition.completed => NativeWatermarkDisposition.completed,
+  CameraWatermarkDisposition.postProcessRequired =>
+    NativeWatermarkDisposition.postProcessRequired,
+  CameraWatermarkDisposition.failedPartial =>
+    NativeWatermarkDisposition.failedPartial,
+};

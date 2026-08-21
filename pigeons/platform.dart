@@ -101,19 +101,25 @@ class CameraRecordingStartDto {
   int startedAtMs;
 }
 
+enum CameraWatermarkDisposition {
+  completed,
+  postProcessRequired,
+  failedPartial,
+}
+
 class CameraRecordingSplitDto {
   String completedPath;
   String nextPath;
   int completedStartedAtMs;
   int boundaryAtMs;
-  String watermarkDisposition;
+  CameraWatermarkDisposition watermarkDisposition;
 }
 
 class CameraRecordingStopDto {
   String path;
   int startedAtMs;
   int endedAtMs;
-  String watermarkDisposition;
+  CameraWatermarkDisposition watermarkDisposition;
 }
 
 class BarcodeCandidateDto {

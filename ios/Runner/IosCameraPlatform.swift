@@ -1229,7 +1229,7 @@ final class IosCameraHostApi:
   private func finishCurrentWriter(
     _ sendEvents: Bool = true,
     timeout: TimeInterval = 5,
-    completion: @escaping (Result<String, Error>) -> Void
+    completion: @escaping (Result<CameraWatermarkDisposition, Error>) -> Void
   ) {
     guard let writer else {
       completion(.failure(IosCameraWriterFinishPolicy.missingWriterError()))
@@ -1239,8 +1239,8 @@ final class IosCameraHostApi:
     let completedStartedAt = currentStartedAtMs
     let completedSegmentId = currentSegmentId
     let completedSegmentSerial = currentSegmentSerial
-    let completedWatermarkDisposition = currentWatermarkFailed
-      ? "failedPartial" : "completed"
+    let completedWatermarkDisposition: CameraWatermarkDisposition =
+      currentWatermarkFailed ? .failedPartial : .completed
     let endedAt = Int64(Date().timeIntervalSince1970 * 1000)
     videoInput?.markAsFinished()
     audioInput?.markAsFinished()

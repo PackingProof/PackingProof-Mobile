@@ -7,6 +7,7 @@ import app.packingproof.mobile.generated.CameraLensDto
 import app.packingproof.mobile.generated.CameraRecordingSplitDto
 import app.packingproof.mobile.generated.CameraRecordingStartDto
 import app.packingproof.mobile.generated.CameraRecordingStopDto
+import app.packingproof.mobile.generated.CameraWatermarkDisposition
 import app.packingproof.mobile.generated.FlutterError
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -263,7 +264,7 @@ private fun Map<*, *>.toCameraRecordingSplitDto(): CameraRecordingSplitDto =
         nextPath = this["nextPath"] as String,
         completedStartedAtMs = (this["completedStartedAtMs"] as Number).toLong(),
         boundaryAtMs = (this["boundaryAtMs"] as Number).toLong(),
-        watermarkDisposition = "postProcessRequired",
+        watermarkDisposition = CameraWatermarkDisposition.POST_PROCESS_REQUIRED,
     )
 
 private fun Map<*, *>.toCameraRecordingStopDto(): CameraRecordingStopDto =
@@ -271,7 +272,7 @@ private fun Map<*, *>.toCameraRecordingStopDto(): CameraRecordingStopDto =
         path = this["path"] as String,
         startedAtMs = (this["startedAtMs"] as Number).toLong(),
         endedAtMs = (this["endedAtMs"] as Number).toLong(),
-        watermarkDisposition = "postProcessRequired",
+        watermarkDisposition = CameraWatermarkDisposition.POST_PROCESS_REQUIRED,
     )
 
 private fun Map<*, *>.toCameraLensDto(): CameraLensDto =

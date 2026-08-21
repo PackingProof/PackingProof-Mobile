@@ -95,7 +95,7 @@ class _FakeLensCameraPlatform implements CameraPlatform {
       path: '',
       startedAt: DateTime.now(),
       endedAt: DateTime.now(),
-      watermarkDisposition: 'postProcessRequired',
+      watermarkDisposition: NativeWatermarkDisposition.postProcessRequired,
     );
   }
 

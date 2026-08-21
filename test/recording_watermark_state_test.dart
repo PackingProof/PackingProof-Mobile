@@ -6,22 +6,37 @@ import 'package:packing_proof_mobile/controllers/packing_session_controller.dart
 import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/recording_orientation.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
+import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 import 'package:packing_proof_mobile/services/recording_database.dart';
 import 'package:sqflite/sqflite.dart';
 
 void main() {
   test('原生实时水印结果映射为最终数据库状态', () {
     expect(
-      nativeWatermarkStatus('completed'),
+      nativeWatermarkStatus(NativeWatermarkDisposition.completed),
       WatermarkProcessingStatus.completed,
     );
     expect(
-      nativeWatermarkStatus('failedPartial'),
+      nativeWatermarkStatus(NativeWatermarkDisposition.failedPartial),
       WatermarkProcessingStatus.failed,
     );
     expect(
-      nativeWatermarkStatus('postProcessRequired'),
+      nativeWatermarkStatus(NativeWatermarkDisposition.postProcessRequired),
       WatermarkProcessingStatus.pending,
+    );
+    expect(
+      nativeWatermarkNeedsPostProcess(
+        NativeWatermarkDisposition.postProcessRequired,
+      ),
+      isTrue,
+    );
+    expect(
+      nativeWatermarkNeedsPostProcess(NativeWatermarkDisposition.completed),
+      isFalse,
+    );
+    expect(
+      nativeWatermarkNeedsPostProcess(NativeWatermarkDisposition.failedPartial),
+      isFalse,
     );
   });
 

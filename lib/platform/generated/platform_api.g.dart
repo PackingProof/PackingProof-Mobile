@@ -107,6 +107,12 @@ int _deepHash(Object? value) {
 }
 
 
+enum CameraWatermarkDisposition {
+  completed,
+  postProcessRequired,
+  failedPartial,
+}
+
 class ThumbnailRequest {
   ThumbnailRequest({
     required this.path,
@@ -809,7 +815,7 @@ class CameraRecordingSplitDto {
 
   int boundaryAtMs;
 
-  String watermarkDisposition;
+  CameraWatermarkDisposition watermarkDisposition;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -831,7 +837,7 @@ class CameraRecordingSplitDto {
       nextPath: result[1]! as String,
       completedStartedAtMs: result[2]! as int,
       boundaryAtMs: result[3]! as int,
-      watermarkDisposition: result[4]! as String,
+      watermarkDisposition: result[4]! as CameraWatermarkDisposition,
     );
   }
 
@@ -871,7 +877,7 @@ class CameraRecordingStopDto {
 
   int endedAtMs;
 
-  String watermarkDisposition;
+  CameraWatermarkDisposition watermarkDisposition;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -891,7 +897,7 @@ class CameraRecordingStopDto {
       path: result[0]! as String,
       startedAtMs: result[1]! as int,
       endedAtMs: result[2]! as int,
-      watermarkDisposition: result[3]! as String,
+      watermarkDisposition: result[3]! as CameraWatermarkDisposition,
     );
   }
 
@@ -1260,59 +1266,62 @@ class _PigeonCodec extends StandardMessageCodec {
     if (value is int) {
       buffer.putUint8(4);
       buffer.putInt64(value);
-    }    else if (value is ThumbnailRequest) {
+    }    else if (value is CameraWatermarkDisposition) {
       buffer.putUint8(129);
-      writeValue(buffer, value.encode());
-    }    else if (value is WatermarkRequest) {
+      writeValue(buffer, value.index);
+    }    else if (value is ThumbnailRequest) {
       buffer.putUint8(130);
       writeValue(buffer, value.encode());
-    }    else if (value is ExportRequest) {
+    }    else if (value is WatermarkRequest) {
       buffer.putUint8(131);
       writeValue(buffer, value.encode());
-    }    else if (value is VideoDecodeSupportDto) {
+    }    else if (value is ExportRequest) {
       buffer.putUint8(132);
       writeValue(buffer, value.encode());
-    }    else if (value is OrderInfoDto) {
+    }    else if (value is VideoDecodeSupportDto) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    }    else if (value is OrderReceiverStatusDto) {
+    }    else if (value is OrderInfoDto) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraInitializeRequest) {
+    }    else if (value is OrderReceiverStatusDto) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraInitializationDto) {
+    }    else if (value is CameraInitializeRequest) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraLensDto) {
+    }    else if (value is CameraInitializationDto) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraRecordingStartDto) {
+    }    else if (value is CameraLensDto) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraRecordingSplitDto) {
+    }    else if (value is CameraRecordingStartDto) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraRecordingStopDto) {
+    }    else if (value is CameraRecordingSplitDto) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    }    else if (value is BarcodeCandidateDto) {
+    }    else if (value is CameraRecordingStopDto) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraSessionStartedDto) {
+    }    else if (value is BarcodeCandidateDto) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraSegmentStartedDto) {
+    }    else if (value is CameraSessionStartedDto) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraSegmentCompletedDto) {
+    }    else if (value is CameraSegmentStartedDto) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraSegmentFailedDto) {
+    }    else if (value is CameraSegmentCompletedDto) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraSessionFailedDto) {
+    }    else if (value is CameraSegmentFailedDto) {
       buffer.putUint8(146);
+      writeValue(buffer, value.encode());
+    }    else if (value is CameraSessionFailedDto) {
+      buffer.putUint8(147);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -1323,40 +1332,43 @@ class _PigeonCodec extends StandardMessageCodec {
   Object? readValueOfType(int type, ReadBuffer buffer) {
     switch (type) {
       case 129:
-        return ThumbnailRequest.decode(readValue(buffer)!);
+        final value = readValue(buffer) as int?;
+        return value == null ? null : CameraWatermarkDisposition.values[value];
       case 130:
-        return WatermarkRequest.decode(readValue(buffer)!);
+        return ThumbnailRequest.decode(readValue(buffer)!);
       case 131:
-        return ExportRequest.decode(readValue(buffer)!);
+        return WatermarkRequest.decode(readValue(buffer)!);
       case 132:
-        return VideoDecodeSupportDto.decode(readValue(buffer)!);
+        return ExportRequest.decode(readValue(buffer)!);
       case 133:
-        return OrderInfoDto.decode(readValue(buffer)!);
+        return VideoDecodeSupportDto.decode(readValue(buffer)!);
       case 134:
-        return OrderReceiverStatusDto.decode(readValue(buffer)!);
+        return OrderInfoDto.decode(readValue(buffer)!);
       case 135:
-        return CameraInitializeRequest.decode(readValue(buffer)!);
+        return OrderReceiverStatusDto.decode(readValue(buffer)!);
       case 136:
-        return CameraInitializationDto.decode(readValue(buffer)!);
+        return CameraInitializeRequest.decode(readValue(buffer)!);
       case 137:
-        return CameraLensDto.decode(readValue(buffer)!);
+        return CameraInitializationDto.decode(readValue(buffer)!);
       case 138:
-        return CameraRecordingStartDto.decode(readValue(buffer)!);
+        return CameraLensDto.decode(readValue(buffer)!);
       case 139:
-        return CameraRecordingSplitDto.decode(readValue(buffer)!);
+        return CameraRecordingStartDto.decode(readValue(buffer)!);
       case 140:
-        return CameraRecordingStopDto.decode(readValue(buffer)!);
+        return CameraRecordingSplitDto.decode(readValue(buffer)!);
       case 141:
-        return BarcodeCandidateDto.decode(readValue(buffer)!);
+        return CameraRecordingStopDto.decode(readValue(buffer)!);
       case 142:
-        return CameraSessionStartedDto.decode(readValue(buffer)!);
+        return BarcodeCandidateDto.decode(readValue(buffer)!);
       case 143:
-        return CameraSegmentStartedDto.decode(readValue(buffer)!);
+        return CameraSessionStartedDto.decode(readValue(buffer)!);
       case 144:
-        return CameraSegmentCompletedDto.decode(readValue(buffer)!);
+        return CameraSegmentStartedDto.decode(readValue(buffer)!);
       case 145:
-        return CameraSegmentFailedDto.decode(readValue(buffer)!);
+        return CameraSegmentCompletedDto.decode(readValue(buffer)!);
       case 146:
+        return CameraSegmentFailedDto.decode(readValue(buffer)!);
+      case 147:
         return CameraSessionFailedDto.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);

@@ -85,7 +85,7 @@ class _FakeCameraPlatform implements CameraPlatform {
       path: lastPath ?? '',
       startedAt: DateTime.now(),
       endedAt: DateTime.now(),
-      watermarkDisposition: 'postProcessRequired',
+      watermarkDisposition: NativeWatermarkDisposition.postProcessRequired,
     );
   }
 

@@ -9,6 +9,12 @@ import '../platform/contracts/camera_platform.dart';
 import '../platform/platform_container.dart';
 import '../platform/adapters/pigeon_camera_platform.dart';
 
+enum NativeWatermarkDisposition {
+  completed,
+  postProcessRequired,
+  failedPartial,
+}
+
 class ContinuousCameraInitialization {
   const ContinuousCameraInitialization({
     required this.textureId,
@@ -131,7 +137,7 @@ class NativeRecordingSplit {
   final String nextPath;
   final DateTime completedStartedAt;
   final DateTime boundaryAt;
-  final String watermarkDisposition;
+  final NativeWatermarkDisposition watermarkDisposition;
 
   factory NativeRecordingSplit.fromMap(Map<Object?, Object?> map) {
     return NativeRecordingSplit(
@@ -143,8 +149,9 @@ class NativeRecordingSplit {
       boundaryAt: DateTime.fromMillisecondsSinceEpoch(
         (map['boundaryAtMs']! as num).toInt(),
       ),
-      watermarkDisposition:
-          map['watermarkDisposition'] as String? ?? 'postProcessRequired',
+      watermarkDisposition: _decodeCameraWatermarkDisposition(
+        map['watermarkDisposition'],
+      ),
     );
   }
 }
@@ -160,7 +167,7 @@ class NativeRecordingStop {
   final String path;
   final DateTime startedAt;
   final DateTime endedAt;
-  final String watermarkDisposition;
+  final NativeWatermarkDisposition watermarkDisposition;
 
   factory NativeRecordingStop.fromMap(Map<Object?, Object?> map) {
     return NativeRecordingStop(
@@ -171,10 +178,21 @@ class NativeRecordingStop {
       endedAt: DateTime.fromMillisecondsSinceEpoch(
         (map['endedAtMs']! as num).toInt(),
       ),
-      watermarkDisposition:
-          map['watermarkDisposition'] as String? ?? 'postProcessRequired',
+      watermarkDisposition: _decodeCameraWatermarkDisposition(
+        map['watermarkDisposition'],
+      ),
     );
   }
+}
+
+NativeWatermarkDisposition _decodeCameraWatermarkDisposition(Object? value) {
+  if (value is NativeWatermarkDisposition) return value;
+  return switch (value) {
+    'completed' => NativeWatermarkDisposition.completed,
+    'postProcessRequired' => NativeWatermarkDisposition.postProcessRequired,
+    'failedPartial' => NativeWatermarkDisposition.failedPartial,
+    _ => throw FormatException('无效的原生水印处理状态: ${value ?? 'null'}'),
+  };
 }
 
 class NativeBarcodeCandidate {

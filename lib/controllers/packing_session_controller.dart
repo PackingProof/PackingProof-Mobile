@@ -1021,7 +1021,7 @@ class PackingSessionController extends ChangeNotifier
           watermarkStatus: nativeWatermarkStatus(stopped.watermarkDisposition),
         );
     _sessions = await _repository.addSession(session);
-    if (stopped.watermarkDisposition == 'postProcessRequired') {
+    if (nativeWatermarkNeedsPostProcess(stopped.watermarkDisposition)) {
       final RecordingOrientation recordingOrientation = _recordingOrientation;
       _runInBackground(
         _watermarkAndBackup(savedPath, session, recordingOrientation),
@@ -1264,7 +1264,7 @@ class PackingSessionController extends ChangeNotifier
           watermarkStatus: nativeWatermarkStatus(split.watermarkDisposition),
         );
     _sessions = await _repository.addSession(completed);
-    if (split.watermarkDisposition == 'postProcessRequired') {
+    if (nativeWatermarkNeedsPostProcess(split.watermarkDisposition)) {
       final RecordingOrientation recordingOrientation = _recordingOrientation;
       _runInBackground(
         _watermarkAndBackup(savedPath, completed, recordingOrientation),
@@ -1715,12 +1715,22 @@ class PackingSessionController extends ChangeNotifier
 }
 
 @visibleForTesting
-WatermarkProcessingStatus nativeWatermarkStatus(String disposition) =>
-    disposition == 'completed'
-    ? WatermarkProcessingStatus.completed
-    : disposition == 'failedPartial'
-    ? WatermarkProcessingStatus.failed
-    : WatermarkProcessingStatus.pending;
+WatermarkProcessingStatus nativeWatermarkStatus(
+  NativeWatermarkDisposition disposition,
+) => switch (disposition) {
+  NativeWatermarkDisposition.completed => WatermarkProcessingStatus.completed,
+  NativeWatermarkDisposition.postProcessRequired =>
+    WatermarkProcessingStatus.pending,
+  NativeWatermarkDisposition.failedPartial => WatermarkProcessingStatus.failed,
+};
+
+@visibleForTesting
+bool nativeWatermarkNeedsPostProcess(NativeWatermarkDisposition disposition) =>
+    switch (disposition) {
+      NativeWatermarkDisposition.completed => false,
+      NativeWatermarkDisposition.postProcessRequired => true,
+      NativeWatermarkDisposition.failedPartial => false,
+    };
 
 /// 备份触发原因是否要求强制重启已有上传任务：只有用户手动“立即备份”需要，
 /// 启动恢复、连接恢复等场景由原生状态机裁决，避免每次启动全量重启上传。

@@ -195,6 +195,18 @@ class FlutterError (
   val details: Any? = null
 ) : RuntimeException()
 
+enum class CameraWatermarkDisposition(val raw: Int) {
+  COMPLETED(0),
+  POST_PROCESS_REQUIRED(1),
+  FAILED_PARTIAL(2);
+
+  companion object {
+    fun ofRaw(raw: Int): CameraWatermarkDisposition? {
+      return values().firstOrNull { it.raw == raw }
+    }
+  }
+}
+
 /** Generated class from Pigeon that represents data sent in messages. */
 data class ThumbnailRequest (
   val path: String
@@ -759,7 +771,7 @@ data class CameraRecordingSplitDto (
   val nextPath: String,
   val completedStartedAtMs: Long,
   val boundaryAtMs: Long,
-  val watermarkDisposition: String
+  val watermarkDisposition: CameraWatermarkDisposition
 )
  {
   companion object {
@@ -768,7 +780,7 @@ data class CameraRecordingSplitDto (
       val nextPath = pigeonVar_list[1] as String
       val completedStartedAtMs = pigeonVar_list[2] as Long
       val boundaryAtMs = pigeonVar_list[3] as Long
-      val watermarkDisposition = pigeonVar_list[4] as String
+      val watermarkDisposition = pigeonVar_list[4] as CameraWatermarkDisposition
       return CameraRecordingSplitDto(completedPath, nextPath, completedStartedAtMs, boundaryAtMs, watermarkDisposition)
     }
   }
@@ -811,7 +823,7 @@ data class CameraRecordingStopDto (
   val path: String,
   val startedAtMs: Long,
   val endedAtMs: Long,
-  val watermarkDisposition: String
+  val watermarkDisposition: CameraWatermarkDisposition
 )
  {
   companion object {
@@ -819,7 +831,7 @@ data class CameraRecordingStopDto (
       val path = pigeonVar_list[0] as String
       val startedAtMs = pigeonVar_list[1] as Long
       val endedAtMs = pigeonVar_list[2] as Long
-      val watermarkDisposition = pigeonVar_list[3] as String
+      val watermarkDisposition = pigeonVar_list[3] as CameraWatermarkDisposition
       return CameraRecordingStopDto(path, startedAtMs, endedAtMs, watermarkDisposition)
     }
   }
@@ -1132,91 +1144,96 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
       129.toByte() -> {
-        return (readValue(buffer) as? List<Any?>)?.let {
-          ThumbnailRequest.fromList(it)
+        return (readValue(buffer) as Long?)?.let {
+          CameraWatermarkDisposition.ofRaw(it.toInt())
         }
       }
       130.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          WatermarkRequest.fromList(it)
+          ThumbnailRequest.fromList(it)
         }
       }
       131.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ExportRequest.fromList(it)
+          WatermarkRequest.fromList(it)
         }
       }
       132.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          VideoDecodeSupportDto.fromList(it)
+          ExportRequest.fromList(it)
         }
       }
       133.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OrderInfoDto.fromList(it)
+          VideoDecodeSupportDto.fromList(it)
         }
       }
       134.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          OrderReceiverStatusDto.fromList(it)
+          OrderInfoDto.fromList(it)
         }
       }
       135.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CameraInitializeRequest.fromList(it)
+          OrderReceiverStatusDto.fromList(it)
         }
       }
       136.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CameraInitializationDto.fromList(it)
+          CameraInitializeRequest.fromList(it)
         }
       }
       137.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CameraLensDto.fromList(it)
+          CameraInitializationDto.fromList(it)
         }
       }
       138.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CameraRecordingStartDto.fromList(it)
+          CameraLensDto.fromList(it)
         }
       }
       139.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CameraRecordingSplitDto.fromList(it)
+          CameraRecordingStartDto.fromList(it)
         }
       }
       140.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CameraRecordingStopDto.fromList(it)
+          CameraRecordingSplitDto.fromList(it)
         }
       }
       141.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BarcodeCandidateDto.fromList(it)
+          CameraRecordingStopDto.fromList(it)
         }
       }
       142.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CameraSessionStartedDto.fromList(it)
+          BarcodeCandidateDto.fromList(it)
         }
       }
       143.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CameraSegmentStartedDto.fromList(it)
+          CameraSessionStartedDto.fromList(it)
         }
       }
       144.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CameraSegmentCompletedDto.fromList(it)
+          CameraSegmentStartedDto.fromList(it)
         }
       }
       145.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          CameraSegmentFailedDto.fromList(it)
+          CameraSegmentCompletedDto.fromList(it)
         }
       }
       146.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          CameraSegmentFailedDto.fromList(it)
+        }
+      }
+      147.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
           CameraSessionFailedDto.fromList(it)
         }
@@ -1226,76 +1243,80 @@ private open class PlatformApiPigeonCodec : StandardMessageCodec() {
   }
   override fun writeValue(stream: ByteArrayOutputStream, value: Any?)   {
     when (value) {
-      is ThumbnailRequest -> {
+      is CameraWatermarkDisposition -> {
         stream.write(129)
-        writeValue(stream, value.toList())
+        writeValue(stream, value.raw.toLong())
       }
-      is WatermarkRequest -> {
+      is ThumbnailRequest -> {
         stream.write(130)
         writeValue(stream, value.toList())
       }
-      is ExportRequest -> {
+      is WatermarkRequest -> {
         stream.write(131)
         writeValue(stream, value.toList())
       }
-      is VideoDecodeSupportDto -> {
+      is ExportRequest -> {
         stream.write(132)
         writeValue(stream, value.toList())
       }
-      is OrderInfoDto -> {
+      is VideoDecodeSupportDto -> {
         stream.write(133)
         writeValue(stream, value.toList())
       }
-      is OrderReceiverStatusDto -> {
+      is OrderInfoDto -> {
         stream.write(134)
         writeValue(stream, value.toList())
       }
-      is CameraInitializeRequest -> {
+      is OrderReceiverStatusDto -> {
         stream.write(135)
         writeValue(stream, value.toList())
       }
-      is CameraInitializationDto -> {
+      is CameraInitializeRequest -> {
         stream.write(136)
         writeValue(stream, value.toList())
       }
-      is CameraLensDto -> {
+      is CameraInitializationDto -> {
         stream.write(137)
         writeValue(stream, value.toList())
       }
-      is CameraRecordingStartDto -> {
+      is CameraLensDto -> {
         stream.write(138)
         writeValue(stream, value.toList())
       }
-      is CameraRecordingSplitDto -> {
+      is CameraRecordingStartDto -> {
         stream.write(139)
         writeValue(stream, value.toList())
       }
-      is CameraRecordingStopDto -> {
+      is CameraRecordingSplitDto -> {
         stream.write(140)
         writeValue(stream, value.toList())
       }
-      is BarcodeCandidateDto -> {
+      is CameraRecordingStopDto -> {
         stream.write(141)
         writeValue(stream, value.toList())
       }
-      is CameraSessionStartedDto -> {
+      is BarcodeCandidateDto -> {
         stream.write(142)
         writeValue(stream, value.toList())
       }
-      is CameraSegmentStartedDto -> {
+      is CameraSessionStartedDto -> {
         stream.write(143)
         writeValue(stream, value.toList())
       }
-      is CameraSegmentCompletedDto -> {
+      is CameraSegmentStartedDto -> {
         stream.write(144)
         writeValue(stream, value.toList())
       }
-      is CameraSegmentFailedDto -> {
+      is CameraSegmentCompletedDto -> {
         stream.write(145)
         writeValue(stream, value.toList())
       }
-      is CameraSessionFailedDto -> {
+      is CameraSegmentFailedDto -> {
         stream.write(146)
+        writeValue(stream, value.toList())
+      }
+      is CameraSessionFailedDto -> {
+        stream.write(147)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)

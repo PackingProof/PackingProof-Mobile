@@ -188,6 +188,12 @@ private func nilOrValue<T>(_ value: Any?) -> T? {
 }
 
 
+enum CameraWatermarkDisposition: Int, CaseIterable {
+  case completed = 0
+  case postProcessRequired = 1
+  case failedPartial = 2
+}
+
 /// Generated class from Pigeon that represents data sent in messages.
 struct ThumbnailRequest: Hashable, CustomStringConvertible {
   var path: String
@@ -779,7 +785,7 @@ struct CameraRecordingSplitDto: Hashable, CustomStringConvertible {
   var nextPath: String
   var completedStartedAtMs: Int64
   var boundaryAtMs: Int64
-  var watermarkDisposition: String
+  var watermarkDisposition: CameraWatermarkDisposition
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -788,7 +794,7 @@ struct CameraRecordingSplitDto: Hashable, CustomStringConvertible {
     let nextPath = pigeonVar_list[1] as! String
     let completedStartedAtMs = pigeonVar_list[2] as! Int64
     let boundaryAtMs = pigeonVar_list[3] as! Int64
-    let watermarkDisposition = pigeonVar_list[4] as! String
+    let watermarkDisposition = pigeonVar_list[4] as! CameraWatermarkDisposition
 
     return CameraRecordingSplitDto(
       completedPath: completedPath,
@@ -833,7 +839,7 @@ struct CameraRecordingStopDto: Hashable, CustomStringConvertible {
   var path: String
   var startedAtMs: Int64
   var endedAtMs: Int64
-  var watermarkDisposition: String
+  var watermarkDisposition: CameraWatermarkDisposition
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -841,7 +847,7 @@ struct CameraRecordingStopDto: Hashable, CustomStringConvertible {
     let path = pigeonVar_list[0] as! String
     let startedAtMs = pigeonVar_list[1] as! Int64
     let endedAtMs = pigeonVar_list[2] as! Int64
-    let watermarkDisposition = pigeonVar_list[3] as! String
+    let watermarkDisposition = pigeonVar_list[3] as! CameraWatermarkDisposition
 
     return CameraRecordingStopDto(
       path: path,
@@ -1157,40 +1163,46 @@ private class PlatformApiPigeonCodecReader: FlutterStandardReader {
   override func readValue(ofType type: UInt8) -> Any? {
     switch type {
     case 129:
-      return ThumbnailRequest.fromList(self.readValue() as! [Any?])
+      let enumResultAsInt: Int? = nilOrValue(self.readValue() as! Int?)
+      if let enumResultAsInt = enumResultAsInt {
+        return CameraWatermarkDisposition(rawValue: enumResultAsInt)
+      }
+      return nil
     case 130:
-      return WatermarkRequest.fromList(self.readValue() as! [Any?])
+      return ThumbnailRequest.fromList(self.readValue() as! [Any?])
     case 131:
-      return ExportRequest.fromList(self.readValue() as! [Any?])
+      return WatermarkRequest.fromList(self.readValue() as! [Any?])
     case 132:
-      return VideoDecodeSupportDto.fromList(self.readValue() as! [Any?])
+      return ExportRequest.fromList(self.readValue() as! [Any?])
     case 133:
-      return OrderInfoDto.fromList(self.readValue() as! [Any?])
+      return VideoDecodeSupportDto.fromList(self.readValue() as! [Any?])
     case 134:
-      return OrderReceiverStatusDto.fromList(self.readValue() as! [Any?])
+      return OrderInfoDto.fromList(self.readValue() as! [Any?])
     case 135:
-      return CameraInitializeRequest.fromList(self.readValue() as! [Any?])
+      return OrderReceiverStatusDto.fromList(self.readValue() as! [Any?])
     case 136:
-      return CameraInitializationDto.fromList(self.readValue() as! [Any?])
+      return CameraInitializeRequest.fromList(self.readValue() as! [Any?])
     case 137:
-      return CameraLensDto.fromList(self.readValue() as! [Any?])
+      return CameraInitializationDto.fromList(self.readValue() as! [Any?])
     case 138:
-      return CameraRecordingStartDto.fromList(self.readValue() as! [Any?])
+      return CameraLensDto.fromList(self.readValue() as! [Any?])
     case 139:
-      return CameraRecordingSplitDto.fromList(self.readValue() as! [Any?])
+      return CameraRecordingStartDto.fromList(self.readValue() as! [Any?])
     case 140:
-      return CameraRecordingStopDto.fromList(self.readValue() as! [Any?])
+      return CameraRecordingSplitDto.fromList(self.readValue() as! [Any?])
     case 141:
-      return BarcodeCandidateDto.fromList(self.readValue() as! [Any?])
+      return CameraRecordingStopDto.fromList(self.readValue() as! [Any?])
     case 142:
-      return CameraSessionStartedDto.fromList(self.readValue() as! [Any?])
+      return BarcodeCandidateDto.fromList(self.readValue() as! [Any?])
     case 143:
-      return CameraSegmentStartedDto.fromList(self.readValue() as! [Any?])
+      return CameraSessionStartedDto.fromList(self.readValue() as! [Any?])
     case 144:
-      return CameraSegmentCompletedDto.fromList(self.readValue() as! [Any?])
+      return CameraSegmentStartedDto.fromList(self.readValue() as! [Any?])
     case 145:
-      return CameraSegmentFailedDto.fromList(self.readValue() as! [Any?])
+      return CameraSegmentCompletedDto.fromList(self.readValue() as! [Any?])
     case 146:
+      return CameraSegmentFailedDto.fromList(self.readValue() as! [Any?])
+    case 147:
       return CameraSessionFailedDto.fromList(self.readValue() as! [Any?])
     default:
       return super.readValue(ofType: type)
@@ -1200,59 +1212,62 @@ private class PlatformApiPigeonCodecReader: FlutterStandardReader {
 
 private class PlatformApiPigeonCodecWriter: FlutterStandardWriter {
   override func writeValue(_ value: Any) {
-    if let value = value as? ThumbnailRequest {
+    if let value = value as? CameraWatermarkDisposition {
       super.writeByte(129)
-      super.writeValue(value.toList())
-    } else if let value = value as? WatermarkRequest {
+      super.writeValue(value.rawValue)
+    } else if let value = value as? ThumbnailRequest {
       super.writeByte(130)
       super.writeValue(value.toList())
-    } else if let value = value as? ExportRequest {
+    } else if let value = value as? WatermarkRequest {
       super.writeByte(131)
       super.writeValue(value.toList())
-    } else if let value = value as? VideoDecodeSupportDto {
+    } else if let value = value as? ExportRequest {
       super.writeByte(132)
       super.writeValue(value.toList())
-    } else if let value = value as? OrderInfoDto {
+    } else if let value = value as? VideoDecodeSupportDto {
       super.writeByte(133)
       super.writeValue(value.toList())
-    } else if let value = value as? OrderReceiverStatusDto {
+    } else if let value = value as? OrderInfoDto {
       super.writeByte(134)
       super.writeValue(value.toList())
-    } else if let value = value as? CameraInitializeRequest {
+    } else if let value = value as? OrderReceiverStatusDto {
       super.writeByte(135)
       super.writeValue(value.toList())
-    } else if let value = value as? CameraInitializationDto {
+    } else if let value = value as? CameraInitializeRequest {
       super.writeByte(136)
       super.writeValue(value.toList())
-    } else if let value = value as? CameraLensDto {
+    } else if let value = value as? CameraInitializationDto {
       super.writeByte(137)
       super.writeValue(value.toList())
-    } else if let value = value as? CameraRecordingStartDto {
+    } else if let value = value as? CameraLensDto {
       super.writeByte(138)
       super.writeValue(value.toList())
-    } else if let value = value as? CameraRecordingSplitDto {
+    } else if let value = value as? CameraRecordingStartDto {
       super.writeByte(139)
       super.writeValue(value.toList())
-    } else if let value = value as? CameraRecordingStopDto {
+    } else if let value = value as? CameraRecordingSplitDto {
       super.writeByte(140)
       super.writeValue(value.toList())
-    } else if let value = value as? BarcodeCandidateDto {
+    } else if let value = value as? CameraRecordingStopDto {
       super.writeByte(141)
       super.writeValue(value.toList())
-    } else if let value = value as? CameraSessionStartedDto {
+    } else if let value = value as? BarcodeCandidateDto {
       super.writeByte(142)
       super.writeValue(value.toList())
-    } else if let value = value as? CameraSegmentStartedDto {
+    } else if let value = value as? CameraSessionStartedDto {
       super.writeByte(143)
       super.writeValue(value.toList())
-    } else if let value = value as? CameraSegmentCompletedDto {
+    } else if let value = value as? CameraSegmentStartedDto {
       super.writeByte(144)
       super.writeValue(value.toList())
-    } else if let value = value as? CameraSegmentFailedDto {
+    } else if let value = value as? CameraSegmentCompletedDto {
       super.writeByte(145)
       super.writeValue(value.toList())
-    } else if let value = value as? CameraSessionFailedDto {
+    } else if let value = value as? CameraSegmentFailedDto {
       super.writeByte(146)
+      super.writeValue(value.toList())
+    } else if let value = value as? CameraSessionFailedDto {
+      super.writeByte(147)
       super.writeValue(value.toList())
     } else {
       super.writeValue(value)
