@@ -719,10 +719,10 @@ private final class IosBackupJobStore {
       "scheduled_cleanup_at": job["scheduledCleanupAt"] as? String,
       "local_deleted_at": job["localDeletedAt"] as? String,
       "waiting_cleanup": (job["waitingCleanup"] as? Bool) ?? false,
-      "remote_record_ids": Self.jsonText(job["remoteRecordIds"]),
+      "remote_record_ids": (job["remoteRecordId"] as? NSNumber)?.stringValue,
       "content_sha256": job["contentSha256"] as? String,
       "verification_version": (job["verificationVersion"] as? NSNumber)?.intValue ?? 0,
-      "verification_receipt": Self.jsonText(job["verificationReceipt"]),
+      "verification_receipt": job["verificationReceipt"] as? String,
       "last_attested_at": job["lastAttestedAt"] as? String,
       "cleanup_reason": job["cleanupReason"] as? String,
       "error_message": job["errorMessage"] as? String,
@@ -747,10 +747,10 @@ private final class IosBackupJobStore {
     job["scheduledCleanupAt"] = text(stmt, 11)
     job["localDeletedAt"] = text(stmt, 12)
     job["waitingCleanup"] = integer(stmt, 13) != 0
-    job["remoteRecordIds"] = Self.jsonArray(text(stmt, 14))
+    job["remoteRecordId"] = Self.recordId(text(stmt, 14))
     job["contentSha256"] = text(stmt, 15)
     job["verificationVersion"] = Int(integer(stmt, 16))
-    job["verificationReceipt"] = Self.jsonObject(text(stmt, 17))
+    job["verificationReceipt"] = text(stmt, 17)
     job["lastAttestedAt"] = text(stmt, 18)
     job["cleanupReason"] = text(stmt, 19)
     job["errorMessage"] = text(stmt, 20)
@@ -807,6 +807,98 @@ private final class IosBackupJobStore {
     }
     return object
   }
+
+  private static func recordId(_ value: String?) -> NSNumber? {
+    guard let value else { return nil }
+    if let number = Int64(value) { return NSNumber(value: number) }
+    guard let data = value.data(using: .utf8),
+          let legacy = try? JSONSerialization.jsonObject(with: data) as? [Any],
+          legacy.count == 1,
+          let number = legacy.first as? NSNumber
+    else { return nil }
+    return number
+  }
+}
+
+/// 电脑完成回执的本地信任边界。只有所有绑定字段和 HMAC 都通过，
+/// 才允许把任务标记为 completed/可清理。
+enum IosBackupReceiptVerifier {
+  static let version = 3
+  static let freshness: TimeInterval = 5 * 60
+
+  static func verify(
+    _ response: [String: Any],
+    accessKey: String,
+    hostNodeId: String,
+    sourceDeviceId: String,
+    sourceSessionId: String,
+    fileSha256: String,
+    fileSizeBytes: Int64,
+    recordId: Int64,
+    now: Date = Date()
+  ) -> Bool {
+    guard response["status"] as? String == "verified",
+          int(response["authVersion"]) == version,
+          let verifiedAt = int64(response["verifiedAtUnixSeconds"]),
+          abs(Int64(now.timeIntervalSince1970) - verifiedAt) <= Int64(freshness),
+          let responseHost = response["hostNodeId"] as? String,
+          let responseDevice = response["sourceDeviceId"] as? String,
+          let responseSession = response["sourceSessionId"] as? String,
+          let responseSha = response["fileSha256"] as? String,
+          let responseSize = int64(response["fileSizeBytes"]),
+          let responseRecord = int64(response["recordId"]),
+          let signature = response["receiptSignature"] as? String,
+          responseHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ==
+            hostNodeId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+          responseDevice.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ==
+            sourceDeviceId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+          responseSession == sourceSessionId,
+          responseSha.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ==
+            fileSha256.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+          responseSize == fileSizeBytes,
+          responseRecord == recordId
+    else {
+      return false
+    }
+
+    let canonical = [
+      "packingproof-verified-receipt-v3",
+      responseHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+      responseDevice.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+      responseSession.trimmingCharacters(in: .whitespacesAndNewlines),
+      fileSha256.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+      String(fileSizeBytes),
+      String(recordId),
+      String(verifiedAt),
+    ].joined(separator: "\n")
+    let key = SymmetricKey(data: IosBackupHostApi.secretDataValue(accessKey))
+    let expected = HMAC<SHA256>.authenticationCode(
+      for: Data(canonical.utf8), using: key
+    ).map { String(format: "%02x", $0) }.joined()
+    return constantTimeEquals(expected, signature)
+  }
+
+  private static func int(_ value: Any?) -> Int? {
+    if let value = value as? NSNumber { return value.intValue }
+    if let value = value as? Int { return value }
+    return nil
+  }
+
+  private static func int64(_ value: Any?) -> Int64? {
+    if let value = value as? NSNumber { return value.int64Value }
+    if let value = value as? Int64 { return value }
+    if let value = value as? Int { return Int64(value) }
+    return nil
+  }
+
+  private static func constantTimeEquals(_ left: String, _ right: String) -> Bool {
+    let a = Array(left.lowercased().utf8)
+    let b = Array(right.lowercased().utf8)
+    guard a.count == b.count else { return false }
+    var result: UInt8 = 0
+    for index in 0..<a.count { result |= a[index] ^ b[index] }
+    return result == 0
+  }
 }
 
 private final class IosBackupHostApi: BackupNativeHostApi {
@@ -841,7 +933,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
   private static let isoFormatter = ISO8601DateFormatter()
 
   private enum AttestationResult {
-    case confirmed
+    case confirmed(receiptSignature: String)
     case missing
     case unauthorized
     case notReady
@@ -995,7 +1087,10 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         guard
           job["state"] as? String == "completed",
           (job["verificationVersion"] as? Int ?? 0) >= Self.verificationVersion,
-          let remoteIds = job["remoteRecordIds"] as? [Any], !remoteIds.isEmpty,
+          let remoteId = job["remoteRecordId"] as? NSNumber,
+          remoteId.int64Value > 0,
+          let receipt = job["verificationReceipt"] as? String,
+          !receipt.isEmpty,
           let lastAttested = job["lastAttestedAt"] as? String,
           let attestedDate = Self.isoFormatter.date(from: lastAttested),
           Date().timeIntervalSince(attestedDate) <= Self.storageAttestationFreshness,
@@ -1096,7 +1191,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       "id", "filePath", "state", "uploadedBytes", "totalBytes", "lastModified",
       "contentSha256", "errorMessage", "failureKind", "fileCreatedAt",
       "backupCompletedAt", "scheduledCleanupAt", "localDeletedAt", "waitingCleanup",
-      "remoteRecordIds", "destinationComputerId", "cleanupReason",
+      "remoteRecordId", "destinationComputerId", "cleanupReason",
     ] {
       slim[key] = job[key]
     }
@@ -1160,6 +1255,13 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     if result["verificationVersion"] == nil {
       result["verificationVersion"] = 0
     }
+    if result["remoteRecordId"] == nil,
+       let legacyIds = result["remoteRecordIds"] as? [Any],
+       legacyIds.count == 1,
+       let legacyId = legacyIds.first as? NSNumber {
+      result["remoteRecordId"] = legacyId
+    }
+    result.removeValue(forKey: "remoteRecordIds")
     return result
   }
 
@@ -1367,7 +1469,25 @@ private final class IosBackupHostApi: BackupNativeHostApi {
           deviceId: deviceId()
         )
       }
-      guard complete["status"] as? String == "verified" else {
+      guard
+        let sessions = job["sessions"] as? [Any],
+        sessions.count == 1,
+        let session = sessions.first as? [String: Any],
+        let sessionId = session["id"] as? String,
+        let recordId = (complete["recordId"] as? NSNumber)?.int64Value,
+        recordId > 0,
+        let computerId = connection["computerId"] as? String,
+        IosBackupReceiptVerifier.verify(
+          complete,
+          accessKey: accessKey,
+          hostNodeId: computerId,
+          sourceDeviceId: deviceId(),
+          sourceSessionId: sessionId,
+          fileSha256: fileSha256,
+          fileSizeBytes: Int64(data.count),
+          recordId: recordId
+        )
+      else {
         throw BackupTransferError(
           statusCode: 0,
           errorCode: "verification_failed",
@@ -1375,19 +1495,16 @@ private final class IosBackupHostApi: BackupNativeHostApi {
           failureKind: "verification_failed"
         )
       }
-      let verificationVersion =
-        (complete["authVersion"] as? NSNumber)?.intValue ?? 0
       let completedAt = Self.isoFormatter.string(from: Date())
       updateJob(jobId) { current in
         current["state"] = "completed"
         current["uploadedBytes"] = data.count
         current["contentSha256"] = fileSha256
-        current["remoteRecordIds"] = complete["recordIds"] as? [Any] ?? []
+        current["remoteRecordId"] = recordId
         current["backupCompletedAt"] = completedAt
-        current["verificationVersion"] = verificationVersion
-        if verificationVersion > 0 {
-          current["lastAttestedAt"] = completedAt
-        }
+        current["verificationVersion"] = IosBackupReceiptVerifier.version
+        current["verificationReceipt"] = complete["receiptSignature"] as? String
+        current["lastAttestedAt"] = completedAt
       }
       emitSnapshot()
       triggerCleanup()
@@ -1685,7 +1802,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     request.setValue("mobile", forHTTPHeaderField: "X-EPM-Device-Kind")
   }
 
-  private func secretData(_ value: String) -> Data {
+  fileprivate static func secretDataValue(_ value: String) -> Data {
     let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
     if normalized.count >= 32, normalized.count.isMultiple(of: 2) {
       var bytes: [UInt8] = []
@@ -1702,6 +1819,10 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       return Data(bytes)
     }
     return Data(normalized.utf8)
+  }
+
+  private func secretData(_ value: String) -> Data {
+    Self.secretDataValue(value)
   }
 
   // MARK: - 保留策略清理
@@ -1791,14 +1912,14 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       if completedAt != nil {
         let contentSha256 = job["contentSha256"] as? String
         let version = job["verificationVersion"] as? Int ?? 0
-        let recordIds = job["remoteRecordIds"] as? [Any]
+        let recordId = job["remoteRecordId"] as? NSNumber
         let sessions = job["sessions"] as? [Any]
         let totalBytes = job["totalBytes"] as? Int64 ?? -1
         let hasEvidence =
           version >= Self.verificationVersion &&
           contentSha256?.count == 64 &&
           totalBytes > 0 &&
-          !(recordIds?.isEmpty ?? true) &&
+          (recordId?.int64Value ?? 0) > 0 &&
           !(sessions?.isEmpty ?? true)
 
         if !hasEvidence {
@@ -1810,8 +1931,10 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         }
 
         let attestation: AttestationResult
-        if isConfirmationFresh(job["lastAttestedAt"] as? String, now: now) {
-          attestation = .confirmed
+        let storedReceipt = job["verificationReceipt"] as? String
+        if !(storedReceipt?.isEmpty ?? true),
+           isConfirmationFresh(job["lastAttestedAt"] as? String, now: now) {
+          attestation = .confirmed(receiptSignature: storedReceipt ?? "")
         } else {
           attestation = await attestBackedJob(
             job,
@@ -1830,8 +1953,9 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         baseJob = current
 
         switch attestation {
-        case .confirmed:
+        case .confirmed(let receiptSignature):
           baseJob["lastAttestedAt"] = Self.isoFormatter.string(from: now)
+          baseJob["verificationReceipt"] = receiptSignature
         case .missing:
           baseJob["waitingCleanup"] = false
           baseJob["errorMessage"] = "远端缺失，待重新备份"
@@ -1907,8 +2031,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       let connection = defaults.dictionary(forKey: keys.connection),
       let baseUrl = connection["baseUrl"] as? String,
       let accessKey = defaults.string(forKey: keys.accessKey),
-      let recordIds = job["remoteRecordIds"] as? [Any],
-      let recordId = recordIds.first as? NSNumber,
+      let recordId = job["remoteRecordId"] as? NSNumber,
       let sessions = job["sessions"] as? [Any],
       let session = sessions.first as? [String: Any],
       let sessionId = session["id"] as? String
@@ -1957,7 +2080,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         let json =
           (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
         guard json["status"] as? String == "verified" else { return .notReady }
-        return verifyAttestationReceipt(
+        let verified = verifyAttestationReceipt(
           json,
           accessKey: accessKey,
           deviceId: deviceId,
@@ -1966,7 +2089,12 @@ private final class IosBackupHostApi: BackupNativeHostApi {
           fileSha256: fileSha256,
           fileSizeBytes: fileSizeBytes,
           recordId: recordId
-        ) ? .confirmed : .notReady
+        )
+        guard verified,
+              let signature = json["receiptSignature"] as? String,
+              !signature.isEmpty
+        else { return .notReady }
+        return .confirmed(receiptSignature: signature)
       case 404:
         return .missing
       case 403:
@@ -1991,41 +2119,16 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     fileSizeBytes: Int64,
     recordId: Int64
   ) -> Bool {
-    guard (response["authVersion"] as? Int) == Self.verificationVersion else {
-      return false
-    }
-    let verifiedAt = response["verifiedAtUnixSeconds"] as? Int64 ?? 0
-    let now = Int64(Date().timeIntervalSince1970)
-    guard abs(now - verifiedAt) <= 300 else { return false }
-    guard
-      let hostNodeId = response["hostNodeId"] as? String,
-      let sourceDeviceId = response["sourceDeviceId"] as? String,
-      let sourceSessionId = response["sourceSessionId"] as? String,
-      let responseSha256 = response["fileSha256"] as? String,
-      let responseFileSize = response["fileSizeBytes"] as? Int64,
-      let responseRecordId = response["recordId"] as? Int64,
-      let receiptSignature = response["receiptSignature"] as? String
-    else { return false }
-    guard
-      hostNodeId.lowercased() == computerId.lowercased(),
-      sourceDeviceId.lowercased() == deviceId.lowercased(),
-      sourceSessionId == sessionId,
-      responseSha256.lowercased() == fileSha256.lowercased(),
-      responseFileSize == fileSizeBytes,
-      responseRecordId == recordId
-    else { return false }
-    let canonical = [
-      "packingproof-verified-receipt-v3",
-      hostNodeId.trimmingCharacters(in: .whitespaces).lowercased(),
-      sourceDeviceId.trimmingCharacters(in: .whitespaces).lowercased(),
-      sourceSessionId.trimmingCharacters(in: .whitespaces),
-      fileSha256.trimmingCharacters(in: .whitespaces).lowercased(),
-      String(fileSizeBytes),
-      String(recordId),
-      String(verifiedAt),
-    ].joined(separator: "\n")
-    let expected = hmacHex(key: secretData(accessKey), message: canonical)
-    return constantTimeEquals(expected, receiptSignature)
+    IosBackupReceiptVerifier.verify(
+      response,
+      accessKey: accessKey,
+      hostNodeId: computerId,
+      sourceDeviceId: deviceId,
+      sourceSessionId: sessionId,
+      fileSha256: fileSha256,
+      fileSizeBytes: fileSizeBytes,
+      recordId: recordId
+    )
   }
 
   private func hmacHex(key: Data, message: String) -> String {
