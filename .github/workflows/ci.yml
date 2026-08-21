@@ -31,6 +31,9 @@ jobs:
         env:
           DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: ./tool/check_new_broad_catches.sh "$DIFF_BASE"
+      - name: Check large-file line limits
+        shell: bash
+        run: ./tool/check_large_file_limits.sh
       - run: flutter pub get
       - run: flutter analyze
       - name: Run non-visual Flutter tests
