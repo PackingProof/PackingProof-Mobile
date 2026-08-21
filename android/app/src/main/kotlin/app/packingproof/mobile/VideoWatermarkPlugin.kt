@@ -29,6 +29,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+internal fun watermarkOverlayRotationDegrees(recordingOrientation: String): Float =
+    when (recordingOrientation) {
+        "landscapeLeft" -> -90f
+        "landscapeRight" -> 90f
+        else -> 0f
+    }
+
 @OptIn(UnstableApi::class)
 class VideoWatermarkPlugin(
     context: Context,
@@ -96,6 +103,7 @@ class VideoWatermarkPlugin(
         val settings = StaticOverlaySettings.Builder()
             .setOverlayFrameAnchor(anchorX, anchorY)
             .setBackgroundFrameAnchor(anchorX, anchorY)
+            .setRotationDegrees(watermarkOverlayRotationDegrees(recordingOrientation))
             .build()
         val overlay = object : BitmapOverlay() {
             private val formatter = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.ROOT)
@@ -149,12 +157,6 @@ class VideoWatermarkPlugin(
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                 bitmap.density = Bitmap.DENSITY_NONE
                 val canvas = Canvas(bitmap)
-                val rotation = when (recordingOrientation) {
-                    "landscapeLeft" -> -90f
-                    "landscapeRight" -> 90f
-                    else -> 0f
-                }
-                canvas.rotate(rotation, width / 2f, height / 2f)
                 val right = width - padding
                 var baseline = padding - paint.fontMetrics.top
                 for (line in lines) {
