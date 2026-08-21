@@ -21,6 +21,11 @@ jobs:
           channel: stable
           flutter-version: '3.44.1'
           cache: true
+      - name: Check changed-file whitespace
+        shell: bash
+        env:
+          DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: ./tool/check_diff.sh "$DIFF_BASE"
       - run: flutter pub get
       - run: flutter analyze
       - name: Run non-visual Flutter tests
