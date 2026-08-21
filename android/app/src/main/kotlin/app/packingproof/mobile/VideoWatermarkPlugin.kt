@@ -33,24 +33,70 @@ import java.util.Date
 import java.util.Locale
 
 internal data class WatermarkOverlayPlacement(
-    val anchorX: Float,
-    val anchorY: Float,
+    val overlayAnchorX: Float,
+    val overlayAnchorY: Float,
+    val backgroundAnchorX: Float,
+    val backgroundAnchorY: Float,
     val rotationDegrees: Float,
 )
 
-internal fun watermarkOverlayPlacement(recordingOrientation: String): WatermarkOverlayPlacement =
-    when (recordingOrientation) {
-        "landscapeLeft" -> WatermarkOverlayPlacement(-1f, 1f, -90f)
-        "landscapeRight" -> WatermarkOverlayPlacement(1f, -1f, 90f)
-        else -> WatermarkOverlayPlacement(1f, 1f, 0f)
+internal fun watermarkOverlayPlacement(
+    recordingOrientation: String,
+    overlayWidth: Int,
+    overlayHeight: Int,
+): WatermarkOverlayPlacement {
+    require(overlayWidth > 0)
+    require(overlayHeight > 0)
+    val rotatedTopAnchorX = overlayHeight.toFloat() / overlayWidth
+    return when (recordingOrientation) {
+        "landscapeLeft" -> WatermarkOverlayPlacement(
+            -rotatedTopAnchorX,
+            0f,
+            -0.8f,
+            0f,
+            -90f,
+        )
+        "landscapeRight" -> WatermarkOverlayPlacement(
+            rotatedTopAnchorX,
+            0f,
+            0.8f,
+            0f,
+            90f,
+        )
+        else -> WatermarkOverlayPlacement(0f, 1f, 0f, 0.8f, 0f)
+    }
+}
+
+internal fun watermarkTextLines(
+    timestamp: String,
+    trackingNumber: String,
+): List<String> =
+    if (trackingNumber.isBlank()) {
+        listOf(timestamp)
+    } else {
+        listOf(timestamp, trackingNumber)
     }
 
 @OptIn(UnstableApi::class)
-internal fun watermarkOverlaySettings(recordingOrientation: String): StaticOverlaySettings {
-    val placement = watermarkOverlayPlacement(recordingOrientation)
+internal fun watermarkOverlaySettings(
+    recordingOrientation: String,
+    overlayWidth: Int,
+    overlayHeight: Int,
+): StaticOverlaySettings {
+    val placement = watermarkOverlayPlacement(
+        recordingOrientation,
+        overlayWidth,
+        overlayHeight,
+    )
     return StaticOverlaySettings.Builder()
-        .setOverlayFrameAnchor(placement.anchorX, placement.anchorY)
-        .setBackgroundFrameAnchor(placement.anchorX, placement.anchorY)
+        .setOverlayFrameAnchor(
+            placement.overlayAnchorX,
+            placement.overlayAnchorY,
+        )
+        .setBackgroundFrameAnchor(
+            placement.backgroundAnchorX,
+            placement.backgroundAnchorY,
+        )
         .setRotationDegrees(placement.rotationDegrees)
         .build()
 }
@@ -67,26 +113,29 @@ internal fun renderWatermarkTextBitmap(
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         this.textSize = textSize
-        textAlign = Paint.Align.RIGHT
+        textAlign = Paint.Align.CENTER
         strokeJoin = Paint.Join.ROUND
     }
-    val lineHeight = (paint.fontMetrics.bottom - paint.fontMetrics.top) * 1.08f
+    val fontMetricsHeight = paint.fontMetrics.bottom - paint.fontMetrics.top
+    val lineHeight = textSize * 1.25f
     val contentWidth = lines.maxOf { paint.measureText(it) }
     val width = (contentWidth + padding * 2).toInt().coerceAtLeast(1)
-    val height = (lineHeight * lines.size + padding * 2).toInt().coerceAtLeast(1)
+    val height = (
+        fontMetricsHeight + lineHeight * (lines.size - 1) + padding * 2
+    ).toInt().coerceAtLeast(1)
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     bitmap.density = Bitmap.DENSITY_NONE
     val canvas = Canvas(bitmap)
-    val right = width - padding
+    val centerX = width / 2f
     var baseline = padding - paint.fontMetrics.top
     for (line in lines) {
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = strokeWidth
         paint.color = Color.BLACK
-        canvas.drawText(line, right, baseline, paint)
+        canvas.drawText(line, centerX, baseline, paint)
         paint.style = Paint.Style.FILL
         paint.color = Color.WHITE
-        canvas.drawText(line, right, baseline, paint)
+        canvas.drawText(line, centerX, baseline, paint)
         baseline += lineHeight
     }
     return bitmap
@@ -116,28 +165,30 @@ internal class ReusableWatermarkBitmap(
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             this.textSize = textSize
-            textAlign = Paint.Align.RIGHT
+            textAlign = Paint.Align.CENTER
             strokeJoin = Paint.Join.ROUND
         }
-        val lineHeight = (paint.fontMetrics.bottom - paint.fontMetrics.top) * 1.08f
+        val fontMetricsHeight = paint.fontMetrics.bottom - paint.fontMetrics.top
+        val lineHeight = textSize * 1.25f
         val requiredWidth = lines.maxOf { paint.measureText(it) } + padding * 2
-        val requiredHeight = lineHeight * lines.size + padding * 2
+        val requiredHeight =
+            fontMetricsHeight + lineHeight * (lines.size - 1) + padding * 2
         require(requiredWidth <= bitmap.width && requiredHeight <= bitmap.height) {
             "Watermark text exceeds the preallocated bitmap bounds"
         }
         val previousGenerationId = bitmap.generationId
         bitmap.eraseColor(Color.TRANSPARENT)
         val canvas = Canvas(bitmap)
-        val right = bitmap.width - padding
+        val centerX = bitmap.width / 2f
         var baseline = padding - paint.fontMetrics.top
         for (line in lines) {
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = strokeWidth
             paint.color = Color.BLACK
-            canvas.drawText(line, right, baseline, paint)
+            canvas.drawText(line, centerX, baseline, paint)
             paint.style = Paint.Style.FILL
             paint.color = Color.WHITE
-            canvas.drawText(line, right, baseline, paint)
+            canvas.drawText(line, centerX, baseline, paint)
             baseline += lineHeight
         }
         check(bitmap.generationId != previousGenerationId) {
@@ -227,11 +278,11 @@ class VideoWatermarkPlugin(
         output.parentFile?.mkdirs()
         output.delete()
 
-        val settings = watermarkOverlaySettings(recordingOrientation)
         val overlay = object : BitmapOverlay() {
             private val formatter = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.ROOT)
             private var cachedSecond = Long.MIN_VALUE
             private var reusableBitmap: ReusableWatermarkBitmap? = null
+            private var settings: StaticOverlaySettings? = null
             var wasEverConfigured = false
                 private set
             var bitmapRequestCount = 0
@@ -244,6 +295,12 @@ class VideoWatermarkPlugin(
                 reusableBitmap = ReusableWatermarkBitmap(videoSize.height, maximumLines)
                 reusableBitmap?.redraw(
                     watermarkLines(formatter.format(Date(startedAtMs))),
+                )
+                val bitmap = checkNotNull(reusableBitmap).current()
+                settings = watermarkOverlaySettings(
+                    recordingOrientation,
+                    bitmap.width,
+                    bitmap.height,
                 )
                 cachedSecond = 0L
                 wasEverConfigured = true
@@ -263,7 +320,10 @@ class VideoWatermarkPlugin(
                 return renderer.redraw(watermarkLines(timestamp))
             }
 
-            override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings = settings
+            override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings =
+                checkNotNull(settings) {
+                    "Watermark overlay settings were used before configuration"
+                }
 
             override fun release() {
                 clearCache()
@@ -273,15 +333,12 @@ class VideoWatermarkPlugin(
             private fun clearCache() {
                 reusableBitmap?.release()
                 reusableBitmap = null
+                settings = null
                 cachedSecond = Long.MIN_VALUE
             }
 
             private fun watermarkLines(timestamp: String): List<String> {
-                return if (trackingNumber.isBlank()) {
-                    listOf(timestamp)
-                } else {
-                    listOf(timestamp, "Order:$trackingNumber")
-                }
+                return watermarkTextLines(timestamp, trackingNumber)
             }
         }
         val editedMediaItem = EditedMediaItem.Builder(

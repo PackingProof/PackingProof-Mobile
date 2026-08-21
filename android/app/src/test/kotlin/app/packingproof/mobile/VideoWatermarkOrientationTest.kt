@@ -19,29 +19,77 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class VideoWatermarkOrientationTest {
     @Test
-    fun `uses the final overlay anchor and rotation for each recording orientation`() {
+    fun `places every final orientation at horizontal center and ten percent from top`() {
+        val overlayWidth = 400
+        val overlayHeight = 100
         val expected = mapOf(
-            "portrait" to WatermarkOverlayPlacement(1f, 1f, 0f),
-            "landscapeLeft" to WatermarkOverlayPlacement(-1f, 1f, -90f),
-            "landscapeRight" to WatermarkOverlayPlacement(1f, -1f, 90f),
+            "portrait" to WatermarkOverlayPlacement(0f, 1f, 0f, 0.8f, 0f),
+            "landscapeLeft" to WatermarkOverlayPlacement(-0.25f, 0f, -0.8f, 0f, -90f),
+            "landscapeRight" to WatermarkOverlayPlacement(0.25f, 0f, 0.8f, 0f, 90f),
         )
 
         for ((orientation, placement) in expected) {
-            assertEquals(placement, watermarkOverlayPlacement(orientation))
-            val settings = watermarkOverlaySettings(orientation)
-            assertEquals(placement.anchorX, settings.overlayFrameAnchor.first)
-            assertEquals(placement.anchorY, settings.overlayFrameAnchor.second)
-            assertEquals(placement.anchorX, settings.backgroundFrameAnchor.first)
-            assertEquals(placement.anchorY, settings.backgroundFrameAnchor.second)
+            assertEquals(
+                placement,
+                watermarkOverlayPlacement(
+                    orientation,
+                    overlayWidth,
+                    overlayHeight,
+                ),
+            )
+            val settings = watermarkOverlaySettings(
+                orientation,
+                overlayWidth,
+                overlayHeight,
+            )
+            assertEquals(placement.overlayAnchorX, settings.overlayFrameAnchor.first)
+            assertEquals(placement.overlayAnchorY, settings.overlayFrameAnchor.second)
+            assertEquals(placement.backgroundAnchorX, settings.backgroundFrameAnchor.first)
+            assertEquals(placement.backgroundAnchorY, settings.backgroundFrameAnchor.second)
             assertEquals(placement.rotationDegrees, settings.rotationDegrees)
+
+            val finalCenterX = when (orientation) {
+                "portrait" -> (placement.backgroundAnchorX + 1f) / 2f
+                else -> (1f - placement.backgroundAnchorY) / 2f
+            }
+            val finalTop = when (orientation) {
+                "landscapeLeft" -> (placement.backgroundAnchorX + 1f) / 2f
+                "landscapeRight" -> (1f - placement.backgroundAnchorX) / 2f
+                else -> (1f - placement.backgroundAnchorY) / 2f
+            }
+            assertEquals(0.5f, finalCenterX, 0.0001f)
+            assertEquals(0.1f, finalTop, 0.0001f)
+
+            if (orientation != "portrait") {
+                val rotatedMinX = -overlayHeight.toFloat() / overlayWidth
+                val rotatedMaxX = overlayHeight.toFloat() / overlayWidth
+                val rotatedTopEdge = if (orientation == "landscapeLeft") {
+                    rotatedMinX
+                } else {
+                    rotatedMaxX
+                }
+                assertEquals(rotatedTopEdge, placement.overlayAnchorX, 0.0001f)
+            }
         }
+    }
+
+    @Test
+    fun `uses tracking number as the second line without an order prefix`() {
+        assertEquals(
+            listOf("2026/08/22 01:02:03", "TRACK123456789"),
+            watermarkTextLines("2026/08/22 01:02:03", "TRACK123456789"),
+        )
+        assertEquals(
+            listOf("2026/08/22 01:02:03"),
+            watermarkTextLines("2026/08/22 01:02:03", ""),
+        )
     }
 
     @Test
     fun `renders transparent outlined text without clipping bitmap edges`() {
         val bitmap = renderWatermarkTextBitmap(
             videoHeight = 1920,
-            lines = listOf("2026/08/21 12:34:56", "Order:TRACK123456789"),
+            lines = listOf("2026/08/21 12:34:56", "TRACK123456789"),
         )
 
         assertEquals(Bitmap.Config.ARGB_8888, bitmap.config)
@@ -57,6 +105,16 @@ class VideoWatermarkOrientationTest {
         assertTrue("outlined text must contain white fill", pixels.any { it == Color.WHITE })
         assertTrue("outlined text must contain black stroke", pixels.any { it == Color.BLACK })
 
+        val whitePixels = pixels.withIndex().filter { it.value == Color.WHITE }
+        val blackPixels = pixels.withIndex().filter { it.value == Color.BLACK }
+        assertTrue(
+            "black stroke must extend outside the white fill horizontally",
+            blackPixels.minOf { it.index % bitmap.width } <
+                whitePixels.minOf { it.index % bitmap.width } &&
+                blackPixels.maxOf { it.index % bitmap.width } >
+                whitePixels.maxOf { it.index % bitmap.width },
+        )
+
         val left = visiblePixels.minOf { it.index % bitmap.width }
         val right = visiblePixels.maxOf { it.index % bitmap.width }
         val top = visiblePixels.minOf { it.index / bitmap.width }
@@ -71,10 +129,15 @@ class VideoWatermarkOrientationTest {
     fun `allocates additional bitmap height for a second watermark line`() {
         val timestamp = "2026/08/21 12:34:56"
         val oneLine = renderWatermarkTextBitmap(1080, listOf(timestamp))
-        val twoLines = renderWatermarkTextBitmap(1080, listOf(timestamp, "Order:TRACK123456789"))
+        val twoLines = renderWatermarkTextBitmap(1080, listOf(timestamp, "TRACK123456789"))
 
         assertTrue(twoLines.height > oneLine.height)
         assertTrue(twoLines.width >= oneLine.width)
+        val textSize = (1080 * 0.032f).coerceIn(35f, 61f)
+        val expectedLineHeight = textSize * 1.25f
+        assertTrue(
+            kotlin.math.abs((twoLines.height - oneLine.height) - expectedLineHeight) < 1.1f,
+        )
     }
 
     @Test
@@ -83,16 +146,16 @@ class VideoWatermarkOrientationTest {
             videoHeight = 1920,
             maximumLines = listOf(
                 "8888/88/88 88:88:88",
-                "Order:TRACK123456789",
+                "TRACK123456789",
             ),
         )
 
         val first = renderer.redraw(
-            listOf("2026/08/21 12:34:56", "Order:TRACK123456789"),
+            listOf("2026/08/21 12:34:56", "TRACK123456789"),
         )
         val firstGenerationId = first.generationId
         val second = renderer.redraw(
-            listOf("2026/08/21 12:34:57", "Order:TRACK123456789"),
+            listOf("2026/08/21 12:34:57", "TRACK123456789"),
         )
 
         assertSame(first, second)
