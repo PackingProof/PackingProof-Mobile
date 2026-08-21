@@ -67,7 +67,7 @@ void main() {
     );
   });
 
-  testWidgets('待处理和失败水印录像显示状态且禁止播放原片', (WidgetTester tester) async {
+  testWidgets('待处理和失败水印录像显示状态且失败原片可播放', (WidgetTester tester) async {
     final DateTime startedAt = DateTime(2026, 8, 21, 10);
     await tester.pumpWidget(
       const MaterialApp(
@@ -121,7 +121,7 @@ void main() {
         ),
         localAvailable: true,
       ),
-      '水印处理失败，原片已安全保留',
+      isNull,
     );
     expect(
       recordingWatermarkPlaybackBlockMessage(

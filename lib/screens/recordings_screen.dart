@@ -117,12 +117,10 @@ String? recordingWatermarkPlaybackBlockMessage(
   required bool localAvailable,
 }) {
   if (!localAvailable ||
-      session.watermarkStatus == WatermarkProcessingStatus.completed) {
+      session.watermarkStatus != WatermarkProcessingStatus.pending) {
     return null;
   }
-  return session.watermarkStatus == WatermarkProcessingStatus.pending
-      ? '水印处理中，完成后即可播放'
-      : '水印处理失败，原片已安全保留';
+  return '水印处理中，完成后即可播放';
 }
 
 class _RecordingsHistoryTitle extends StatelessWidget {

@@ -51,6 +51,12 @@ mixin _PackingSessionWatermarkCoordinator on _PackingSessionStorageCoordinator {
                 'exhausted': claim?.exhausted ?? false,
               },
             );
+            if (claim?.exhausted ?? false) {
+              await _enqueueBackupIfNeeded(
+                claim!.session.filePath,
+                <RecordingSession>[claim.session],
+              );
+            }
             if (!_disposed) notifyListeners();
             return;
           }
@@ -193,6 +199,11 @@ mixin _PackingSessionWatermarkCoordinator on _PackingSessionStorageCoordinator {
         var statusPersisted =
             processingSession.watermarkStatus !=
             WatermarkProcessingStatus.pending;
+        RecordingSession? failedSession =
+            processingSession.watermarkStatus ==
+                WatermarkProcessingStatus.failed
+            ? processingSession
+            : null;
         if (processingSession.watermarkStatus ==
             WatermarkProcessingStatus.pending) {
           final RecordingSession updated = processingSession.copyWith(
@@ -203,6 +214,9 @@ mixin _PackingSessionWatermarkCoordinator on _PackingSessionStorageCoordinator {
           try {
             _sessions = await _repository.updateSession(updated);
             statusPersisted = true;
+            if (updated.watermarkStatus == WatermarkProcessingStatus.failed) {
+              failedSession = updated;
+            }
           } on Object {
             statusPersisted = false;
           }
@@ -222,6 +236,12 @@ mixin _PackingSessionWatermarkCoordinator on _PackingSessionStorageCoordinator {
             'statusPersisted': statusPersisted,
           },
         );
+        if (statusPersisted && failedSession != null) {
+          await _enqueueBackupIfNeeded(
+            failedSession.filePath,
+            <RecordingSession>[failedSession],
+          );
+        }
       }
       if (!_disposed) notifyListeners();
     } finally {

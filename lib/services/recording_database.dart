@@ -376,7 +376,7 @@ class RecordingDatabase {
     final List<Map<String, Object?>> rows = await db.query(
       'recording_sessions',
       columns: _sessionPayloadColumns,
-      where: "is_deleted = 0 AND watermark_status = 'completed'",
+      where: "is_deleted = 0 AND watermark_status IN ('completed', 'failed')",
       orderBy: 'started_at ASC, id ASC',
       limit: normalizedSize,
       offset: (normalizedPage - 1) * normalizedSize,
@@ -394,7 +394,7 @@ class RecordingDatabase {
     final Database db = await _db;
     final List<String> conditions = <String>[
       'is_deleted = 0',
-      "watermark_status = 'completed'",
+      "watermark_status IN ('completed', 'failed')",
     ];
     final List<Object?> args = <Object?>[];
     if (afterUpdatedAt != null && afterId != null) {
@@ -431,7 +431,7 @@ class RecordingDatabase {
     final List<Map<String, Object?>> rows = await db.query(
       'recording_sessions',
       columns: <String>['updated_at', 'id'],
-      where: "is_deleted = 0 AND watermark_status = 'completed'",
+      where: "is_deleted = 0 AND watermark_status IN ('completed', 'failed')",
       orderBy: 'updated_at DESC, id DESC',
       limit: 1,
     );

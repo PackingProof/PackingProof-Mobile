@@ -83,7 +83,7 @@ void main() {
     );
   });
 
-  test('只有水印完成录像进入备份查询且待处理状态可恢复', () async {
+  test('水印完成或失败录像进入备份查询且待处理状态可恢复', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing-proof-watermark-state-',
     );
@@ -122,7 +122,10 @@ void main() {
       page: 1,
       pageSize: 10,
     );
-    expect(backup.map((session) => session.id), <String>['completed']);
+    expect(backup.map((session) => session.id), <String>[
+      'completed',
+      'failed',
+    ]);
     final List<RecordingBackupRow> backupRows = await database.queryBackupRows(
       afterUpdatedAt: null,
       afterId: null,
@@ -130,7 +133,7 @@ void main() {
       highId: null,
       pageSize: 10,
     );
-    expect(backupRows.map((row) => row.id), <String>['completed']);
+    expect(backupRows.map((row) => row.id), <String>['completed', 'failed']);
     await database.setUpdatedAtForTesting(id: 'pending', updatedAt: 50);
     await database.setUpdatedAtForTesting(id: 'failed', updatedAt: 60);
     await database.setUpdatedAtForTesting(id: 'completed', updatedAt: 100);

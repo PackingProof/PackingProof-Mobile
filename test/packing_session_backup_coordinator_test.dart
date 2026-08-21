@@ -6,12 +6,14 @@ import 'package:packing_proof_mobile/controllers/packing_session_controller.dart
 import 'package:packing_proof_mobile/models/backup_retention_policy.dart';
 import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
+import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
 import 'package:packing_proof_mobile/platform/platform_capabilities.dart';
 import 'package:packing_proof_mobile/services/diagnostics_log_service.dart';
 import 'package:packing_proof_mobile/services/lan_backup_service.dart';
 import 'package:packing_proof_mobile/services/session_repository.dart';
 import 'package:packing_proof_mobile/services/speech_prompt_service.dart';
+import 'package:packing_proof_mobile/services/video_watermark_service.dart';
 
 import 'test_repository.dart';
 
@@ -139,6 +141,52 @@ void main() {
     await secondController.shutdown();
     secondController.dispose();
   });
+
+  test('水印最终失败保持失败状态并立即备份保留文件', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-failed-watermark-backup-',
+    );
+    final SessionRepository repository = testRepository(root);
+    final File source = File('${root.path}/failed-watermark.mp4');
+    await source.writeAsBytes(<int>[1, 2, 3]);
+    final DateTime startedAt = DateTime.utc(2026, 8, 21, 10);
+    final RecordingSession session = RecordingSession(
+      id: 'failed-watermark',
+      filePath: source.path,
+      startedAt: startedAt,
+      endedAt: startedAt.add(const Duration(seconds: 2)),
+      markers: const <Never>[],
+      watermarkStatus: WatermarkProcessingStatus.pending,
+    );
+    await repository.addSession(session);
+    final _RecordingLanBackupSink backup = _RecordingLanBackupSink();
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _NoopSpeechSink(),
+      videoWatermarkService: _FailingWatermarkSink(),
+      lanBackupService: backup,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+
+    await controller.watermarkAndBackupForTesting(source.path, session);
+
+    final RecordingSession saved = (await repository.loadSessions(
+      includeMissingFiles: true,
+    )).single;
+    expect(saved.watermarkStatus, WatermarkProcessingStatus.failed);
+    expect(await source.exists(), isTrue);
+    expect(backup.enqueuedPaths, <String>[source.path]);
+    expect(
+      backup.enqueuedSessions.single.single.watermarkStatus,
+      WatermarkProcessingStatus.failed,
+    );
+  });
 }
 
 class _BackupCall {
@@ -151,6 +199,9 @@ class _BackupCall {
 class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
   LanBackupSnapshot _snapshot = const LanBackupSnapshot(autoEnabled: false);
   final List<_BackupCall> backupCalls = <_BackupCall>[];
+  final List<String> enqueuedPaths = <String>[];
+  final List<List<RecordingSession>> enqueuedSessions =
+      <List<RecordingSession>>[];
   int initializeCalls = 0;
   bool retryConnectionResult = false;
 
@@ -198,7 +249,10 @@ class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
   Future<void> enqueueFinalizedFile(
     String filePath,
     List<RecordingSession> sessions,
-  ) async {}
+  ) async {
+    enqueuedPaths.add(filePath);
+    enqueuedSessions.add(List<RecordingSession>.of(sessions));
+  }
 
   @override
   Future<void> enqueueFinalizedFiles(
@@ -301,4 +355,16 @@ class _NoopSpeechSink implements SpeechPromptSink {
 
   @override
   Future<void> dispose() async {}
+}
+
+class _FailingWatermarkSink implements VideoWatermarkSink {
+  @override
+  Future<String> apply({
+    required String inputPath,
+    required DateTime startedAt,
+    required String trackingNumber,
+    RecordingVideoCodec videoCodec = RecordingVideoCodec.hevc,
+  }) {
+    throw StateError('watermark failed');
+  }
 }
