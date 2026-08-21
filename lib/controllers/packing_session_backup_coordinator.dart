@@ -54,7 +54,8 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
     try {
       await _lanBackupService.enqueueFinalizedFile(filePath, sessions);
     } on Object catch (error) {
-      // A saved local recording must never fail because its backup is offline.
+      // broad-catch: Local recording persistence has already succeeded; backup
+      // enqueue failure is diagnostic-only and must not fail the saved recording.
       unawaited(
         _runtimeLog.log(
           kind: 'backup_enqueue_failed',
@@ -100,6 +101,7 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
               (job.backupCompletedAt == null ? '未备份录像保留策略清理' : '已备份录像保留策略清理'),
         );
       } on Object {
+        // broad-catch: Keep the cleanup job retryable when history persistence fails.
         _handledDeletedBackupJobs.remove(job.id);
       }
     }
@@ -154,6 +156,8 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
       }
       await _repository.saveBackupRegistrationCursor(highWatermark);
     } on Object catch (error) {
+      // broad-catch: Startup backup registration is best-effort; log failures so
+      // a later startup or manual backup can retry without blocking app launch.
       unawaited(
         _runtimeLog.log(
           kind: 'backup_increment_failed',
