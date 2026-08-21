@@ -2,7 +2,11 @@ package app.packingproof.mobile
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import androidx.media3.transformer.ExportResult
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -71,5 +75,94 @@ class VideoWatermarkOrientationTest {
 
         assertTrue(twoLines.height > oneLine.height)
         assertTrue(twoLines.width >= oneLine.width)
+    }
+
+    @Test
+    fun `reuses one bitmap and updates its generation when the second changes`() {
+        val renderer = ReusableWatermarkBitmap(
+            videoHeight = 1920,
+            maximumLines = listOf(
+                "8888/88/88 88:88:88",
+                "Order:TRACK123456789",
+            ),
+        )
+
+        val first = renderer.redraw(
+            listOf("2026/08/21 12:34:56", "Order:TRACK123456789"),
+        )
+        val firstGenerationId = first.generationId
+        val second = renderer.redraw(
+            listOf("2026/08/21 12:34:57", "Order:TRACK123456789"),
+        )
+
+        assertSame(first, second)
+        assertNotEquals(firstGenerationId, second.generationId)
+        assertSame(second, renderer.current())
+        renderer.release()
+        assertTrue(second.isRecycled)
+        assertTrue(
+            isSuccessfulWatermarkExport(
+                overlayConfigured = true,
+                bitmapRequestCount = 2,
+                videoFrameCount = 2,
+                videoConversionProcess = ExportResult.CONVERSION_PROCESS_TRANSCODED,
+                outputExists = true,
+                outputBytes = 1024,
+            ),
+        )
+    }
+
+    @Test
+    fun `accepts only exports that processed overlay frames and wrote output`() {
+        assertTrue(
+            isSuccessfulWatermarkExport(
+                overlayConfigured = true,
+                bitmapRequestCount = 60,
+                videoFrameCount = 60,
+                videoConversionProcess = ExportResult.CONVERSION_PROCESS_TRANSCODED,
+                outputExists = true,
+                outputBytes = 1024,
+            ),
+        )
+        assertFalse(
+            isSuccessfulWatermarkExport(
+                overlayConfigured = false,
+                bitmapRequestCount = 0,
+                videoFrameCount = 60,
+                videoConversionProcess = ExportResult.CONVERSION_PROCESS_TRANSCODED,
+                outputExists = true,
+                outputBytes = 1024,
+            ),
+        )
+        assertFalse(
+            isSuccessfulWatermarkExport(
+                overlayConfigured = true,
+                bitmapRequestCount = 60,
+                videoFrameCount = 0,
+                videoConversionProcess = ExportResult.CONVERSION_PROCESS_TRANSCODED,
+                outputExists = true,
+                outputBytes = 1024,
+            ),
+        )
+        assertFalse(
+            isSuccessfulWatermarkExport(
+                overlayConfigured = true,
+                bitmapRequestCount = 60,
+                videoFrameCount = 60,
+                videoConversionProcess = ExportResult.CONVERSION_PROCESS_TRANSMUXED,
+                outputExists = true,
+                outputBytes = 1024,
+            ),
+        )
+        assertFalse(
+            isSuccessfulWatermarkExport(
+                overlayConfigured = true,
+                bitmapRequestCount = 60,
+                videoFrameCount = 60,
+                videoConversionProcess = ExportResult.CONVERSION_PROCESS_TRANSCODED,
+                outputExists = true,
+                outputBytes = 0,
+            ),
+        )
     }
 }

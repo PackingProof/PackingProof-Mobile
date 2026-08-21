@@ -11,12 +11,15 @@ import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.OverlaySettings
+import androidx.media3.common.util.Clock
 import androidx.media3.common.util.Size
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlayEffect
 import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.transformer.Composition
+import androidx.media3.transformer.DefaultAssetLoaderFactory
+import androidx.media3.transformer.DefaultDecoderFactory
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
@@ -89,6 +92,82 @@ internal fun renderWatermarkTextBitmap(
     return bitmap
 }
 
+internal class ReusableWatermarkBitmap(
+    private val videoHeight: Int,
+    maximumLines: List<String>,
+) {
+    init {
+        require(maximumLines.isNotEmpty())
+    }
+
+    private var bitmap: Bitmap = renderWatermarkTextBitmap(videoHeight, maximumLines)
+
+    init {
+        // The first render only establishes stable bounds. All subsequent timestamps are
+        // repainted into this bitmap so Media3 can update one texture via Bitmap.generationId.
+        bitmap.eraseColor(Color.TRANSPARENT)
+    }
+
+    fun redraw(lines: List<String>): Bitmap {
+        require(lines.isNotEmpty())
+        val textSize = (videoHeight * 0.032f).coerceIn(35f, 61f)
+        val strokeWidth = (textSize / 10f).coerceAtLeast(3f)
+        val padding = strokeWidth + 3f
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            this.textSize = textSize
+            textAlign = Paint.Align.RIGHT
+            strokeJoin = Paint.Join.ROUND
+        }
+        val lineHeight = (paint.fontMetrics.bottom - paint.fontMetrics.top) * 1.08f
+        val requiredWidth = lines.maxOf { paint.measureText(it) } + padding * 2
+        val requiredHeight = lineHeight * lines.size + padding * 2
+        require(requiredWidth <= bitmap.width && requiredHeight <= bitmap.height) {
+            "Watermark text exceeds the preallocated bitmap bounds"
+        }
+        val previousGenerationId = bitmap.generationId
+        bitmap.eraseColor(Color.TRANSPARENT)
+        val canvas = Canvas(bitmap)
+        val right = bitmap.width - padding
+        var baseline = padding - paint.fontMetrics.top
+        for (line in lines) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = strokeWidth
+            paint.color = Color.BLACK
+            canvas.drawText(line, right, baseline, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.WHITE
+            canvas.drawText(line, right, baseline, paint)
+            baseline += lineHeight
+        }
+        check(bitmap.generationId != previousGenerationId) {
+            "Watermark bitmap pixels were not updated"
+        }
+        return bitmap
+    }
+
+    fun current(): Bitmap = bitmap
+
+    fun release() {
+        if (!bitmap.isRecycled) bitmap.recycle()
+    }
+}
+
+internal fun isSuccessfulWatermarkExport(
+    overlayConfigured: Boolean,
+    bitmapRequestCount: Int,
+    videoFrameCount: Int,
+    videoConversionProcess: Int,
+    outputExists: Boolean,
+    outputBytes: Long,
+): Boolean =
+    overlayConfigured &&
+        bitmapRequestCount > 0 &&
+        videoFrameCount > 0 &&
+        videoConversionProcess == ExportResult.CONVERSION_PROCESS_TRANSCODED &&
+        outputExists &&
+        outputBytes > 0
+
 @OptIn(UnstableApi::class)
 class VideoWatermarkPlugin(
     context: Context,
@@ -151,30 +230,37 @@ class VideoWatermarkPlugin(
         val settings = watermarkOverlaySettings(recordingOrientation)
         val overlay = object : BitmapOverlay() {
             private val formatter = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.ROOT)
-            private var videoSize = Size(1080, 1920)
             private var cachedSecond = Long.MIN_VALUE
-            private var cachedBitmap: Bitmap? = null
+            private var reusableBitmap: ReusableWatermarkBitmap? = null
+            var wasEverConfigured = false
+                private set
+            var bitmapRequestCount = 0
+                private set
 
             override fun configure(videoSize: Size) {
                 super.configure(videoSize)
-                this.videoSize = videoSize
                 clearCache()
+                val maximumLines = watermarkLines("8888/88/88 88:88:88")
+                reusableBitmap = ReusableWatermarkBitmap(videoSize.height, maximumLines)
+                reusableBitmap?.redraw(
+                    watermarkLines(formatter.format(Date(startedAtMs))),
+                )
+                cachedSecond = 0L
+                wasEverConfigured = true
             }
 
             override fun getBitmap(presentationTimeUs: Long): Bitmap {
+                bitmapRequestCount++
                 val second = presentationTimeUs / 1_000_000L
-                cachedBitmap?.takeIf { cachedSecond == second }?.let { return it }
-                val timestamp = formatter.format(Date(startedAtMs + presentationTimeUs / 1_000L))
-                val lines = if (trackingNumber.isBlank()) {
-                    listOf(timestamp)
-                } else {
-                    listOf(timestamp, "Order:$trackingNumber")
+                reusableBitmap?.takeIf { cachedSecond == second }?.let {
+                    return it.current()
                 }
-                val bitmap = renderOutlinedText(lines)
-                cachedBitmap?.recycle()
+                val timestamp = formatter.format(Date(startedAtMs + presentationTimeUs / 1_000L))
+                val renderer = checkNotNull(reusableBitmap) {
+                    "Watermark overlay was used before configuration"
+                }
                 cachedSecond = second
-                cachedBitmap = bitmap
-                return bitmap
+                return renderer.redraw(watermarkLines(timestamp))
             }
 
             override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings = settings
@@ -184,14 +270,18 @@ class VideoWatermarkPlugin(
                 super.release()
             }
 
-            private fun renderOutlinedText(lines: List<String>): Bitmap {
-                return renderWatermarkTextBitmap(videoSize.height, lines)
+            private fun clearCache() {
+                reusableBitmap?.release()
+                reusableBitmap = null
+                cachedSecond = Long.MIN_VALUE
             }
 
-            private fun clearCache() {
-                cachedBitmap?.recycle()
-                cachedBitmap = null
-                cachedSecond = Long.MIN_VALUE
+            private fun watermarkLines(timestamp: String): List<String> {
+                return if (trackingNumber.isBlank()) {
+                    listOf(timestamp)
+                } else {
+                    listOf(timestamp, "Order:$trackingNumber")
+                }
             }
         }
         val editedMediaItem = EditedMediaItem.Builder(
@@ -202,27 +292,57 @@ class VideoWatermarkPlugin(
 
         pendingResult = result
         pendingOutput = output
+        val decoderFactory = DefaultDecoderFactory.Builder(applicationContext)
+            .setEnableDecoderFallback(true)
+            .build()
+        val assetLoaderFactory = DefaultAssetLoaderFactory(
+            applicationContext,
+            decoderFactory,
+            Clock.DEFAULT,
+            null,
+        )
         transformer = Transformer.Builder(applicationContext)
+            .setAssetLoaderFactory(assetLoaderFactory)
             .setVideoMimeType(videoMime)
             .addListener(
                 object : Transformer.Listener {
                     override fun onCompleted(
                         composition: Composition,
                         exportResult: ExportResult,
-                    ) = finishSuccess(outputPath)
+                    ) {
+                        val outputExists = output.isFile
+                        val outputBytes = if (outputExists) output.length() else 0L
+                        if (
+                            isSuccessfulWatermarkExport(
+                                overlayConfigured = overlay.wasEverConfigured,
+                                bitmapRequestCount = overlay.bitmapRequestCount,
+                                videoFrameCount = exportResult.videoFrameCount,
+                                videoConversionProcess = exportResult.videoConversionProcess,
+                                outputExists = outputExists,
+                                outputBytes = outputBytes,
+                            )
+                        ) {
+                            finishSuccess(outputPath)
+                        } else {
+                            finishError(
+                                IllegalStateException("Watermark export contract was not satisfied"),
+                                failureStage = "export_contract",
+                            )
+                        }
+                    }
 
                     override fun onError(
                         composition: Composition,
                         exportResult: ExportResult,
                         exportException: ExportException,
-                    ) = finishError(exportException)
+                    ) = finishError(exportException, failureStage = "transformer")
                 },
             )
             .build()
         try {
             transformer?.start(editedMediaItem, outputPath)
         } catch (error: Exception) {
-            finishError(error)
+            finishError(error, failureStage = "start")
         }
     }
 
@@ -234,13 +354,23 @@ class VideoWatermarkPlugin(
         result?.success(outputPath)
     }
 
-    private fun finishError(error: Throwable) {
+    private fun finishError(
+        error: Throwable,
+        failureStage: String,
+    ) {
         pendingOutput?.delete()
         pendingOutput = null
         val result = pendingResult
         pendingResult = null
         transformer = null
-        result?.error("watermark_failed", error.message ?: "录像水印生成失败", null)
+        val details = mutableMapOf<String, Any>(
+            "failureStage" to failureStage,
+            "errorType" to error.javaClass.simpleName,
+        )
+        if (error is ExportException) {
+            details["exportErrorCode"] = error.errorCode
+        }
+        result?.error("watermark_failed", "录像水印生成失败", details)
     }
 
     fun dispose() {
