@@ -390,6 +390,13 @@ class _RecordingOrientationSettings extends StatelessWidget {
     required this.onChanged,
   });
 
+  static const List<RecordingOrientation> _displayOrder =
+      <RecordingOrientation>[
+        RecordingOrientation.landscapeLeft,
+        RecordingOrientation.portrait,
+        RecordingOrientation.landscapeRight,
+      ];
+
   final RecordingOrientation orientation;
   final ValueChanged<RecordingOrientation> onChanged;
 
@@ -411,7 +418,7 @@ class _RecordingOrientationSettings extends StatelessWidget {
             width: double.infinity,
             child: SegmentedButton<RecordingOrientation>(
               showSelectedIcon: false,
-              segments: RecordingOrientation.values
+              segments: _displayOrder
                   .map(
                     (value) => ButtonSegment<RecordingOrientation>(
                       value: value,

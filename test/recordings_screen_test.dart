@@ -9,6 +9,7 @@ import 'package:packing_proof_mobile/models/barcode_marker.dart';
 import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
+import 'package:packing_proof_mobile/models/recording_orientation.dart';
 import 'package:packing_proof_mobile/models/recording_spec.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/work_mode.dart';
@@ -494,6 +495,42 @@ void main() {
         matching: find.byKey(const Key('about-settings-open')),
       ),
       findsNothing,
+    );
+  });
+
+  testWidgets('录像方向胶囊按横左竖屏横右排列', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          sessions: const [],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+
+    final SegmentedButton<RecordingOrientation> button = tester.widget(
+      find.byType(SegmentedButton<RecordingOrientation>),
+    );
+    expect(
+      button.segments.map((segment) => segment.value),
+      <RecordingOrientation>[
+        RecordingOrientation.landscapeLeft,
+        RecordingOrientation.portrait,
+        RecordingOrientation.landscapeRight,
+      ],
     );
   });
 
