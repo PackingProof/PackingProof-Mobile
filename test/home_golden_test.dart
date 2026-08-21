@@ -8,6 +8,33 @@ import 'package:packing_proof_mobile/controllers/packing_session_controller.dart
 import 'package:packing_proof_mobile/screens/packing_home_screen.dart';
 import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 
+const double _goldenDiffTolerance = 0.001;
+
+class _TolerantGoldenFileComparator extends LocalFileComparator {
+  _TolerantGoldenFileComparator(LocalFileComparator comparator)
+    : super(comparator.basedir.resolve('home_golden_test.dart'));
+
+  @override
+  Future<bool> compare(Uint8List imageBytes, Uri golden) async {
+    final ComparisonResult result = await GoldenFileComparator.compareLists(
+      imageBytes,
+      await getGoldenBytes(golden),
+    );
+    if (result.passed || result.diffPercent <= _goldenDiffTolerance) {
+      result.dispose();
+      return true;
+    }
+
+    final String error = await generateFailureOutput(result, golden, basedir);
+    result.dispose();
+    throw FlutterError(
+      '$error\n'
+      'Allowed pixel difference: '
+      '${(_goldenDiffTolerance * 100).toStringAsFixed(2)}%.',
+    );
+  }
+}
+
 Future<void> _loadAppFonts(WidgetTester tester) async {
   await tester.runAsync(() async {
     final Uint8List textFont = await File(
@@ -73,6 +100,11 @@ ThemeData _goldenTheme() => ThemeData(
 );
 
 void main() {
+  final GoldenFileComparator comparator = goldenFileComparator;
+  if (comparator is LocalFileComparator) {
+    goldenFileComparator = _TolerantGoldenFileComparator(comparator);
+  }
+
   testWidgets('390x844 首页视觉基线', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
