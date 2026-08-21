@@ -152,16 +152,19 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
         return;
       }
       BackupRegistrationCursor? after = cursor;
-      while (!_disposed) {
+      while (true) {
+        if (_disposed) return;
         final BackupIncrementPage? page = await _repository.loadBackupIncrement(
           after: after,
           highWatermark: highWatermark,
         );
-        if (page == null) break;
+        if (page == null) {
+          await _repository.saveBackupRegistrationCursor(highWatermark);
+          return;
+        }
         await action(page.sessions);
         after = page.nextAfter;
       }
-      await _repository.saveBackupRegistrationCursor(highWatermark);
     } on Object catch (error) {
       // broad-catch: Startup backup registration is best-effort; log failures so
       // a later startup or manual backup can retry without blocking app launch.
@@ -173,6 +176,11 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
       );
     }
   }
+
+  @visibleForTesting
+  Future<void> processStartupBackupIncrementForTesting(
+    Future<void> Function(List<RecordingSession> sessions) action,
+  ) => _processStartupBackupIncrement(action);
 
   Future<void> _forEachRepositoryBackupBatch(
     Future<void> Function(List<RecordingSession> sessions) action,

@@ -73,6 +73,72 @@ void main() {
       everyElement(<String>{'backup-one', 'backup-two'}),
     );
   });
+
+  test('启动增量备份中途关闭不跨过未处理页且下次可恢复', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-backup-cursor-interrupted-',
+    );
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    final SessionRepository firstRepository = SessionRepository(
+      rootDirectory: root,
+    );
+    final DateTime startedAt = DateTime.utc(2026, 8, 21, 10);
+    final List<RecordingSession> sessions = <RecordingSession>[];
+    for (int index = 0; index < 101; index++) {
+      final File file = File('${root.path}/backup-$index.mp4');
+      await file.writeAsBytes(<int>[index % 255 + 1]);
+      sessions.add(
+        RecordingSession(
+          id: 'backup-${index.toString().padLeft(3, '0')}',
+          filePath: file.path,
+          startedAt: startedAt.add(Duration(seconds: index)),
+          endedAt: startedAt.add(Duration(seconds: index + 1)),
+          markers: const <Never>[],
+        ),
+      );
+    }
+    await firstRepository.addSessions(sessions);
+    final PackingSessionController firstController = PackingSessionController(
+      repository: firstRepository,
+      speechService: _NoopSpeechSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    Future<void>? shutdown;
+    final List<String> firstRunIds = <String>[];
+    await firstController.processStartupBackupIncrementForTesting((page) async {
+      firstRunIds.addAll(page.map((session) => session.id));
+      shutdown ??= firstController.shutdown();
+    });
+    await shutdown!;
+    expect(firstRunIds, hasLength(100));
+
+    final SessionRepository verifier = SessionRepository(rootDirectory: root);
+    expect(await verifier.loadBackupRegistrationCursor(), isNull);
+    await verifier.dispose();
+
+    final SessionRepository secondRepository = SessionRepository(
+      rootDirectory: root,
+    );
+    final PackingSessionController secondController = PackingSessionController(
+      repository: secondRepository,
+      speechService: _NoopSpeechSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    final List<String> secondRunIds = <String>[];
+    await secondController.processStartupBackupIncrementForTesting((
+      page,
+    ) async {
+      secondRunIds.addAll(page.map((session) => session.id));
+    });
+    expect(secondRunIds, hasLength(101));
+    expect(await secondRepository.loadBackupRegistrationCursor(), isNotNull);
+    await secondController.shutdown();
+    secondController.dispose();
+  });
 }
 
 class _BackupCall {
