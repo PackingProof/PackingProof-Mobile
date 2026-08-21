@@ -2027,7 +2027,7 @@ class _PrimaryWorkButtonState extends State<_PrimaryWorkButton>
 
   void _syncShimmer() {
     if (widget.view._isWorking) {
-      _shimmerController.repeat();
+      unawaited(_shimmerController.repeat());
     } else {
       _shimmerController.stop();
       _shimmerController.value = 0;

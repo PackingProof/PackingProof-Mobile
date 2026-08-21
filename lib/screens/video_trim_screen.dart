@@ -65,7 +65,7 @@ class _VideoTrimScreenState extends State<VideoTrimScreen> {
     if (_listenerAdded) {
       _video.removeListener(_handlePlaybackBoundary);
     }
-    _video.dispose();
+    unawaited(_video.dispose());
     super.dispose();
   }
 

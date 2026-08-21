@@ -463,10 +463,12 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         widget.focusBackupRevision > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            0,
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeOutCubic,
+          unawaited(
+            _scrollController.animateTo(
+              0,
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+            ),
           );
         }
       });

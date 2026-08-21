@@ -183,7 +183,7 @@ class _RemoteVideoTrimScreenState extends State<RemoteVideoTrimScreen> {
   @override
   void dispose() {
     _video.removeListener(_handleVideoTick);
-    _video.dispose();
+    unawaited(_video.dispose());
     super.dispose();
   }
 

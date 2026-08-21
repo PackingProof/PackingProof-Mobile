@@ -15,7 +15,7 @@ void main() {
     bool completed = false;
     final Future<void> first = guard.dispose();
     final Future<void> second = guard.dispose();
-    first.then((_) => completed = true);
+    unawaited(first.then((_) => completed = true));
 
     await Future<void>.delayed(Duration.zero);
     expect(disposeCount, 1);
