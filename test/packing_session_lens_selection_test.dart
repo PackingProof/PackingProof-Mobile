@@ -316,6 +316,7 @@ void main() {
           videoWatermarkService: _FakeWatermarkSink(),
           capabilities: const PlatformCapabilities(<PlatformCapability>{
             PlatformCapability.continuousCameraRecording,
+            PlatformCapability.orderInfoReceiver,
           }),
           cameraService: ContinuousCameraService(platform: camera),
         );
