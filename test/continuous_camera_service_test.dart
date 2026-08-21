@@ -176,12 +176,17 @@ void main() {
           .setMockMethodCallHandler(channel, null);
     });
 
-    await service.startWork('/tmp/video.mp4', recordAudio: false);
+    await service.startWork(
+      '/tmp/video.mp4',
+      recordAudio: false,
+      trackingNumber: 'TRACK-001',
+    );
 
     expect(calls.single.method, 'startWork');
     expect(calls.single.arguments, <String, Object>{
       'path': '/tmp/video.mp4',
       'recordAudio': false,
+      'trackingNumber': 'TRACK-001',
     });
   });
 

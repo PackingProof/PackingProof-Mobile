@@ -779,6 +779,7 @@ struct CameraRecordingSplitDto: Hashable, CustomStringConvertible {
   var nextPath: String
   var completedStartedAtMs: Int64
   var boundaryAtMs: Int64
+  var watermarkDisposition: String
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -787,12 +788,14 @@ struct CameraRecordingSplitDto: Hashable, CustomStringConvertible {
     let nextPath = pigeonVar_list[1] as! String
     let completedStartedAtMs = pigeonVar_list[2] as! Int64
     let boundaryAtMs = pigeonVar_list[3] as! Int64
+    let watermarkDisposition = pigeonVar_list[4] as! String
 
     return CameraRecordingSplitDto(
       completedPath: completedPath,
       nextPath: nextPath,
       completedStartedAtMs: completedStartedAtMs,
-      boundaryAtMs: boundaryAtMs
+      boundaryAtMs: boundaryAtMs,
+      watermarkDisposition: watermarkDisposition
     )
   }
   func toList() -> [Any?] {
@@ -801,13 +804,14 @@ struct CameraRecordingSplitDto: Hashable, CustomStringConvertible {
       nextPath,
       completedStartedAtMs,
       boundaryAtMs,
+      watermarkDisposition,
     ]
   }
   static func == (lhs: CameraRecordingSplitDto, rhs: CameraRecordingSplitDto) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return PlatformApiPigeonInternal.deepEquals(lhs.completedPath, rhs.completedPath) && PlatformApiPigeonInternal.deepEquals(lhs.nextPath, rhs.nextPath) && PlatformApiPigeonInternal.deepEquals(lhs.completedStartedAtMs, rhs.completedStartedAtMs) && PlatformApiPigeonInternal.deepEquals(lhs.boundaryAtMs, rhs.boundaryAtMs)
+    return PlatformApiPigeonInternal.deepEquals(lhs.completedPath, rhs.completedPath) && PlatformApiPigeonInternal.deepEquals(lhs.nextPath, rhs.nextPath) && PlatformApiPigeonInternal.deepEquals(lhs.completedStartedAtMs, rhs.completedStartedAtMs) && PlatformApiPigeonInternal.deepEquals(lhs.boundaryAtMs, rhs.boundaryAtMs) && PlatformApiPigeonInternal.deepEquals(lhs.watermarkDisposition, rhs.watermarkDisposition)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -816,10 +820,11 @@ struct CameraRecordingSplitDto: Hashable, CustomStringConvertible {
     PlatformApiPigeonInternal.deepHash(value: nextPath, hasher: &hasher)
     PlatformApiPigeonInternal.deepHash(value: completedStartedAtMs, hasher: &hasher)
     PlatformApiPigeonInternal.deepHash(value: boundaryAtMs, hasher: &hasher)
+    PlatformApiPigeonInternal.deepHash(value: watermarkDisposition, hasher: &hasher)
   }
 
   public var description: String {
-    return "CameraRecordingSplitDto(completedPath: \(String(describing: completedPath)), nextPath: \(String(describing: nextPath)), completedStartedAtMs: \(String(describing: completedStartedAtMs)), boundaryAtMs: \(String(describing: boundaryAtMs)))"
+    return "CameraRecordingSplitDto(completedPath: \(String(describing: completedPath)), nextPath: \(String(describing: nextPath)), completedStartedAtMs: \(String(describing: completedStartedAtMs)), boundaryAtMs: \(String(describing: boundaryAtMs)), watermarkDisposition: \(String(describing: watermarkDisposition)))"
   }
 }
 
@@ -828,6 +833,7 @@ struct CameraRecordingStopDto: Hashable, CustomStringConvertible {
   var path: String
   var startedAtMs: Int64
   var endedAtMs: Int64
+  var watermarkDisposition: String
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -835,11 +841,13 @@ struct CameraRecordingStopDto: Hashable, CustomStringConvertible {
     let path = pigeonVar_list[0] as! String
     let startedAtMs = pigeonVar_list[1] as! Int64
     let endedAtMs = pigeonVar_list[2] as! Int64
+    let watermarkDisposition = pigeonVar_list[3] as! String
 
     return CameraRecordingStopDto(
       path: path,
       startedAtMs: startedAtMs,
-      endedAtMs: endedAtMs
+      endedAtMs: endedAtMs,
+      watermarkDisposition: watermarkDisposition
     )
   }
   func toList() -> [Any?] {
@@ -847,13 +855,14 @@ struct CameraRecordingStopDto: Hashable, CustomStringConvertible {
       path,
       startedAtMs,
       endedAtMs,
+      watermarkDisposition,
     ]
   }
   static func == (lhs: CameraRecordingStopDto, rhs: CameraRecordingStopDto) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return PlatformApiPigeonInternal.deepEquals(lhs.path, rhs.path) && PlatformApiPigeonInternal.deepEquals(lhs.startedAtMs, rhs.startedAtMs) && PlatformApiPigeonInternal.deepEquals(lhs.endedAtMs, rhs.endedAtMs)
+    return PlatformApiPigeonInternal.deepEquals(lhs.path, rhs.path) && PlatformApiPigeonInternal.deepEquals(lhs.startedAtMs, rhs.startedAtMs) && PlatformApiPigeonInternal.deepEquals(lhs.endedAtMs, rhs.endedAtMs) && PlatformApiPigeonInternal.deepEquals(lhs.watermarkDisposition, rhs.watermarkDisposition)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -861,10 +870,11 @@ struct CameraRecordingStopDto: Hashable, CustomStringConvertible {
     PlatformApiPigeonInternal.deepHash(value: path, hasher: &hasher)
     PlatformApiPigeonInternal.deepHash(value: startedAtMs, hasher: &hasher)
     PlatformApiPigeonInternal.deepHash(value: endedAtMs, hasher: &hasher)
+    PlatformApiPigeonInternal.deepHash(value: watermarkDisposition, hasher: &hasher)
   }
 
   public var description: String {
-    return "CameraRecordingStopDto(path: \(String(describing: path)), startedAtMs: \(String(describing: startedAtMs)), endedAtMs: \(String(describing: endedAtMs)))"
+    return "CameraRecordingStopDto(path: \(String(describing: path)), startedAtMs: \(String(describing: startedAtMs)), endedAtMs: \(String(describing: endedAtMs)), watermarkDisposition: \(String(describing: watermarkDisposition)))"
   }
 }
 
@@ -1613,8 +1623,8 @@ class OrderReceiverEventApi: OrderReceiverEventApiProtocol {
 protocol CameraHostApi {
   func initialize(request: CameraInitializeRequest, completion: @escaping (Result<CameraInitializationDto, Error>) -> Void)
   func ensurePermissions(recordAudio: Bool, completion: @escaping (Result<Bool, Error>) -> Void)
-  func startWork(path: String, recordAudio: Bool, completion: @escaping (Result<CameraRecordingStartDto, Error>) -> Void)
-  func split(nextPath: String, completion: @escaping (Result<CameraRecordingSplitDto, Error>) -> Void)
+  func startWork(path: String, recordAudio: Bool, trackingNumber: String, completion: @escaping (Result<CameraRecordingStartDto, Error>) -> Void)
+  func split(nextPath: String, trackingNumber: String, completion: @escaping (Result<CameraRecordingSplitDto, Error>) -> Void)
   func stopWork(completion: @escaping (Result<CameraRecordingStopDto, Error>) -> Void)
   func getDiagnostics(completion: @escaping (Result<[String?: Any?]?, Error>) -> Void)
   func setPairingScanEnabled(enabled: Bool, completion: @escaping (Result<Void, Error>) -> Void)
@@ -1675,7 +1685,8 @@ class CameraHostApiSetup {
         let args = message as! [Any?]
         let pathArg = args[0] as! String
         let recordAudioArg = args[1] as! Bool
-        api.startWork(path: pathArg, recordAudio: recordAudioArg) { result in
+        let trackingNumberArg = args[2] as! String
+        api.startWork(path: pathArg, recordAudio: recordAudioArg, trackingNumber: trackingNumberArg) { result in
           switch result {
           case .success(let res):
             reply(wrapResult(res))
@@ -1692,7 +1703,8 @@ class CameraHostApiSetup {
       splitChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let nextPathArg = args[0] as! String
-        api.split(nextPath: nextPathArg) { result in
+        let trackingNumberArg = args[1] as! String
+        api.split(nextPath: nextPathArg, trackingNumber: trackingNumberArg) { result in
           switch result {
           case .success(let res):
             reply(wrapResult(res))

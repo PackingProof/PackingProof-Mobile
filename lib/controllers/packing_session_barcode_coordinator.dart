@@ -28,7 +28,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   void _showCameraNotice(String message);
   Future<bool> _hasRecentTrackingNumber(String trackingNumber);
   void _setActiveOrderInfo(OrderInfo? value, {required bool announce});
-  Future<void> _startRecording();
+  Future<void> _startRecording(String trackingNumber);
   void _bindCurrentCode(String code, DateTime now);
   void _showDuplicateOrderWarning(String trackingNumber);
   void _announceOrderInfo(OrderInfo? info);
@@ -436,7 +436,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         final OrderInfo? orderInfo = await _orderInfoReceiver.lookup(code);
         final int t2 = DateTime.now().millisecondsSinceEpoch;
         _setActiveOrderInfo(orderInfo, announce: false);
-        await _startRecording();
+        await _startRecording(code);
         final int t3 = DateTime.now().millisecondsSinceEpoch;
         unawaited(
           _runtimeLog.log(

@@ -758,7 +758,8 @@ data class CameraRecordingSplitDto (
   val completedPath: String,
   val nextPath: String,
   val completedStartedAtMs: Long,
-  val boundaryAtMs: Long
+  val boundaryAtMs: Long,
+  val watermarkDisposition: String
 )
  {
   companion object {
@@ -767,7 +768,8 @@ data class CameraRecordingSplitDto (
       val nextPath = pigeonVar_list[1] as String
       val completedStartedAtMs = pigeonVar_list[2] as Long
       val boundaryAtMs = pigeonVar_list[3] as Long
-      return CameraRecordingSplitDto(completedPath, nextPath, completedStartedAtMs, boundaryAtMs)
+      val watermarkDisposition = pigeonVar_list[4] as String
+      return CameraRecordingSplitDto(completedPath, nextPath, completedStartedAtMs, boundaryAtMs, watermarkDisposition)
     }
   }
   fun toList(): List<Any?> {
@@ -776,6 +778,7 @@ data class CameraRecordingSplitDto (
       nextPath,
       completedStartedAtMs,
       boundaryAtMs,
+      watermarkDisposition,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -786,7 +789,7 @@ data class CameraRecordingSplitDto (
       return true
     }
     val other = other as CameraRecordingSplitDto
-    return PlatformApiPigeonUtils.deepEquals(this.completedPath, other.completedPath) && PlatformApiPigeonUtils.deepEquals(this.nextPath, other.nextPath) && PlatformApiPigeonUtils.deepEquals(this.completedStartedAtMs, other.completedStartedAtMs) && PlatformApiPigeonUtils.deepEquals(this.boundaryAtMs, other.boundaryAtMs)
+    return PlatformApiPigeonUtils.deepEquals(this.completedPath, other.completedPath) && PlatformApiPigeonUtils.deepEquals(this.nextPath, other.nextPath) && PlatformApiPigeonUtils.deepEquals(this.completedStartedAtMs, other.completedStartedAtMs) && PlatformApiPigeonUtils.deepEquals(this.boundaryAtMs, other.boundaryAtMs) && PlatformApiPigeonUtils.deepEquals(this.watermarkDisposition, other.watermarkDisposition)
   }
 
   override fun hashCode(): Int {
@@ -795,10 +798,11 @@ data class CameraRecordingSplitDto (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.nextPath)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.completedStartedAtMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.boundaryAtMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.watermarkDisposition)
     return result
   }
   override fun toString(): String {
-    return "CameraRecordingSplitDto(completedPath=$completedPath, nextPath=$nextPath, completedStartedAtMs=$completedStartedAtMs, boundaryAtMs=$boundaryAtMs)"
+    return "CameraRecordingSplitDto(completedPath=$completedPath, nextPath=$nextPath, completedStartedAtMs=$completedStartedAtMs, boundaryAtMs=$boundaryAtMs, watermarkDisposition=$watermarkDisposition)"
   }
 }
 
@@ -806,7 +810,8 @@ data class CameraRecordingSplitDto (
 data class CameraRecordingStopDto (
   val path: String,
   val startedAtMs: Long,
-  val endedAtMs: Long
+  val endedAtMs: Long,
+  val watermarkDisposition: String
 )
  {
   companion object {
@@ -814,7 +819,8 @@ data class CameraRecordingStopDto (
       val path = pigeonVar_list[0] as String
       val startedAtMs = pigeonVar_list[1] as Long
       val endedAtMs = pigeonVar_list[2] as Long
-      return CameraRecordingStopDto(path, startedAtMs, endedAtMs)
+      val watermarkDisposition = pigeonVar_list[3] as String
+      return CameraRecordingStopDto(path, startedAtMs, endedAtMs, watermarkDisposition)
     }
   }
   fun toList(): List<Any?> {
@@ -822,6 +828,7 @@ data class CameraRecordingStopDto (
       path,
       startedAtMs,
       endedAtMs,
+      watermarkDisposition,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -832,7 +839,7 @@ data class CameraRecordingStopDto (
       return true
     }
     val other = other as CameraRecordingStopDto
-    return PlatformApiPigeonUtils.deepEquals(this.path, other.path) && PlatformApiPigeonUtils.deepEquals(this.startedAtMs, other.startedAtMs) && PlatformApiPigeonUtils.deepEquals(this.endedAtMs, other.endedAtMs)
+    return PlatformApiPigeonUtils.deepEquals(this.path, other.path) && PlatformApiPigeonUtils.deepEquals(this.startedAtMs, other.startedAtMs) && PlatformApiPigeonUtils.deepEquals(this.endedAtMs, other.endedAtMs) && PlatformApiPigeonUtils.deepEquals(this.watermarkDisposition, other.watermarkDisposition)
   }
 
   override fun hashCode(): Int {
@@ -840,10 +847,11 @@ data class CameraRecordingStopDto (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.path)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.startedAtMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.endedAtMs)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.watermarkDisposition)
     return result
   }
   override fun toString(): String {
-    return "CameraRecordingStopDto(path=$path, startedAtMs=$startedAtMs, endedAtMs=$endedAtMs)"
+    return "CameraRecordingStopDto(path=$path, startedAtMs=$startedAtMs, endedAtMs=$endedAtMs, watermarkDisposition=$watermarkDisposition)"
   }
 }
 
@@ -1688,8 +1696,8 @@ class OrderReceiverEventApi(private val binaryMessenger: BinaryMessenger, privat
 interface CameraHostApi {
   fun initialize(request: CameraInitializeRequest, callback: (Result<CameraInitializationDto>) -> Unit)
   fun ensurePermissions(recordAudio: Boolean, callback: (Result<Boolean>) -> Unit)
-  fun startWork(path: String, recordAudio: Boolean, callback: (Result<CameraRecordingStartDto>) -> Unit)
-  fun split(nextPath: String, callback: (Result<CameraRecordingSplitDto>) -> Unit)
+  fun startWork(path: String, recordAudio: Boolean, trackingNumber: String, callback: (Result<CameraRecordingStartDto>) -> Unit)
+  fun split(nextPath: String, trackingNumber: String, callback: (Result<CameraRecordingSplitDto>) -> Unit)
   fun stopWork(callback: (Result<CameraRecordingStopDto>) -> Unit)
   fun getDiagnostics(callback: (Result<Map<String?, Any?>?>) -> Unit)
   fun setPairingScanEnabled(enabled: Boolean, callback: (Result<Unit>) -> Unit)
@@ -1759,7 +1767,8 @@ interface CameraHostApi {
             val args = message as List<Any?>
             val pathArg = args[0] as String
             val recordAudioArg = args[1] as Boolean
-            api.startWork(pathArg, recordAudioArg) { result: Result<CameraRecordingStartDto> ->
+            val trackingNumberArg = args[2] as String
+            api.startWork(pathArg, recordAudioArg, trackingNumberArg) { result: Result<CameraRecordingStartDto> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(PlatformApiPigeonUtils.wrapError(error))
@@ -1779,7 +1788,8 @@ interface CameraHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val nextPathArg = args[0] as String
-            api.split(nextPathArg) { result: Result<CameraRecordingSplitDto> ->
+            val trackingNumberArg = args[1] as String
+            api.split(nextPathArg, trackingNumberArg) { result: Result<CameraRecordingSplitDto> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(PlatformApiPigeonUtils.wrapError(error))

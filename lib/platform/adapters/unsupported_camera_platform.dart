@@ -38,6 +38,7 @@ class UnsupportedCameraPlatform implements CameraPlatform {
   Future<NativeRecordingStart> startWork(
     String path, {
     required bool recordAudio,
+    required String trackingNumber,
   }) {
     throw const CapabilityUnavailableException(
       PlatformCapability.continuousCameraRecording,
@@ -46,7 +47,10 @@ class UnsupportedCameraPlatform implements CameraPlatform {
   }
 
   @override
-  Future<NativeRecordingSplit> split(String nextPath) {
+  Future<NativeRecordingSplit> split(
+    String nextPath, {
+    required String trackingNumber,
+  }) {
     throw const CapabilityUnavailableException(
       PlatformCapability.continuousCameraRecording,
       reason: '当前平台暂不支持连续录像',

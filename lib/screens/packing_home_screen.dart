@@ -564,6 +564,9 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                   workMode: _controller.workMode,
                   operationMode: _controller.operationMode,
                   recordingOrientation: _controller.recordingOrientation,
+                  nativeLiveWatermark: _controller.capabilities.supports(
+                    PlatformCapability.liveRecordingWatermark,
+                  ),
                   capabilityMode: _controller.capabilityMode,
                   capabilityProbeMessage: _controller.capabilityProbeMessage,
                   canFinishCurrentOrder: _controller.canFinishCurrentOrder,
@@ -777,6 +780,7 @@ class PackingHomeView extends StatelessWidget {
     this.workMode = WorkMode.continuousScan,
     this.operationMode = RecordingOperationMode.shipping,
     this.recordingOrientation = RecordingOrientation.portrait,
+    this.nativeLiveWatermark = false,
     this.capabilityMode,
     this.capabilityProbeMessage,
     this.canFinishCurrentOrder = false,
@@ -817,6 +821,7 @@ class PackingHomeView extends StatelessWidget {
   final WorkMode workMode;
   final RecordingOperationMode operationMode;
   final RecordingOrientation recordingOrientation;
+  final bool nativeLiveWatermark;
   final CameraCapabilityMode? capabilityMode;
   final String? capabilityProbeMessage;
   final bool canFinishCurrentOrder;
@@ -973,13 +978,8 @@ class _CameraArea extends StatelessWidget {
         fit: StackFit.expand,
         children: <Widget>[
           Positioned.fill(child: preview),
-          Positioned.fill(
-            child: _CameraWatermarkPlacement(
-              view: view,
-              topMargin: view._isRecording ? 68 : 22,
-              rightMargin: view.flashAvailable ? 72 : 18,
-            ),
-          ),
+          if (!view.nativeLiveWatermark || !view._isRecording)
+            Positioned.fill(child: _CameraWatermarkPlacement(view: view)),
           Positioned(
             left: 24,
             right: 24,
@@ -1389,7 +1389,7 @@ class _CameraWatermarkPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final String text = <String>[
       _watermarkTimestamp(timestamp),
-      if (trackingNumber.isNotEmpty) 'Order:$trackingNumber',
+      if (trackingNumber.isNotEmpty) trackingNumber,
     ].join('\n');
     final TextStyle baseStyle = TextStyle(
       fontSize: fontSize,
@@ -1409,12 +1409,12 @@ class _CameraWatermarkPreview extends StatelessWidget {
           key: const Key('camera-watermark-preview'),
           width: 250,
           child: Stack(
-            alignment: Alignment.topRight,
+            alignment: Alignment.topCenter,
             children: <Widget>[
               Text(
                 text,
                 key: const Key('camera-watermark-outline'),
-                textAlign: TextAlign.right,
+                textAlign: TextAlign.center,
                 textScaler: TextScaler.noScaling,
                 style: baseStyle.copyWith(
                   foreground: Paint()
@@ -1427,7 +1427,7 @@ class _CameraWatermarkPreview extends StatelessWidget {
               Text(
                 text,
                 key: const Key('camera-watermark-fill'),
-                textAlign: TextAlign.right,
+                textAlign: TextAlign.center,
                 textScaler: TextScaler.noScaling,
                 style: baseStyle.copyWith(color: Colors.white),
               ),
@@ -1440,15 +1440,9 @@ class _CameraWatermarkPreview extends StatelessWidget {
 }
 
 class _CameraWatermarkPlacement extends StatelessWidget {
-  const _CameraWatermarkPlacement({
-    required this.view,
-    required this.topMargin,
-    required this.rightMargin,
-  });
+  const _CameraWatermarkPlacement({required this.view});
 
   final PackingHomeView view;
-  final double topMargin;
-  final double rightMargin;
 
   @override
   Widget build(BuildContext context) {
@@ -1465,7 +1459,6 @@ class _CameraWatermarkPlacement extends StatelessWidget {
           orientation: view.recordingOrientation,
           videoSize: viewport,
           watermarkSize: watermarkSize,
-          margin: math.max(topMargin, rightMargin),
         );
         return Stack(
           children: <Widget>[

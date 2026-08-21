@@ -798,6 +798,7 @@ class CameraRecordingSplitDto {
     required this.nextPath,
     required this.completedStartedAtMs,
     required this.boundaryAtMs,
+    required this.watermarkDisposition,
   });
 
   String completedPath;
@@ -808,12 +809,15 @@ class CameraRecordingSplitDto {
 
   int boundaryAtMs;
 
+  String watermarkDisposition;
+
   List<Object?> _toList() {
     return <Object?>[
       completedPath,
       nextPath,
       completedStartedAtMs,
       boundaryAtMs,
+      watermarkDisposition,
     ];
   }
 
@@ -827,6 +831,7 @@ class CameraRecordingSplitDto {
       nextPath: result[1]! as String,
       completedStartedAtMs: result[2]! as int,
       boundaryAtMs: result[3]! as int,
+      watermarkDisposition: result[4]! as String,
     );
   }
 
@@ -839,7 +844,7 @@ class CameraRecordingSplitDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(completedPath, other.completedPath) && _deepEquals(nextPath, other.nextPath) && _deepEquals(completedStartedAtMs, other.completedStartedAtMs) && _deepEquals(boundaryAtMs, other.boundaryAtMs);
+    return _deepEquals(completedPath, other.completedPath) && _deepEquals(nextPath, other.nextPath) && _deepEquals(completedStartedAtMs, other.completedStartedAtMs) && _deepEquals(boundaryAtMs, other.boundaryAtMs) && _deepEquals(watermarkDisposition, other.watermarkDisposition);
   }
 
   @override
@@ -848,7 +853,7 @@ class CameraRecordingSplitDto {
 
   @override
   String toString() {
-    return 'CameraRecordingSplitDto(completedPath: $completedPath, nextPath: $nextPath, completedStartedAtMs: $completedStartedAtMs, boundaryAtMs: $boundaryAtMs)';
+    return 'CameraRecordingSplitDto(completedPath: $completedPath, nextPath: $nextPath, completedStartedAtMs: $completedStartedAtMs, boundaryAtMs: $boundaryAtMs, watermarkDisposition: $watermarkDisposition)';
   }
 }
 
@@ -857,6 +862,7 @@ class CameraRecordingStopDto {
     required this.path,
     required this.startedAtMs,
     required this.endedAtMs,
+    required this.watermarkDisposition,
   });
 
   String path;
@@ -865,11 +871,14 @@ class CameraRecordingStopDto {
 
   int endedAtMs;
 
+  String watermarkDisposition;
+
   List<Object?> _toList() {
     return <Object?>[
       path,
       startedAtMs,
       endedAtMs,
+      watermarkDisposition,
     ];
   }
 
@@ -882,6 +891,7 @@ class CameraRecordingStopDto {
       path: result[0]! as String,
       startedAtMs: result[1]! as int,
       endedAtMs: result[2]! as int,
+      watermarkDisposition: result[3]! as String,
     );
   }
 
@@ -894,7 +904,7 @@ class CameraRecordingStopDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(path, other.path) && _deepEquals(startedAtMs, other.startedAtMs) && _deepEquals(endedAtMs, other.endedAtMs);
+    return _deepEquals(path, other.path) && _deepEquals(startedAtMs, other.startedAtMs) && _deepEquals(endedAtMs, other.endedAtMs) && _deepEquals(watermarkDisposition, other.watermarkDisposition);
   }
 
   @override
@@ -903,7 +913,7 @@ class CameraRecordingStopDto {
 
   @override
   String toString() {
-    return 'CameraRecordingStopDto(path: $path, startedAtMs: $startedAtMs, endedAtMs: $endedAtMs)';
+    return 'CameraRecordingStopDto(path: $path, startedAtMs: $startedAtMs, endedAtMs: $endedAtMs, watermarkDisposition: $watermarkDisposition)';
   }
 }
 
@@ -1789,14 +1799,14 @@ class CameraHostApi {
     return pigeonVar_replyValue! as bool;
   }
 
-  Future<CameraRecordingStartDto> startWork(String path, bool recordAudio) async {
+  Future<CameraRecordingStartDto> startWork(String path, bool recordAudio, String trackingNumber) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.startWork$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[path, recordAudio]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[path, recordAudio, trackingNumber]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1808,14 +1818,14 @@ class CameraHostApi {
     return pigeonVar_replyValue! as CameraRecordingStartDto;
   }
 
-  Future<CameraRecordingSplitDto> split(String nextPath) async {
+  Future<CameraRecordingSplitDto> split(String nextPath, String trackingNumber) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.split$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[nextPath]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[nextPath, trackingNumber]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(

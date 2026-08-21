@@ -9,7 +9,7 @@ final class IosWatermarkRasterTests: XCTestCase {
   func testAttributedTextUsesFixedPreviewLineHeight() throws {
     let fontSize: CGFloat = 40
     let text = IosWatermarkStyle.attributedText(
-      "2026/08/21 12:34:56\nOrder:TRACK-001",
+      "2026/08/21 12:34:56\nTRACK-001",
       fontSize: fontSize
     )
     let attributes = text.attributes(at: 0, effectiveRange: nil)
@@ -81,6 +81,68 @@ final class IosWatermarkRasterTests: XCTestCase {
         fixture.displayedSize,
         fixture.name
       )
+    }
+  }
+
+  func testLiveRendererPlacesSamePixelsAtOutputTopCenterInAllOrientations()
+    throws
+  {
+    let sourceWidth = 1080
+    let sourceHeight = 1920
+    let date = Date(timeIntervalSince1970: 1_776_768_896)
+    for orientation in ["portrait", "landscapeLeft", "landscapeRight"] {
+      var pixelBuffer: CVPixelBuffer?
+      XCTAssertEqual(
+        CVPixelBufferCreate(
+          kCFAllocatorDefault,
+          sourceWidth,
+          sourceHeight,
+          kCVPixelFormatType_32BGRA,
+          [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary,
+          &pixelBuffer
+        ),
+        kCVReturnSuccess
+      )
+      let buffer = try XCTUnwrap(pixelBuffer)
+      fill(buffer, blue: 80, green: 96, red: 112)
+      try IosLiveWatermarkRenderer(timeZone: TimeZone(secondsFromGMT: 0)!).apply(
+        to: buffer,
+        orientation: orientation,
+        trackingNumber: "TRACK-001",
+        date: date
+      )
+      let bounds = try XCTUnwrap(
+        changedOutputBounds(
+          buffer,
+          background: (80, 96, 112),
+          orientation: orientation
+        )
+      )
+      let output = IosLiveWatermarkGeometry.outputSize(
+        sourceWidth: sourceWidth,
+        sourceHeight: sourceHeight,
+        orientation: orientation
+      )
+      XCTAssertEqual(bounds.midX, output.width / 2, accuracy: 2, orientation)
+      XCTAssertGreaterThanOrEqual(bounds.minY, output.height * 0.1, orientation)
+      XCTAssertLessThan(bounds.minY, output.height * 0.1 + 24, orientation)
+      XCTAssertGreaterThan(bounds.brightPixels, 40, orientation)
+      XCTAssertGreaterThan(bounds.darkPixels, 40, orientation)
+    }
+  }
+
+  func testLiveWatermarkRasterOriginIsExactlyTopTenPercentAndCentered() {
+    for output in [
+      CGSize(width: 1080, height: 1920),
+      CGSize(width: 1920, height: 1080),
+    ] {
+      let raster = CGSize(width: 420, height: 120)
+      let origin = IosLiveWatermarkGeometry.outputOrigin(
+        outputSize: output,
+        rasterSize: raster
+      )
+      XCTAssertEqual(origin.x + raster.width / 2, output.width / 2)
+      XCTAssertEqual(origin.y, output.height * 0.1)
     }
   }
 
@@ -230,6 +292,81 @@ final class IosWatermarkRasterTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(watermark.bounds.minY, 8, fixture)
     XCTAssertLessThanOrEqual(watermark.bounds.maxX, imageSize.width - 8, fixture)
     XCTAssertLessThanOrEqual(watermark.bounds.maxY, imageSize.height - 8, fixture)
+  }
+
+  private func fill(
+    _ pixelBuffer: CVPixelBuffer,
+    blue: UInt8,
+    green: UInt8,
+    red: UInt8
+  ) {
+    CVPixelBufferLockBaseAddress(pixelBuffer, [])
+    defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
+    let width = CVPixelBufferGetWidth(pixelBuffer)
+    let height = CVPixelBufferGetHeight(pixelBuffer)
+    let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+    let bytes = CVPixelBufferGetBaseAddress(pixelBuffer)!.assumingMemoryBound(
+      to: UInt8.self
+    )
+    for y in 0..<height {
+      for x in 0..<width {
+        let offset = y * bytesPerRow + x * 4
+        bytes[offset] = blue
+        bytes[offset + 1] = green
+        bytes[offset + 2] = red
+        bytes[offset + 3] = 255
+      }
+    }
+  }
+
+  private func changedOutputBounds(
+    _ pixelBuffer: CVPixelBuffer,
+    background: (UInt8, UInt8, UInt8),
+    orientation: String
+  ) -> (midX: CGFloat, minY: CGFloat, brightPixels: Int, darkPixels: Int)? {
+    CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+    let sourceWidth = CVPixelBufferGetWidth(pixelBuffer)
+    let sourceHeight = CVPixelBufferGetHeight(pixelBuffer)
+    let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+    let bytes = CVPixelBufferGetBaseAddress(pixelBuffer)!.assumingMemoryBound(
+      to: UInt8.self
+    )
+    var minX = Int.max
+    var maxX = Int.min
+    var minY = Int.max
+    var brightPixels = 0
+    var darkPixels = 0
+    for sourceY in 0..<sourceHeight {
+      for sourceX in 0..<sourceWidth {
+        let offset = sourceY * bytesPerRow + sourceX * 4
+        let blue = bytes[offset]
+        let green = bytes[offset + 1]
+        let red = bytes[offset + 2]
+        guard (blue, green, red) != background else { continue }
+        let output: (x: Int, y: Int) = switch orientation {
+        case "landscapeLeft":
+          (sourceHeight - 1 - sourceY, sourceX)
+        case "landscapeRight":
+          (sourceY, sourceWidth - 1 - sourceX)
+        default:
+          (sourceX, sourceY)
+        }
+        minX = min(minX, output.x)
+        maxX = max(maxX, output.x)
+        minY = min(minY, output.y)
+        let luminance = (Int(red) + Int(green) + Int(blue)) / 3
+        brightPixels += luminance > 180 ? 1 : 0
+        darkPixels += luminance < 45 ? 1 : 0
+      }
+    }
+    guard minX <= maxX else { return nil }
+    return (
+      midX: CGFloat(minX + maxX) / 2,
+      minY: CGFloat(minY),
+      brightPixels: brightPixels,
+      darkPixels: darkPixels
+    )
   }
 }
 

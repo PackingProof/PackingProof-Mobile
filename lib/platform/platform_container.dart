@@ -69,6 +69,7 @@ class AppContainer {
           : platform == _AppPlatform.ios
           ? const PlatformCapabilities(<PlatformCapability>{
               PlatformCapability.continuousCameraRecording,
+              PlatformCapability.liveRecordingWatermark,
               PlatformCapability.lanBackup,
               PlatformCapability.orderInfoReceiver,
               PlatformCapability.videoWatermark,

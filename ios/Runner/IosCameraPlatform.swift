@@ -118,7 +118,11 @@ final class IosCameraHostApi:
   private var videoInput: AVAssetWriterInput?
   private var audioInput: AVAssetWriterInput?
   private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
+  private let liveWatermarkRenderer = IosLiveWatermarkRenderer()
   private var currentPath: String?
+  private var currentTrackingNumber = ""
+  private var currentWatermarkFailed = false
+  private var currentWatermarkError: String?
   private var currentSegmentId = ""
   private var currentStartedAtMs: Int64 = 0
   private var currentSegmentSerial: Int64 = 0
@@ -235,6 +239,7 @@ final class IosCameraHostApi:
   func startWork(
     path: String,
     recordAudio: Bool,
+    trackingNumber: String,
     completion: @escaping (Result<CameraRecordingStartDto, Error>) -> Void
   ) {
     sessionQueue.async { [weak self] in
@@ -258,7 +263,7 @@ final class IosCameraHostApi:
       self.recordAudio = recordAudio
       do {
         try self.ensureRunningForWork()
-        try self.startWriter(path: path)
+        try self.startWriter(path: path, trackingNumber: trackingNumber)
         let startedAt = self.currentStartedAtMs
         self.eventApi.segmentStarted(
           event: CameraSegmentStartedDto(
@@ -284,6 +289,7 @@ final class IosCameraHostApi:
 
   func split(
     nextPath: String,
+    trackingNumber: String,
     completion: @escaping (Result<CameraRecordingSplitDto, Error>) -> Void
   ) {
     sessionQueue.async { [weak self] in
@@ -330,13 +336,18 @@ final class IosCameraHostApi:
             return
           }
           do {
-            try self.startWriter(path: nextPath)
+            let completedDisposition = try finishResult.get()
+            try self.startWriter(
+              path: nextPath,
+              trackingNumber: trackingNumber
+            )
             if self.recordingLifecycle.complete(request, succeeded: true) {
               completion(.success(CameraRecordingSplitDto(
                 completedPath: completedPath,
                 nextPath: nextPath,
                 completedStartedAtMs: completedStartedAt,
-                boundaryAtMs: boundaryAt
+                boundaryAtMs: boundaryAt,
+                watermarkDisposition: completedDisposition
               )))
             }
           } catch {
@@ -382,14 +393,15 @@ final class IosCameraHostApi:
           return
         }
         switch finishResult {
-        case .success:
+        case .success(let watermarkDisposition):
           guard self.recordingLifecycle.complete(request, succeeded: true) else {
             return
           }
           completion(.success(CameraRecordingStopDto(
             path: path,
             startedAtMs: startedAt,
-            endedAtMs: endedAt
+            endedAtMs: endedAt,
+            watermarkDisposition: watermarkDisposition
           )))
         case .failure(let error):
           guard self.recordingLifecycle.complete(request, succeeded: false) else {
@@ -454,6 +466,8 @@ final class IosCameraHostApi:
         "currentAudioSampleCount": currentAudioSampleCount,
         "currentAudioAppendFailedCount": currentAudioAppendFailedCount,
         "currentAudioLastError": currentAudioLastError,
+        "liveWatermarkFailed": currentWatermarkFailed,
+        "liveWatermarkError": currentWatermarkError,
         "lastAudioSampleCount": lastAudioSampleCount,
         "lastAudioAppendFailedCount": lastAudioAppendFailedCount,
         "lastAudioLastError": lastAudioLastError,
@@ -721,6 +735,22 @@ final class IosCameraHostApi:
     if output === videoOutput {
       guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
         return
+      }
+      if writer != nil && !currentWatermarkFailed {
+        do {
+          try liveWatermarkRenderer.apply(
+            to: pixelBuffer,
+            orientation: recordingOrientationName,
+            trackingNumber: currentTrackingNumber
+          )
+        } catch {
+          currentWatermarkFailed = true
+          currentWatermarkError = String(describing: error)
+          eventApi.nativeError(
+            message: "录像继续保存，但实时水印写入失败",
+            completion: { _ in }
+          )
+        }
       }
       bufferLock.lock()
       latestPixelBuffer = pixelBuffer
@@ -1083,7 +1113,7 @@ final class IosCameraHostApi:
 
   // MARK: - Recording
 
-  private func startWriter(path: String) throws {
+  private func startWriter(path: String, trackingNumber: String) throws {
     if recordAudio {
       configureRecordingAudioSession()
     }
@@ -1155,6 +1185,10 @@ final class IosCameraHostApi:
     self.audioInput = audioInput
     self.pixelBufferAdaptor = adaptor
     self.currentPath = path
+    self.currentTrackingNumber = trackingNumber
+    self.currentWatermarkFailed = false
+    self.currentWatermarkError = nil
+    self.liveWatermarkRenderer.reset()
     self.currentSegmentId = UUID().uuidString
     self.currentStartedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
     self.currentSegmentSerial += 1
@@ -1195,7 +1229,7 @@ final class IosCameraHostApi:
   private func finishCurrentWriter(
     _ sendEvents: Bool = true,
     timeout: TimeInterval = 5,
-    completion: @escaping (Result<Void, Error>) -> Void
+    completion: @escaping (Result<String, Error>) -> Void
   ) {
     guard let writer else {
       completion(.failure(IosCameraWriterFinishPolicy.missingWriterError()))
@@ -1205,6 +1239,8 @@ final class IosCameraHostApi:
     let completedStartedAt = currentStartedAtMs
     let completedSegmentId = currentSegmentId
     let completedSegmentSerial = currentSegmentSerial
+    let completedWatermarkDisposition = currentWatermarkFailed
+      ? "failedPartial" : "completed"
     let endedAt = Int64(Date().timeIntervalSince1970 * 1000)
     videoInput?.markAsFinished()
     audioInput?.markAsFinished()
@@ -1213,6 +1249,10 @@ final class IosCameraHostApi:
     self.audioInput = nil
     self.pixelBufferAdaptor = nil
     self.currentPath = nil
+    self.currentTrackingNumber = ""
+    self.currentWatermarkFailed = false
+    self.currentWatermarkError = nil
+    self.liveWatermarkRenderer.reset()
     writerSessionStarted = false
     lastAudioSampleCount = currentAudioSampleCount
     lastAudioAppendFailedCount = currentAudioAppendFailedCount
@@ -1280,7 +1320,7 @@ final class IosCameraHostApi:
       )
       if sendEvents {
         guard let self else {
-          completion(finishResult)
+          completion(finishResult.map { completedWatermarkDisposition })
           return
         }
         if writerStatus == .completed, let completedPath, !completedSegmentId.isEmpty {
@@ -1305,7 +1345,7 @@ final class IosCameraHostApi:
           )
         }
       }
-      completion(finishResult)
+      completion(finishResult.map { completedWatermarkDisposition })
     }
   }
 

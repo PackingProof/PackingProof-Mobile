@@ -63,6 +63,7 @@ class _FakeCameraPlatform implements CameraPlatform {
   Future<NativeRecordingStart> startWork(
     String path, {
     required bool recordAudio,
+    required String trackingNumber,
   }) async {
     startWorkCalls++;
     lastPath = path;
@@ -71,7 +72,10 @@ class _FakeCameraPlatform implements CameraPlatform {
   }
 
   @override
-  Future<NativeRecordingSplit> split(String nextPath) {
+  Future<NativeRecordingSplit> split(
+    String nextPath, {
+    required String trackingNumber,
+  }) {
     throw UnimplementedError();
   }
 
@@ -81,6 +85,7 @@ class _FakeCameraPlatform implements CameraPlatform {
       path: lastPath ?? '',
       startedAt: DateTime.now(),
       endedAt: DateTime.now(),
+      watermarkDisposition: 'postProcessRequired',
     );
   }
 

@@ -25,12 +25,24 @@ void main() {
 
     expect(
       android.capabilities.supported,
-      containsAll(PlatformCapability.values),
+      containsAll(
+        PlatformCapability.values.where(
+          (PlatformCapability capability) =>
+              capability != PlatformCapability.liveRecordingWatermark,
+        ),
+      ),
+    );
+    expect(
+      android.capabilities.supports(
+        PlatformCapability.liveRecordingWatermark,
+      ),
+      isFalse,
     );
     expect(
       ios.capabilities.supported,
       containsAll(<PlatformCapability>{
         PlatformCapability.continuousCameraRecording,
+        PlatformCapability.liveRecordingWatermark,
         PlatformCapability.lanBackup,
         PlatformCapability.orderInfoReceiver,
         PlatformCapability.videoWatermark,

@@ -906,9 +906,9 @@ class PackingSessionController extends ChangeNotifier
   Future<void> previewSpeech() => _speechService.preview();
 
   @override
-  Future<void> _startRecording() async {
+  Future<void> _startRecording(String trackingNumber) async {
     if (_supportsNativeCamera) {
-      await _startNativeRecording();
+      await _startNativeRecording(trackingNumber);
       return;
     }
     final CameraController? camera = _cameraController;
@@ -938,7 +938,7 @@ class PackingSessionController extends ChangeNotifier
     _startElapsedTimer();
   }
 
-  Future<void> _startNativeRecording() async {
+  Future<void> _startNativeRecording(String trackingNumber) async {
     final ContinuousCameraService? camera = _nativeCamera;
     if (camera == null || _nativeInitialization == null) {
       throw StateError('摄像头尚未准备完成');
@@ -950,6 +950,7 @@ class PackingSessionController extends ChangeNotifier
     final NativeRecordingStart started = await camera.startWork(
       path,
       recordAudio: _recordAudioEnabled,
+      trackingNumber: trackingNumber,
     );
     _recordingId = recordingId;
     _activeSegmentId = recordingId;
@@ -1011,16 +1012,25 @@ class PackingSessionController extends ChangeNotifier
       trackingNumber: draft.markers.isEmpty ? '' : draft.markers.first.code,
       operationMode: _operationMode,
     );
-    final RecordingSession session = _standaloneSession(
-      id: segmentId,
-      path: savedPath,
-      draft: draft,
-    );
+    final RecordingSession session =
+        _standaloneSession(
+          id: segmentId,
+          path: savedPath,
+          draft: draft,
+        ).copyWith(
+          watermarkStatus: nativeWatermarkStatus(stopped.watermarkDisposition),
+        );
     _sessions = await _repository.addSession(session);
-    final RecordingOrientation recordingOrientation = _recordingOrientation;
-    _runInBackground(
-      _watermarkAndBackup(savedPath, session, recordingOrientation),
-    );
+    if (stopped.watermarkDisposition == 'postProcessRequired') {
+      final RecordingOrientation recordingOrientation = _recordingOrientation;
+      _runInBackground(
+        _watermarkAndBackup(savedPath, session, recordingOrientation),
+      );
+    } else {
+      _runInBackground(
+        _enqueueBackupIfNeeded(savedPath, <RecordingSession>[session]),
+      );
+    }
     _elapsed = stopped.endedAt.difference(_timeline.recordingStartedAt!);
     _timeline.reset();
     _recordingId = null;
@@ -1221,7 +1231,10 @@ class PackingSessionController extends ChangeNotifier
     final String nextId =
         '${recordingId}_${nextIndex.toString().padLeft(3, '0')}';
     final String nextPath = await _repository.recordingPath(nextId);
-    final NativeRecordingSplit split = await camera.split(nextPath);
+    final NativeRecordingSplit split = await camera.split(
+      nextPath,
+      trackingNumber: code,
+    );
     final RecordingSegmentTransition? transition = _timeline.startNext(
       code,
       split.boundaryAt,
@@ -1241,17 +1254,26 @@ class PackingSessionController extends ChangeNotifier
           : transition.completed.markers.first.code,
       operationMode: _operationMode,
     );
-    final RecordingSession completed = _standaloneSession(
-      id: completedId,
-      path: savedPath,
-      draft: transition.completed,
-      orderInfo: completedOrderInfo,
-    );
+    final RecordingSession completed =
+        _standaloneSession(
+          id: completedId,
+          path: savedPath,
+          draft: transition.completed,
+          orderInfo: completedOrderInfo,
+        ).copyWith(
+          watermarkStatus: nativeWatermarkStatus(split.watermarkDisposition),
+        );
     _sessions = await _repository.addSession(completed);
-    final RecordingOrientation recordingOrientation = _recordingOrientation;
-    _runInBackground(
-      _watermarkAndBackup(savedPath, completed, recordingOrientation),
-    );
+    if (split.watermarkDisposition == 'postProcessRequired') {
+      final RecordingOrientation recordingOrientation = _recordingOrientation;
+      _runInBackground(
+        _watermarkAndBackup(savedPath, completed, recordingOrientation),
+      );
+    } else {
+      _runInBackground(
+        _enqueueBackupIfNeeded(savedPath, <RecordingSession>[completed]),
+      );
+    }
     _activeSegmentId = nextId;
     _segmentIndex = nextIndex;
     return transition.marker;
@@ -1691,6 +1713,14 @@ class PackingSessionController extends ChangeNotifier
     super.dispose();
   }
 }
+
+@visibleForTesting
+WatermarkProcessingStatus nativeWatermarkStatus(String disposition) =>
+    disposition == 'completed'
+    ? WatermarkProcessingStatus.completed
+    : disposition == 'failedPartial'
+    ? WatermarkProcessingStatus.failed
+    : WatermarkProcessingStatus.pending;
 
 /// 备份触发原因是否要求强制重启已有上传任务：只有用户手动“立即备份”需要，
 /// 启动恢复、连接恢复等场景由原生状态机裁决，避免每次启动全量重启上传。

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/recording_orientation.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
@@ -9,6 +10,21 @@ import 'package:packing_proof_mobile/services/recording_database.dart';
 import 'package:sqflite/sqflite.dart';
 
 void main() {
+  test('原生实时水印结果映射为最终数据库状态', () {
+    expect(
+      nativeWatermarkStatus('completed'),
+      WatermarkProcessingStatus.completed,
+    );
+    expect(
+      nativeWatermarkStatus('failedPartial'),
+      WatermarkProcessingStatus.failed,
+    );
+    expect(
+      nativeWatermarkStatus('postProcessRequired'),
+      WatermarkProcessingStatus.pending,
+    );
+  });
+
   test('旧数据库迁移后录像默认已完成竖屏水印', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing-proof-watermark-migration-',

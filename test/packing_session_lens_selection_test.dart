@@ -73,13 +73,17 @@ class _FakeLensCameraPlatform implements CameraPlatform {
   Future<NativeRecordingStart> startWork(
     String path, {
     required bool recordAudio,
+    required String trackingNumber,
   }) async {
     recordingLifecycleEvents.add('start');
     return NativeRecordingStart(path: path, startedAt: DateTime.now());
   }
 
   @override
-  Future<NativeRecordingSplit> split(String nextPath) {
+  Future<NativeRecordingSplit> split(
+    String nextPath, {
+    required String trackingNumber,
+  }) {
     throw UnimplementedError();
   }
 
@@ -91,6 +95,7 @@ class _FakeLensCameraPlatform implements CameraPlatform {
       path: '',
       startedAt: DateTime.now(),
       endedAt: DateTime.now(),
+      watermarkDisposition: 'postProcessRequired',
     );
   }
 

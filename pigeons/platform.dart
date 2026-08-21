@@ -106,12 +106,14 @@ class CameraRecordingSplitDto {
   String nextPath;
   int completedStartedAtMs;
   int boundaryAtMs;
+  String watermarkDisposition;
 }
 
 class CameraRecordingStopDto {
   String path;
   int startedAtMs;
   int endedAtMs;
+  String watermarkDisposition;
 }
 
 class BarcodeCandidateDto {
@@ -206,9 +208,13 @@ abstract class CameraHostApi {
   @async
   bool ensurePermissions(bool recordAudio);
   @async
-  CameraRecordingStartDto startWork(String path, bool recordAudio);
+  CameraRecordingStartDto startWork(
+    String path,
+    bool recordAudio,
+    String trackingNumber,
+  );
   @async
-  CameraRecordingSplitDto split(String nextPath);
+  CameraRecordingSplitDto split(String nextPath, String trackingNumber);
   @async
   CameraRecordingStopDto stopWork();
   @async

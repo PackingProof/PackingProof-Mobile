@@ -124,12 +124,14 @@ class NativeRecordingSplit {
     required this.nextPath,
     required this.completedStartedAt,
     required this.boundaryAt,
+    required this.watermarkDisposition,
   });
 
   final String completedPath;
   final String nextPath;
   final DateTime completedStartedAt;
   final DateTime boundaryAt;
+  final String watermarkDisposition;
 
   factory NativeRecordingSplit.fromMap(Map<Object?, Object?> map) {
     return NativeRecordingSplit(
@@ -141,6 +143,8 @@ class NativeRecordingSplit {
       boundaryAt: DateTime.fromMillisecondsSinceEpoch(
         (map['boundaryAtMs']! as num).toInt(),
       ),
+      watermarkDisposition:
+          map['watermarkDisposition'] as String? ?? 'postProcessRequired',
     );
   }
 }
@@ -150,11 +154,13 @@ class NativeRecordingStop {
     required this.path,
     required this.startedAt,
     required this.endedAt,
+    required this.watermarkDisposition,
   });
 
   final String path;
   final DateTime startedAt;
   final DateTime endedAt;
+  final String watermarkDisposition;
 
   factory NativeRecordingStop.fromMap(Map<Object?, Object?> map) {
     return NativeRecordingStop(
@@ -165,6 +171,8 @@ class NativeRecordingStop {
       endedAt: DateTime.fromMillisecondsSinceEpoch(
         (map['endedAtMs']! as num).toInt(),
       ),
+      watermarkDisposition:
+          map['watermarkDisposition'] as String? ?? 'postProcessRequired',
     );
   }
 }
@@ -342,10 +350,17 @@ class ContinuousCameraService {
   Future<NativeRecordingStart> startWork(
     String path, {
     required bool recordAudio,
-  }) => _platform.startWork(path, recordAudio: recordAudio);
+    required String trackingNumber,
+  }) => _platform.startWork(
+    path,
+    recordAudio: recordAudio,
+    trackingNumber: trackingNumber,
+  );
 
-  Future<NativeRecordingSplit> split(String nextPath) =>
-      _platform.split(nextPath);
+  Future<NativeRecordingSplit> split(
+    String nextPath, {
+    required String trackingNumber,
+  }) => _platform.split(nextPath, trackingNumber: trackingNumber);
 
   Future<NativeRecordingStop> stopWork() => _platform.stopWork();
 
@@ -438,20 +453,26 @@ class _LegacyCameraPlatform implements CameraPlatform {
   Future<NativeRecordingStart> startWork(
     String path, {
     required bool recordAudio,
+    required String trackingNumber,
   }) async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('startWork', <String, Object>{
           'path': path,
           'recordAudio': recordAudio,
+          'trackingNumber': trackingNumber,
         }))!;
     return NativeRecordingStart.fromMap(values);
   }
 
   @override
-  Future<NativeRecordingSplit> split(String nextPath) async {
+  Future<NativeRecordingSplit> split(
+    String nextPath, {
+    required String trackingNumber,
+  }) async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('split', <String, Object>{
           'path': nextPath,
+          'trackingNumber': trackingNumber,
         }))!;
     return NativeRecordingSplit.fromMap(values);
   }

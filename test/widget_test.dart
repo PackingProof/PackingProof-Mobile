@@ -437,13 +437,13 @@ void main() {
     expect(find.text('结束工作'), findsOneWidget);
     expect(find.byKey(const Key('recording-button-shimmer')), findsOneWidget);
     expect(find.byKey(const Key('camera-watermark-preview')), findsOneWidget);
-    expect(find.textContaining('Order:770017871213193'), findsNWidgets(2));
+    expect(find.textContaining('770017871213193'), findsNWidgets(3));
 
     final Positioned watermarkPosition = tester.widget<Positioned>(
       find.byKey(const Key('camera-watermark-position')),
     );
-    expect(watermarkPosition.top, 68);
-    expect(watermarkPosition.left, 72);
+    expect(watermarkPosition.top, closeTo(69.333, 0.01));
+    expect(watermarkPosition.left, 70);
     expect(watermarkPosition.right, isNull);
 
     final Text watermarkOutline = tester.widget<Text>(
@@ -452,7 +452,7 @@ void main() {
     final Text watermarkFill = tester.widget<Text>(
       find.byKey(const Key('camera-watermark-fill')),
     );
-    expect(watermarkOutline.textAlign, TextAlign.right);
+    expect(watermarkOutline.textAlign, TextAlign.center);
     expect(watermarkOutline.style?.foreground?.style, PaintingStyle.stroke);
     expect(watermarkOutline.style?.foreground?.color, Colors.black);
     expect(watermarkOutline.style?.fontSize, closeTo(61 * 390 / 1080, 0.0001));
@@ -460,7 +460,7 @@ void main() {
       watermarkOutline.style?.foreground?.strokeWidth,
       closeTo(6.1 * 390 / 1080, 0.0001),
     );
-    expect(watermarkFill.textAlign, TextAlign.right);
+    expect(watermarkFill.textAlign, TextAlign.center);
     expect(watermarkFill.style?.color, Colors.white);
     expect(
       find.descendant(
@@ -625,5 +625,25 @@ void main() {
     expect(operationModePills.width, lessThanOrEqualTo(320));
     expect(operationModePills.height, greaterThanOrEqualTo(48));
     expect(controlPanel.bottom, lessThanOrEqualTo(640 - 36));
+  });
+
+  testWidgets('iOS 实时水印录像只显示原生纹理中的水印', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 8),
+          currentCode: 'TRACK-001',
+          nativeLiveWatermark: true,
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('camera-watermark-preview')), findsNothing);
+    expect(find.byKey(const Key('recording-duration-pill')), findsOneWidget);
+    expect(find.text('结束工作'), findsOneWidget);
   });
 }

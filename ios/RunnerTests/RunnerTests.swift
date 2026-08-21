@@ -106,11 +106,11 @@ class RunnerTests: XCTestCase {
 
     XCTAssertEqual(
       timeline.text(at: 0),
-      "2026/01/01 12:00:00\nOrder:TRACK-001"
+      "2026/01/01 12:00:00\nTRACK-001"
     )
     XCTAssertEqual(
       timeline.text(at: 2.9),
-      "2026/01/01 12:00:02\nOrder:TRACK-001"
+      "2026/01/01 12:00:02\nTRACK-001"
     )
     XCTAssertEqual(timeline.keyframeSeconds(duration: 2.5), [0, 1, 2, 2.5])
   }
@@ -129,8 +129,11 @@ class RunnerTests: XCTestCase {
         preferredTransform: transform,
         textSize: CGSize(width: 300, height: 80)
       )
-      XCTAssertEqual(layout.textFrame.maxX, layout.renderSize.width - 18)
-      XCTAssertEqual(layout.textFrame.maxY, layout.renderSize.height - 18)
+      XCTAssertEqual(layout.textFrame.midX, layout.renderSize.width / 2)
+      XCTAssertEqual(
+        layout.renderSize.height - layout.textFrame.maxY,
+        layout.renderSize.height * 0.1
+      )
     }
     XCTAssertEqual(
       IosWatermarkLayout.make(

@@ -44,22 +44,28 @@ internal class PigeonCameraHostApi(
     override fun startWork(
         path: String,
         recordAudio: Boolean,
+        trackingNumber: String,
         callback: (Result<CameraRecordingStartDto>) -> Unit,
     ) {
         invokeCamera(
             "startWork",
-            mapOf("path" to path, "recordAudio" to recordAudio),
+            mapOf(
+                "path" to path,
+                "recordAudio" to recordAudio,
+                "trackingNumber" to trackingNumber,
+            ),
             callback,
         ) { value -> (value as Map<*, *>).toCameraRecordingStartDto() }
     }
 
     override fun split(
         nextPath: String,
+        trackingNumber: String,
         callback: (Result<CameraRecordingSplitDto>) -> Unit,
     ) {
         invokeCamera(
             "split",
-            mapOf("path" to nextPath),
+            mapOf("path" to nextPath, "trackingNumber" to trackingNumber),
             callback,
         ) { value -> (value as Map<*, *>).toCameraRecordingSplitDto() }
     }
@@ -257,6 +263,7 @@ private fun Map<*, *>.toCameraRecordingSplitDto(): CameraRecordingSplitDto =
         nextPath = this["nextPath"] as String,
         completedStartedAtMs = (this["completedStartedAtMs"] as Number).toLong(),
         boundaryAtMs = (this["boundaryAtMs"] as Number).toLong(),
+        watermarkDisposition = "postProcessRequired",
     )
 
 private fun Map<*, *>.toCameraRecordingStopDto(): CameraRecordingStopDto =
@@ -264,6 +271,7 @@ private fun Map<*, *>.toCameraRecordingStopDto(): CameraRecordingStopDto =
         path = this["path"] as String,
         startedAtMs = (this["startedAtMs"] as Number).toLong(),
         endedAtMs = (this["endedAtMs"] as Number).toLong(),
+        watermarkDisposition = "postProcessRequired",
     )
 
 private fun Map<*, *>.toCameraLensDto(): CameraLensDto =

@@ -65,33 +65,34 @@ WatermarkGeometry watermarkGeometry({
   required RecordingOrientation orientation,
   required Size videoSize,
   required Size watermarkSize,
-  double margin = 24,
 }) {
   final bool swaps = orientation != RecordingOrientation.portrait;
   final Size output = swaps
       ? Size(videoSize.height, videoSize.width)
       : videoSize;
+  final double width = math.min(watermarkSize.width, output.width);
+  final double height = math.min(watermarkSize.height, output.height);
   final Rect target = Rect.fromLTWH(
-    math.max(margin, output.width - margin - watermarkSize.width),
-    margin,
-    watermarkSize.width,
-    watermarkSize.height,
+    math.max(0, (output.width - width) / 2),
+    math.min(output.height * 0.1, math.max(0, output.height - height)),
+    width,
+    height,
   );
   final Offset outputTopLeft = target.topLeft;
   final Offset source = switch (orientation) {
     RecordingOrientation.portrait => outputTopLeft,
     RecordingOrientation.landscapeLeft => Offset(
       outputTopLeft.dy,
-      videoSize.height - outputTopLeft.dx - watermarkSize.width,
+      videoSize.height - outputTopLeft.dx - width,
     ),
     RecordingOrientation.landscapeRight => Offset(
-      videoSize.width - outputTopLeft.dy - watermarkSize.height,
+      videoSize.width - outputTopLeft.dy - height,
       outputTopLeft.dx,
     ),
   };
   return WatermarkGeometry(
     sourceOffset: source,
-    sourceSize: watermarkSize,
+    sourceSize: Size(width, height),
     previewQuarterTurns: switch (orientation) {
       RecordingOrientation.portrait => 0,
       RecordingOrientation.landscapeLeft => 3,

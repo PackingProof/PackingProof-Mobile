@@ -55,10 +55,12 @@ class PigeonCameraPlatform implements CameraPlatform {
   Future<NativeRecordingStart> startWork(
     String path, {
     required bool recordAudio,
+    required String trackingNumber,
   }) async {
     final CameraRecordingStartDto value = await _hostApi.startWork(
       path,
       recordAudio,
+      trackingNumber,
     );
     return NativeRecordingStart.fromMap(<Object?, Object?>{
       'path': value.path,
@@ -67,13 +69,20 @@ class PigeonCameraPlatform implements CameraPlatform {
   }
 
   @override
-  Future<NativeRecordingSplit> split(String nextPath) async {
-    final CameraRecordingSplitDto value = await _hostApi.split(nextPath);
+  Future<NativeRecordingSplit> split(
+    String nextPath, {
+    required String trackingNumber,
+  }) async {
+    final CameraRecordingSplitDto value = await _hostApi.split(
+      nextPath,
+      trackingNumber,
+    );
     return NativeRecordingSplit.fromMap(<Object?, Object?>{
       'completedPath': value.completedPath,
       'nextPath': value.nextPath,
       'completedStartedAtMs': value.completedStartedAtMs,
       'boundaryAtMs': value.boundaryAtMs,
+      'watermarkDisposition': value.watermarkDisposition,
     });
   }
 
@@ -84,6 +93,7 @@ class PigeonCameraPlatform implements CameraPlatform {
       'path': value.path,
       'startedAtMs': value.startedAtMs,
       'endedAtMs': value.endedAtMs,
+      'watermarkDisposition': value.watermarkDisposition,
     });
   }
 

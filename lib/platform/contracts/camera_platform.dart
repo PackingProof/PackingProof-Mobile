@@ -18,9 +18,13 @@ abstract interface class CameraPlatform {
   Future<NativeRecordingStart> startWork(
     String path, {
     required bool recordAudio,
+    required String trackingNumber,
   });
 
-  Future<NativeRecordingSplit> split(String nextPath);
+  Future<NativeRecordingSplit> split(
+    String nextPath, {
+    required String trackingNumber,
+  });
 
   Future<NativeRecordingStop> stopWork();
 

@@ -62,11 +62,15 @@ void main() {
     final NativeRecordingStart started = await camera.startWork(
       first.path,
       recordAudio: true,
+      trackingNumber: 'TRACK-001',
     );
     expect(started.path, first.path);
     await Future<void>.delayed(const Duration(seconds: 4));
 
-    final NativeRecordingSplit split = await camera.split(second.path);
+    final NativeRecordingSplit split = await camera.split(
+      second.path,
+      trackingNumber: 'TRACK-002',
+    );
     expect(split.completedPath, first.path);
     expect(split.nextPath, second.path);
     expect(split.boundaryAt.isAfter(started.startedAt), isTrue);
@@ -91,6 +95,7 @@ void main() {
     final NativeRecordingStart audioStart = await camera.startWork(
       withAudio.path,
       recordAudio: true,
+      trackingNumber: 'TRACK-AUDIO',
     );
     expect(audioStart.path, withAudio.path);
     await Future<void>.delayed(const Duration(seconds: 5));
@@ -99,6 +104,7 @@ void main() {
     final NativeRecordingStart silentStart = await camera.startWork(
       withoutAudio.path,
       recordAudio: false,
+      trackingNumber: 'TRACK-SILENT',
     );
     expect(silentStart.path, withoutAudio.path);
     await Future<void>.delayed(const Duration(seconds: 5));

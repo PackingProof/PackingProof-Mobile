@@ -14,18 +14,18 @@ void main() {
     expect(recordingOrientationFromStorage('landscapeRight').label, '横左');
   });
 
-  test('三种方向都把水印目标放在最终成片右上角', () {
+  test('三种方向都把水印目标放在最终成片顶部水平居中', () {
     for (final orientation in RecordingOrientation.values) {
       final geometry = watermarkGeometry(
         orientation: orientation,
         videoSize: const Size(1080, 1920),
         watermarkSize: const Size(300, 80),
       );
-      expect(geometry.outputRect.top, 24);
-      expect(
-        geometry.outputRect.right,
-        orientation == RecordingOrientation.portrait ? 1056 : 1896,
-      );
+      final Size output = orientation == RecordingOrientation.portrait
+          ? const Size(1080, 1920)
+          : const Size(1920, 1080);
+      expect(geometry.outputRect.center.dx, output.width / 2);
+      expect(geometry.outputRect.top, output.height * 0.1);
     }
   });
 
