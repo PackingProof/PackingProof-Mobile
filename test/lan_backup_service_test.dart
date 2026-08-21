@@ -1135,8 +1135,8 @@ void main() {
     final Map<String, Object?> enrollmentRequest = Map<String, Object?>.from(
       jsonDecode(utf8.decode(httpClient.postBodies.single)) as Map,
     );
-    expect(enrollmentRequest['clientVersion'], '0.5.11');
-    expect(enrollmentRequest['clientBuildNumber'], 11011);
+    expect(enrollmentRequest['clientVersion'], '0.5.23');
+    expect(enrollmentRequest['clientBuildNumber'], 11036);
     expect(enrollmentRequest['backupProtocol'], 'mobile-backup-v2');
     expect(enrollmentRequest['enrollmentVersion'], 2);
     expect(enrollmentRequest['authVersion'], 3);
@@ -1382,7 +1382,11 @@ void main() {
             HttpStatus.ok,
             '{"protocol":"packingproof","protocolVersion":1,'
             '"nodeId":"old-computer","nodeName":"旧电脑",'
-            '"capabilities":["host","mobile-backup"]}',
+            '"capabilities":["host","mobile-backup"],'
+            '"backupCompatibility":{"hostVersion":"0.0.54",'
+            '"protocol":"mobile-backup-v2","enrollmentVersion":2,'
+            '"authVersion":3,"minimumMobileVersion":"0.5.23",'
+            '"minimumMobileBuildNumber":11036}}',
           ),
           _enrollment('old-computer', '旧电脑', 'a' * 64),
         ]);
@@ -1540,9 +1544,9 @@ _StreamHttpResponse _nodeInfo(String id, String name) => _StreamHttpResponse(
   HttpStatus.ok,
   '{"protocol":"packingproof","protocolVersion":1,"nodeId":"$id",'
   '"nodeName":"$name","capabilities":["host","mobile-backup"],'
-  '"backupCompatibility":{"hostVersion":"0.0.32",'
+  '"backupCompatibility":{"hostVersion":"0.0.55",'
   '"protocol":"mobile-backup-v2","enrollmentVersion":2,"authVersion":3,'
-  '"minimumMobileVersion":"0.5.10","minimumMobileBuildNumber":11010}}',
+  '"minimumMobileVersion":"0.5.23","minimumMobileBuildNumber":11036}}',
 );
 
 _StreamHttpResponse _enrollment(

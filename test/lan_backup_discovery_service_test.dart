@@ -14,9 +14,9 @@ void main() {
       '{"protocol":"packingproof","protocolVersion":1,'
       '"nodeId":"host-1","nodeName":"仓库电脑","httpPort":5280,'
       '"capabilities":["host","mobile-backup"],'
-      '"backupCompatibility":{"hostVersion":"0.0.32",'
+      '"backupCompatibility":{"hostVersion":"0.0.55",'
       '"protocol":"mobile-backup-v2","enrollmentVersion":2,"authVersion":3,'
-      '"minimumMobileVersion":"0.5.10","minimumMobileBuildNumber":11010}}',
+      '"minimumMobileVersion":"0.5.23","minimumMobileBuildNumber":11036}}',
     );
     expect(host?.nodeId, 'host-1');
     expect(host?.address, '192.168.1.20:5280');

@@ -1,9 +1,9 @@
 const String backupProtocol = 'mobile-backup-v2';
 const int backupEnrollmentVersion = 2;
 const int backupAuthenticationVersion = 3;
-const String minimumBackupHostVersion = '0.0.32';
-const String currentMobileCompatibilityVersion = '0.5.11';
-const int currentMobileCompatibilityBuildNumber = 11011;
+const String minimumBackupHostVersion = '0.0.55';
+const String currentMobileCompatibilityVersion = '0.5.23';
+const int currentMobileCompatibilityBuildNumber = 11036;
 
 class LanBackupHostCompatibility {
   const LanBackupHostCompatibility({
