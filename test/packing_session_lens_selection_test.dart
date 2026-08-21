@@ -277,6 +277,8 @@ void main() {
   });
 
   tearDown(() async {
+    await controller.shutdown();
+    controller.dispose();
     WakelockPlusPlatformInterface.instance = MethodChannelWakelockPlus();
     if (await root.exists()) {
       try {
@@ -320,6 +322,10 @@ void main() {
           }),
           cameraService: ContinuousCameraService(platform: camera),
         );
+    addTearDown(() async {
+      await prioritizedController.shutdown();
+      prioritizedController.dispose();
+    });
 
     final Future<void> initialization = prioritizedController.initialize();
     await orderReceiver.initializeStarted.future;

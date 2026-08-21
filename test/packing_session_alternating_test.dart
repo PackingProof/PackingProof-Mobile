@@ -271,6 +271,8 @@ void main() {
   });
 
   tearDown(() async {
+    await controller.shutdown();
+    controller.dispose();
     WakelockPlusPlatformInterface.instance = MethodChannelWakelockPlus();
     if (await root.exists()) {
       try {
@@ -317,6 +319,10 @@ void main() {
       }),
       cameraService: ContinuousCameraService(platform: camera),
     );
+    addTearDown(() async {
+      await second.shutdown();
+      second.dispose();
+    });
     await second.initialize();
     expect(second.capabilityMode, CameraCapabilityMode.alternating);
     expect(second.capabilityProbedAtMs, firstProbedAtMs);

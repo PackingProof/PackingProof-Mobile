@@ -26,7 +26,8 @@ class DiagnosticsLogService {
   final Future<Directory> Function() _rootProvider;
   final int maximumEntries;
   final Future<Map<String, Object?>> Function()? _runtimeMetadataLoader;
-  Future<void> _pending = Future<void>.value();
+  Future<void>? _pending;
+  int _pendingWrites = 0;
   Future<Map<String, Object?>>? _runtimeMetadata;
 
   Future<File> logFile() async {
@@ -40,9 +41,18 @@ class DiagnosticsLogService {
     required String kind,
     Map<String, Object?> extra = const <String, Object?>{},
   }) {
-    final Future<void> next = _pending.then((_) => _append(kind, extra));
-    _pending = next.catchError((Object _) {});
-    return next;
+    _pendingWrites++;
+    final Future<void>? previous = _pending;
+    final Future<void> next = previous == null
+        ? Future<void>.sync(() => _append(kind, extra))
+        : previous.then((_) => _append(kind, extra));
+    final Future<void> tracked = next.whenComplete(() => _pendingWrites--);
+    _pending = tracked.catchError((Object _) {});
+    return tracked;
+  }
+
+  Future<void> flush() async {
+    if (_pendingWrites > 0) await _pending;
   }
 
   Future<void> _append(String kind, Map<String, Object?> extra) async {

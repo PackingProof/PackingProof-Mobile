@@ -11,12 +11,18 @@ import 'package:packing_proof_mobile/services/speech_prompt_service.dart';
 
 void main() {
   late Directory root;
+  late List<PackingSessionController> controllers;
 
   setUp(() async {
     root = await Directory.systemTemp.createTemp('packing-proof-controller-');
+    controllers = <PackingSessionController>[];
   });
 
   tearDown(() async {
+    for (final PackingSessionController controller in controllers.reversed) {
+      await controller.shutdown();
+      controller.dispose();
+    }
     if (await root.exists()) {
       await root.delete(recursive: true);
     }
@@ -30,6 +36,7 @@ void main() {
       speechService: speech,
       maxVolumeService: volume,
     );
+    controllers.add(controller);
 
     await controller.startWork();
 
@@ -45,6 +52,7 @@ void main() {
       repository: repository,
       speechService: speech,
     );
+    controllers.add(controller);
 
     await controller.setSpeechEnabled(false);
 
@@ -59,6 +67,7 @@ void main() {
       repository: repository,
       speechService: _FakeSpeechSink(),
     );
+    controllers.add(controller);
 
     await controller.setOrderSpeechEnabled(false);
 
@@ -74,6 +83,7 @@ void main() {
       speechService: _FakeSpeechSink(),
       maxVolumeService: volume,
     );
+    controllers.add(controller);
 
     await controller.setMaxVolumeEnabled(false);
     expect(controller.maxVolumeEnabled, isFalse);

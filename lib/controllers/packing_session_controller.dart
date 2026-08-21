@@ -144,6 +144,10 @@ class PackingSessionController extends ChangeNotifier {
   Future<Map<String, Object?>>? _runtimeMetadataFuture;
   Future<void> _cameraInitializeTail = Future<void>.value();
   Future<void> _previewStateTail = Future<void>.value();
+  int _pendingCameraInitializations = 0;
+  int _pendingPreviewTransitions = 0;
+  final Set<Future<void>> _backgroundTasks = <Future<void>>{};
+  Future<void>? _shutdownFuture;
   bool _appStartLogged = false;
 
   PlatformCapabilities get capabilities => _capabilities;
@@ -376,11 +380,15 @@ class PackingSessionController extends ChangeNotifier {
       unawaited(_runtimeLog.log(kind: 'app_start'));
     }
     _startCameraDiagnosticsTimer();
+    _pendingCameraInitializations++;
     final Future<void> next = _cameraInitializeTail.then(
       (_) => _initializeCamera(force: force),
     );
-    _cameraInitializeTail = next.catchError((Object _) {});
-    return next;
+    final Future<void> tracked = next.whenComplete(
+      () => _pendingCameraInitializations--,
+    );
+    _cameraInitializeTail = tracked.catchError((Object _) {});
+    return tracked;
   }
 
   Future<void> _initializeCamera({required bool force}) async {
@@ -636,9 +644,9 @@ class PackingSessionController extends ChangeNotifier {
         // Local history remains available even when optional cleanup cannot run.
       }
       if (_lanBackupService.snapshot.autoEnabled) {
-        unawaited(_backupAllRepositorySessions('app_start'));
+        _runInBackground(_backupAllRepositorySessions('app_start'));
       } else {
-        unawaited(_registerRepositorySessionsForRetention());
+        _runInBackground(_registerRepositorySessionsForRetention());
       }
     }
     if (_capabilities.supports(PlatformCapability.orderInfoReceiver) &&
@@ -785,21 +793,28 @@ class PackingSessionController extends ChangeNotifier {
     );
   }
 
-  void _handleNativeRecordingFallback(Map<Object?, Object?> info) {
-    unawaited(
-      _cameraDiagnostics.recordEvent(
-        kind: 'recording_fallback',
-        extra: info.cast<String, Object?>(),
-      ),
-    );
+  void _handleNativeRecordingFallback(
+    Map<Object?, Object?> info, {
+    bool persist = true,
+  }) {
+    if (persist) {
+      unawaited(
+        _cameraDiagnostics.recordEvent(
+          kind: 'recording_fallback',
+          extra: info.cast<String, Object?>(),
+        ),
+      );
+    }
     final String mode = '${info['mode'] ?? ''}';
     if (mode == 'encoder_analysis') {
       _capabilityMode = CameraCapabilityMode.encoderAnalysis;
-      if (!_nativeRecordingFallback) {
+      if (persist && !_nativeRecordingFallback) {
         _nativeRecordingFallback = true;
-        unawaited(_repository.saveNativeRecordingFallback(true));
+        _runInBackground(_repository.saveNativeRecordingFallback(true));
       }
-      unawaited(_recordCapabilitySuspicion(info));
+      if (persist) {
+        _runInBackground(_recordCapabilitySuspicion(info));
+      }
     }
     notifyListeners();
     _showCameraNotice(
@@ -1087,7 +1102,7 @@ class PackingSessionController extends ChangeNotifier {
       if (thresholdReached) 'stale': true,
     };
     _capabilityState = updated;
-    unawaited(_repository.saveCameraCapabilityState(updated));
+    _runInBackground(_repository.saveCameraCapabilityState(updated));
     if (thresholdReached) {
       unawaited(
         _cameraDiagnostics.recordEvent(
@@ -1548,7 +1563,7 @@ class PackingSessionController extends ChangeNotifier {
     _storageMonitorTimer?.cancel();
     _storageMonitorTimer = Timer.periodic(
       const Duration(seconds: 10),
-      (_) => unawaited(_checkAndHandleStorage(allowStop: true)),
+      (_) => _runInBackground(_checkAndHandleStorage(allowStop: true)),
     );
   }
 
@@ -2042,7 +2057,7 @@ class PackingSessionController extends ChangeNotifier {
       draft: draft,
     );
     _sessions = await _repository.addSession(session);
-    unawaited(_watermarkAndBackup(savedPath, session));
+    _runInBackground(_watermarkAndBackup(savedPath, session));
     _elapsed = stopped.endedAt.difference(_timeline.recordingStartedAt!);
     _timeline.reset();
     _recordingId = null;
@@ -2169,6 +2184,7 @@ class PackingSessionController extends ChangeNotifier {
 
   Future<void> setPreviewActive(bool active) async {
     if (!_supportsNativeCamera) return;
+    _pendingPreviewTransitions++;
     final Future<void> next = _previewStateTail.then((_) async {
       try {
         await _nativeCamera?.setPreviewActive(active);
@@ -2176,8 +2192,11 @@ class PackingSessionController extends ChangeNotifier {
         // Preview power tuning must never block navigation or recording.
       }
     });
-    _previewStateTail = next;
-    await next;
+    final Future<void> tracked = next.whenComplete(
+      () => _pendingPreviewTransitions--,
+    );
+    _previewStateTail = tracked;
+    await tracked;
   }
 
   Future<void> _setNativeWorkScanEnabled(bool enabled) async {
@@ -2279,7 +2298,7 @@ class PackingSessionController extends ChangeNotifier {
             visibleCode != _lastTriggeredCommandCode) {
           _lastTriggeredCommandCode = visibleCode;
           _handlingBarcode = true;
-          unawaited(
+          _runInBackground(
             _handleMobileBarcodeCommand(command).whenComplete(() {
               _handlingBarcode = false;
             }),
@@ -2392,7 +2411,7 @@ class PackingSessionController extends ChangeNotifier {
           ),
         );
       }
-      unawaited(_handleConfirmedBarcode(observation.confirmedCode, now));
+      _runInBackground(_handleConfirmedBarcode(observation.confirmedCode, now));
     } else if (observation.candidateCode != _candidateCode) {
       _candidateCode = observation.candidateCode;
       notifyListeners();
@@ -2407,8 +2426,11 @@ class PackingSessionController extends ChangeNotifier {
   }
 
   @visibleForTesting
-  void handleNativeRecordingFallbackForTesting(Map<Object?, Object?> info) {
-    _handleNativeRecordingFallback(info);
+  void handleNativeRecordingFallbackForTesting(
+    Map<Object?, Object?> info, {
+    bool persist = true,
+  }) {
+    _handleNativeRecordingFallback(info, persist: persist);
   }
 
   @visibleForTesting
@@ -2495,7 +2517,9 @@ class PackingSessionController extends ChangeNotifier {
       );
       if (observation.confirmedCode.isNotEmpty) {
         _candidateCode = '';
-        unawaited(_handleConfirmedBarcode(observation.confirmedCode, now));
+        _runInBackground(
+          _handleConfirmedBarcode(observation.confirmedCode, now),
+        );
       } else if (observation.candidateCode != _candidateCode) {
         _candidateCode = observation.candidateCode;
         notifyListeners();
@@ -2738,7 +2762,7 @@ class PackingSessionController extends ChangeNotifier {
             notifyListeners();
           }
           _speechService.enqueue(SpeechPrompt.shippingMode);
-          unawaited(_repository.saveOperationMode(_operationMode));
+          _runInBackground(_repository.saveOperationMode(_operationMode));
         }
         break;
       case MobileBarcodeCommand.switchReturn:
@@ -2748,7 +2772,7 @@ class PackingSessionController extends ChangeNotifier {
             notifyListeners();
           }
           _speechService.enqueue(SpeechPrompt.returnMode);
-          unawaited(_repository.saveOperationMode(_operationMode));
+          _runInBackground(_repository.saveOperationMode(_operationMode));
         }
         break;
       case MobileBarcodeCommand.startWork:
@@ -2840,7 +2864,7 @@ class PackingSessionController extends ChangeNotifier {
       orderInfo: completedOrderInfo,
     );
     _sessions = await _repository.addSession(completed);
-    unawaited(_watermarkAndBackup(savedPath, completed));
+    _runInBackground(_watermarkAndBackup(savedPath, completed));
     _activeSegmentId = nextId;
     _segmentIndex = nextIndex;
     return transition.marker;
@@ -2888,7 +2912,7 @@ class PackingSessionController extends ChangeNotifier {
         orderInfo: _activeOrderInfo,
       );
       _sessions = await _repository.addSession(completed);
-      unawaited(_watermarkAndBackup(savedPath, completed));
+      _runInBackground(_watermarkAndBackup(savedPath, completed));
 
       _timeline.reset();
       _timeline.start(boundaryAt);
@@ -3187,7 +3211,7 @@ class PackingSessionController extends ChangeNotifier {
       _handledDeletedBackupJobs.addAll(
         newlyDeletedJobs.map((LanBackupJob job) => job.id),
       );
-      unawaited(_recordDeletedBackupJobs(newlyDeletedJobs));
+      _runInBackground(_recordDeletedBackupJobs(newlyDeletedJobs));
     }
     if (!_disposed) {
       notifyListeners();
@@ -3545,6 +3569,121 @@ class PackingSessionController extends ChangeNotifier {
     }
   }
 
+  void _runInBackground(Future<void> task) {
+    _backgroundTasks.add(task);
+    unawaited(
+      task
+          .then<void>(
+            (_) {},
+            onError: (Object error, StackTrace stackTrace) {
+              developer.log(
+                'PackingSessionController background task failed',
+                error: error,
+                stackTrace: stackTrace,
+              );
+            },
+          )
+          .whenComplete(() => _backgroundTasks.remove(task)),
+    );
+  }
+
+  Future<void> _drainBackgroundTasks() async {
+    while (_backgroundTasks.isNotEmpty) {
+      final List<Future<void>> pending = _backgroundTasks.toList(
+        growable: false,
+      );
+      await Future.wait<void>(
+        pending.map(
+          (Future<void> task) => task.catchError((Object _, StackTrace _) {}),
+        ),
+      );
+      _backgroundTasks.removeAll(pending);
+    }
+  }
+
+  Future<void> shutdown() => _shutdownFuture ??= _shutdown();
+
+  Future<void> _shutdown() async {
+    _disposed = true;
+    if (isWorking) {
+      try {
+        await stopWork();
+      } on Object catch (error, stackTrace) {
+        developer.log(
+          'PackingSessionController failed to stop active recording during shutdown',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+    _clearPendingComputerReplacement();
+    _elapsedTimer?.cancel();
+    _feedbackTimer?.cancel();
+    _scanWarningTimer?.cancel();
+    _cameraNoticeTimer?.cancel();
+    _rejectedBarcodeTimer?.cancel();
+    _initialPromptTimer?.cancel();
+    _pairingFeedbackTimer?.cancel();
+    _storageMonitorTimer?.cancel();
+    _diagnosticsTimer?.cancel();
+    if (_backupListenerAttached) {
+      _lanBackupService.removeListener(_handleBackupChanged);
+      _backupListenerAttached = false;
+    }
+    if (_orderReceiverListenerAttached) {
+      _orderInfoReceiver.removeListener(_handleOrderReceiverChanged);
+      _orderReceiverListenerAttached = false;
+    }
+
+    final CameraController? camera = _cameraController;
+    _cameraController = null;
+    final ContinuousCameraService? nativeCamera = _nativeCamera;
+    _nativeCamera = null;
+    _nativeInitialization = null;
+
+    if (_pendingCameraInitializations > 0) {
+      await _cameraInitializeTail.catchError((Object _, StackTrace _) {});
+    }
+    if (_pendingPreviewTransitions > 0) {
+      await _previewStateTail.catchError((Object _, StackTrace _) {});
+    }
+    await _drainBackgroundTasks();
+
+    Future<void> cleanup(
+      String component,
+      Future<void> Function() operation,
+    ) async {
+      try {
+        await operation();
+      } on Object catch (error, stackTrace) {
+        developer.log(
+          'PackingSessionController failed to close $component',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+
+    await Future.wait<void>(<Future<void>>[
+      cleanup('wakelock', WakelockPlus.disable),
+      if (camera != null) cleanup('camera', camera.dispose),
+      if (nativeCamera != null) cleanup('nativeCamera', nativeCamera.dispose),
+      cleanup('barcodeScanner', _barcodeScanner.close),
+      cleanup('speechService', _speechService.dispose),
+      cleanup('maxVolumeService', _maxVolumeService.dispose),
+      if (_orderInfoSubscription != null)
+        cleanup('orderInfoSubscription', _orderInfoSubscription!.cancel),
+      cleanup('orderInfoReceiver', _orderInfoReceiver.dispose),
+      cleanup('lanBackupService', _lanBackupService.dispose),
+    ]);
+    _orderInfoSubscription = null;
+    await cleanup('repository', _repository.dispose);
+    await Future.wait<void>(<Future<void>>[
+      _runtimeLog.flush(),
+      _cameraDiagnostics.flush(),
+    ]);
+  }
+
   String _sessionId(DateTime value) {
     String two(int number) => number.toString().padLeft(2, '0');
     String three(int number) => number.toString().padLeft(3, '0');
@@ -3555,37 +3694,7 @@ class PackingSessionController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _disposed = true;
-    _clearPendingComputerReplacement();
-    _elapsedTimer?.cancel();
-    _feedbackTimer?.cancel();
-    _scanWarningTimer?.cancel();
-    _cameraNoticeTimer?.cancel();
-    _rejectedBarcodeTimer?.cancel();
-    _storageMonitorTimer?.cancel();
-    _diagnosticsTimer?.cancel();
-    unawaited(WakelockPlus.disable());
-    final CameraController? camera = _cameraController;
-    if (camera != null) {
-      unawaited(camera.dispose());
-    }
-    final ContinuousCameraService? nativeCamera = _nativeCamera;
-    if (nativeCamera != null) {
-      unawaited(nativeCamera.dispose());
-    }
-    unawaited(_barcodeScanner.close());
-    unawaited(_speechService.dispose());
-    unawaited(_maxVolumeService.dispose());
-    if (_backupListenerAttached) {
-      _lanBackupService.removeListener(_handleBackupChanged);
-    }
-    if (_orderReceiverListenerAttached) {
-      _orderInfoReceiver.removeListener(_handleOrderReceiverChanged);
-    }
-    unawaited(_orderInfoSubscription?.cancel());
-    unawaited(_orderInfoReceiver.dispose());
-    unawaited(_lanBackupService.dispose());
-    unawaited(_repository.dispose());
+    unawaited(shutdown());
     super.dispose();
   }
 }

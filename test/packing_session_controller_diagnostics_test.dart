@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -21,6 +22,13 @@ import 'test_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  void trackController(PackingSessionController controller) {
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+    });
+  }
 
   late Directory root;
 
@@ -57,6 +65,7 @@ void main() {
       ),
     );
 
+    trackController(controller);
     await controller.initialize();
 
     expect(controller.phase, PackingSessionPhase.error);
@@ -88,6 +97,7 @@ void main() {
       ),
     );
 
+    trackController(controller);
     await controller.watermarkAndBackupForTesting(source.path, session);
 
     expect(await source.exists(), isTrue);
@@ -96,6 +106,33 @@ void main() {
     expect(content, contains('"sessionId":"session-watermark-failed"'));
     expect(content, contains('"errorType":"StateError"'));
     expect(content, contains('watermark test failure'));
+  });
+
+  test('shutdown 可重复调用并等待异步资源关闭', () async {
+    final Completer<void> disposeBlocker = Completer<void>();
+    final _FakeSpeechSink speech = _FakeSpeechSink(
+      disposeBlocker: disposeBlocker,
+    );
+    final PackingSessionController controller = PackingSessionController(
+      repository: testRepository(root),
+      speechService: speech,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+
+    final Future<void> first = controller.shutdown();
+    final Future<void> second = controller.shutdown();
+    expect(identical(first, second), isTrue);
+    await Future<void>.delayed(Duration.zero);
+    expect(speech.disposeCount, 1);
+
+    disposeBlocker.complete();
+    await first;
+    controller.dispose();
+    expect(speech.disposeCount, 1);
   });
 
   test('备份触发原因决定是否强制重启上传', () {
@@ -136,6 +173,7 @@ void main() {
       ),
     );
 
+    trackController(controller);
     await controller.initialize();
 
     final File file = File('${root.path}/diagnostics/runtime.jsonl');
@@ -185,6 +223,7 @@ void main() {
       ),
     );
 
+    trackController(controller);
     await controller.initialize();
     final File file = File('${root.path}/diagnostics/runtime.jsonl');
     final String content = await _waitForRuntimeKind(file, 'app_upgrade');
@@ -221,6 +260,7 @@ void main() {
         rootProvider: () async => root,
       ),
     );
+    trackController(second);
     await second.initialize();
     final String updated = await file.readAsString();
     expect(_countOccurrences(updated, '"kind":"app_upgrade"'), 1);
@@ -237,6 +277,7 @@ void main() {
       ),
     );
 
+    trackController(controller);
     controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
       const NativeBarcodeCandidate(value: 'CLEAR', area: 100),
     ]);
@@ -270,6 +311,7 @@ void main() {
       ),
     );
 
+    trackController(controller);
     controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
       const NativeBarcodeCandidate(value: 'BACK', area: 100),
     ]);
@@ -326,6 +368,7 @@ void main() {
       ),
     );
 
+    trackController(controller);
     await controller.initialize();
     await controller.setOperationMode(RecordingOperationMode.returnGoods);
     expect(controller.operationMode, RecordingOperationMode.returnGoods);
@@ -343,6 +386,7 @@ void main() {
         rootProvider: () async => root,
       ),
     );
+    trackController(restored);
     await restored.initialize();
     expect(restored.operationMode, RecordingOperationMode.returnGoods);
   });
@@ -357,6 +401,7 @@ void main() {
       ),
     );
 
+    trackController(controller);
     await controller.initialize();
     controller.beginHistoryBarcodeScan();
     controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
@@ -395,9 +440,10 @@ void main() {
         rootProvider: () async => root,
       ),
     );
+    trackController(controller);
     controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
       'mode': 'encoder_analysis',
-    });
+    }, persist: false);
     expect(controller.cameraNotice, notice);
 
     await tester.pump(const Duration(seconds: 3));
@@ -409,7 +455,7 @@ void main() {
     controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
       'mode': 'encoder_analysis',
       'phase': 'stall_during_recording',
-    });
+    }, persist: false);
     expect(controller.cameraNotice, notice);
 
     await tester.pump(const Duration(seconds: 3));
@@ -417,6 +463,7 @@ void main() {
 
     await tester.pump(const Duration(seconds: 2));
     expect(controller.cameraNotice, isNull);
+    await tester.runAsync(controller.shutdown);
   });
 }
 
@@ -466,9 +513,13 @@ int _countOccurrences(String content, String needle) {
 }
 
 class _FakeSpeechSink implements SpeechPromptSink {
+  _FakeSpeechSink({this.disposeBlocker});
+
+  final Completer<void>? disposeBlocker;
   final List<SpeechPrompt> prompts = <SpeechPrompt>[];
   int beepCount = 0;
   int clearCount = 0;
+  int disposeCount = 0;
 
   @override
   bool enabled = true;
@@ -505,7 +556,10 @@ class _FakeSpeechSink implements SpeechPromptSink {
   }
 
   @override
-  Future<void> dispose() async {}
+  Future<void> dispose() async {
+    disposeCount++;
+    await disposeBlocker?.future;
+  }
 }
 
 class _FailingWatermarkSink implements VideoWatermarkSink {

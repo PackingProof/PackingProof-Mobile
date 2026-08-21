@@ -444,9 +444,14 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
         return;
       case PackingBackAction.exitApp:
         _resetExitIntent();
-        unawaited(SystemNavigator.pop());
+        unawaited(_shutdownAndExit());
         return;
     }
+  }
+
+  Future<void> _shutdownAndExit() async {
+    await _controller.shutdown();
+    await SystemNavigator.pop();
   }
 
   @override

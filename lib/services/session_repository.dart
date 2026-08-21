@@ -71,7 +71,10 @@ class SessionRepository {
   bool _initialized = false;
   Future<void> _sessionMutationTail = Future<void>.value();
   Future<void> _settingsMutationTail = Future<void>.value();
+  int _pendingSessionMutations = 0;
+  int _pendingSettingsMutations = 0;
   Future<void>? _initializeFuture;
+  Future<void>? _disposeFuture;
 
   Future<void> initialize() async {
     if (_initialized) {
@@ -439,7 +442,23 @@ class SessionRepository {
         pageSize: 50,
       )).data;
 
-  Future<void> dispose() async {
+  Future<void> dispose() => _disposeFuture ??= _dispose();
+
+  Future<void> _dispose() async {
+    final Future<void>? initialization = _initializeFuture;
+    if (initialization != null) {
+      try {
+        await initialization;
+      } on Object {
+        // Initialization failure has no open database to close.
+      }
+    }
+    await Future.wait<void>(<Future<void>>[
+      if (_pendingSessionMutations > 0)
+        _sessionMutationTail.catchError((Object _, StackTrace _) {}),
+      if (_pendingSettingsMutations > 0)
+        _settingsMutationTail.catchError((Object _, StackTrace _) {}),
+    ]);
     if (!_initialized) return;
     _initialized = false;
     await _recordingDatabase.close();
@@ -950,6 +969,7 @@ class SessionRepository {
 
   Future<T> _serializeSessionMutation<T>(Future<T> Function() action) {
     final Completer<T> result = Completer<T>();
+    _pendingSessionMutations++;
     _sessionMutationTail = _sessionMutationTail.catchError((Object _) {}).then((
       _,
     ) async {
@@ -957,6 +977,8 @@ class SessionRepository {
         result.complete(await action());
       } on Object catch (error, stackTrace) {
         result.completeError(error, stackTrace);
+      } finally {
+        _pendingSessionMutations--;
       }
     });
     return result.future;
@@ -964,6 +986,7 @@ class SessionRepository {
 
   Future<T> _serializeSettingsMutation<T>(Future<T> Function() action) {
     final Completer<T> result = Completer<T>();
+    _pendingSettingsMutations++;
     _settingsMutationTail = _settingsMutationTail
         .catchError((Object _) {})
         .then((_) async {
@@ -971,6 +994,8 @@ class SessionRepository {
             result.complete(await action());
           } on Object catch (error, stackTrace) {
             result.completeError(error, stackTrace);
+          } finally {
+            _pendingSettingsMutations--;
           }
         });
     return result.future;
