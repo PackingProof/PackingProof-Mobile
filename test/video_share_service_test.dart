@@ -76,4 +76,24 @@ void main() {
     expect(first.path, second.path);
     expect(exportCalls, 1);
   });
+
+  test('平台不支持视频导出时拒绝剪辑范围', () async {
+    final File source = File('${root.path}${Platform.pathSeparator}source.mp4');
+    await source.writeAsBytes(<int>[1, 2, 3]);
+    final VideoShareService service = VideoShareService(
+      channel: channel,
+      cacheDirectory: Directory('${root.path}${Platform.pathSeparator}cache'),
+      nativeExportSupported: false,
+    );
+
+    await expectLater(
+      service.prepare(
+        sourcePath: source.path,
+        mediaStart: const Duration(seconds: 2),
+        mediaEnd: const Duration(seconds: 8),
+        sourceDuration: const Duration(seconds: 10),
+      ),
+      throwsUnsupportedError,
+    );
+  });
 }

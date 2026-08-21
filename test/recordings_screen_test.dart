@@ -14,6 +14,7 @@ import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/work_mode.dart';
 import 'package:packing_proof_mobile/platform/platform_capabilities.dart';
 import 'package:packing_proof_mobile/screens/recordings_screen.dart';
+import 'package:packing_proof_mobile/services/camera_capability_policy.dart';
 import 'package:packing_proof_mobile/services/recording_database.dart';
 import 'package:packing_proof_mobile/services/order_info_receiver_service.dart';
 import 'package:packing_proof_mobile/services/lan_backup_discovery_service.dart';
@@ -568,6 +569,111 @@ void main() {
     );
     await tester.pump();
     expect(find.byKey(const Key('max-volume-settings')), findsNothing);
+  });
+
+  testWidgets('能力矩阵同步控制相机、订单和电脑备份入口', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    RecordingsScreen settings(PlatformCapabilities capabilities) =>
+        RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          capabilities: capabilities,
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          showCameraCapabilityCard: true,
+          capabilityMode: CameraCapabilityMode.unverified,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: settings(const PlatformCapabilities(<PlatformCapability>{})),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const Key('camera-capability-settings-card')),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('order-receiver-settings')), findsNothing);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: settings(
+          const PlatformCapabilities(<PlatformCapability>{
+            PlatformCapability.continuousCameraRecording,
+            PlatformCapability.orderInfoReceiver,
+          }),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const Key('camera-capability-settings-card')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('order-receiver-settings')), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    final _FakeBackupHostDiscovery unsupportedDiscovery =
+        _FakeBackupHostDiscovery();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+          backupHostDiscovery: unsupportedDiscovery,
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('computer-backup-settings')), findsNothing);
+    expect(unsupportedDiscovery.searchCount, 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    final _FakeBackupHostDiscovery supportedDiscovery =
+        _FakeBackupHostDiscovery(hosts: const <LanBackupDiscoveredHost>[]);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          capabilities: const PlatformCapabilities(<PlatformCapability>{
+            PlatformCapability.lanBackup,
+          }),
+          backupHostDiscovery: supportedDiscovery,
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('computer-backup-settings')), findsOneWidget);
+    expect(supportedDiscovery.searchCount, 1);
   });
 
   testWidgets('录制声音默认开启且可关闭', (WidgetTester tester) async {

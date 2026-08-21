@@ -55,6 +55,9 @@ void main() {
       if (await root.exists()) await root.delete(recursive: true);
     });
 
+    await controller.initialize();
+    expect(backup.initializeCalls, 0);
+
     await controller.backupAllSessions();
     await controller.setLanBackupAutoEnabled(true);
     backup.retryConnectionResult = true;
@@ -82,6 +85,7 @@ class _BackupCall {
 class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
   LanBackupSnapshot _snapshot = const LanBackupSnapshot(autoEnabled: false);
   final List<_BackupCall> backupCalls = <_BackupCall>[];
+  int initializeCalls = 0;
   bool retryConnectionResult = false;
 
   @override
@@ -93,6 +97,7 @@ class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
     required UnbackedRetentionPolicy unbackedRetention,
     required BackedRetentionPolicy backedRetention,
   }) async {
+    initializeCalls++;
     _snapshot = _snapshot.copyWith(autoEnabled: autoEnabled);
   }
 

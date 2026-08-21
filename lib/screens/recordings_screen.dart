@@ -32,6 +32,7 @@ import 'video_playback_screen.dart';
 export 'recordings_history_filter.dart' show RecordingSourceFilter;
 
 part 'recordings_computer_backup_settings.dart';
+part 'recordings_order_receiver_settings.dart';
 
 enum RecordingsScreenMode { history, settings }
 
@@ -382,6 +383,17 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
       widget.capabilities?.supports(PlatformCapability.alertVolumeBoost) ??
       true;
 
+  bool get _lanBackupSupported =>
+      widget.capabilities?.supports(PlatformCapability.lanBackup) ?? true;
+
+  bool get _orderReceiverSupported =>
+      widget.capabilities?.supports(PlatformCapability.orderInfoReceiver) ??
+      true;
+
+  bool get _systemVideoPlayerSupported =>
+      widget.capabilities?.supports(PlatformCapability.systemVideoPlayer) ??
+      true;
+
   @override
   void initState() {
     super.initState();
@@ -395,7 +407,9 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _recordingOrientation = widget.recordingOrientation;
     _minimumBarcodeLength = widget.minimumBarcodeLength;
     _historyPageSize = widget.historyPageSize;
-    unawaited(_loadDeviceDecodeSupport());
+    if (_systemVideoPlayerSupported) {
+      unawaited(_loadDeviceDecodeSupport());
+    }
     _sessions = List<RecordingSession>.of(widget.sessions);
     _refreshLocalRecordingStats();
     _backupSnapshot = widget.backupSnapshot;
@@ -409,7 +423,9 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _backedRetention = widget.backedRetention;
     _hiddenRemoteIds = Set<int>.of(widget.hiddenRemoteRecordingIds);
     _applyExternalSearch(widget.externalSearchQuery);
-    widget.backupListenable?.addListener(_refreshBackupSnapshot);
+    if (_lanBackupSupported) {
+      widget.backupListenable?.addListener(_refreshBackupSnapshot);
+    }
     if (widget.mode == RecordingsScreenMode.history && widget.active) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_loadLocal(reset: true, pageNumber: 1, prefetchNext: true));
@@ -517,7 +533,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   }
 
   void _refreshBackupDiscovery() {
-    if (!mounted) return;
+    if (!mounted || !_lanBackupSupported) return;
     final LanBackupDiscoverySnapshot next = _backupHostDiscovery.snapshot;
     if (!_backupDiscoverySnapshot.searching && next.searching) {
       _autoConnectStarted = false;
@@ -545,6 +561,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
 
   void _startBackupHostDiscoveryIfNeeded() {
     if (!mounted ||
+        !_lanBackupSupported ||
         widget.backupHostDiscovery == null ||
         !widget.active ||
         widget.mode != RecordingsScreenMode.history ||
@@ -867,6 +884,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     bool prefetchNext = false,
   }) async {
     if (_loadingRemote ||
+        !_lanBackupSupported ||
         !widget.active ||
         widget.onLoadRemoteRecordings == null ||
         _backupSnapshot.connectionStatus != LanConnectionStatus.connected) {
@@ -915,6 +933,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     int requestGeneration,
   ) async {
     if (_remotePages.containsKey(pageNumber) ||
+        !_lanBackupSupported ||
         widget.onLoadRemoteRecordings == null ||
         _backupSnapshot.connectionStatus != LanConnectionStatus.connected) {
       return;
@@ -1602,6 +1621,10 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                 ],
               ),
               if (widget.showCameraCapabilityCard &&
+                  widget.capabilities?.supports(
+                        PlatformCapability.continuousCameraRecording,
+                      ) !=
+                      false &&
                   widget.capabilityMode != null) ...<Widget>[
                 const SizedBox(height: 12),
                 _SettingsCard(
@@ -1692,14 +1715,16 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   ],
                 ],
               ),
-              const SizedBox(height: 12),
-              _OrderReceiverSettings(
-                snapshot: widget.orderReceiverSnapshot,
-                onRetry: widget.onRetryOrderReceiver,
-                speechEnabled: _orderSpeechEnabled,
-                speechMasterEnabled: _speechEnabled,
-                onSpeechChanged: _setOrderSpeechEnabled,
-              ),
+              if (_orderReceiverSupported) ...<Widget>[
+                const SizedBox(height: 12),
+                _OrderReceiverSettings(
+                  snapshot: widget.orderReceiverSnapshot,
+                  onRetry: widget.onRetryOrderReceiver,
+                  speechEnabled: _orderSpeechEnabled,
+                  speechMasterEnabled: _speechEnabled,
+                  onSpeechChanged: _setOrderSpeechEnabled,
+                ),
+              ],
               const SizedBox(height: 12),
               const AboutSettings(),
             ] else ...<Widget>[
@@ -1717,43 +1742,45 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                       widget.recordingStatistics?.totalBytes ??
                       _localRecordingBytes,
                 ),
-                const SizedBox(height: 12),
-                _ComputerBackupSettings(
-                  snapshot: _backupSnapshot,
-                  allBackedUp: allLocalFilesBackedUp,
-                  remainingBackupCount: remainingBackupCount,
-                  onConnect:
-                      widget.onConnectComputer ??
-                      () => Navigator.of(context).pop(true),
-                  onAutoChanged: widget.onAutoBackupChanged,
-                  onBackupNow: widget.onBackupNow,
-                  onDisconnect: _confirmDeleteComputer,
-                  onRetryConnection: widget.onRetryConnection,
-                  onRetry: widget.onRetryBackup,
-                  discovery: _backupDiscoverySnapshot,
-                  onSearchHosts: () {
-                    _autoConnectStarted = false;
-                    return _backupHostDiscovery.search();
-                  },
-                  onSelectHost: _connectDiscoveredHost,
-                  onRequestApproval: _lastApprovalHost != null
-                      ? () => _connectDiscoveredHost(_lastApprovalHost!)
-                      : _backupSnapshot.endpoint == null
-                      ? null
-                      : () => _connectDiscoveredHost(
-                          LanBackupDiscoveredHost(
-                            nodeId: _backupSnapshot.endpoint!.computerId,
-                            name: _backupSnapshot.endpoint!.computerName,
-                            address: _backupSnapshot.endpoint!.displayAddress,
+                if (_lanBackupSupported) ...<Widget>[
+                  const SizedBox(height: 12),
+                  _ComputerBackupSettings(
+                    snapshot: _backupSnapshot,
+                    allBackedUp: allLocalFilesBackedUp,
+                    remainingBackupCount: remainingBackupCount,
+                    onConnect:
+                        widget.onConnectComputer ??
+                        () => Navigator.of(context).pop(true),
+                    onAutoChanged: widget.onAutoBackupChanged,
+                    onBackupNow: widget.onBackupNow,
+                    onDisconnect: _confirmDeleteComputer,
+                    onRetryConnection: widget.onRetryConnection,
+                    onRetry: widget.onRetryBackup,
+                    discovery: _backupDiscoverySnapshot,
+                    onSearchHosts: () {
+                      _autoConnectStarted = false;
+                      return _backupHostDiscovery.search();
+                    },
+                    onSelectHost: _connectDiscoveredHost,
+                    onRequestApproval: _lastApprovalHost != null
+                        ? () => _connectDiscoveredHost(_lastApprovalHost!)
+                        : _backupSnapshot.endpoint == null
+                        ? null
+                        : () => _connectDiscoveredHost(
+                            LanBackupDiscoveredHost(
+                              nodeId: _backupSnapshot.endpoint!.computerId,
+                              name: _backupSnapshot.endpoint!.computerName,
+                              address: _backupSnapshot.endpoint!.displayAddress,
+                            ),
                           ),
-                        ),
-                  onCancelApproval: _cancelBackupApproval,
-                  unbackedRetention: _unbackedRetention,
-                  backedRetention: _backedRetention,
-                  onUnbackedRetentionChanged: _setUnbackedRetention,
-                  onBackedRetentionChanged: _setBackedRetention,
-                  showRetention: false,
-                ),
+                    onCancelApproval: _cancelBackupApproval,
+                    unbackedRetention: _unbackedRetention,
+                    backedRetention: _backedRetention,
+                    onUnbackedRetentionChanged: _setUnbackedRetention,
+                    onBackedRetentionChanged: _setBackedRetention,
+                    showRetention: false,
+                  ),
+                ],
               ],
               Padding(
                 padding: const EdgeInsets.fromLTRB(2, 12, 2, 12),
@@ -2979,147 +3006,6 @@ class _OrderSpeechSettings extends StatelessWidget {
             key: const Key('order-speech-enabled-switch'),
             value: enabled,
             onChanged: onChanged,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OrderReceiverSettings extends StatelessWidget {
-  const _OrderReceiverSettings({
-    required this.snapshot,
-    this.onRetry,
-    this.speechEnabled,
-    this.speechMasterEnabled = true,
-    this.onSpeechChanged,
-  });
-
-  final OrderInfoReceiverSnapshot snapshot;
-  final Future<void> Function()? onRetry;
-  final bool? speechEnabled;
-  final bool speechMasterEnabled;
-  final ValueChanged<bool>? onSpeechChanged;
-
-  bool get _hasSpeech => speechEnabled != null && onSpeechChanged != null;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool ready = snapshot.running && snapshot.url.isNotEmpty;
-    final ColorScheme colors = Theme.of(context).colorScheme;
-    return Container(
-      key: const Key('order-receiver-settings'),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          if (_hasSpeech) ...<Widget>[
-            _OrderSpeechSettings(
-              enabled: speechEnabled!,
-              masterEnabled: speechMasterEnabled,
-              onChanged: onSpeechChanged!,
-            ),
-            Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-          ],
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    const Expanded(
-                      child: Text(
-                        '订单接收',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: ready
-                            ? colors.secondaryContainer
-                            : colors.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                      child: Text(
-                        ready ? '接收中' : '未启动',
-                        style: TextStyle(
-                          color: ready
-                              ? colors.primary
-                              : colors.onSurfaceVariant,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  ready
-                      ? snapshot.url
-                      : snapshot.errorMessage.isEmpty
-                      ? '请连接局域网 Wi-Fi 后重试'
-                      : snapshot.errorMessage,
-                  key: const Key('order-receiver-address'),
-                  style: TextStyle(
-                    color: ready ? colors.primary : colors.onSurfaceVariant,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '在油猴脚本中将监控地址设为以上地址',
-                  style: TextStyle(
-                    color: colors.onSurfaceVariant,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: ready
-                            ? () async {
-                                await Clipboard.setData(
-                                  ClipboardData(text: snapshot.url),
-                                );
-                                if (!context.mounted) return;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('接收地址已复制')),
-                                );
-                              }
-                            : null,
-                        icon: const Icon(Icons.copy_rounded, size: 18),
-                        label: const Text('复制地址'),
-                      ),
-                    ),
-                    if (!ready && onRetry != null) ...<Widget>[
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: onRetry,
-                          icon: const Icon(Icons.refresh_rounded, size: 18),
-                          label: const Text('重试'),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
           ),
         ],
       ),

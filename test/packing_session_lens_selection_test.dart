@@ -337,6 +337,30 @@ void main() {
     await initialization;
   });
 
+  test('平台未声明订单接收能力时不启动后台接收器', () async {
+    final _FakeOrderReceiverSink orderReceiver = _FakeOrderReceiverSink();
+    final PackingSessionController unsupportedController =
+        PackingSessionController(
+          repository: testRepository(root),
+          speechService: _FakeSpeechSink(),
+          maxVolumeService: _FakeMaxVolumeSink(),
+          orderInfoReceiver: orderReceiver,
+          videoWatermarkService: _FakeWatermarkSink(),
+          capabilities: const PlatformCapabilities(<PlatformCapability>{
+            PlatformCapability.continuousCameraRecording,
+          }),
+          cameraService: ContinuousCameraService(platform: camera),
+        );
+    addTearDown(() async {
+      await unsupportedController.shutdown();
+      unsupportedController.dispose();
+    });
+
+    await unsupportedController.initialize();
+
+    expect(orderReceiver.initializeStarted.isCompleted, isFalse);
+  });
+
   test('用户切到长焦后开始工作不会切回主摄', () async {
     await controller.initialize();
     await controller.switchToCamera('tele');
