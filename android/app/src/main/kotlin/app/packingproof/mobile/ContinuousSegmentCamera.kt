@@ -13,8 +13,6 @@ import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.StreamConfigurationMap
-import android.media.AudioFormat
-import android.media.AudioRecord
 import android.media.ImageReader
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
@@ -40,7 +38,6 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
 import java.io.File
 import java.nio.ByteBuffer
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 
@@ -57,9 +54,6 @@ class ContinuousSegmentCamera(
     private val emit: (String, Any?) -> Unit,
 ) {
     companion object {
-        private const val AUDIO_SAMPLE_RATE = 48_000
-        private const val AUDIO_CHANNEL_COUNT = 1
-        private const val AUDIO_BIT_RATE = 96_000
         private const val ANALYSIS_INTERVAL_MS = 250L
         private const val START_TIMEOUT_MS = 6_000L
         private const val SPLIT_TIMEOUT_MS = 3_000L
@@ -188,10 +182,6 @@ class ContinuousSegmentCamera(
     @Volatile private var selectedVideoMime = MediaFormat.MIMETYPE_VIDEO_HEVC
     private var audioOutputFormat: MediaFormat? = null
 
-    private val audioRunning = AtomicBoolean(false)
-    @Volatile private var audioRecord: AudioRecord? = null
-    @Volatile private var audioThread: Thread? = null
-
     @Volatile private var recordingRequested = false
     @Volatile private var recordingActive = false
     private var startResult: MethodChannel.Result? = null
@@ -205,6 +195,31 @@ class ContinuousSegmentCamera(
             audioFormat = { audioOutputFormat },
             onWriteCompleted = ::recordMuxWrite,
         ),
+    )
+    private val recordingAudioPipeline = RecordingAudioPipeline(
+        onSample = { sample ->
+            muxHandler?.post { handleAudioSample(sample) }
+        },
+        onOutputFormat = { format ->
+            muxHandler?.post {
+                audioOutputFormat = format
+                if (recordingRequested && startResult != null) requestSyncFrame()
+            }
+        },
+        onFailure = { error ->
+            muxHandler?.post {
+                if (startResult != null) {
+                    failPendingStart("audio_init", "麦克风或音频编码器启动失败")
+                } else {
+                    notifyNativeError("声音录制异常", error)
+                }
+            }
+        },
+        onStopped = {
+            muxHandler?.post {
+                if (stopResult != null) finishStop()
+            }
+        },
     )
     private var storageFailureReported = false
 
@@ -325,7 +340,7 @@ class ContinuousSegmentCamera(
             recordingMuxPipeline.beginRecording()
             setVideoSuspended(false)
             if (recordAudio) {
-                startAudioPipeline()
+                recordingAudioPipeline.start(enabled = true)
             }
             when (effectiveRecordingMode()) {
                 CameraCapabilityMode.UNSUPPORTED -> {
@@ -445,13 +460,8 @@ class ContinuousSegmentCamera(
             resetStallRecovery()
             Log.i(CAMERA_LOG_TAG, "stopWork")
             recreateCaptureSession()
-            audioRunning.set(false)
-            try {
-                audioRecord?.stop()
-            } catch (_: Throwable) {
-                // The audio loop may already have stopped after an encoder failure.
-            }
-            if (audioThread == null) {
+            recordingAudioPipeline.stop()
+            if (!recordingAudioPipeline.hasActiveThread) {
                 finishStop()
             }
         }
@@ -679,11 +689,7 @@ class ContinuousSegmentCamera(
         startResult?.let { replyError(it, "disposed", "录像启动已取消") }
         splitResult?.let { replyError(it, "disposed", "录像分段已取消") }
         stopResult?.let { replyError(it, "disposed", "录像保存已取消") }
-        audioRunning.set(false)
-        try {
-            audioRecord?.stop()
-        } catch (_: Throwable) {
-        }
+        recordingAudioPipeline.stop()
         val cleanupCount = AtomicInteger(2)
         fun finishCleanup() {
             if (cleanupCount.decrementAndGet() == 0) onDisposed?.let { mainHandler.post(it) }
@@ -1934,129 +1940,6 @@ class ContinuousSegmentCamera(
         result.success(torchEnabled)
     }
 
-    private fun startAudioPipeline() {
-        if (audioThread != null || !recordAudio) return
-        audioRunning.set(true)
-        val thread = Thread({ runAudioPipeline() }, "parcel-audio")
-        audioThread = thread
-        thread.start()
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun runAudioPipeline() {
-        var codec: MediaCodec? = null
-        var recorder: AudioRecord? = null
-        try {
-            val minBuffer = AudioRecord.getMinBufferSize(
-                AUDIO_SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-            )
-            val bufferSize = max(minBuffer, 16_384)
-            recorder = AudioRecord(
-                MediaRecorder.AudioSource.CAMCORDER,
-                AUDIO_SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                bufferSize * 2,
-            )
-            if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-                throw IllegalStateException("麦克风初始化失败")
-            }
-            audioRecord = recorder
-            val audioFormat = MediaFormat.createAudioFormat(
-                MediaFormat.MIMETYPE_AUDIO_AAC,
-                AUDIO_SAMPLE_RATE,
-                AUDIO_CHANNEL_COUNT,
-            ).apply {
-                setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
-                setInteger(MediaFormat.KEY_BIT_RATE, AUDIO_BIT_RATE)
-                setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, bufferSize)
-            }
-            codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
-            codec.configure(audioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            codec.start()
-            recorder.startRecording()
-            val audioClockBaseUs = System.nanoTime() / 1_000L
-            var submittedFrames = 0L
-            var inputEnded = false
-            var outputEnded = false
-            while (!outputEnded) {
-                if (!inputEnded) {
-                    val inputIndex = codec.dequeueInputBuffer(10_000)
-                    if (inputIndex >= 0) {
-                        val input = codec.getInputBuffer(inputIndex) ?: continue
-                        input.clear()
-                        if (audioRunning.get()) {
-                            val read = recorder.read(input, input.capacity(), AudioRecord.READ_BLOCKING)
-                            if (read > 0) {
-                                val ptsUs = audioClockBaseUs + submittedFrames * 1_000_000L / AUDIO_SAMPLE_RATE
-                                submittedFrames += read / 2L / AUDIO_CHANNEL_COUNT
-                                codec.queueInputBuffer(inputIndex, 0, read, ptsUs, 0)
-                            }
-                        } else {
-                            codec.queueInputBuffer(
-                                inputIndex,
-                                0,
-                                0,
-                                audioClockBaseUs + submittedFrames * 1_000_000L / AUDIO_SAMPLE_RATE,
-                                MediaCodec.BUFFER_FLAG_END_OF_STREAM,
-                            )
-                            inputEnded = true
-                        }
-                    }
-                }
-                val info = MediaCodec.BufferInfo()
-                var outputIndex = codec.dequeueOutputBuffer(info, 10_000)
-                while (outputIndex >= 0) {
-                    val output = codec.getOutputBuffer(outputIndex)
-                    if (output != null && info.size > 0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
-                        output.position(info.offset)
-                        output.limit(info.offset + info.size)
-                        val bytes = ByteArray(info.size)
-                        output.get(bytes)
-                        val sample = EncodedMuxSample(bytes, info.presentationTimeUs, info.flags)
-                        muxHandler?.post { handleAudioSample(sample) }
-                    }
-                    outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
-                    codec.releaseOutputBuffer(outputIndex, false)
-                    outputIndex = codec.dequeueOutputBuffer(info, 10_000)
-                }
-                if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    val format = codec.outputFormat
-                    muxHandler?.post {
-                        audioOutputFormat = format
-                        if (recordingRequested && startResult != null) requestSyncFrame()
-                    }
-                }
-            }
-        } catch (error: Throwable) {
-            muxHandler?.post {
-                if (startResult != null) {
-                    failPendingStart("audio_init", "麦克风或音频编码器启动失败")
-                } else {
-                    notifyNativeError("声音录制异常", error)
-                }
-            }
-        } finally {
-            try {
-                recorder?.stop()
-            } catch (_: Throwable) {
-            }
-            recorder?.release()
-            audioRecord = null
-            try {
-                codec?.stop()
-            } catch (_: Throwable) {
-            }
-            codec?.release()
-            audioThread = null
-            muxHandler?.post {
-                if (stopResult != null) finishStop()
-            }
-        }
-    }
-
     private fun handleVideoSample(buffer: ByteBuffer, info: MediaCodec.BufferInfo) {
         val isKeyFrame = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
         if (startResult != null && recordingRequested && isKeyFrame && formatsReady()) {
@@ -2211,11 +2094,7 @@ class ContinuousSegmentCamera(
         resetStallRecovery()
         recreateCaptureSession()
         setVideoSuspended(true)
-        audioRunning.set(false)
-        try {
-            audioRecord?.stop()
-        } catch (_: Throwable) {
-        }
+        recordingAudioPipeline.stop()
         replyError(result, code, message)
     }
 
