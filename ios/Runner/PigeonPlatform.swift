@@ -200,6 +200,26 @@ private struct BackupTransferError: Error {
   let errorCode: String
   let message: String
   let failureKind: String
+  let expectedOffset: Int64?
+
+  init(
+    statusCode: Int,
+    errorCode: String,
+    message: String,
+    failureKind: String,
+    expectedOffset: Int64? = nil
+  ) {
+    self.statusCode = statusCode
+    self.errorCode = errorCode
+    self.message = message
+    self.failureKind = failureKind
+    self.expectedOffset = expectedOffset
+  }
+}
+
+private struct BackupSourceError: Error, LocalizedError {
+  let message: String
+  var errorDescription: String? { message }
 }
 
 private final class IosMediaProcessingHostApi: MediaProcessingHostApi {
@@ -820,6 +840,89 @@ private final class IosBackupJobStore {
   }
 }
 
+struct IosBackupFileSnapshot: Equatable {
+  let byteCount: Int64
+  let modifiedAtMilliseconds: Int64
+
+  static func read(from url: URL) throws -> IosBackupFileSnapshot {
+    let attributes: [FileAttributeKey: Any]
+    do {
+      attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+    } catch {
+      throw BackupSourceError(message: "无法读取录像文件信息")
+    }
+    guard let size = attributes[.size] as? NSNumber,
+          let modified = attributes[.modificationDate] as? Date,
+          size.int64Value > 0
+    else {
+      throw BackupSourceError(message: "录像文件不存在或为空")
+    }
+    return IosBackupFileSnapshot(
+      byteCount: size.int64Value,
+      modifiedAtMilliseconds: Int64(modified.timeIntervalSince1970 * 1000)
+    )
+  }
+}
+
+/// 用 FileHandle 保持上传内存有界，并在每次读块前确认源文件没有被替换。
+final class IosBackupFileReader {
+  let snapshot: IosBackupFileSnapshot
+  private let url: URL
+  private let handle: FileHandle
+
+  init(url: URL) throws {
+    self.url = url
+    snapshot = try IosBackupFileSnapshot.read(from: url)
+    do {
+      handle = try FileHandle(forReadingFrom: url)
+    } catch {
+      throw BackupSourceError(message: "无法打开录像文件")
+    }
+  }
+
+  deinit { try? handle.close() }
+
+  func sha256(bufferSize: Int = 1024 * 1024) throws -> String {
+    try assertUnchanged()
+    try handle.seek(toOffset: 0)
+    var hasher = SHA256()
+    var consumed: Int64 = 0
+    while consumed < snapshot.byteCount {
+      try Task.checkCancellation()
+      let requested = min(Int64(bufferSize), snapshot.byteCount - consumed)
+      guard let data = try handle.read(upToCount: Int(requested)), !data.isEmpty else {
+        throw BackupSourceError(message: "录像文件读取不完整")
+      }
+      consumed += Int64(data.count)
+      hasher.update(data: data)
+    }
+    try assertUnchanged()
+    return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+
+  func read(offset: Int64, count: Int) throws -> Data {
+    try assertUnchanged()
+    guard offset >= 0, offset < snapshot.byteCount else {
+      throw BackupSourceError(message: "录像上传偏移无效")
+    }
+    let expected = min(Int64(count), snapshot.byteCount - offset)
+    try handle.seek(toOffset: UInt64(offset))
+    guard let data = try handle.read(upToCount: Int(expected)),
+          data.count == Int(expected)
+    else {
+      throw BackupSourceError(message: "录像文件读取不完整")
+    }
+    try assertUnchanged()
+    return data
+  }
+
+  func assertUnchanged() throws {
+    guard try IosBackupFileSnapshot.read(from: url) == snapshot else {
+      throw BackupSourceError(message: "录像文件已被替换，已停止备份")
+    }
+  }
+}
+
 /// 电脑完成回执的本地信任边界。只有所有绑定字段和 HMAC 都通过，
 /// 才允许把任务标记为 completed/可清理。
 enum IosBackupReceiptVerifier {
@@ -1344,15 +1447,21 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       uploadsLock.unlock()
     }
     let url = URL(fileURLWithPath: path)
-    guard let data = try? Data(contentsOf: url) else { return }
-    let fileSha256 = SHA256.hash(data: data).map {
-      String(format: "%02x", $0)
-    }.joined()
 
     do {
+      guard
+        let rawSessions = job["sessions"] as? [Any],
+        rawSessions.count == 1,
+        let completionSession = Self.backupCompletionSession(rawSessions[0])
+      else {
+        throw BackupSourceError(message: "备份任务必须且只能包含一条录像记录")
+      }
+      let reader = try IosBackupFileReader(url: url)
+      let totalBytes = reader.snapshot.byteCount
+      let fileSha256 = try reader.sha256()
       let createBody: [String: Any] = [
         "fileSha256": fileSha256,
-        "totalBytes": data.count,
+        "totalBytes": totalBytes,
         "mimeType": "video/mp4",
       ]
       let create: [String: Any]
@@ -1389,14 +1498,14 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         max(rawChunkSize.intValue, 256 * 1024),
         8 * 1024 * 1024
       )
-      var offset = min(max(rawOffset.intValue, 0), data.count)
+      var offset = min(max(rawOffset.int64Value, 0), totalBytes)
       let uploadIdEncoded = uploadId.addingPercentEncoding(
         withAllowedCharacters: .urlPathAllowed
       ) ?? uploadId
-      while offset < data.count {
+      var offsetResyncAttempts = 0
+      while offset < totalBytes {
         try Task.checkCancellation()
-        let end = min(offset + chunkSize, data.count)
-        let chunk = data.subdata(in: offset..<end)
+        let chunk = try reader.read(offset: offset, count: chunkSize)
         let chunkPath = "/api/mobile-backup/uploads/\(uploadIdEncoded)/chunks"
         let result: [String: Any]
         do {
@@ -1405,11 +1514,26 @@ private final class IosBackupHostApi: BackupNativeHostApi {
             path: chunkPath,
             chunk: chunk,
             offset: offset,
-            total: data.count,
+            total: totalBytes,
             accessKey: accessKey,
             deviceId: deviceId()
           )
         } catch {
+          if let transfer = error as? BackupTransferError,
+             transfer.statusCode == 409,
+             transfer.errorCode == "offset_mismatch",
+             let expected = transfer.expectedOffset,
+             expected >= 0, expected <= totalBytes {
+            offsetResyncAttempts += 1
+            guard offsetResyncAttempts <= 3 else { throw transfer }
+            offset = expected
+            updateJob(jobId) { current in
+              current["state"] = "uploading"
+              current["uploadedBytes"] = offset
+            }
+            emitSnapshot()
+            continue
+          }
           guard let recovered = await recoverBaseUrl(
             failedBaseUrl: baseUrl,
             connection: connection
@@ -1420,7 +1544,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
             path: chunkPath,
             chunk: chunk,
             offset: offset,
-            total: data.count,
+            total: totalBytes,
             accessKey: accessKey,
             deviceId: deviceId()
           )
@@ -1428,7 +1552,12 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         guard let next = result["offset"] as? NSNumber else {
           throw pigeonError("电脑返回的上传进度无效")
         }
-        offset = next.intValue
+        let nextOffset = next.int64Value
+        guard nextOffset > offset, nextOffset <= totalBytes else {
+          throw BackupSourceError(message: "电脑返回的上传进度无效")
+        }
+        offsetResyncAttempts = 0
+        offset = nextOffset
         updateJob(jobId) { current in
           current["state"] = "uploading"
           current["uploadedBytes"] = offset
@@ -1437,14 +1566,13 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       }
 
       try Task.checkCancellation()
+      try reader.assertUnchanged()
       let completePath = "/api/mobile-backup/uploads/\(uploadIdEncoded)/complete"
       let completeBody: [String: Any] = [
         "fileSha256": fileSha256,
         "sourceDeviceId": deviceId(),
         "sourceDeviceName": deviceName(),
-        "sessions": Self.backupCompletionSessions(
-          job["sessions"] as? [Any] ?? []
-        ),
+        "sessions": [completionSession],
       ]
       let complete: [String: Any]
       do {
@@ -1484,7 +1612,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
           sourceDeviceId: deviceId(),
           sourceSessionId: sessionId,
           fileSha256: fileSha256,
-          fileSizeBytes: Int64(data.count),
+          fileSizeBytes: totalBytes,
           recordId: recordId
         )
       else {
@@ -1498,7 +1626,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       let completedAt = Self.isoFormatter.string(from: Date())
       updateJob(jobId) { current in
         current["state"] = "completed"
-        current["uploadedBytes"] = data.count
+        current["uploadedBytes"] = totalBytes
         current["contentSha256"] = fileSha256
         current["remoteRecordId"] = recordId
         current["backupCompletedAt"] = completedAt
@@ -1583,8 +1711,8 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     baseUrl: String,
     path: String,
     chunk: Data,
-    offset: Int,
-    total: Int,
+    offset: Int64,
+    total: Int64,
     accessKey: String,
     deviceId: String
   ) async throws -> [String: Any] {
@@ -1592,7 +1720,7 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     request.httpMethod = "PUT"
     request.httpBody = chunk
     request.setValue(
-      "bytes \(offset)-\(offset + chunk.count - 1)/\(total)",
+      "bytes \(offset)-\(offset + Int64(chunk.count) - 1)/\(total)",
       forHTTPHeaderField: "Content-Range"
     )
     request.setValue(
@@ -1620,34 +1748,24 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
   }
 
-  private static func backupCompletionSessions(_ rawSessions: [Any]) -> [Any] {
-    rawSessions.compactMap { value in
-      guard let source = value as? [String: Any] else { return nil }
-      let mediaEnd = Self.int64Value(source["mediaEndMs"])
-      let mediaStart = Self.int64Value(source["mediaStartMs"])
-      let startedAt = source["startedAt"] as? String ?? ""
-      let endedAt = source["endedAt"] as? String ?? ""
-
-      var duration = mediaEnd - mediaStart
-      if duration <= 0 {
-        duration = Self.durationBetween(startedAt: startedAt, endedAt: endedAt)
-      }
-      if duration <= 0 {
-        duration = 1
-      }
-
-      var completed: [String: Any] = [
-        "sessionId": source["id"] as? String ?? "",
-        "trackingNumber": source["trackingNumber"] as? String ?? "",
-        "startedAt": startedAt,
-        "durationMilliseconds": duration,
-        "mode": source["mode"] as? String ?? "shipping",
-      ]
-      if let orderInfo = source["orderInfo"] as? [String: Any] {
-        completed["orderInfo"] = orderInfo
-      }
-      return completed
-    }
+  private static func backupCompletionSession(_ value: Any) -> [String: Any]? {
+    guard
+      let source = value as? [String: Any],
+      let id = source["id"] as? String,
+      !id.isEmpty,
+      let startedAt = source["startedAt"] as? String,
+      let endedAt = source["endedAt"] as? String
+    else { return nil }
+    return [
+      "id": id,
+      "trackingNumber": source["trackingNumber"] as? String ?? "",
+      "startedAt": startedAt,
+      "endedAt": endedAt,
+      "mediaStartMs": int64Value(source["mediaStartMs"]),
+      "mediaEndMs": int64Value(source["mediaEndMs"]),
+      "mode": source["mode"] as? String ?? "shipping",
+      "markers": source["markers"] as? [Any] ?? [],
+    ]
   }
 
   private static func int64Value(_ value: Any?) -> Int64 {
@@ -1663,34 +1781,6 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     return 0
   }
 
-  private static func durationBetween(
-    startedAt: String,
-    endedAt: String
-  ) -> Int64 {
-    guard
-      let start = Self.parseIso8601(startedAt),
-      let end = Self.parseIso8601(endedAt)
-    else {
-      return 0
-    }
-    let milliseconds = end.timeIntervalSince(start) * 1000
-    return Int64(max(0, milliseconds))
-  }
-
-  private static func parseIso8601(_ value: String) -> Date? {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    if let date = formatter.date(from: value) {
-      return date
-    }
-    formatter.formatOptions = [.withInternetDateTime]
-    if let date = formatter.date(from: value) {
-      return date
-    }
-    let withoutFraction = value.split(separator: ".").first.map(String.init) ?? value
-    return formatter.date(from: withoutFraction)
-  }
-
   private static func backupTransferError(
     statusCode: Int,
     data: Data,
@@ -1699,9 +1789,11 @@ private final class IosBackupHostApi: BackupNativeHostApi {
     let text = String(data: data, encoding: .utf8) ?? ""
     var errorCode = ""
     var message = ""
+    var expectedOffset: Int64?
     if let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
       errorCode = object["errorCode"] as? String ?? ""
       message = object["error"] as? String ?? ""
+      expectedOffset = (object["expectedOffset"] as? NSNumber)?.int64Value
     }
     if message.isEmpty {
       message = text.isEmpty ? fallbackMessage : text
@@ -1714,7 +1806,8 @@ private final class IosBackupHostApi: BackupNativeHostApi {
       statusCode: statusCode,
       errorCode: errorCode,
       message: message,
-      failureKind: failureKind
+      failureKind: failureKind,
+      expectedOffset: expectedOffset
     )
   }
 
@@ -1728,6 +1821,22 @@ private final class IosBackupHostApi: BackupNativeHostApi {
         errorCode: pigeon.code,
         message: pigeon.message ?? pigeon.localizedDescription,
         failureKind: "unknown"
+      )
+    }
+    if let source = error as? BackupSourceError {
+      return BackupTransferError(
+        statusCode: 0,
+        errorCode: "backup_source_unavailable",
+        message: source.message,
+        failureKind: "unknown"
+      )
+    }
+    if error is CancellationError {
+      return BackupTransferError(
+        statusCode: 0,
+        errorCode: "backup_cancelled",
+        message: "备份已暂停",
+        failureKind: "offline_or_timeout"
       )
     }
     return BackupTransferError(

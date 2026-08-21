@@ -83,6 +83,37 @@ class RunnerTests: XCTestCase {
     }
   }
 
+  func testBackupFileReaderHashesAndReadsBoundedChunks() throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("backup-reader-\(UUID().uuidString).mp4")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let source = Data((0..<(2 * 1024 * 1024 + 17)).map { UInt8($0 % 251) })
+    try source.write(to: url)
+
+    let reader = try IosBackupFileReader(url: url)
+    let expectedHash = SHA256.hash(data: source)
+      .map { String(format: "%02x", $0) }.joined()
+    XCTAssertEqual(try reader.sha256(bufferSize: 64 * 1024), expectedHash)
+    XCTAssertEqual(
+      try reader.read(offset: 1024 * 1024 - 7, count: 32),
+      source.subdata(in: (1024 * 1024 - 7)..<(1024 * 1024 + 25))
+    )
+    XCTAssertEqual(
+      try reader.read(offset: Int64(source.count - 9), count: 64).count,
+      9
+    )
+  }
+
+  func testBackupFileReaderRejectsReplacedSource() throws {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("backup-reader-replaced-\(UUID().uuidString).mp4")
+    defer { try? FileManager.default.removeItem(at: url) }
+    try Data(repeating: 1, count: 1024).write(to: url)
+    let reader = try IosBackupFileReader(url: url)
+    try Data(repeating: 2, count: 2048).write(to: url)
+    XCTAssertThrowsError(try reader.read(offset: 0, count: 32))
+  }
+
   private typealias ReceiptFixture = (
     response: [String: Any], accessKey: String, host: String, device: String,
     session: String, sha256: String, fileSize: Int64, recordId: Int64, now: Int64
