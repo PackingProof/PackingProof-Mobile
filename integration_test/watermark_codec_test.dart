@@ -3,10 +3,12 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:packing_proof_mobile/models/recording_orientation.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/services/video_watermark_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:video_player/video_player.dart';
 
 // 1 秒 160x120 H.264 基线测试视频（base64 内嵌，避免依赖外部文件）。
 const String _inputMp4Base64 =
@@ -27,7 +29,9 @@ void main() {
       }
     });
 
-    final VideoWatermarkService service = VideoWatermarkService(isAndroid: true);
+    final VideoWatermarkService service = VideoWatermarkService(
+      isAndroid: true,
+    );
 
     final File h264Output = File(
       await service.apply(
@@ -41,11 +45,7 @@ void main() {
       if (await h264Output.exists()) await h264Output.delete();
     });
     expect(await h264Output.exists(), isTrue);
-    expect(
-      _videoCodecMarker(h264Output),
-      'avc1',
-      reason: 'H.264 设置应输出 AVC',
-    );
+    expect(_videoCodecMarker(h264Output), 'avc1', reason: 'H.264 设置应输出 AVC');
 
     final File hevcOutput = File(
       await service.apply(
@@ -65,6 +65,67 @@ void main() {
       isTrue,
       reason: 'H.265 设置应输出 HEVC，实际 $hevcMarker',
     );
+  });
+
+  testWidgets('三方向水印通过真实导出与播放链路', (WidgetTester tester) async {
+    if (!Platform.isAndroid) return;
+    final Directory root = await getApplicationDocumentsDirectory();
+    final VideoWatermarkService service = VideoWatermarkService(
+      isAndroid: true,
+    );
+    final List<File> temporaryFiles = <File>[];
+    addTearDown(() async {
+      for (final File file in temporaryFiles) {
+        if (await file.exists()) await file.delete();
+      }
+    });
+
+    for (final RecordingOrientation orientation
+        in RecordingOrientation.values) {
+      final File input = File(
+        p.join(root.path, 'wm_orientation_${orientation.storageValue}.mp4'),
+      );
+      await input.writeAsBytes(base64Decode(_inputMp4Base64), flush: true);
+      temporaryFiles.add(input);
+
+      final File output = File(
+        await service.applyWithOrientation(
+          inputPath: input.path,
+          startedAt: DateTime.utc(2026, 8, 21, 9, 30),
+          trackingNumber: 'ORIENTATION-${orientation.storageValue}',
+          videoCodec: RecordingVideoCodec.h264,
+          recordingOrientation: orientation,
+        ),
+      );
+      temporaryFiles.add(output);
+      expect(await output.exists(), isTrue);
+      expect(await output.length(), greaterThan(0));
+      expect(_videoCodecMarker(output), 'avc1');
+
+      final VideoPlayerController player = VideoPlayerController.file(output);
+      try {
+        await player.initialize();
+        expect(player.value.isInitialized, isTrue);
+        expect(player.value.hasError, isFalse);
+        expect(player.value.duration, greaterThan(Duration.zero));
+        expect(player.value.size.width, greaterThan(0));
+        expect(player.value.size.height, greaterThan(0));
+        await player.play();
+        final Stopwatch playbackWait = Stopwatch()..start();
+        while (player.value.position <= Duration.zero &&
+            playbackWait.elapsed < const Duration(seconds: 3)) {
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        }
+        expect(player.value.hasError, isFalse);
+        expect(
+          player.value.position,
+          greaterThan(Duration.zero),
+          reason: '${orientation.label}水印视频应能实际开始播放',
+        );
+      } finally {
+        await player.dispose();
+      }
+    }
   });
 }
 
