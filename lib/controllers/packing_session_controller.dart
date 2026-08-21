@@ -50,6 +50,7 @@ import '../services/video_watermark_service.dart';
 part 'packing_session_backup_coordinator.dart';
 part 'packing_session_barcode_coordinator.dart';
 part 'packing_session_camera_coordinator.dart';
+part 'packing_session_order_coordinator.dart';
 part 'packing_session_storage_coordinator.dart';
 part 'packing_session_watermark_coordinator.dart';
 
@@ -84,6 +85,7 @@ class PackingSessionController extends ChangeNotifier
         _PackingSessionStorageCoordinator,
         _PackingSessionWatermarkCoordinator,
         _PackingSessionBarcodeCoordinator,
+        _PackingSessionOrderCoordinator,
         _PackingSessionCameraCoordinator {
   PackingSessionController({
     SessionRepository? repository,
@@ -184,7 +186,6 @@ class PackingSessionController extends ChangeNotifier
       const LocalRecordingStatistics();
   Timer? _elapsedTimer;
   Timer? _feedbackTimer;
-  Timer? _scanWarningTimer;
   Timer? _rejectedBarcodeTimer;
   Timer? _initialPromptTimer;
   Timer? _pairingFeedbackTimer;
@@ -196,7 +197,6 @@ class PackingSessionController extends ChangeNotifier
   RecordingOperationMode _operationMode = RecordingOperationMode.shipping;
   @override
   bool _speechEnabled = true;
-  bool _orderSpeechEnabled = true;
   bool _maxVolumeEnabled = true;
   @override
   bool _recordAudioEnabled = true;
@@ -214,7 +214,6 @@ class PackingSessionController extends ChangeNotifier
   bool _appIsActive = true;
   @override
   String? _errorMessage;
-  String? _scanWarningMessage;
   @override
   String? _cameraNotice;
   String? _rejectedBarcodeMessage;
@@ -222,7 +221,6 @@ class PackingSessionController extends ChangeNotifier
   bool _disposed = false;
   int _pairingAttemptRevision = 0;
   bool _backupListenerAttached = false;
-  bool _orderReceiverListenerAttached = false;
   bool _backgroundServicesInitialized = false;
   String? _pairingMessage;
   String? _recordingId;
@@ -239,9 +237,6 @@ class PackingSessionController extends ChangeNotifier
   String? _pendingReplacementQr;
   LanBackupPairingConfirmation? _pendingReplacementConfirmation;
   Set<int> _hiddenRemoteRecordingIds = <int>{};
-  StreamSubscription<OrderInfo>? _orderInfoSubscription;
-  OrderInfo? _activeOrderInfo;
-  String _lastAnnouncedOrderSignature = '';
 
   CameraController? get cameraController => _cameraController;
   int? get nativeTextureId => _nativeInitialization?.textureId;
@@ -257,10 +252,6 @@ class PackingSessionController extends ChangeNotifier
   String get currentCode => _timeline.currentCode;
   WorkMode get workMode => _workMode;
   bool get speechEnabled => _speechEnabled;
-  bool get orderSpeechEnabled => _orderSpeechEnabled;
-  OrderInfo? get activeOrderInfo => _activeOrderInfo;
-  OrderInfoReceiverSnapshot get orderReceiverSnapshot =>
-      _orderInfoReceiver.snapshot;
   bool get maxVolumeEnabled => _maxVolumeEnabled;
   CameraCapabilityMode get capabilityMode => _capabilityMode;
   bool get capabilityProbeRunning => _capabilityProbeRunning;
@@ -429,20 +420,8 @@ class PackingSessionController extends ChangeNotifier
         _runInBackground(_registerRepositorySessionsForRetention());
       }
     }
-    if (_capabilities.supports(PlatformCapability.orderInfoReceiver) &&
-        !_orderReceiverListenerAttached) {
-      _orderInfoReceiver.addListener(_handleOrderReceiverChanged);
-      _orderReceiverListenerAttached = true;
-      _orderInfoSubscription = _orderInfoReceiver.received.listen(
-        _handleReceivedOrderInfo,
-      );
-      try {
-        await _orderInfoReceiver.initialize().timeout(
-          const Duration(seconds: 8),
-        );
-      } on Object {
-        // Order push can be retried from settings after the camera is ready.
-      }
+    if (_capabilities.supports(PlatformCapability.orderInfoReceiver)) {
+      await _initializeOrderReceiverBinding();
     }
     _backgroundServicesInitialized = true;
     if (!_disposed) notifyListeners();
@@ -952,15 +931,6 @@ class PackingSessionController extends ChangeNotifier
     await _speechService.setEnabled(enabled);
     await _repository.saveSpeechEnabled(enabled);
   }
-
-  Future<void> setOrderSpeechEnabled(bool enabled) async {
-    if (_orderSpeechEnabled == enabled) return;
-    _orderSpeechEnabled = enabled;
-    notifyListeners();
-    await _repository.saveOrderSpeechEnabled(enabled);
-  }
-
-  Future<void> retryOrderReceiver() => _orderInfoReceiver.retry();
 
   Future<void> setMaxVolumeEnabled(bool enabled) async {
     if (_maxVolumeEnabled == enabled) {
@@ -1607,55 +1577,6 @@ class PackingSessionController extends ChangeNotifier
     operationMode: session.operationMode,
   );
 
-  void _handleOrderReceiverChanged() {
-    if (!_disposed) notifyListeners();
-  }
-
-  void _handleReceivedOrderInfo(OrderInfo info) {
-    if (_disposed) return;
-    if (info.isTest) {
-      _speechService.enqueue(SpeechPrompt.testOrderReceived);
-      return;
-    }
-    if (_timeline.currentCode.isEmpty ||
-        info.trackingNumber != _timeline.currentCode.trim().toUpperCase()) {
-      return;
-    }
-    _setActiveOrderInfo(info, announce: false);
-    _announceOrderInfo(info);
-  }
-
-  @override
-  void _setActiveOrderInfo(OrderInfo? value, {required bool announce}) {
-    _activeOrderInfo = value;
-    if (value == null) _lastAnnouncedOrderSignature = '';
-    if (!_disposed) notifyListeners();
-    if (announce) _announceOrderInfo(value);
-  }
-
-  @override
-  void _announceOrderInfo(OrderInfo? info) {
-    if (!_speechEnabled || !_orderSpeechEnabled || info == null) return;
-    final String signature = info.announcementSignature;
-    if (signature == _lastAnnouncedOrderSignature) return;
-    _lastAnnouncedOrderSignature = signature;
-    if (_speechService case final DynamicSpeechPromptSink speech) {
-      for (final message in info.speechMessages) {
-        speech.enqueueText(
-          message.text,
-          priority: message.warning
-              ? SpeechPromptPriority.warning
-              : SpeechPromptPriority.normal,
-          incidentKey: message.warning
-              ? 'order-refund:${info.trackingNumber}:${info.orderId}:${info.refundStatus}'
-              : null,
-          playRemarkTone: !message.warning,
-          playIndustrialAlarm: message.warning,
-        );
-      }
-    }
-  }
-
   @override
   void _bindCurrentCode(String code, DateTime now) {
     final BarcodeMarker? marker = _timeline.bindCode(code, now);
@@ -1889,34 +1810,6 @@ class PackingSessionController extends ChangeNotifier
   }
 
   @override
-  void _showDuplicateOrderWarning(String trackingNumber) {
-    final String incidentKey = 'duplicate-order-number:$trackingNumber';
-    _scanWarningMessage = '警告：重复单号，请确认';
-    _scanWarningTimer?.cancel();
-    _scanWarningTimer = Timer(const Duration(seconds: 3), () {
-      if (_disposed) return;
-      _scanWarningMessage = null;
-      _speechService.resolveIncident(incidentKey);
-      notifyListeners();
-    });
-    _speechService.enqueue(
-      SpeechPrompt.duplicateOrderWarning,
-      incidentKey: incidentKey,
-    );
-    notifyListeners();
-  }
-
-  @override
-  Future<bool> _hasRecentTrackingNumber(String trackingNumber) async {
-    try {
-      return await _repository.hasRecentTrackingNumber(trackingNumber);
-    } on Object {
-      // Duplicate-order assistance must never prevent recording from starting.
-      return false;
-    }
-  }
-
-  @override
   void _setCameraError(CameraException error) {
     _errorMessage = switch (error.code) {
       'CameraAccessDenied' ||
@@ -2068,10 +1961,7 @@ class PackingSessionController extends ChangeNotifier
       _lanBackupService.removeListener(_handleBackupChanged);
       _backupListenerAttached = false;
     }
-    if (_orderReceiverListenerAttached) {
-      _orderInfoReceiver.removeListener(_handleOrderReceiverChanged);
-      _orderReceiverListenerAttached = false;
-    }
+    _detachOrderReceiverBinding();
 
     final CameraController? camera = _cameraController;
     _cameraController = null;

@@ -1,12 +1,10 @@
 part of 'packing_session_controller.dart';
 
 /// 协调摄像头初始化、能力判定、镜头身份与运行诊断。
-mixin _PackingSessionCameraCoordinator on _PackingSessionBarcodeCoordinator {
+mixin _PackingSessionCameraCoordinator on _PackingSessionOrderCoordinator {
   PackingSessionPhase get _phase;
-  bool get _speechEnabled;
   set _speechEnabled(bool value);
   set _workMode(WorkMode value);
-  set _orderSpeechEnabled(bool value);
   set _maxVolumeEnabled(bool value);
   bool get _recordAudioEnabled;
   set _recordAudioEnabled(bool value);
