@@ -191,7 +191,7 @@ void main() {
     expect(restored.markers.single.offset, const Duration(seconds: 7));
   });
 
-  test('删除最后一个引用旧录像文件的记录时才清理文件（兼容旧数据）', () async {
+  test('拒绝让两条录像记录引用同一文件', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing_proof_mobile_delete_test',
     );
@@ -224,14 +224,17 @@ void main() {
       mediaStart: const Duration(seconds: 10),
       mediaEnd: const Duration(seconds: 20),
     );
-    await repository.addSessions(<RecordingSession>[first, second]);
-
-    await repository.deleteSessions(<String>{first.id});
+    await expectLater(
+      repository.addSessions(<RecordingSession>[first, second]),
+      throwsA(
+        isA<StateError>().having(
+          (StateError error) => error.message,
+          'message',
+          '一条录像文件只能对应一条录像记录',
+        ),
+      ),
+    );
     expect(File(videoPath).existsSync(), isTrue);
-    expect(await repository.loadSessions(), hasLength(1));
-
-    await repository.deleteSessions(<String>{second.id});
-    expect(File(videoPath).existsSync(), isFalse);
     expect(await repository.loadSessions(), isEmpty);
   });
 
@@ -711,33 +714,34 @@ void main() {
     expect(await repository.hasRecentTrackingNumber('RECENT-TRACK'), isFalse);
   });
 
-  test('备份分页不会拆散引用同一旧录像文件的记录（兼容旧数据）', () async {
+  test('备份分页按独立录像记录稳定分页', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing_proof_mobile_backup_page_test',
     );
     addTearDown(() => root.delete(recursive: true));
     final SessionRepository repository = testRepository(root);
     final DateTime startedAt = DateTime(2026, 7, 23, 11);
-    final String sharedPath = '${root.path}/a-shared.mp4';
-    final String otherPath = '${root.path}/b-other.mp4';
+    final String firstPath = '${root.path}/a-first.mp4';
+    final String secondPath = '${root.path}/b-second.mp4';
+    final String thirdPath = '${root.path}/c-third.mp4';
     await repository.addSessions(<RecordingSession>[
       RecordingSession(
-        id: 'shared-1',
-        filePath: sharedPath,
+        id: 'first',
+        filePath: firstPath,
         startedAt: startedAt,
         endedAt: startedAt.add(const Duration(seconds: 1)),
         markers: const <BarcodeMarker>[],
       ),
       RecordingSession(
-        id: 'shared-2',
-        filePath: sharedPath,
+        id: 'second',
+        filePath: secondPath,
         startedAt: startedAt.add(const Duration(seconds: 1)),
         endedAt: startedAt.add(const Duration(seconds: 2)),
         markers: const <BarcodeMarker>[],
       ),
       RecordingSession(
-        id: 'other',
-        filePath: otherPath,
+        id: 'third',
+        filePath: thirdPath,
         startedAt: startedAt.add(const Duration(seconds: 2)),
         endedAt: startedAt.add(const Duration(seconds: 3)),
         markers: const <BarcodeMarker>[],
@@ -747,7 +751,50 @@ void main() {
     final first = await repository.loadBackupBatch(page: 1, pageSize: 1);
     final second = await repository.loadBackupBatch(page: 2, pageSize: 1);
 
-    expect(first.map((item) => item.id), <String>['shared-1', 'shared-2']);
-    expect(second.single.id, 'other');
+    expect(first.single.id, 'first');
+    expect(second.single.id, 'second');
+  });
+
+  test('旧索引中的共享录像会迁移为独立物理文件', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing_proof_mobile_shared_migration_test',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final File source = File('${root.path}/legacy.mp4');
+    await source.writeAsBytes(<int>[1, 2, 3, 4]);
+    final DateTime startedAt = DateTime(2026, 7, 23, 12);
+    final List<RecordingSession> legacy = <RecordingSession>[
+      RecordingSession(
+        id: 'legacy-first',
+        filePath: source.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <BarcodeMarker>[],
+      ),
+      RecordingSession(
+        id: 'legacy-second',
+        filePath: source.path,
+        startedAt: startedAt.add(const Duration(seconds: 1)),
+        endedAt: startedAt.add(const Duration(seconds: 2)),
+        markers: const <BarcodeMarker>[],
+        mediaStart: const Duration(seconds: 1),
+        mediaEnd: const Duration(seconds: 2),
+      ),
+    ];
+    await File('${root.path}/sessions.json').writeAsString(
+      jsonEncode(legacy.map((RecordingSession item) => item.toJson()).toList()),
+    );
+
+    final SessionRepository repository = testRepository(root);
+    final List<RecordingSession> migrated = await repository.loadSessions();
+
+    expect(migrated, hasLength(2));
+    expect(
+      migrated.map((RecordingSession item) => item.filePath).toSet(),
+      hasLength(2),
+    );
+    for (final RecordingSession session in migrated) {
+      expect(await File(session.filePath).readAsBytes(), <int>[1, 2, 3, 4]);
+    }
   });
 }

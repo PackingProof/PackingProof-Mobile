@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/recording_session.dart';
@@ -137,7 +138,8 @@ class RecordingDatabase {
   );
 
   Future<void> initialize() async {
-    await _db;
+    final Database db = await _db;
+    await _materializeSharedFileReferences(db);
   }
 
   @visibleForTesting
@@ -198,6 +200,8 @@ class RecordingDatabase {
         'value': DateTime.now().toUtc().toIso8601String(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     });
+
+    await _materializeSharedFileReferences(db);
 
     if (source != null && await source.exists()) {
       final String migratedPath = '${indexFile.path}.migrated';
@@ -329,19 +333,13 @@ class RecordingDatabase {
     final Database db = await _db;
     final int normalizedPage = page < 1 ? 1 : page;
     final int normalizedSize = pageSize.clamp(1, 100);
-    final List<Map<String, Object?>> rows = await db.rawQuery(
-      'SELECT payload_json, file_path, started_at, id FROM ('
-      '  SELECT payload_json, file_path, started_at, id, '
-      '         DENSE_RANK() OVER (ORDER BY file_path) AS file_rank '
-      '  FROM recording_sessions '
-      '  WHERE is_deleted = 0'
-      ') '
-      'WHERE file_rank > ? AND file_rank <= ? '
-      'ORDER BY file_path, started_at, id',
-      <Object?>[
-        (normalizedPage - 1) * normalizedSize,
-        normalizedPage * normalizedSize,
-      ],
+    final List<Map<String, Object?>> rows = await db.query(
+      'recording_sessions',
+      columns: <String>['payload_json'],
+      where: 'is_deleted = 0',
+      orderBy: 'started_at ASC, id ASC',
+      limit: normalizedSize,
+      offset: (normalizedPage - 1) * normalizedSize,
     );
     return rows.map(_sessionFromRow).toList(growable: false);
   }
@@ -453,6 +451,7 @@ class RecordingDatabase {
   Future<void> upsertSessions(List<RecordingSession> sessions) async {
     if (sessions.isEmpty) return;
     final Database db = await _db;
+    await _validateDistinctFileReferences(db, sessions);
     final int now = DateTime.now().millisecondsSinceEpoch;
     final List<String> ids = sessions
         .map((RecordingSession session) => session.id)
@@ -809,6 +808,105 @@ class RecordingDatabase {
           jsonDecode(row['payload_json']! as String) as Map<Object?, Object?>,
         ),
       );
+
+  Future<void> _validateDistinctFileReferences(
+    Database db,
+    List<RecordingSession> sessions,
+  ) async {
+    final Map<String, String> requestedOwners = <String, String>{};
+    for (final RecordingSession session in sessions) {
+      final String normalized = p.normalize(session.filePath);
+      final String? owner = requestedOwners[normalized];
+      if (owner != null && owner != session.id) {
+        throw StateError('一条录像文件只能对应一条录像记录');
+      }
+      requestedOwners[normalized] = session.id;
+    }
+    final List<Map<String, Object?>> rows = await db.query(
+      'recording_sessions',
+      columns: <String>['id', 'file_path'],
+      where: 'is_deleted = 0',
+    );
+    for (final Map<String, Object?> row in rows) {
+      final String normalized = p.normalize(row['file_path']! as String);
+      final String? requestedOwner = requestedOwners[normalized];
+      if (requestedOwner != null && requestedOwner != row['id']) {
+        throw StateError('一条录像文件只能对应一条录像记录');
+      }
+    }
+  }
+
+  Future<void> _materializeSharedFileReferences(Database db) async {
+    final List<Map<String, Object?>> rows = await db.query(
+      'recording_sessions',
+      columns: <String>['id', 'file_path', 'payload_json'],
+      where: 'is_deleted = 0',
+      orderBy: 'file_path ASC, started_at ASC, id ASC',
+    );
+    final Set<String> retainedPaths = <String>{};
+    for (final Map<String, Object?> row in rows) {
+      final String id = row['id']! as String;
+      final String sourcePath = row['file_path']! as String;
+      final String normalized = p.normalize(sourcePath);
+      if (retainedPaths.add(normalized)) continue;
+
+      final String distinctPath = await _copyToDistinctPath(
+        sourcePath: sourcePath,
+        sessionId: id,
+        reservedPaths: retainedPaths,
+      );
+      final RecordingSession session = _sessionFromRow(
+        row,
+      ).copyWith(filePath: distinctPath);
+      final _RecordingFileMetadata metadata = await _readFileMetadata(
+        File(distinctPath),
+      );
+      final int now = DateTime.now().millisecondsSinceEpoch;
+      await db.update(
+        'recording_sessions',
+        <String, Object?>{
+          'file_path': distinctPath,
+          'payload_json': jsonEncode(session.toJson()),
+          'file_size_bytes': metadata.size,
+          'missing_at': metadata.exists ? null : now,
+          'updated_at': now,
+        },
+        where: 'id = ? AND is_deleted = 0',
+        whereArgs: <Object?>[id],
+      );
+      retainedPaths.add(p.normalize(distinctPath));
+    }
+  }
+
+  Future<String> _copyToDistinctPath({
+    required String sourcePath,
+    required String sessionId,
+    required Set<String> reservedPaths,
+  }) async {
+    final File source = File(sourcePath);
+    final String extension = p.extension(sourcePath);
+    final String stem = p.basenameWithoutExtension(sourcePath);
+    final String safeId = sessionId
+        .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')
+        .replaceAll(RegExp(r'_+'), '_');
+    final String suffix = safeId.isEmpty ? 'recording' : safeId;
+    var collision = 0;
+    late String destinationPath;
+    do {
+      collision++;
+      final String number = collision == 1 ? '' : '_$collision';
+      destinationPath = p.join(
+        p.dirname(sourcePath),
+        '${stem}_独立_$suffix$number$extension',
+      );
+    } while (reservedPaths.contains(p.normalize(destinationPath)) ||
+        await File(destinationPath).exists());
+
+    if (await source.exists()) {
+      await source.copy(destinationPath);
+    }
+    return destinationPath;
+  }
 }
 
 class _RecordingFileMetadata {

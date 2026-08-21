@@ -3,31 +3,27 @@ import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/services/recording_timeline.dart';
 
 void main() {
-  test('兼容旧版连续录像拆分：按识别时间形成多条记录', () {
+  test('拒绝把未物理分段的连续录像保存成多条记录', () {
     final RecordingTimeline timeline = RecordingTimeline();
     final DateTime startedAt = DateTime(2026, 7, 18, 9);
     timeline.start(startedAt);
 
     timeline.bindCode('CODE-001', startedAt.add(const Duration(seconds: 2)));
     timeline.startNext('CODE-002', startedAt.add(const Duration(seconds: 10)));
-    final List<RecordingSession> sessions = timeline.buildSessions(
-      endedAt: startedAt.add(const Duration(seconds: 20)),
-      filePath: 'legacy.mp4',
-      recordingId: 'recording-1',
+    expect(
+      () => timeline.buildSessions(
+        endedAt: startedAt.add(const Duration(seconds: 20)),
+        filePath: 'legacy.mp4',
+        recordingId: 'recording-1',
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (StateError error) => error.message,
+          'message',
+          '每个录像片段必须先保存为独立视频文件',
+        ),
+      ),
     );
-
-    expect(sessions, hasLength(2));
-    expect(sessions.map((RecordingSession item) => item.filePath).toSet(), {
-      'legacy.mp4',
-    });
-    expect(sessions.first.displayCode, 'CODE-001');
-    expect(sessions.first.mediaStart, Duration.zero);
-    expect(sessions.first.playbackEnd, const Duration(seconds: 10));
-    expect(sessions.first.markers.single.offset, const Duration(seconds: 2));
-    expect(sessions.last.displayCode, 'CODE-002');
-    expect(sessions.last.mediaStart, const Duration(seconds: 10));
-    expect(sessions.last.playbackEnd, const Duration(seconds: 20));
-    expect(sessions.last.markers.single.offset, Duration.zero);
   });
 
   test('连续扫码会返回可立即保存的已完成实体片段', () {

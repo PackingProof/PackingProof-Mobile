@@ -65,6 +65,9 @@ class RecordingTimeline {
     }
 
     _completeActiveSegment(endedAt);
+    if (_completedSegments.length != 1) {
+      throw StateError('每个录像片段必须先保存为独立视频文件');
+    }
     return List<RecordingSession>.generate(_completedSegments.length, (
       int index,
     ) {
