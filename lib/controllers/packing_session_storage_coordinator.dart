@@ -1,14 +1,9 @@
 part of 'packing_session_controller.dart';
 
-mixin _PackingSessionStorageCoordinator on ChangeNotifier {
-  bool get _disposed;
-  LanBackupSink get _lanBackupService;
+mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
   bool get isWorking;
   bool get isBusy;
   CameraDiagnosticsService get _cameraDiagnostics;
-  SessionRepository get _repository;
-
-  void _runInBackground(Future<void> task);
   Future<RecordingSession?> stopWork();
 
   Timer? _storageMonitorTimer;

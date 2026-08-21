@@ -1,7 +1,7 @@
 part of 'packing_session_controller.dart';
 
 /// 发布水印成片并将最终可用文件衔接到备份队列。
-mixin _PackingSessionWatermarkCoordinator on _PackingSessionBackupCoordinator {
+mixin _PackingSessionWatermarkCoordinator on _PackingSessionStorageCoordinator {
   VideoWatermarkSink get _videoWatermarkService;
   ContinuousCameraInitialization? get _nativeInitialization;
   RecordingVideoCodec get _preferredVideoCodec;

@@ -48,6 +48,7 @@ import '../services/speech_prompt_service.dart';
 import '../services/video_watermark_service.dart';
 
 part 'packing_session_backup_coordinator.dart';
+part 'packing_session_barcode_coordinator.dart';
 part 'packing_session_storage_coordinator.dart';
 part 'packing_session_watermark_coordinator.dart';
 
@@ -80,7 +81,8 @@ class PackingSessionController extends ChangeNotifier
     with
         _PackingSessionBackupCoordinator,
         _PackingSessionStorageCoordinator,
-        _PackingSessionWatermarkCoordinator {
+        _PackingSessionWatermarkCoordinator,
+        _PackingSessionBarcodeCoordinator {
   PackingSessionController({
     SessionRepository? repository,
     SpeechPromptSink? speechService,
@@ -132,7 +134,11 @@ class PackingSessionController extends ChangeNotifier
   static const int recordingFps = 30;
 
   @override
+  Duration get _analysisInterval => analysisInterval;
+
+  @override
   final SessionRepository _repository;
+  @override
   final SpeechPromptSink _speechService;
   final MaxVolumeSink _maxVolumeService;
   @override
@@ -140,13 +146,13 @@ class PackingSessionController extends ChangeNotifier
   @override
   final VideoWatermarkSink _videoWatermarkService;
   final PlatformCapabilities _capabilities;
+  @override
   final OrderInfoReceiverSink _orderInfoReceiver;
+  @override
   final BarcodeScanner _barcodeScanner;
   final Future<PackageInfo> Function() _packageInfoLoader;
   final AppBuildConfig _buildConfig;
-  final BarcodeStabilityTracker _stabilityTracker = BarcodeStabilityTracker();
-  final BarcodeRecognizedBeepPolicy _recognizedBeepPolicy =
-      BarcodeRecognizedBeepPolicy();
+  @override
   final RecordingTimeline _timeline = RecordingTimeline();
   final InitialRecordingPromptPolicy _initialPromptPolicy =
       InitialRecordingPromptPolicy();
@@ -165,7 +171,9 @@ class PackingSessionController extends ChangeNotifier
 
   PlatformCapabilities get capabilities => _capabilities;
 
+  @override
   CameraController? _cameraController;
+  @override
   ContinuousCameraService? _nativeCamera;
   @override
   ContinuousCameraInitialization? _nativeInitialization;
@@ -175,7 +183,6 @@ class PackingSessionController extends ChangeNotifier
   List<RecordingSession> _sessions = <RecordingSession>[];
   LocalRecordingStatistics _localRecordingStatistics =
       const LocalRecordingStatistics();
-  DateTime _lastAnalysisAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _elapsedTimer;
   Timer? _feedbackTimer;
   Timer? _scanWarningTimer;
@@ -186,53 +193,44 @@ class PackingSessionController extends ChangeNotifier
   Timer? _diagnosticsTimer;
   Duration _elapsed = Duration.zero;
   BarcodeMarker? _lastMarker;
-  String _candidateCode = '';
+  @override
   WorkMode _workMode = WorkMode.continuousScan;
+  @override
   RecordingOperationMode _operationMode = RecordingOperationMode.shipping;
   bool _speechEnabled = true;
   bool _orderSpeechEnabled = true;
   bool _maxVolumeEnabled = true;
   bool _recordAudioEnabled = true;
   bool _nativeRecordingFallback = false;
+  @override
   CameraCapabilityMode _capabilityMode = CameraCapabilityMode.unverified;
   Map<String, Object?>? _capabilityState;
   bool _capabilityProbeRunning = false;
   String? _capabilityProbeMessage;
   String? _capabilityNoticeMessage;
-  String? _alternatingLastCompletedCode;
-  DateTime? _alternatingNoCodeSince;
   @override
   RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
   RecordingSpecPreset _recordingSpec = RecordingSpecPreset.hd1080p30;
   @override
   RecordingOrientation _recordingOrientation = RecordingOrientation.portrait;
-  int _minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength;
   int _historyPageSize = AppSettings.defaultHistoryPageSize;
   @override
   UnbackedRetentionPolicy _unbackedRetention = UnbackedRetentionPolicy.days30;
   @override
   BackedRetentionPolicy _backedRetention = BackedRetentionPolicy.days7;
   bool _appIsActive = true;
+  @override
   String? _errorMessage;
   String? _scanWarningMessage;
   String? _cameraNotice;
   String? _rejectedBarcodeMessage;
-  String _lastRejectedBarcodeCode = '';
-  DateTime? _lastRejectedBarcodeAt;
-  String? _lastTriggeredCommandCode;
-  bool _processingFrame = false;
-  bool _handlingBarcode = false;
   @override
   bool _disposed = false;
-  bool _pairingScanActive = false;
-  bool _historyScanActive = false;
-  bool _pairingBusy = false;
   int _pairingAttemptRevision = 0;
   bool _backupListenerAttached = false;
   bool _orderReceiverListenerAttached = false;
   bool _backgroundServicesInitialized = false;
   String? _pairingMessage;
-  String? _historyScanResult;
   String? _recordingId;
   String? _activeSegmentId;
   int _segmentIndex = 1;
@@ -336,6 +334,7 @@ class PackingSessionController extends ChangeNotifier
       !_historyScanActive;
   List<NativeCameraLens> get backCameraLenses => _backCameraLenses;
   bool get multiBackCameraAvailable => _backCameraLenses.length >= 2;
+  @override
   bool get _supportsNativeCamera =>
       _capabilities.supports(PlatformCapability.continuousCameraRecording);
   String? get activeCameraId => _nativeInitialization?.cameraId;
@@ -368,6 +367,7 @@ class PackingSessionController extends ChangeNotifier
   String? get cameraNotice => _cameraNotice;
   String? get rejectedBarcodeMessage => _rejectedBarcodeMessage;
   int get storageNoticeRevision => _storageNoticeRevision;
+  @override
   bool get isRecording => _phase == PackingSessionPhase.recording;
   @override
   bool get isWorking => _workActive;
@@ -1127,6 +1127,7 @@ class PackingSessionController extends ChangeNotifier
     }
   }
 
+  @override
   void _showCameraNotice(String message) {
     _cameraNotice = message;
     _cameraNoticeTimer?.cancel();
@@ -1290,6 +1291,7 @@ class PackingSessionController extends ChangeNotifier
     }
   }
 
+  @override
   Future<void> startWork() async {
     final int generation = ++_operationGeneration;
     final CameraController? camera = _cameraController;
@@ -1796,6 +1798,7 @@ class PackingSessionController extends ChangeNotifier
 
   Future<void> previewSpeech() => _speechService.preview();
 
+  @override
   Future<void> _startRecording() async {
     if (_supportsNativeCamera) {
       await _startNativeRecording();
@@ -2044,171 +2047,6 @@ class PackingSessionController extends ChangeNotifier
     notifyListeners();
   }
 
-  void _processNativeBarcodeFrame(List<NativeBarcodeCandidate> candidates) {
-    if (_recognizedBeepPolicy.shouldBeep(
-      candidates.map((NativeBarcodeCandidate candidate) => candidate.value),
-    )) {
-      _speechService.playShortBeep();
-      unawaited(
-        _runtimeLog.log(
-          kind: 'recognized_beep',
-          extra: <String, Object?>{
-            'source': _pairingScanActive
-                ? 'pairing'
-                : _historyScanActive
-                ? 'history'
-                : 'work',
-          },
-        ),
-      );
-    }
-    String? visibleCode;
-    for (final NativeBarcodeCandidate candidate in candidates) {
-      final String normalized = BarcodeCandidatePolicy.normalize(
-        candidate.value,
-      );
-      if (normalized.isNotEmpty) {
-        visibleCode = normalized;
-        break;
-      }
-    }
-    if (visibleCode != null) {
-      final MobileBarcodeCommand? command =
-          BarcodeCandidatePolicy.mobileCommandFor(visibleCode);
-      if (command != null) {
-        if (!_historyScanActive &&
-            !_pairingScanActive &&
-            !_handlingBarcode &&
-            visibleCode != _lastTriggeredCommandCode) {
-          _lastTriggeredCommandCode = visibleCode;
-          _handlingBarcode = true;
-          _runInBackground(
-            _handleMobileBarcodeCommand(command).whenComplete(() {
-              _handlingBarcode = false;
-            }),
-          );
-        }
-      } else if (_lastTriggeredCommandCode != null) {
-        // 画面换成普通码后，允许同一条指令再次触发。
-        _lastTriggeredCommandCode = null;
-      }
-    } else {
-      _lastTriggeredCommandCode = null;
-    }
-    if (_historyScanActive) {
-      NativeBarcodeCandidate? match;
-      for (final NativeBarcodeCandidate candidate in candidates) {
-        if (BarcodeCandidatePolicy.isValidForHistoryScan(
-          candidate.value,
-          format: candidate.format,
-        )) {
-          match = candidate;
-          break;
-        }
-      }
-      if (match != null) {
-        _historyScanResult = BarcodeCandidatePolicy.normalize(match.value);
-        _historyScanActive = false;
-        unawaited(_nativeCamera?.setPairingScanEnabled(false));
-        notifyListeners();
-      }
-      return;
-    }
-    if (_pairingScanActive) {
-      if (!_pairingBusy) {
-        for (final NativeBarcodeCandidate candidate in candidates) {
-          unawaited(_tryPairComputer(candidate.value));
-          break;
-        }
-      }
-      return;
-    }
-    if (!isWorking || isBusy || _handlingBarcode) {
-      return;
-    }
-    final List<RejectedBarcodeCandidate> rejectedCandidates = candidates
-        .map(
-          (NativeBarcodeCandidate candidate) => RejectedBarcodeCandidate(
-            value: candidate.value,
-            area: candidate.area.toDouble(),
-            format: candidate.format,
-          ),
-        )
-        .toList(growable: false);
-    String? validCode;
-    int largestArea = -1;
-    for (final NativeBarcodeCandidate candidate in candidates) {
-      if (BarcodeCandidatePolicy.isValidForWorkScan(
-            candidate.value,
-            format: candidate.format,
-            minimumLength: _minimumBarcodeLength,
-          ) &&
-          candidate.area > largestArea) {
-        largestArea = candidate.area;
-        validCode = BarcodeCandidatePolicy.normalize(candidate.value);
-      }
-    }
-    final DateTime now = DateTime.now();
-    if (_capabilityMode == CameraCapabilityMode.alternating &&
-        _alternatingLastCompletedCode != null) {
-      if (validCode == null) {
-        _alternatingNoCodeSince ??= now;
-      } else {
-        _alternatingNoCodeSince = null;
-      }
-    }
-    final RejectedBarcodeDecision? rejected = RejectedBarcodePolicy.decide(
-      candidates: rejectedCandidates,
-      minimumLength: _minimumBarcodeLength,
-      now: now,
-      lastCode: _lastRejectedBarcodeCode,
-      lastShownAt: _lastRejectedBarcodeAt,
-    );
-    if (rejected != null) {
-      _showRejectedBarcodeNotice(rejected, now);
-    }
-    final BarcodeObservation observation = _stabilityTracker.observe(
-      validCode,
-      now,
-    );
-    if (observation.confirmedCode.isNotEmpty) {
-      _candidateCode = '';
-      final int receivedAtMs = now.millisecondsSinceEpoch;
-      int? nativeToDartMs;
-      for (final NativeBarcodeCandidate candidate in candidates) {
-        if (BarcodeCandidatePolicy.normalize(candidate.value) ==
-                observation.confirmedCode &&
-            candidate.detectedAtMs > 0) {
-          nativeToDartMs = receivedAtMs - candidate.detectedAtMs;
-          break;
-        }
-      }
-      if (nativeToDartMs != null) {
-        unawaited(
-          _runtimeLog.log(
-            kind: 'barcode_native_to_dart',
-            extra: <String, Object?>{
-              'code': observation.confirmedCode,
-              'ms': nativeToDartMs,
-              'negative': nativeToDartMs < 0,
-            },
-          ),
-        );
-      }
-      _runInBackground(_handleConfirmedBarcode(observation.confirmedCode, now));
-    } else if (observation.candidateCode != _candidateCode) {
-      _candidateCode = observation.candidateCode;
-      notifyListeners();
-    }
-  }
-
-  @visibleForTesting
-  void handleNativeBarcodeFrameForTesting(
-    List<NativeBarcodeCandidate> candidates,
-  ) {
-    _processNativeBarcodeFrame(candidates);
-  }
-
   @visibleForTesting
   void handleNativeRecordingFallbackForTesting(
     Map<Object?, Object?> info, {
@@ -2217,353 +2055,7 @@ class PackingSessionController extends ChangeNotifier
     _handleNativeRecordingFallback(info, persist: persist);
   }
 
-  Future<void> _processFrame(CameraImage image) async {
-    if (_processingFrame || !isWorking || isBusy || _handlingBarcode) {
-      return;
-    }
-    final DateTime now = DateTime.now();
-    if (now.difference(_lastAnalysisAt) < analysisInterval) {
-      return;
-    }
-    _lastAnalysisAt = now;
-    _processingFrame = true;
-
-    try {
-      final InputImageRotation? rotation = _inputImageRotation(
-        _cameraController!.description,
-        _cameraController!.value.deviceOrientation,
-      );
-      if (rotation == null) {
-        return;
-      }
-      final InputImage? inputImage = _toInputImage(image, rotation: rotation);
-      if (inputImage == null) {
-        return;
-      }
-      List<Barcode> barcodes = await _barcodeScanner.processImage(inputImage);
-      if (barcodes.isEmpty && _supportsNativeCamera) {
-        final InputImage? croppedInput = _toCroppedInputImage(
-          image,
-          rotation: rotation,
-        );
-        if (croppedInput != null) {
-          barcodes = await _barcodeScanner.processImage(croppedInput);
-        }
-      }
-      final List<RejectedBarcodeCandidate> rejectedCandidates = barcodes
-          .map(
-            (Barcode barcode) => RejectedBarcodeCandidate(
-              value: barcode.rawValue ?? '',
-              area:
-                  barcode.boundingBox.width.abs() *
-                  barcode.boundingBox.height.abs(),
-              format: barcode.format.name,
-            ),
-          )
-          .toList(growable: false);
-      String? validCode;
-      double largestArea = -1;
-      for (final Barcode barcode in barcodes) {
-        if (BarcodeCandidatePolicy.isValidForWorkScan(
-          barcode.rawValue,
-          format: barcode.format.name,
-          minimumLength: _minimumBarcodeLength,
-        )) {
-          final double area =
-              barcode.boundingBox.width.abs() *
-              barcode.boundingBox.height.abs();
-          if (area > largestArea) {
-            largestArea = area;
-            validCode = BarcodeCandidatePolicy.normalize(barcode.rawValue);
-          }
-        }
-      }
-
-      final RejectedBarcodeDecision? rejected = RejectedBarcodePolicy.decide(
-        candidates: rejectedCandidates,
-        minimumLength: _minimumBarcodeLength,
-        now: now,
-        lastCode: _lastRejectedBarcodeCode,
-        lastShownAt: _lastRejectedBarcodeAt,
-      );
-      if (rejected != null) {
-        _showRejectedBarcodeNotice(rejected, now);
-      }
-      final BarcodeObservation observation = _stabilityTracker.observe(
-        validCode,
-        now,
-      );
-      if (observation.confirmedCode.isNotEmpty) {
-        _candidateCode = '';
-        _runInBackground(
-          _handleConfirmedBarcode(observation.confirmedCode, now),
-        );
-      } else if (observation.candidateCode != _candidateCode) {
-        _candidateCode = observation.candidateCode;
-        notifyListeners();
-      }
-    } on Object {
-      // A malformed analysis frame should not interrupt recording.
-    } finally {
-      _processingFrame = false;
-    }
-  }
-
-  InputImage? _toInputImage(
-    CameraImage image, {
-    required InputImageRotation rotation,
-  }) {
-    if (image.planes.length != 1) {
-      return null;
-    }
-
-    final Plane plane = image.planes.first;
-    return InputImage.fromBytes(
-      bytes: plane.bytes,
-      metadata: InputImageMetadata(
-        size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: rotation,
-        format: _supportsNativeCamera
-            ? InputImageFormat.nv21
-            : InputImageFormat.bgra8888,
-        bytesPerRow: plane.bytesPerRow,
-      ),
-    );
-  }
-
-  InputImage? _toCroppedInputImage(
-    CameraImage image, {
-    required InputImageRotation rotation,
-  }) {
-    if (image.planes.length != 1) {
-      return null;
-    }
-    final Plane plane = image.planes.first;
-    final Nv21CropResult? crop = cropNv21Center(
-      bytes: plane.bytes,
-      width: image.width,
-      height: image.height,
-      bytesPerRow: plane.bytesPerRow,
-    );
-    if (crop == null) {
-      return null;
-    }
-    return InputImage.fromBytes(
-      bytes: crop.bytes,
-      metadata: InputImageMetadata(
-        size: Size(crop.width.toDouble(), crop.height.toDouble()),
-        rotation: rotation,
-        format: InputImageFormat.nv21,
-        bytesPerRow: crop.width,
-      ),
-    );
-  }
-
-  InputImageRotation? _inputImageRotation(
-    CameraDescription camera,
-    DeviceOrientation orientation,
-  ) {
-    if (!_supportsNativeCamera) {
-      return InputImageRotationValue.fromRawValue(camera.sensorOrientation);
-    }
-
-    const Map<DeviceOrientation, int> compensations = <DeviceOrientation, int>{
-      DeviceOrientation.portraitUp: 0,
-      DeviceOrientation.landscapeLeft: 90,
-      DeviceOrientation.portraitDown: 180,
-      DeviceOrientation.landscapeRight: 270,
-    };
-    final int? compensation = compensations[orientation];
-    if (compensation == null) {
-      return null;
-    }
-    final int rotation = camera.lensDirection == CameraLensDirection.front
-        ? (camera.sensorOrientation + compensation) % 360
-        : (camera.sensorOrientation - compensation + 360) % 360;
-    return InputImageRotationValue.fromRawValue(rotation);
-  }
-
-  Future<void> _handleConfirmedBarcode(String code, DateTime now) async {
-    if (_handlingBarcode || !isWorking || isBusy) {
-      return;
-    }
-    final MobileBarcodeCommand? command =
-        BarcodeCandidatePolicy.mobileCommandFor(code);
-    if (command != null) {
-      _handlingBarcode = true;
-      try {
-        await _handleMobileBarcodeCommand(command);
-      } finally {
-        _handlingBarcode = false;
-      }
-      return;
-    }
-    if (_capabilityMode == CameraCapabilityMode.alternating &&
-        !isRecording &&
-        _alternatingLastCompletedCode != null &&
-        shouldSuppressAlternatingSameCode(
-          lastCompletedCode: _alternatingLastCompletedCode!,
-          noCodeSince: _alternatingNoCodeSince,
-          code: code,
-          now: now,
-        )) {
-      _showCameraNotice('该面单已录制，请扫描下一张');
-      return;
-    }
-    if (_capabilityMode == CameraCapabilityMode.alternating &&
-        !isRecording &&
-        _alternatingLastCompletedCode != null &&
-        code == _alternatingLastCompletedCode) {
-      _alternatingLastCompletedCode = null;
-    }
-    if (!isRecording || !_timeline.isActive) {
-      _handlingBarcode = true;
-      try {
-        final int t0 = DateTime.now().millisecondsSinceEpoch;
-        final bool duplicate = await _hasRecentTrackingNumber(code);
-        final int t1 = DateTime.now().millisecondsSinceEpoch;
-        final OrderInfo? orderInfo = await _orderInfoReceiver.lookup(code);
-        final int t2 = DateTime.now().millisecondsSinceEpoch;
-        _setActiveOrderInfo(orderInfo, announce: false);
-        await _startRecording();
-        final int t3 = DateTime.now().millisecondsSinceEpoch;
-        unawaited(
-          _runtimeLog.log(
-            kind: 'barcode_stage_timing',
-            extra: <String, Object?>{
-              'code': code,
-              'duplicateMs': t1 - t0,
-              'lookupMs': t2 - t1,
-              'startRecordingMs': t3 - t2,
-            },
-          ),
-        );
-        _bindCurrentCode(code, _timeline.segmentStartedAt ?? now);
-        if (_capabilityMode == CameraCapabilityMode.alternating) {
-          _alternatingLastCompletedCode = null;
-          _alternatingNoCodeSince = null;
-        }
-        if (duplicate) _showDuplicateOrderWarning(code);
-        _announceOrderInfo(orderInfo);
-      } on Object catch (error) {
-        _timeline.reset();
-        _errorMessage = '无法开始录像，请重新对准面单\n$error';
-        _setPhase(PackingSessionPhase.waitingForBarcode);
-        _speechService.enqueue(
-          SpeechPrompt.recordingFailed,
-          incidentKey: SpeechPrompt.recordingFailed.name,
-        );
-      } finally {
-        _handlingBarcode = false;
-      }
-      return;
-    }
-    final BarcodeWorkAction action = BarcodeWorkModePolicy.decide(
-      mode: _workMode,
-      currentCode: _timeline.currentCode,
-      scannedCode: code,
-    );
-    switch (action) {
-      case BarcodeWorkAction.bindCurrentVideo:
-        _bindCurrentCode(code, now);
-        return;
-      case BarcodeWorkAction.ignore:
-        _candidateCode = '';
-        notifyListeners();
-        return;
-      case BarcodeWorkAction.stopVideo:
-        _handlingBarcode = true;
-        try {
-          await _saveCurrentVideoAndWait();
-        } finally {
-          _handlingBarcode = false;
-        }
-        return;
-      case BarcodeWorkAction.startNextVideo:
-        _handlingBarcode = true;
-        try {
-          final bool duplicate = await _hasRecentTrackingNumber(code);
-          final OrderInfo? nextOrderInfo = await _orderInfoReceiver.lookup(
-            code,
-          );
-          bool announced = false;
-          void announceSegmentStarted(BarcodeMarker marker) {
-            announced = true;
-            _speechService.resolveIncident(SpeechPrompt.segmentSaveFailed.name);
-            _speechService.enqueue(SpeechPrompt.recordingStarted);
-            _showMarkerFeedback(marker);
-          }
-
-          final BarcodeMarker? marker = _supportsNativeCamera
-              ? await _splitNativeRecording(
-                  code,
-                  nextOrderInfo: nextOrderInfo,
-                  onSegmentStarted: announceSegmentStarted,
-                )
-              : await _splitCameraRecording(
-                  code,
-                  nextOrderInfo: nextOrderInfo,
-                  onSegmentStarted: announceSegmentStarted,
-                );
-          if (marker != null && !announced) {
-            _setActiveOrderInfo(nextOrderInfo, announce: false);
-            announceSegmentStarted(marker);
-          }
-          if (marker != null) {
-            if (duplicate) _showDuplicateOrderWarning(code);
-            _announceOrderInfo(nextOrderInfo);
-          }
-        } on Object catch (error) {
-          _errorMessage = '录像分段保存失败\n$error';
-          _speechService.enqueue(
-            SpeechPrompt.segmentSaveFailed,
-            incidentKey: SpeechPrompt.segmentSaveFailed.name,
-          );
-          if (!_disposed) {
-            notifyListeners();
-          }
-        } finally {
-          _handlingBarcode = false;
-        }
-        return;
-    }
-  }
-
-  /// 手机版指令码执行：切发货/切退货/停止录制。
-  /// 刻意不支持 START（扫码即自动开始）与 CLEAR（无输入框可清）。
-  Future<void> _handleMobileBarcodeCommand(MobileBarcodeCommand command) async {
-    switch (command) {
-      case MobileBarcodeCommand.switchShipping:
-        if (_operationMode != RecordingOperationMode.shipping) {
-          _operationMode = RecordingOperationMode.shipping;
-          if (!_disposed) {
-            notifyListeners();
-          }
-          _speechService.enqueue(SpeechPrompt.shippingMode);
-          _runInBackground(_repository.saveOperationMode(_operationMode));
-        }
-        break;
-      case MobileBarcodeCommand.switchReturn:
-        if (_operationMode != RecordingOperationMode.returnGoods) {
-          _operationMode = RecordingOperationMode.returnGoods;
-          if (!_disposed) {
-            notifyListeners();
-          }
-          _speechService.enqueue(SpeechPrompt.returnMode);
-          _runInBackground(_repository.saveOperationMode(_operationMode));
-        }
-        break;
-      case MobileBarcodeCommand.startWork:
-        await startWork();
-        break;
-      case MobileBarcodeCommand.stopWork:
-        if (isWorking) {
-          await stopWork();
-        }
-        break;
-    }
-  }
-
+  @override
   Future<RecordingSession?> _saveCurrentVideoAndWait() async {
     if (!isWorking || !isRecording || !_timeline.isActive) {
       return null;
@@ -2595,6 +2087,7 @@ class PackingSessionController extends ChangeNotifier
     }
   }
 
+  @override
   Future<BarcodeMarker?> _splitNativeRecording(
     String code, {
     required OrderInfo? nextOrderInfo,
@@ -2648,6 +2141,7 @@ class PackingSessionController extends ChangeNotifier
     return transition.marker;
   }
 
+  @override
   Future<BarcodeMarker?> _splitCameraRecording(
     String code, {
     required OrderInfo? nextOrderInfo,
@@ -2782,6 +2276,7 @@ class PackingSessionController extends ChangeNotifier
     _announceOrderInfo(info);
   }
 
+  @override
   void _setActiveOrderInfo(OrderInfo? value, {required bool announce}) {
     _activeOrderInfo = value;
     if (value == null) _lastAnnouncedOrderSignature = '';
@@ -2789,6 +2284,7 @@ class PackingSessionController extends ChangeNotifier
     if (announce) _announceOrderInfo(value);
   }
 
+  @override
   void _announceOrderInfo(OrderInfo? info) {
     if (!_speechEnabled || !_orderSpeechEnabled || info == null) return;
     final String signature = info.announcementSignature;
@@ -2811,6 +2307,7 @@ class PackingSessionController extends ChangeNotifier
     }
   }
 
+  @override
   void _bindCurrentCode(String code, DateTime now) {
     final BarcodeMarker? marker = _timeline.bindCode(code, now);
     if (marker == null) {
@@ -2820,6 +2317,7 @@ class PackingSessionController extends ChangeNotifier
     _showMarkerFeedback(marker);
   }
 
+  @override
   Future<void> _tryPairComputer(String value) async {
     if (_pairingBusy || !_pairingScanActive) {
       return;
@@ -3007,6 +2505,7 @@ class PackingSessionController extends ChangeNotifier
     _initialPromptPolicy.cancel();
   }
 
+  @override
   void _showMarkerFeedback(BarcodeMarker marker) {
     _lastMarker = marker;
     _candidateCode = '';
@@ -3022,6 +2521,7 @@ class PackingSessionController extends ChangeNotifier
     notifyListeners();
   }
 
+  @override
   void _showRejectedBarcodeNotice(
     RejectedBarcodeDecision decision,
     DateTime now,
@@ -3038,6 +2538,7 @@ class PackingSessionController extends ChangeNotifier
     notifyListeners();
   }
 
+  @override
   void _showDuplicateOrderWarning(String trackingNumber) {
     final String incidentKey = 'duplicate-order-number:$trackingNumber';
     _scanWarningMessage = '警告：重复单号，请确认';
@@ -3055,6 +2556,7 @@ class PackingSessionController extends ChangeNotifier
     notifyListeners();
   }
 
+  @override
   Future<bool> _hasRecentTrackingNumber(String trackingNumber) async {
     try {
       return await _repository.hasRecentTrackingNumber(trackingNumber);
@@ -3114,6 +2616,7 @@ class PackingSessionController extends ChangeNotifier
     _speechService.enqueue(prompt, incidentKey: prompt.name);
   }
 
+  @override
   void _setPhase(PackingSessionPhase value) {
     _phase = value;
     if (!_disposed) {
