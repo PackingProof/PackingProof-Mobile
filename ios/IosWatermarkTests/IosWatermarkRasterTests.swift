@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import QuartzCore
 import UIKit
 import XCTest
@@ -151,6 +152,42 @@ final class IosWatermarkRasterTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(watermark.bounds.minY, 8, fixture)
     XCTAssertLessThanOrEqual(watermark.bounds.maxX, imageSize.width - 8, fixture)
     XCTAssertLessThanOrEqual(watermark.bounds.maxY, imageSize.height - 8, fixture)
+  }
+}
+
+final class IosMediaProcessingCoreTests: XCTestCase {
+  func testInvalidInputKeepsFailureMessageAndRemovesStaleOutput() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("watermark-core-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(
+      at: root,
+      withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let output = root.appendingPathComponent("output.mp4")
+    try Data("stale-output".utf8).write(to: output)
+    let completed = expectation(description: "watermark core completed")
+    var received: Result<URL, Error>?
+
+    IosMediaProcessingCore().applyWatermark(
+      request: IosWatermarkExportRequest(
+        inputPath: root.appendingPathComponent("missing.mp4").path,
+        outputPath: output.path,
+        startedAtMs: 0,
+        trackingNumber: ""
+      )
+    ) { result in
+      received = result
+      completed.fulfill()
+    }
+
+    wait(for: [completed], timeout: 5)
+    guard case .failure(let error as IosMediaProcessingCoreError) = received else {
+      return XCTFail("无效输入应返回水印 Core 错误")
+    }
+    XCTAssertEqual(error.message, "无法读取录像视频轨道")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
   }
 }
 

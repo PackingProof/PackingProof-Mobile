@@ -12,6 +12,8 @@
 		F6A1B2C3D4E5061728394A5B /* IosWatermarkRasterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A1B2C3D4E5061728394A5C /* IosWatermarkRasterTests.swift */; };
 		F6A1B2C3D4E5061728394A5D /* IosWatermark.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A1B2C3D4E5061728394A5F /* IosWatermark.swift */; };
 		F6A1B2C3D4E5061728394A5E /* IosWatermark.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A1B2C3D4E5061728394A5F /* IosWatermark.swift */; };
+		A7B8C9D0E1F2A3B4C5D6E702 /* IosMediaProcessingCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2A3B4C5D6E701 /* IosMediaProcessingCore.swift */; };
+		A7B8C9D0E1F2A3B4C5D6E703 /* IosMediaProcessingCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2A3B4C5D6E701 /* IosMediaProcessingCore.swift */; };
 		D10000000000000000000001 /* DeviceTestHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000011 /* DeviceTestHost.swift */; };
 		D10000000000000000000002 /* IosDeviceSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000012 /* IosDeviceSecurityTests.swift */; };
 		D10000000000000000000003 /* IosBackupPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F40516273849A5B6C7 /* IosBackupPersistence.swift */; };
@@ -79,6 +81,7 @@
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		F6A1B2C3D4E5061728394A5C /* IosWatermarkRasterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IosWatermarkRasterTests.swift; sourceTree = "<group>"; };
 		F6A1B2C3D4E5061728394A5F /* IosWatermark.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosWatermark.swift; sourceTree = "<group>"; };
+		A7B8C9D0E1F2A3B4C5D6E701 /* IosMediaProcessingCore.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosMediaProcessingCore.swift; sourceTree = "<group>"; };
 		F6A1B2C3D4E5061728394A60 /* IosWatermarkTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IosWatermarkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D10000000000000000000011 /* DeviceTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceTestHost.swift; sourceTree = "<group>"; };
 		D10000000000000000000012 /* IosDeviceSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IosDeviceSecurityTests.swift; sourceTree = "<group>"; };
@@ -256,6 +259,7 @@
 				E5F60718293A4B5C6D7E8F90 /* IosCameraPlatform.swift */,
 				E4F5061728394A5B6C7D8E9F /* IosCameraRecordingLifecycle.swift */,
 				F6A1B2C3D4E5061728394A5F /* IosWatermark.swift */,
+				A7B8C9D0E1F2A3B4C5D6E701 /* IosMediaProcessingCore.swift */,
 				09FDFC3154D80CE5B78AA049 /* PigeonPlatform.swift */,
 			);
 			path = Runner;
@@ -608,6 +612,7 @@
 			files = (
 				F6A1B2C3D4E5061728394A5B /* IosWatermarkRasterTests.swift in Sources */,
 				F6A1B2C3D4E5061728394A5E /* IosWatermark.swift in Sources */,
+				A7B8C9D0E1F2A3B4C5D6E703 /* IosMediaProcessingCore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -623,6 +628,7 @@
 				D5E6F708192A3B4C5D6E7F80 /* IosCameraPlatform.swift in Sources */,
 				D4E5F60718293A4B5C6D7E8F /* IosCameraRecordingLifecycle.swift in Sources */,
 				F6A1B2C3D4E5061728394A5D /* IosWatermark.swift in Sources */,
+				A7B8C9D0E1F2A3B4C5D6E702 /* IosMediaProcessingCore.swift in Sources */,
 				8BA526826CE81074CA37E522 /* PigeonPlatform.swift in Sources */,
 				930872EA173376407B2C201B /* PlatformApi.swift in Sources */,
 			);
