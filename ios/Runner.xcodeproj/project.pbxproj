@@ -12,6 +12,11 @@
 		F6A1B2C3D4E5061728394A5B /* IosWatermarkRasterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A1B2C3D4E5061728394A5C /* IosWatermarkRasterTests.swift */; };
 		F6A1B2C3D4E5061728394A5D /* IosWatermark.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A1B2C3D4E5061728394A5F /* IosWatermark.swift */; };
 		F6A1B2C3D4E5061728394A5E /* IosWatermark.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A1B2C3D4E5061728394A5F /* IosWatermark.swift */; };
+		D10000000000000000000001 /* DeviceTestHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000011 /* DeviceTestHost.swift */; };
+		D10000000000000000000002 /* IosDeviceSecurityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10000000000000000000012 /* IosDeviceSecurityTests.swift */; };
+		D10000000000000000000003 /* IosBackupPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F40516273849A5B6C7 /* IosBackupPersistence.swift */; };
+		D10000000000000000000004 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D10000000000000000000015 /* Security.framework */; };
+		D10000000000000000000005 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = D10000000000000000000016 /* libsqlite3.tbd */; };
 		D3E4F5061728394A5B6C7D8E /* IosCameraRecordingLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3F40516273849A5B6C7D8E9 /* IosCameraRecordingLifecycleTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
@@ -31,6 +36,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		D10000000000000000000041 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D10000000000000000000051;
+			remoteInfo = PackingProofDeviceTestHost;
+		};
 		331C8085294A63A400263BE5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
@@ -68,6 +80,12 @@
 		F6A1B2C3D4E5061728394A5C /* IosWatermarkRasterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IosWatermarkRasterTests.swift; sourceTree = "<group>"; };
 		F6A1B2C3D4E5061728394A5F /* IosWatermark.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosWatermark.swift; sourceTree = "<group>"; };
 		F6A1B2C3D4E5061728394A60 /* IosWatermarkTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IosWatermarkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D10000000000000000000011 /* DeviceTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceTestHost.swift; sourceTree = "<group>"; };
+		D10000000000000000000012 /* IosDeviceSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IosDeviceSecurityTests.swift; sourceTree = "<group>"; };
+		D10000000000000000000013 /* PackingProofDeviceTestHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PackingProofDeviceTestHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D10000000000000000000014 /* IosDeviceSecurityTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = IosDeviceSecurityTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D10000000000000000000015 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		D10000000000000000000016 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.text-based-dylib-definition; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3379857305BCA598D4039F5D /* PlatformApi.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PlatformApi.swift; path = Generated/PlatformApi.swift; sourceTree = "<group>"; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
@@ -92,6 +110,22 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		D10000000000000000000031 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10000000000000000000032 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D10000000000000000000004 /* Security.framework in Frameworks */,
+				D10000000000000000000005 /* libsqlite3.tbd in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5B00D4429B9D11FBF0D41442 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -119,6 +153,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		D10000000000000000000021 /* DeviceTestHost */ = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000011 /* DeviceTestHost.swift */,
+			);
+			path = DeviceTestHost;
+			sourceTree = "<group>";
+		};
+		D10000000000000000000022 /* DeviceSecurityTests */ = {
+			isa = PBXGroup;
+			children = (
+				D10000000000000000000012 /* IosDeviceSecurityTests.swift */,
+			);
+			path = DeviceSecurityTests;
+			sourceTree = "<group>";
+		};
 		331C8082294A63A400263BE5 /* RunnerTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -166,6 +216,8 @@
 			children = (
 				9740EEB11CF90186004384FC /* Flutter */,
 				97C146F01CF9000F007C117D /* Runner */,
+				D10000000000000000000021 /* DeviceTestHost */,
+				D10000000000000000000022 /* DeviceSecurityTests */,
 				97C146EF1CF9000F007C117D /* Products */,
 				331C8082294A63A400263BE5 /* RunnerTests */,
 				F6A1B2C3D4E5061728394A64 /* IosWatermarkTests */,
@@ -180,6 +232,8 @@
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
 				F6A1B2C3D4E5061728394A60 /* IosWatermarkTests.xctest */,
+				D10000000000000000000013 /* PackingProofDeviceTestHost.app */,
+				D10000000000000000000014 /* IosDeviceSecurityTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -218,6 +272,8 @@
 		F960E9FB0747D4DE5F180D88 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				D10000000000000000000015 /* Security.framework */,
+				D10000000000000000000016 /* libsqlite3.tbd */,
 				3F3DC8261F887E6C56D9A256 /* Pods_Runner.framework */,
 				15AA95A630075CB44A63380E /* Pods_RunnerTests.framework */,
 			);
@@ -227,6 +283,41 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		D10000000000000000000051 /* PackingProofDeviceTestHost */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D10000000000000000000061 /* Build configuration list for PBXNativeTarget "PackingProofDeviceTestHost" */;
+			buildPhases = (
+				D10000000000000000000033 /* Sources */,
+				D10000000000000000000031 /* Frameworks */,
+				D10000000000000000000035 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PackingProofDeviceTestHost;
+			productName = PackingProofDeviceTestHost;
+			productReference = D10000000000000000000013 /* PackingProofDeviceTestHost.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D10000000000000000000052 /* IosDeviceSecurityTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D10000000000000000000062 /* Build configuration list for PBXNativeTarget "IosDeviceSecurityTests" */;
+			buildPhases = (
+				D10000000000000000000034 /* Sources */,
+				D10000000000000000000032 /* Frameworks */,
+				D10000000000000000000036 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D10000000000000000000042 /* PBXTargetDependency */,
+			);
+			name = IosDeviceSecurityTests;
+			productName = IosDeviceSecurityTests;
+			productReference = D10000000000000000000014 /* IosDeviceSecurityTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		331C8080294A63A400263BE5 /* RunnerTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 331C8087294A63A400263BE5 /* Build configuration list for PBXNativeTarget "RunnerTests" */;
@@ -298,6 +389,13 @@
 				LastUpgradeCheck = 1510;
 				ORGANIZATIONNAME = "";
 				TargetAttributes = {
+					D10000000000000000000051 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					D10000000000000000000052 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = D10000000000000000000051;
+					};
 					331C8080294A63A400263BE5 = {
 						CreatedOnToolsVersion = 14.0;
 						TestTargetID = 97C146ED1CF9000F007C117D;
@@ -330,11 +428,27 @@
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
 				F6A1B2C3D4E5061728394A65 /* IosWatermarkTests */,
+				D10000000000000000000051 /* PackingProofDeviceTestHost */,
+				D10000000000000000000052 /* IosDeviceSecurityTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		D10000000000000000000035 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10000000000000000000036 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		331C807F294A63A400263BE5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -462,6 +576,23 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		D10000000000000000000033 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D10000000000000000000001 /* DeviceTestHost.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10000000000000000000034 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D10000000000000000000002 /* IosDeviceSecurityTests.swift in Sources */,
+				D10000000000000000000003 /* IosBackupPersistence.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		331C807D294A63A400263BE5 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -500,6 +631,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		D10000000000000000000042 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D10000000000000000000051 /* PackingProofDeviceTestHost */;
+			targetProxy = D10000000000000000000041 /* PBXContainerItemProxy */;
+		};
 		331C8086294A63A400263BE5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
@@ -527,6 +663,122 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		D10000000000000000000071 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "PackingProof Device Tests";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.packingproof.mobile.devicetest;
+				PRODUCT_NAME = PackingProofDeviceTestHost;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		D10000000000000000000072 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "PackingProof Device Tests";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.packingproof.mobile.devicetest;
+				PRODUCT_NAME = PackingProofDeviceTestHost;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		D10000000000000000000073 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "PackingProof Device Tests";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.packingproof.mobile.devicetest;
+				PRODUCT_NAME = PackingProofDeviceTestHost;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Profile;
+		};
+		D10000000000000000000074 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.packingproof.mobile.devicetest.securitytests;
+				PRODUCT_NAME = IosDeviceSecurityTests;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PackingProofDeviceTestHost.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PackingProofDeviceTestHost";
+			};
+			name = Debug;
+		};
+		D10000000000000000000075 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.packingproof.mobile.devicetest.securitytests;
+				PRODUCT_NAME = IosDeviceSecurityTests;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PackingProofDeviceTestHost.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PackingProofDeviceTestHost";
+			};
+			name = Release;
+		};
+		D10000000000000000000076 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.packingproof.mobile.devicetest.securitytests;
+				PRODUCT_NAME = IosDeviceSecurityTests;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PackingProofDeviceTestHost.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PackingProofDeviceTestHost";
+			};
+			name = Profile;
+		};
 		249021D3217E4FDB00AE95B9 /* Profile */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -863,6 +1115,26 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		D10000000000000000000061 /* Build configuration list for PBXNativeTarget "PackingProofDeviceTestHost" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D10000000000000000000071 /* Debug */,
+				D10000000000000000000072 /* Release */,
+				D10000000000000000000073 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D10000000000000000000062 /* Build configuration list for PBXNativeTarget "IosDeviceSecurityTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D10000000000000000000074 /* Debug */,
+				D10000000000000000000075 /* Release */,
+				D10000000000000000000076 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		331C8087294A63A400263BE5 /* Build configuration list for PBXNativeTarget "RunnerTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
