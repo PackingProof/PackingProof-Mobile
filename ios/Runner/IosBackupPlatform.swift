@@ -708,40 +708,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
     return (values?["backedRetentionDays"] as? Int) ?? 7
   }
 
-  /// 旧版本任务字段补齐：fileCreatedAt 用文件 lastModified（与 Android 一致），
-  /// 其余用文件元数据或默认值回填，避免旧任务被误判为未备份/可清理。
-  static func migratedJob(_ job: [String: Any]) -> [String: Any] {
-    var result = job
-    let path = job["filePath"] as? String ?? ""
-    let attributes = try? FileManager.default.attributesOfItem(atPath: path)
-    let modified = attributes?[.modificationDate] as? Date
-    let size = (attributes?[.size] as? NSNumber)?.int64Value
-
-    if result["fileCreatedAt"] == nil, let modified {
-      result["fileCreatedAt"] = Self.isoFormatter.string(from: modified)
-    }
-    if result["lastModified"] == nil, let modified {
-      result["lastModified"] = Int64(modified.timeIntervalSince1970 * 1000)
-    }
-    if (result["totalBytes"] as? Int64 ?? 0) <= 0, let size {
-      result["totalBytes"] = size
-    }
-    if result["generation"] == nil {
-      result["generation"] = UUID().uuidString
-    }
-    if result["verificationVersion"] == nil {
-      result["verificationVersion"] = 0
-    }
-    if result["remoteRecordId"] == nil,
-       let legacyIds = result["remoteRecordIds"] as? [Any],
-       legacyIds.count == 1,
-       let legacyId = legacyIds.first as? NSNumber {
-      result["remoteRecordId"] = legacyId
-    }
-    result.removeValue(forKey: "remoteRecordIds")
-    return result
-  }
-
   private func jobs() throws -> [[String: Any]] {
     let stored = try jobStore.get().allJobs()
     uploadFailureLock.lock()
