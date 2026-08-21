@@ -12,6 +12,7 @@ import '../models/recording_video_codec.dart';
 import '../models/recording_operation_mode.dart';
 import '../models/recording_session.dart';
 import '../models/recording_spec.dart';
+import '../models/recording_orientation.dart';
 import '../services/order_info_receiver_service.dart';
 import '../services/lan_backup_discovery_service.dart';
 import '../services/lan_backup_service.dart';
@@ -151,6 +152,7 @@ class RecordingsScreen extends StatefulWidget {
     this.recordAudioEnabled = true,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
+    this.recordingOrientation = RecordingOrientation.portrait,
     this.minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength,
     this.historyPageSize = AppSettings.defaultHistoryPageSize,
     required this.onWorkModeChanged,
@@ -161,6 +163,7 @@ class RecordingsScreen extends StatefulWidget {
     this.onRecordAudioEnabledChanged,
     this.onPreferredVideoCodecChanged,
     this.onRecordingSpecChanged,
+    this.onRecordingOrientationChanged,
     this.onMinimumBarcodeLengthChanged,
     this.onHistoryPageSizeChanged,
     required this.onSpeechPreview,
@@ -217,6 +220,7 @@ class RecordingsScreen extends StatefulWidget {
   final bool recordAudioEnabled;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
+  final RecordingOrientation recordingOrientation;
   final int minimumBarcodeLength;
   final int historyPageSize;
   final ValueChanged<int>? onHistoryPageSizeChanged;
@@ -229,6 +233,8 @@ class RecordingsScreen extends StatefulWidget {
   final Future<void> Function(RecordingVideoCodec codec)?
   onPreferredVideoCodecChanged;
   final Future<void> Function(RecordingSpecPreset spec)? onRecordingSpecChanged;
+  final Future<void> Function(RecordingOrientation orientation)?
+  onRecordingOrientationChanged;
   final Future<void> Function(int value)? onMinimumBarcodeLengthChanged;
   final Future<void> Function() onSpeechPreview;
   final Future<void> Function(RecordingSession session) onSessionUpdated;
@@ -313,6 +319,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   late bool _recordAudioEnabled;
   late RecordingVideoCodec _preferredVideoCodec;
   late RecordingSpecPreset _recordingSpec;
+  late RecordingOrientation _recordingOrientation;
   late int _minimumBarcodeLength;
   VideoDecodeSupport? _deviceDecodeSupport;
   late List<RecordingSession> _sessions;
@@ -403,6 +410,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _recordAudioEnabled = widget.recordAudioEnabled;
     _preferredVideoCodec = widget.preferredVideoCodec;
     _recordingSpec = widget.recordingSpec;
+    _recordingOrientation = widget.recordingOrientation;
     _minimumBarcodeLength = widget.minimumBarcodeLength;
     _historyPageSize = widget.historyPageSize;
     unawaited(_loadDeviceDecodeSupport());
@@ -465,6 +473,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     _recordAudioEnabled = widget.recordAudioEnabled;
     _preferredVideoCodec = widget.preferredVideoCodec;
     _recordingSpec = widget.recordingSpec;
+    _recordingOrientation = widget.recordingOrientation;
     _minimumBarcodeLength = widget.minimumBarcodeLength;
     _historyPageSize = widget.historyPageSize;
     _unbackedRetention = widget.unbackedRetention;
@@ -1154,6 +1163,14 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
     }
   }
 
+  Future<void> _setRecordingOrientation(
+    RecordingOrientation orientation,
+  ) async {
+    if (_recordingOrientation == orientation) return;
+    setState(() => _recordingOrientation = orientation);
+    await widget.onRecordingOrientationChanged?.call(orientation);
+  }
+
   Future<void> _setMinimumBarcodeLength(int value) async {
     if (_minimumBarcodeLength == value) {
       return;
@@ -1723,6 +1740,31 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                   _RecordingSpecSettings(
                     spec: _recordingSpec,
                     onChanged: _setRecordingSpec,
+                  ),
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: colors.outlineVariant,
+                  ),
+                  ListTile(
+                    title: const Text('录像方向'),
+                    subtitle: const Text('水印会随录像变换，保持成片右上角正向可读'),
+                    trailing: DropdownButton<RecordingOrientation>(
+                      value: _recordingOrientation,
+                      onChanged: (value) {
+                        if (value != null) {
+                          unawaited(_setRecordingOrientation(value));
+                        }
+                      },
+                      items: RecordingOrientation.values
+                          .map(
+                            (value) => DropdownMenuItem(
+                              value: value,
+                              child: Text(value.label),
+                            ),
+                          )
+                          .toList(),
+                    ),
                   ),
                   Divider(
                     height: 1,

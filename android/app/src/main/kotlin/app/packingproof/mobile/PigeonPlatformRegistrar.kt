@@ -129,6 +129,7 @@ private class PigeonMediaProcessingHostApi(
                 "startedAtMs" to request.startedAtMs,
                 "trackingNumber" to request.trackingNumber,
                 "videoCodec" to request.videoCodec,
+                "recordingOrientation" to request.recordingOrientation,
             ),
             callback,
         ) { it as String }

@@ -11,6 +11,7 @@ import '../app/app_build_config.dart';
 import '../controllers/packing_session_controller.dart';
 import '../models/barcode_marker.dart';
 import '../models/recording_operation_mode.dart';
+import '../models/recording_orientation.dart';
 import '../models/work_mode.dart';
 import '../platform/platform_capabilities.dart';
 import '../models/order_info.dart';
@@ -556,6 +557,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                   orderInfo: _controller.activeOrderInfo,
                   workMode: _controller.workMode,
                   operationMode: _controller.operationMode,
+                  recordingOrientation: _controller.recordingOrientation,
                   capabilityMode: _controller.capabilityMode,
                   capabilityProbeMessage: _controller.capabilityProbeMessage,
                   canFinishCurrentOrder: _controller.canFinishCurrentOrder,
@@ -639,6 +641,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       recordAudioEnabled: _controller.recordAudioEnabled,
       preferredVideoCodec: _controller.preferredVideoCodec,
       recordingSpec: _controller.recordingSpec,
+      recordingOrientation: _controller.recordingOrientation,
       minimumBarcodeLength: _controller.minimumBarcodeLength,
       historyPageSize: _controller.historyPageSize,
       unbackedRetention: _controller.unbackedRetention,
@@ -654,6 +657,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       onRecordAudioEnabledChanged: _controller.setRecordAudioEnabled,
       onPreferredVideoCodecChanged: _controller.setPreferredVideoCodec,
       onRecordingSpecChanged: _controller.setRecordingSpec,
+      onRecordingOrientationChanged: _controller.setRecordingOrientation,
       onMinimumBarcodeLengthChanged: _controller.setMinimumBarcodeLength,
       onHistoryPageSizeChanged: _controller.setHistoryPageSize,
       onAutoBackupChanged: _controller.setLanBackupAutoEnabled,
@@ -666,9 +670,10 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       onManagingChanged: (bool managing) {
         if (mounted) setState(() => _historyManaging = managing);
       },
-      capabilityMode: _controller.capabilities.supports(
-        PlatformCapability.continuousCameraRecording,
-      )
+      capabilityMode:
+          _controller.capabilities.supports(
+            PlatformCapability.continuousCameraRecording,
+          )
           ? _controller.capabilityMode
           : null,
       capabilityStatusText: _controller.capabilityStatusText,
@@ -765,6 +770,7 @@ class PackingHomeView extends StatelessWidget {
     this.orderInfo,
     this.workMode = WorkMode.continuousScan,
     this.operationMode = RecordingOperationMode.shipping,
+    this.recordingOrientation = RecordingOrientation.portrait,
     this.capabilityMode,
     this.capabilityProbeMessage,
     this.canFinishCurrentOrder = false,
@@ -804,6 +810,7 @@ class PackingHomeView extends StatelessWidget {
   final OrderInfo? orderInfo;
   final WorkMode workMode;
   final RecordingOperationMode operationMode;
+  final RecordingOrientation recordingOrientation;
   final CameraCapabilityMode? capabilityMode;
   final String? capabilityProbeMessage;
   final bool canFinishCurrentOrder;
@@ -845,8 +852,7 @@ class PackingHomeView extends StatelessWidget {
       phase == PackingSessionPhase.starting ||
       phase == PackingSessionPhase.saving;
   bool get _alternatingRecording =>
-      capabilityMode == CameraCapabilityMode.alternating &&
-      _isRecording;
+      capabilityMode == CameraCapabilityMode.alternating && _isRecording;
 
   @override
   Widget build(BuildContext context) {
@@ -968,6 +974,7 @@ class _CameraArea extends StatelessWidget {
             child: _CameraWatermarkPreview(
               timestamp: view.watermarkTimestamp ?? DateTime.now(),
               trackingNumber: view.currentCode,
+              orientation: view.recordingOrientation,
             ),
           ),
           Positioned(
@@ -1364,10 +1371,12 @@ class _CameraWatermarkPreview extends StatelessWidget {
   const _CameraWatermarkPreview({
     required this.timestamp,
     required this.trackingNumber,
+    required this.orientation,
   });
 
   final DateTime timestamp;
   final String trackingNumber;
+  final RecordingOrientation orientation;
 
   @override
   Widget build(BuildContext context) {
@@ -1383,31 +1392,38 @@ class _CameraWatermarkPreview extends StatelessWidget {
 
     return Semantics(
       label: '录像水印',
-      child: SizedBox(
-        key: const Key('camera-watermark-preview'),
-        width: 250,
-        child: Stack(
-          alignment: Alignment.topRight,
-          children: <Widget>[
-            Text(
-              text,
-              key: const Key('camera-watermark-outline'),
-              textAlign: TextAlign.right,
-              style: baseStyle.copyWith(
-                foreground: Paint()
-                  ..style = PaintingStyle.stroke
-                  ..strokeWidth = 3
-                  ..strokeJoin = StrokeJoin.round
-                  ..color = Colors.black,
+      child: RotatedBox(
+        quarterTurns: orientation == RecordingOrientation.landscapeLeft
+            ? 3
+            : orientation == RecordingOrientation.landscapeRight
+            ? 1
+            : 0,
+        child: SizedBox(
+          key: const Key('camera-watermark-preview'),
+          width: 250,
+          child: Stack(
+            alignment: Alignment.topRight,
+            children: <Widget>[
+              Text(
+                text,
+                key: const Key('camera-watermark-outline'),
+                textAlign: TextAlign.right,
+                style: baseStyle.copyWith(
+                  foreground: Paint()
+                    ..style = PaintingStyle.stroke
+                    ..strokeWidth = 3
+                    ..strokeJoin = StrokeJoin.round
+                    ..color = Colors.black,
+                ),
               ),
-            ),
-            Text(
-              text,
-              key: const Key('camera-watermark-fill'),
-              textAlign: TextAlign.right,
-              style: baseStyle.copyWith(color: Colors.white),
-            ),
-          ],
+              Text(
+                text,
+                key: const Key('camera-watermark-fill'),
+                textAlign: TextAlign.right,
+                style: baseStyle.copyWith(color: Colors.white),
+              ),
+            ],
+          ),
         ),
       ),
     );

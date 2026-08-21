@@ -24,6 +24,7 @@ class WatermarkRequest {
   int startedAtMs;
   String trackingNumber;
   String videoCodec;
+  String recordingOrientation;
 }
 
 class ExportRequest {
@@ -70,6 +71,7 @@ class CameraInitializeRequest {
   String videoCodec;
   String recordingSpec;
   String capabilityMode;
+  String recordingOrientation;
 }
 
 class CameraInitializationDto {

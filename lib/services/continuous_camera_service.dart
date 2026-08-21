@@ -4,8 +4,10 @@ import 'package:flutter/services.dart';
 
 import '../models/recording_spec.dart';
 import '../models/recording_video_codec.dart';
+import '../models/recording_orientation.dart';
 import '../platform/contracts/camera_platform.dart';
 import '../platform/platform_container.dart';
+import '../platform/adapters/pigeon_camera_platform.dart';
 
 class ContinuousCameraInitialization {
   const ContinuousCameraInitialization({
@@ -315,12 +317,23 @@ class ContinuousCameraService {
   Future<ContinuousCameraInitialization> initialize({
     RecordingVideoCodec videoCodec = RecordingVideoCodec.hevc,
     RecordingSpecPreset recordingSpec = RecordingSpecPreset.hd1080p30,
+    RecordingOrientation recordingOrientation = RecordingOrientation.portrait,
     String capabilityMode = 'unverified',
-  }) => _platform.initialize(
-    videoCodec: videoCodec.storageValue,
-    recordingSpec: recordingSpec.storageValue,
-    capabilityMode: capabilityMode,
-  );
+  }) {
+    if (_platform is PigeonCameraPlatform) {
+      return _platform.initialize(
+        videoCodec: videoCodec.storageValue,
+        recordingSpec: recordingSpec.storageValue,
+        recordingOrientation: recordingOrientation,
+        capabilityMode: capabilityMode,
+      );
+    }
+    return _platform.initialize(
+      videoCodec: videoCodec.storageValue,
+      recordingSpec: recordingSpec.storageValue,
+      capabilityMode: capabilityMode,
+    );
+  }
 
   /// 请求运行所需权限；[recordAudio] 为 false 时只要求摄像头权限。
   Future<bool> ensurePermissions({required bool recordAudio}) =>
@@ -399,12 +412,14 @@ class _LegacyCameraPlatform implements CameraPlatform {
   Future<ContinuousCameraInitialization> initialize({
     String videoCodec = 'hevc',
     String recordingSpec = 'hd1080p30',
+    RecordingOrientation recordingOrientation = RecordingOrientation.portrait,
     String capabilityMode = 'unverified',
   }) async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('initialize', <String, Object>{
           'videoCodec': videoCodec,
           'recordingSpec': recordingSpec,
+          'recordingOrientation': recordingOrientation.storageValue,
           'capabilityMode': capabilityMode,
         }))!;
     return ContinuousCameraInitialization.fromMap(values);

@@ -316,7 +316,7 @@ private final class IosMediaProcessingHostApi: MediaProcessingHostApi {
         text.string = request.trackingNumber.isEmpty
           ? formatter.string(from: started)
           : "\(formatter.string(from: started)) Order:\(request.trackingNumber)"
-        text.fontSize = max(24, min(46, height * 0.03))
+        text.fontSize = max(35, min(58, height * 0.036))
         text.foregroundColor = UIColor.white.cgColor
         text.backgroundColor = UIColor.black.withAlphaComponent(0.45).cgColor
         text.alignmentMode = .right
@@ -328,6 +328,11 @@ private final class IosMediaProcessingHostApi: MediaProcessingHostApi {
           width: textSize.width,
           height: textSize.height
         )
+        switch request.recordingOrientation {
+        case "landscapeLeft": text.setAffineTransform(CGAffineTransform(rotationAngle: -.pi / 2))
+        case "landscapeRight": text.setAffineTransform(CGAffineTransform(rotationAngle: .pi / 2))
+        default: break
+        }
         parentLayer.addSublayer(text)
         videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
           postProcessingAsVideoLayer: videoLayer,
@@ -2278,6 +2283,7 @@ private final class IosCameraHostApi:
 
   private var recordingSpecName = "hd1080p30"
   private var preferredVideoCodec = "hevc"
+  private var recordingOrientationName = "portrait"
   private var recordAudio = true
   private var pairingScanEnabled = false
   private var workScanEnabled = false
@@ -2348,12 +2354,22 @@ private final class IosCameraHostApi:
 
   // MARK: - CameraHostApi
 
+  private func captureVideoOrientation() -> AVCaptureVideoOrientation {
+    switch recordingOrientationName {
+    case "landscapeLeft": return .landscapeLeft
+    case "landscapeRight": return .landscapeRight
+    default: return .portrait
+    }
+  }
+
   func initialize(
     request: CameraInitializeRequest,
     completion: @escaping (Result<CameraInitializationDto, Error>) -> Void
   ) {
     preferredVideoCodec = request.videoCodec
     recordingSpecName = request.recordingSpec
+    recordingOrientationName = ["landscapeLeft", "landscapeRight"].contains(request.recordingOrientation)
+      ? request.recordingOrientation : "portrait"
     sessionQueue.async { [weak self] in
       guard let self else {
         completion(.failure(pigeonError("摄像头已经关闭")))
@@ -2873,7 +2889,7 @@ private final class IosCameraHostApi:
       if self.session.canAddOutput(videoOutput) {
         self.session.addOutput(videoOutput)
         if let connection = videoOutput.connection(with: .video) {
-          connection.videoOrientation = .portrait
+          connection.videoOrientation = captureVideoOrientation()
           connection.isVideoMirrored = false
         }
         self.videoOutput = videoOutput
@@ -3115,7 +3131,7 @@ private final class IosCameraHostApi:
         if let connection = self.videoOutput?.connection(with: .video) {
           // 切换镜头后重新固定竖屏方向，前置镜头同时开启镜像，
           // 避免切换后预览被拉伸或未镜像。
-          connection.videoOrientation = .portrait
+          connection.videoOrientation = captureVideoOrientation()
           connection.isVideoMirrored = device.position == .front
         }
         completion(.success(self.initializationDto()))

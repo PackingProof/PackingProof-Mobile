@@ -108,6 +108,7 @@ class ContinuousSegmentCamera(
     private val stallRecoveryPolicy = PreviewStallRecoveryPolicy()
     private var recordingSpec = RecordingSpecPolicy.HD
     private var recordingSpecName = RecordingSpecPolicy.DEFAULT_SPEC_NAME
+    private var recordingOrientationName = "portrait"
     @Volatile private var captureStartedCount = 0L
     @Volatile private var lastCaptureStartedAtMs = 0L
     @Volatile private var lastCaptureCompletedAtMs = 0L
@@ -241,6 +242,7 @@ class ContinuousSegmentCamera(
         videoCodec: String? = null,
         recordingSpecName: String? = null,
         capabilityModeName: String? = null,
+        recordingOrientationName: String? = null,
     ) {
         if (disposed) {
             result.error("disposed", "摄像头已经关闭", null)
@@ -258,6 +260,10 @@ class ContinuousSegmentCamera(
         openCameraAttempts = 0
         recordingSpec = RecordingSpecPolicy.resolve(recordingSpecName)
         this.recordingSpecName = RecordingSpecPolicy.resolveName(recordingSpecName)
+        this.recordingOrientationName = when (recordingOrientationName) {
+            "landscapeLeft", "landscapeRight" -> recordingOrientationName
+            else -> "portrait"
+        }
         recordingFpsRangePolicy = RecordingFpsRangePolicy(recordingSpec.fps)
         streamConfigPolicy = StreamConfigPolicy(
             recordingSpec.videoWidth,
@@ -2153,6 +2159,12 @@ class ContinuousSegmentCamera(
     private fun formatsReady(): Boolean =
         videoOutputFormat != null && (!recordAudio || audioOutputFormat != null)
 
+    private fun orientationHintDegrees(): Int = when (recordingOrientationName) {
+        "landscapeLeft" -> 90
+        "landscapeRight" -> 270
+        else -> 0
+    }
+
     private fun openMuxer(path: String, basePtsUs: Long, startedAtMs: Long) {
         val outputFile = File(path)
         outputFile.parentFile?.mkdirs()
@@ -2160,7 +2172,7 @@ class ContinuousSegmentCamera(
             error("无法覆盖录像文件")
         }
         val newMuxer = MediaMuxer(path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-        newMuxer.setOrientationHint(sensorOrientation)
+        newMuxer.setOrientationHint(orientationHintDegrees())
         videoTrack = newMuxer.addTrack(videoOutputFormat!!)
         audioTrack = if (recordAudio && audioOutputFormat != null) {
             newMuxer.addTrack(audioOutputFormat!!)

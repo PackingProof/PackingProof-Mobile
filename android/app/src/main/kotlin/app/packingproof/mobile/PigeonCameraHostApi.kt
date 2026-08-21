@@ -24,6 +24,7 @@ internal class PigeonCameraHostApi(
                 "videoCodec" to request.videoCodec,
                 "recordingSpec" to request.recordingSpec,
                 "capabilityMode" to request.capabilityMode,
+                "recordingOrientation" to request.recordingOrientation,
             ),
             callback,
         ) { value -> (value as Map<*, *>).toCameraInitializationDto() }

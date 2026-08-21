@@ -11,6 +11,7 @@ import '../models/backup_retention_policy.dart';
 import '../models/recording_session.dart';
 import '../models/recording_operation_mode.dart';
 import '../models/recording_spec.dart';
+import '../models/recording_orientation.dart';
 import '../models/recording_video_codec.dart';
 import '../models/work_mode.dart';
 import '../models/storage_notice.dart';
@@ -713,6 +714,12 @@ class SessionRepository {
   Future<void> saveRecordingSpec(RecordingSpecPreset spec) => _updateSettings(
     (AppSettings value) => value.copyWith(recordingSpec: spec),
   );
+
+  Future<void> saveRecordingOrientation(RecordingOrientation orientation) =>
+      _updateSettings(
+        (AppSettings value) =>
+            value.copyWith(recordingOrientation: orientation),
+      );
 
   Future<void> saveMinimumBarcodeLength(int minimumLength) => _updateSettings(
     (AppSettings settings) => settings.copyWith(

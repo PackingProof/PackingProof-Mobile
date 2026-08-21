@@ -1,4 +1,5 @@
 import '../../services/continuous_camera_service.dart';
+import '../../models/recording_orientation.dart';
 import '../contracts/camera_platform.dart';
 import '../generated/platform_api.g.dart';
 
@@ -32,6 +33,7 @@ class PigeonCameraPlatform implements CameraPlatform {
     String videoCodec = 'hevc',
     String recordingSpec = 'hd1080p30',
     String capabilityMode = 'unverified',
+    RecordingOrientation recordingOrientation = RecordingOrientation.portrait,
   }) async {
     return _initializationFromDto(
       await _hostApi.initialize(
@@ -39,6 +41,7 @@ class PigeonCameraPlatform implements CameraPlatform {
           videoCodec: videoCodec,
           recordingSpec: recordingSpec,
           capabilityMode: capabilityMode,
+          recordingOrientation: recordingOrientation.storageValue,
         ),
       ),
     );

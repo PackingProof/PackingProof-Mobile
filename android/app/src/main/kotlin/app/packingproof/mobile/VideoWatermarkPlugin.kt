@@ -69,6 +69,7 @@ class VideoWatermarkPlugin(
         val outputPath = arguments?.get("outputPath") as? String
         val startedAtMs = (arguments?.get("startedAtMs") as? Number)?.toLong()
         val trackingNumber = arguments?.get("trackingNumber") as? String ?: ""
+        val recordingOrientation = arguments?.get("recordingOrientation") as? String ?: "portrait"
         val videoMime = if (arguments?.get("videoCodec") == "h264") {
             MimeTypes.VIDEO_H264
         } else {
@@ -89,7 +90,7 @@ class VideoWatermarkPlugin(
 
         val settings = StaticOverlaySettings.Builder()
             .setOverlayFrameAnchor(1f, 1f)
-            .setBackgroundFrameAnchor(0.96f, 0.92f)
+            .setBackgroundFrameAnchor(0.96f, 0.08f)
             .build()
         val overlay = object : BitmapOverlay() {
             private val formatter = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.ROOT)
@@ -127,7 +128,7 @@ class VideoWatermarkPlugin(
             }
 
             private fun renderOutlinedText(lines: List<String>): Bitmap {
-                val textSize = (videoSize.height * 0.026f).coerceIn(28f, 56f)
+                val textSize = (videoSize.height * 0.032f).coerceIn(35f, 61f)
                 val strokeWidth = (textSize / 10f).coerceAtLeast(3f)
                 val padding = strokeWidth + 3f
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -143,6 +144,12 @@ class VideoWatermarkPlugin(
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                 bitmap.density = Bitmap.DENSITY_NONE
                 val canvas = Canvas(bitmap)
+                val rotation = when (recordingOrientation) {
+                    "landscapeLeft" -> -90f
+                    "landscapeRight" -> 90f
+                    else -> 0f
+                }
+                canvas.rotate(rotation, width / 2f, height / 2f)
                 val right = width - padding
                 var baseline = padding - paint.fontMetrics.top
                 for (line in lines) {

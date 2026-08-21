@@ -4,6 +4,7 @@ import 'storage_notice.dart';
 import 'recording_video_codec.dart';
 import 'recording_spec.dart';
 import 'recording_operation_mode.dart';
+import 'recording_orientation.dart';
 
 class AppSettings {
   static const int defaultMinimumBarcodeLength = 11;
@@ -23,6 +24,7 @@ class AppSettings {
     this.cameraCapabilityState,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
+    this.recordingOrientation = RecordingOrientation.portrait,
     this.startupNoticeVersion = 0,
     this.lastLoggedAppVersion = '',
     this.lastLoggedAppBuildNumber = 0,
@@ -50,6 +52,7 @@ class AppSettings {
       ..remove('cameraCapabilityState')
       ..remove('preferredVideoCodec')
       ..remove('recordingSpec')
+      ..remove('recordingOrientation')
       ..remove('startupNoticeVersion')
       ..remove('lastLoggedAppVersion')
       ..remove('lastLoggedAppBuildNumber')
@@ -96,6 +99,9 @@ class AppSettings {
         json['preferredVideoCodec'],
       ),
       recordingSpec: recordingSpecFromStorage(json['recordingSpec']),
+      recordingOrientation: recordingOrientationFromStorage(
+        json['recordingOrientation'],
+      ),
       startupNoticeVersion: json['startupNoticeVersion'] is num
           ? (json['startupNoticeVersion']! as num).toInt()
           : 0,
@@ -168,6 +174,7 @@ class AppSettings {
   final Map<String, Object?>? cameraCapabilityState;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
+  final RecordingOrientation recordingOrientation;
   final int startupNoticeVersion;
   final String lastLoggedAppVersion;
   final int lastLoggedAppBuildNumber;
@@ -194,6 +201,7 @@ class AppSettings {
     Map<String, Object?>? cameraCapabilityState,
     RecordingVideoCodec? preferredVideoCodec,
     RecordingSpecPreset? recordingSpec,
+    RecordingOrientation? recordingOrientation,
     int? startupNoticeVersion,
     String? lastLoggedAppVersion,
     int? lastLoggedAppBuildNumber,
@@ -221,6 +229,7 @@ class AppSettings {
           cameraCapabilityState ?? this.cameraCapabilityState,
       preferredVideoCodec: preferredVideoCodec ?? this.preferredVideoCodec,
       recordingSpec: recordingSpec ?? this.recordingSpec,
+      recordingOrientation: recordingOrientation ?? this.recordingOrientation,
       startupNoticeVersion: startupNoticeVersion ?? this.startupNoticeVersion,
       lastLoggedAppVersion: lastLoggedAppVersion ?? this.lastLoggedAppVersion,
       lastLoggedAppBuildNumber:
@@ -255,6 +264,7 @@ class AppSettings {
     'cameraCapabilityState': cameraCapabilityState,
     'preferredVideoCodec': preferredVideoCodec.storageValue,
     'recordingSpec': recordingSpec.storageValue,
+    'recordingOrientation': recordingOrientation.storageValue,
     'startupNoticeVersion': startupNoticeVersion,
     'lastLoggedAppVersion': lastLoggedAppVersion,
     'lastLoggedAppBuildNumber': lastLoggedAppBuildNumber,

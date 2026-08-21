@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import '../models/recording_video_codec.dart';
+import '../models/recording_orientation.dart';
 import '../platform/contracts/media_platform.dart';
 import '../platform/platform_container.dart';
 
@@ -16,20 +17,34 @@ abstract interface class VideoWatermarkSink {
   });
 }
 
-class VideoWatermarkService implements VideoWatermarkSink {
+abstract interface class OrientedVideoWatermarkSink {
+  Future<String> applyWithOrientation({
+    required String inputPath,
+    required DateTime startedAt,
+    required String trackingNumber,
+    required RecordingVideoCodec videoCodec,
+    required RecordingOrientation recordingOrientation,
+  });
+}
+
+class VideoWatermarkService
+    implements VideoWatermarkSink, OrientedVideoWatermarkSink {
   VideoWatermarkService({
     MethodChannel? channel,
     bool? isAndroid,
+    bool? isIOS,
     MediaProcessingPlatform? platform,
   }) : _platform =
            platform ??
            (channel != null
                ? _LegacyVideoWatermarkPlatform(channel)
                : AppContainer.forCurrentPlatform().mediaProcessing),
-       _isAndroid = isAndroid ?? Platform.isAndroid;
+       _isAndroid = isAndroid ?? Platform.isAndroid,
+       _isIOS = isIOS ?? Platform.isIOS;
 
   final MediaProcessingPlatform _platform;
   final bool _isAndroid;
+  final bool _isIOS;
   Future<void> _tail = Future<void>.value();
 
   @override
@@ -38,6 +53,7 @@ class VideoWatermarkService implements VideoWatermarkSink {
     required DateTime startedAt,
     required String trackingNumber,
     RecordingVideoCodec videoCodec = RecordingVideoCodec.hevc,
+    RecordingOrientation recordingOrientation = RecordingOrientation.portrait,
   }) {
     final Completer<String> result = Completer<String>();
     _tail = _tail.catchError((Object _) {}).then((_) async {
@@ -48,6 +64,7 @@ class VideoWatermarkService implements VideoWatermarkSink {
             startedAt: startedAt,
             trackingNumber: trackingNumber,
             videoCodec: videoCodec,
+            recordingOrientation: recordingOrientation,
           ),
         );
       } on Object catch (error, stackTrace) {
@@ -57,13 +74,29 @@ class VideoWatermarkService implements VideoWatermarkSink {
     return result.future;
   }
 
+  @override
+  Future<String> applyWithOrientation({
+    required String inputPath,
+    required DateTime startedAt,
+    required String trackingNumber,
+    required RecordingVideoCodec videoCodec,
+    required RecordingOrientation recordingOrientation,
+  }) => apply(
+    inputPath: inputPath,
+    startedAt: startedAt,
+    trackingNumber: trackingNumber,
+    videoCodec: videoCodec,
+    recordingOrientation: recordingOrientation,
+  );
+
   Future<String> _applyNow({
     required String inputPath,
     required DateTime startedAt,
     required String trackingNumber,
     required RecordingVideoCodec videoCodec,
+    required RecordingOrientation recordingOrientation,
   }) async {
-    if (!_isAndroid) return inputPath;
+    if (!_isAndroid && !_isIOS) return inputPath;
     final int dot = inputPath.lastIndexOf('.');
     final String outputPath = dot > 0
         ? '${inputPath.substring(0, dot)}_watermarked.mp4'
@@ -74,6 +107,7 @@ class VideoWatermarkService implements VideoWatermarkSink {
       startedAtMs: startedAt.millisecondsSinceEpoch,
       trackingNumber: trackingNumber,
       videoCodec: videoCodec.storageValue,
+      recordingOrientation: recordingOrientation.storageValue,
     );
     if (result.isEmpty || !await File(result).exists()) {
       throw StateError('水印视频生成失败');
@@ -94,6 +128,7 @@ class _LegacyVideoWatermarkPlatform implements MediaProcessingPlatform {
     required int startedAtMs,
     required String trackingNumber,
     required String videoCodec,
+    String recordingOrientation = 'portrait',
   }) async {
     final String? result = await channel.invokeMethod<String>('apply', {
       'inputPath': inputPath,
@@ -101,6 +136,7 @@ class _LegacyVideoWatermarkPlatform implements MediaProcessingPlatform {
       'startedAtMs': startedAtMs,
       'trackingNumber': trackingNumber,
       'videoCodec': videoCodec,
+      'recordingOrientation': recordingOrientation,
     });
     return result ?? '';
   }

@@ -238,7 +238,8 @@ data class WatermarkRequest (
   val outputPath: String,
   val startedAtMs: Long,
   val trackingNumber: String,
-  val videoCodec: String
+  val videoCodec: String,
+  val recordingOrientation: String
 )
  {
   companion object {
@@ -248,7 +249,8 @@ data class WatermarkRequest (
       val startedAtMs = pigeonVar_list[2] as Long
       val trackingNumber = pigeonVar_list[3] as String
       val videoCodec = pigeonVar_list[4] as String
-      return WatermarkRequest(inputPath, outputPath, startedAtMs, trackingNumber, videoCodec)
+      val recordingOrientation = pigeonVar_list[5] as String
+      return WatermarkRequest(inputPath, outputPath, startedAtMs, trackingNumber, videoCodec, recordingOrientation)
     }
   }
   fun toList(): List<Any?> {
@@ -258,6 +260,7 @@ data class WatermarkRequest (
       startedAtMs,
       trackingNumber,
       videoCodec,
+      recordingOrientation,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -268,7 +271,7 @@ data class WatermarkRequest (
       return true
     }
     val other = other as WatermarkRequest
-    return PlatformApiPigeonUtils.deepEquals(this.inputPath, other.inputPath) && PlatformApiPigeonUtils.deepEquals(this.outputPath, other.outputPath) && PlatformApiPigeonUtils.deepEquals(this.startedAtMs, other.startedAtMs) && PlatformApiPigeonUtils.deepEquals(this.trackingNumber, other.trackingNumber) && PlatformApiPigeonUtils.deepEquals(this.videoCodec, other.videoCodec)
+    return PlatformApiPigeonUtils.deepEquals(this.inputPath, other.inputPath) && PlatformApiPigeonUtils.deepEquals(this.outputPath, other.outputPath) && PlatformApiPigeonUtils.deepEquals(this.startedAtMs, other.startedAtMs) && PlatformApiPigeonUtils.deepEquals(this.trackingNumber, other.trackingNumber) && PlatformApiPigeonUtils.deepEquals(this.videoCodec, other.videoCodec) && PlatformApiPigeonUtils.deepEquals(this.recordingOrientation, other.recordingOrientation)
   }
 
   override fun hashCode(): Int {
@@ -278,10 +281,11 @@ data class WatermarkRequest (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.startedAtMs)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.trackingNumber)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.videoCodec)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.recordingOrientation)
     return result
   }
   override fun toString(): String {
-    return "WatermarkRequest(inputPath=$inputPath, outputPath=$outputPath, startedAtMs=$startedAtMs, trackingNumber=$trackingNumber, videoCodec=$videoCodec)"
+    return "WatermarkRequest(inputPath=$inputPath, outputPath=$outputPath, startedAtMs=$startedAtMs, trackingNumber=$trackingNumber, videoCodec=$videoCodec, recordingOrientation=$recordingOrientation)"
   }
 }
 
@@ -533,7 +537,8 @@ data class OrderReceiverStatusDto (
 data class CameraInitializeRequest (
   val videoCodec: String,
   val recordingSpec: String,
-  val capabilityMode: String
+  val capabilityMode: String,
+  val recordingOrientation: String
 )
  {
   companion object {
@@ -541,7 +546,8 @@ data class CameraInitializeRequest (
       val videoCodec = pigeonVar_list[0] as String
       val recordingSpec = pigeonVar_list[1] as String
       val capabilityMode = pigeonVar_list[2] as String
-      return CameraInitializeRequest(videoCodec, recordingSpec, capabilityMode)
+      val recordingOrientation = pigeonVar_list[3] as String
+      return CameraInitializeRequest(videoCodec, recordingSpec, capabilityMode, recordingOrientation)
     }
   }
   fun toList(): List<Any?> {
@@ -549,6 +555,7 @@ data class CameraInitializeRequest (
       videoCodec,
       recordingSpec,
       capabilityMode,
+      recordingOrientation,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -559,7 +566,7 @@ data class CameraInitializeRequest (
       return true
     }
     val other = other as CameraInitializeRequest
-    return PlatformApiPigeonUtils.deepEquals(this.videoCodec, other.videoCodec) && PlatformApiPigeonUtils.deepEquals(this.recordingSpec, other.recordingSpec) && PlatformApiPigeonUtils.deepEquals(this.capabilityMode, other.capabilityMode)
+    return PlatformApiPigeonUtils.deepEquals(this.videoCodec, other.videoCodec) && PlatformApiPigeonUtils.deepEquals(this.recordingSpec, other.recordingSpec) && PlatformApiPigeonUtils.deepEquals(this.capabilityMode, other.capabilityMode) && PlatformApiPigeonUtils.deepEquals(this.recordingOrientation, other.recordingOrientation)
   }
 
   override fun hashCode(): Int {
@@ -567,10 +574,11 @@ data class CameraInitializeRequest (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.videoCodec)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.recordingSpec)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.capabilityMode)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.recordingOrientation)
     return result
   }
   override fun toString(): String {
-    return "CameraInitializeRequest(videoCodec=$videoCodec, recordingSpec=$recordingSpec, capabilityMode=$capabilityMode)"
+    return "CameraInitializeRequest(videoCodec=$videoCodec, recordingSpec=$recordingSpec, capabilityMode=$capabilityMode, recordingOrientation=$recordingOrientation)"
   }
 }
 

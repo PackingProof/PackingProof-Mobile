@@ -27,6 +27,7 @@ abstract interface class MediaProcessingPlatform {
     required int startedAtMs,
     required String trackingNumber,
     required String videoCodec,
+    String recordingOrientation = 'portrait',
   });
 
   Future<String> exportRange({

@@ -159,6 +159,7 @@ class WatermarkRequest {
     required this.startedAtMs,
     required this.trackingNumber,
     required this.videoCodec,
+    required this.recordingOrientation,
   });
 
   String inputPath;
@@ -171,6 +172,8 @@ class WatermarkRequest {
 
   String videoCodec;
 
+  String recordingOrientation;
+
   List<Object?> _toList() {
     return <Object?>[
       inputPath,
@@ -178,6 +181,7 @@ class WatermarkRequest {
       startedAtMs,
       trackingNumber,
       videoCodec,
+      recordingOrientation,
     ];
   }
 
@@ -192,6 +196,7 @@ class WatermarkRequest {
       startedAtMs: result[2]! as int,
       trackingNumber: result[3]! as String,
       videoCodec: result[4]! as String,
+      recordingOrientation: result[5]! as String,
     );
   }
 
@@ -204,7 +209,7 @@ class WatermarkRequest {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(inputPath, other.inputPath) && _deepEquals(outputPath, other.outputPath) && _deepEquals(startedAtMs, other.startedAtMs) && _deepEquals(trackingNumber, other.trackingNumber) && _deepEquals(videoCodec, other.videoCodec);
+    return _deepEquals(inputPath, other.inputPath) && _deepEquals(outputPath, other.outputPath) && _deepEquals(startedAtMs, other.startedAtMs) && _deepEquals(trackingNumber, other.trackingNumber) && _deepEquals(videoCodec, other.videoCodec) && _deepEquals(recordingOrientation, other.recordingOrientation);
   }
 
   @override
@@ -213,7 +218,7 @@ class WatermarkRequest {
 
   @override
   String toString() {
-    return 'WatermarkRequest(inputPath: $inputPath, outputPath: $outputPath, startedAtMs: $startedAtMs, trackingNumber: $trackingNumber, videoCodec: $videoCodec)';
+    return 'WatermarkRequest(inputPath: $inputPath, outputPath: $outputPath, startedAtMs: $startedAtMs, trackingNumber: $trackingNumber, videoCodec: $videoCodec, recordingOrientation: $recordingOrientation)';
   }
 }
 
@@ -522,6 +527,7 @@ class CameraInitializeRequest {
     required this.videoCodec,
     required this.recordingSpec,
     required this.capabilityMode,
+    required this.recordingOrientation,
   });
 
   String videoCodec;
@@ -530,11 +536,14 @@ class CameraInitializeRequest {
 
   String capabilityMode;
 
+  String recordingOrientation;
+
   List<Object?> _toList() {
     return <Object?>[
       videoCodec,
       recordingSpec,
       capabilityMode,
+      recordingOrientation,
     ];
   }
 
@@ -547,6 +556,7 @@ class CameraInitializeRequest {
       videoCodec: result[0]! as String,
       recordingSpec: result[1]! as String,
       capabilityMode: result[2]! as String,
+      recordingOrientation: result[3]! as String,
     );
   }
 
@@ -559,7 +569,7 @@ class CameraInitializeRequest {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(videoCodec, other.videoCodec) && _deepEquals(recordingSpec, other.recordingSpec) && _deepEquals(capabilityMode, other.capabilityMode);
+    return _deepEquals(videoCodec, other.videoCodec) && _deepEquals(recordingSpec, other.recordingSpec) && _deepEquals(capabilityMode, other.capabilityMode) && _deepEquals(recordingOrientation, other.recordingOrientation);
   }
 
   @override
@@ -568,7 +578,7 @@ class CameraInitializeRequest {
 
   @override
   String toString() {
-    return 'CameraInitializeRequest(videoCodec: $videoCodec, recordingSpec: $recordingSpec, capabilityMode: $capabilityMode)';
+    return 'CameraInitializeRequest(videoCodec: $videoCodec, recordingSpec: $recordingSpec, capabilityMode: $capabilityMode, recordingOrientation: $recordingOrientation)';
   }
 }
 

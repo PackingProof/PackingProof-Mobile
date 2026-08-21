@@ -14,6 +14,7 @@ class PigeonMediaProcessingPlatform implements MediaProcessingPlatform {
     required int startedAtMs,
     required String trackingNumber,
     required String videoCodec,
+    String recordingOrientation = 'portrait',
   }) => _api.applyWatermark(
     WatermarkRequest(
       inputPath: inputPath,
@@ -21,6 +22,7 @@ class PigeonMediaProcessingPlatform implements MediaProcessingPlatform {
       startedAtMs: startedAtMs,
       trackingNumber: trackingNumber,
       videoCodec: videoCodec,
+      recordingOrientation: recordingOrientation,
     ),
   );
 

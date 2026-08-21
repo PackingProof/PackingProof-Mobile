@@ -19,6 +19,7 @@ import '../models/order_info.dart';
 import '../models/recording_operation_mode.dart';
 import '../models/recording_spec.dart';
 import '../models/recording_video_codec.dart';
+import '../models/recording_orientation.dart';
 import '../models/speech_prompt.dart';
 import '../models/storage_notice.dart';
 import '../models/work_mode.dart';
@@ -184,6 +185,7 @@ class PackingSessionController extends ChangeNotifier {
   DateTime? _alternatingNoCodeSince;
   RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
   RecordingSpecPreset _recordingSpec = RecordingSpecPreset.hd1080p30;
+  RecordingOrientation _recordingOrientation = RecordingOrientation.portrait;
   int _minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength;
   int _historyPageSize = AppSettings.defaultHistoryPageSize;
   UnbackedRetentionPolicy _unbackedRetention = UnbackedRetentionPolicy.days30;
@@ -284,6 +286,7 @@ class PackingSessionController extends ChangeNotifier {
   bool get recordAudioEnabled => _recordAudioEnabled;
   RecordingVideoCodec get preferredVideoCodec => _preferredVideoCodec;
   RecordingSpecPreset get recordingSpec => _recordingSpec;
+  RecordingOrientation get recordingOrientation => _recordingOrientation;
   int get minimumBarcodeLength => _minimumBarcodeLength;
   int get historyPageSize => _historyPageSize;
   LanBackupSnapshot get backupSnapshot => _lanBackupService.snapshot;
@@ -419,6 +422,7 @@ class PackingSessionController extends ChangeNotifier {
       _capabilityState = settings.cameraCapabilityState;
       _preferredVideoCodec = settings.preferredVideoCodec;
       _recordingSpec = settings.recordingSpec;
+      _recordingOrientation = settings.recordingOrientation;
       _minimumBarcodeLength = settings.minimumBarcodeLength;
       _historyPageSize = settings.historyPageSize;
       _hiddenRemoteRecordingIds = Set<int>.of(
@@ -473,6 +477,7 @@ class PackingSessionController extends ChangeNotifier {
               .initialize(
                 videoCodec: _preferredVideoCodec,
                 recordingSpec: _recordingSpec,
+                recordingOrientation: _recordingOrientation,
                 capabilityMode: _provisionalCapabilityMode().wireValue,
               )
               .timeout(
@@ -1769,6 +1774,14 @@ class PackingSessionController extends ChangeNotifier {
     }
   }
 
+  Future<void> setRecordingOrientation(RecordingOrientation orientation) async {
+    if (_recordingOrientation == orientation) return;
+    _recordingOrientation = orientation;
+    notifyListeners();
+    await _repository.saveRecordingOrientation(orientation);
+    if (_supportsNativeCamera && !isWorking) await retryInitialize();
+  }
+
   Future<void> setMinimumBarcodeLength(int value) async {
     final int normalized = AppSettings.normalizeBarcodeLength(value);
     if (_minimumBarcodeLength == normalized) {
@@ -2042,16 +2055,29 @@ class PackingSessionController extends ChangeNotifier {
       session,
     ]);
     try {
-      final String watermarkedPath = await _videoWatermarkService.apply(
-        inputPath: savedPath,
-        startedAt: session.startedAt,
-        trackingNumber: trackingNumber,
-        // 相机可能因设备不支持偏好编码而回退，水印必须跟随实际录制的编码。
-        videoCodec: recordingVideoCodecFromMime(
-          _nativeInitialization?.videoMime,
-          fallback: _preferredVideoCodec,
-        ),
-      );
+      final String watermarkedPath =
+          await (_videoWatermarkService is OrientedVideoWatermarkSink
+              ? (_videoWatermarkService as OrientedVideoWatermarkSink)
+                    .applyWithOrientation(
+                      inputPath: savedPath,
+                      startedAt: session.startedAt,
+                      trackingNumber: trackingNumber,
+                      // 相机可能因设备不支持偏好编码而回退，水印必须跟随实际录制的编码。
+                      videoCodec: recordingVideoCodecFromMime(
+                        _nativeInitialization?.videoMime,
+                        fallback: _preferredVideoCodec,
+                      ),
+                      recordingOrientation: _recordingOrientation,
+                    )
+              : _videoWatermarkService.apply(
+                  inputPath: savedPath,
+                  startedAt: session.startedAt,
+                  trackingNumber: trackingNumber,
+                  videoCodec: recordingVideoCodecFromMime(
+                    _nativeInitialization?.videoMime,
+                    fallback: _preferredVideoCodec,
+                  ),
+                ));
       final String finalPath = await _repository.finalizeVideo(
         sourcePath: watermarkedPath,
         sessionId: session.id,

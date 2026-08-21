@@ -1,4 +1,5 @@
 import '../../services/continuous_camera_service.dart';
+import '../../models/recording_orientation.dart';
 import '../contracts/camera_platform.dart';
 import '../platform_capabilities.dart';
 import '../platform_exceptions.dart';
@@ -22,6 +23,7 @@ class UnsupportedCameraPlatform implements CameraPlatform {
     String videoCodec = 'hevc',
     String recordingSpec = 'hd1080p30',
     String capabilityMode = 'unverified',
+    RecordingOrientation recordingOrientation = RecordingOrientation.portrait,
   }) {
     throw const CapabilityUnavailableException(
       PlatformCapability.continuousCameraRecording,

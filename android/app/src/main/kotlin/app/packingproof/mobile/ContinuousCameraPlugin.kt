@@ -44,6 +44,7 @@ class ContinuousCameraPlugin(
                 call.argument<String>("videoCodec"),
                 call.argument<String>("recordingSpec"),
                 call.argument<String>("capabilityMode"),
+                call.argument<String>("recordingOrientation"),
             )
             "ensurePermissions" -> ensurePermissions(
                 call.argument<Boolean>("recordAudio") == true,
@@ -145,6 +146,7 @@ class ContinuousCameraPlugin(
         videoCodec: String?,
         recordingSpec: String?,
         capabilityMode: String?,
+        recordingOrientation: String?,
     ) {
         if (ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
@@ -152,7 +154,7 @@ class ContinuousCameraPlugin(
             lastVideoCodec = videoCodec
             lastRecordingSpec = recordingSpec
             lastCapabilityMode = capabilityMode
-            engine.initialize(result, videoCodec, recordingSpec, capabilityMode)
+            engine.initialize(result, videoCodec, recordingSpec, capabilityMode, recordingOrientation)
             return
         }
         result.error("permission_denied", "需要摄像头权限才能工作", null)

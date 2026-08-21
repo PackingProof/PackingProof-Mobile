@@ -12,6 +12,7 @@ class UnsupportedMediaProcessingPlatform implements MediaProcessingPlatform {
     required int startedAtMs,
     required String trackingNumber,
     required String videoCodec,
+    String recordingOrientation = 'portrait',
   }) {
     throw const CapabilityUnavailableException(
       PlatformCapability.videoWatermark,

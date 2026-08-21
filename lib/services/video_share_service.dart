@@ -223,6 +223,7 @@ class _LegacyVideoExportPlatform implements MediaProcessingPlatform {
     required int startedAtMs,
     required String trackingNumber,
     required String videoCodec,
+    String recordingOrientation = 'portrait',
   }) {
     throw UnsupportedError('导出通道不支持水印');
   }
