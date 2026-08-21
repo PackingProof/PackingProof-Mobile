@@ -218,7 +218,26 @@ enum IosBackupCleanupGate {
   }
 }
 
+struct IosBackupUploadIdentity: Equatable {
+  let generation: String
+  let token: UUID
+}
+
+enum IosBackupActiveUploadGate {
+  static func shouldRemove(
+    active: IosBackupUploadIdentity?,
+    finished: IosBackupUploadIdentity
+  ) -> Bool {
+    active == finished
+  }
+}
+
 final class IosBackupHostApi: BackupNativeHostApi {
+  private struct ActiveUpload {
+    let identity: IosBackupUploadIdentity
+    let task: Task<Void, Never>
+  }
+
   private let defaults: UserDefaults
   private let credentialStore: IosBackupCredentialStore
   private let jobStore: Result<IosBackupJobStore, Error>
@@ -228,7 +247,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private let networkQueue = DispatchQueue(label: "ios.backup.network")
   private var lastLanReachable = false
   private let uploadsLock = NSLock()
-  private var activeUploads: [String: Task<Void, Never>] = [:]
+  private var activeUploads: [String: ActiveUpload] = [:]
   private var uploadTail: Task<Void, Never> = Task { }
   private let cleanupLock = NSLock()
   private let hostResolver = IosLanBackupHostResolver()
@@ -356,6 +375,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
       atPath: path
     )[.size] as? Int64) ?? 0
     job["id"] = id
+    job["generation"] = UUID().uuidString
     job["state"] = "pending"
     job["uploadedBytes"] = 0
     job["totalBytes"] = fileSize
@@ -375,16 +395,14 @@ final class IosBackupHostApi: BackupNativeHostApi {
     jobId: String,
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
-    uploadsLock.lock()
-    activeUploads[jobId]?.cancel()
-    activeUploads.removeValue(forKey: jobId)
-    uploadsLock.unlock()
     do {
       try updateJob(jobId, mutate: { job in
+        job["generation"] = UUID().uuidString
         job["state"] = "pending"
         job.removeValue(forKey: "errorMessage")
         job.removeValue(forKey: "failureKind")
       })
+      cancelActiveUpload(jobId: jobId)
       if let job = try jobs().first(where: { $0["id"] as? String == jobId }) {
         startUpload(job)
       }
@@ -399,14 +417,12 @@ final class IosBackupHostApi: BackupNativeHostApi {
     jobId: String,
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
-    uploadsLock.lock()
-    activeUploads[jobId]?.cancel()
-    activeUploads.removeValue(forKey: jobId)
-    uploadsLock.unlock()
     do {
       try updateJob(jobId, mutate: { job in
+        job["generation"] = UUID().uuidString
         job["state"] = "paused"
       })
+      cancelActiveUpload(jobId: jobId)
       emitSnapshot()
       completion(.success(()))
     } catch {
@@ -643,6 +659,19 @@ final class IosBackupHostApi: BackupNativeHostApi {
     }
   }
 
+  @discardableResult
+  func updateUploadJob(
+    _ id: String,
+    expectedGeneration: String,
+    mutate: (inout [String: Any]) -> Void
+  ) throws -> Bool {
+    try jobStore.get().updateJob(
+      id: id,
+      expectedGeneration: expectedGeneration,
+      mutate: mutate
+    )
+  }
+
   private func emitSnapshot() {
     emitLock.lock()
     let alreadyScheduled = emitScheduled
@@ -680,35 +709,61 @@ final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   private func startUpload(_ job: [String: Any]) {
-    guard let jobId = job["id"] as? String else { return }
+    guard let jobId = job["id"] as? String,
+          let generation = job["generation"] as? String,
+          !generation.isEmpty
+    else { return }
+    let identity = IosBackupUploadIdentity(
+      generation: generation,
+      token: UUID()
+    )
     uploadsLock.lock()
-    activeUploads[jobId]?.cancel()
+    activeUploads[jobId]?.task.cancel()
     let previous = uploadTail
     let task = Task.detached { [weak self] in
       await previous.value
       guard let self, !Task.isCancelled else { return }
-      await self.upload(job: job)
+      await self.upload(job: job, identity: identity)
     }
-    activeUploads[jobId] = task
+    activeUploads[jobId] = ActiveUpload(identity: identity, task: task)
     uploadTail = task
     uploadsLock.unlock()
   }
 
-  private func upload(job: [String: Any]) async {
+  private func cancelActiveUpload(jobId: String) {
+    uploadsLock.lock()
+    activeUploads.removeValue(forKey: jobId)?.task.cancel()
+    uploadsLock.unlock()
+  }
+
+  private func finishActiveUpload(
+    jobId: String,
+    identity: IosBackupUploadIdentity
+  ) {
+    uploadsLock.lock()
+    if IosBackupActiveUploadGate.shouldRemove(
+      active: activeUploads[jobId]?.identity,
+      finished: identity
+    ) {
+      activeUploads.removeValue(forKey: jobId)
+    }
+    uploadsLock.unlock()
+  }
+
+  private func upload(
+    job: [String: Any],
+    identity: IosBackupUploadIdentity
+  ) async {
+    guard let jobId = job["id"] as? String else { return }
+    defer { finishActiveUpload(jobId: jobId, identity: identity) }
     guard
       let connection = defaults.dictionary(forKey: keys.connection),
       let storedBaseUrl = connection["baseUrl"] as? String,
-      let path = job["filePath"] as? String,
-      let jobId = job["id"] as? String
+      let path = job["filePath"] as? String
     else {
       return
     }
     var baseUrl = storedBaseUrl
-    defer {
-      uploadsLock.lock()
-      activeUploads.removeValue(forKey: jobId)
-      uploadsLock.unlock()
-    }
     let url = URL(fileURLWithPath: path)
 
     do {
@@ -793,10 +848,14 @@ final class IosBackupHostApi: BackupNativeHostApi {
             offsetResyncAttempts += 1
             guard offsetResyncAttempts <= 3 else { throw transfer }
             offset = expected
-            try updateJob(jobId) { current in
-              current["state"] = "uploading"
-              current["uploadedBytes"] = offset
-            }
+            guard try updateUploadJob(
+              jobId,
+              expectedGeneration: identity.generation,
+              mutate: { current in
+                current["state"] = "uploading"
+                current["uploadedBytes"] = offset
+              }
+            ) else { return }
             emitSnapshot()
             continue
           }
@@ -824,10 +883,14 @@ final class IosBackupHostApi: BackupNativeHostApi {
         }
         offsetResyncAttempts = 0
         offset = nextOffset
-        try updateJob(jobId) { current in
-          current["state"] = "uploading"
-          current["uploadedBytes"] = offset
-        }
+        guard try updateUploadJob(
+          jobId,
+          expectedGeneration: identity.generation,
+          mutate: { current in
+            current["state"] = "uploading"
+            current["uploadedBytes"] = offset
+          }
+        ) else { return }
         emitSnapshot()
       }
 
@@ -890,28 +953,38 @@ final class IosBackupHostApi: BackupNativeHostApi {
         )
       }
       let completedAt = Self.isoFormatter.string(from: Date())
-      try updateJob(jobId) { current in
-        current["state"] = "completed"
-        current["uploadedBytes"] = totalBytes
-        current["contentSha256"] = fileSha256
-        current["remoteRecordId"] = recordId
-        current["backupCompletedAt"] = completedAt
-        current["verificationVersion"] = IosBackupReceiptVerifier.version
-        current["verificationReceipt"] = complete["receiptSignature"] as? String
-        current["lastAttestedAt"] = completedAt
-      }
+      guard try updateUploadJob(
+        jobId,
+        expectedGeneration: identity.generation,
+        mutate: { current in
+          current["state"] = "completed"
+          current["uploadedBytes"] = totalBytes
+          current["contentSha256"] = fileSha256
+          current["remoteRecordId"] = recordId
+          current["backupCompletedAt"] = completedAt
+          current["verificationVersion"] = IosBackupReceiptVerifier.version
+          current["verificationReceipt"] = complete["receiptSignature"] as? String
+          current["lastAttestedAt"] = completedAt
+        }
+      ) else { return }
       emitSnapshot()
       triggerCleanup()
     } catch {
       let failure = Self.backupFailureInfo(error)
-      try? updateJob(jobId) { current in
-        current["state"] = "paused"
-        current["errorMessage"] = failure.message
-        current["failureKind"] = failure.failureKind
-        current["statusCode"] = failure.statusCode
-        current["errorCode"] = failure.errorCode
+      let updated = try? updateUploadJob(
+        jobId,
+        expectedGeneration: identity.generation,
+        mutate: { current in
+          current["state"] = "paused"
+          current["errorMessage"] = failure.message
+          current["failureKind"] = failure.failureKind
+          current["statusCode"] = failure.statusCode
+          current["errorCode"] = failure.errorCode
+        }
+      )
+      if updated == true {
+        emitSnapshot()
       }
-      emitSnapshot()
     }
   }
 

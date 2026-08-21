@@ -243,6 +243,38 @@ final class IosBackupJobStore {
     return true
   }
 
+  /// 在同一 SQLite 写事务内校验并更新任务代次，避免旧上传任务覆盖新状态。
+  func updateJob(
+    id: String,
+    expectedGeneration: String,
+    mutate: (inout [String: Any]) -> Void
+  ) throws -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    try execute("BEGIN IMMEDIATE", operation: "开始按代次更新任务")
+    do {
+      guard var job = try readJobUnlocked(id),
+            job["generation"] as? String == expectedGeneration
+      else {
+        try execute("ROLLBACK", operation: "取消过期任务更新")
+        return false
+      }
+      mutate(&job)
+      guard job["generation"] as? String == expectedGeneration else {
+        throw IosBackupStoreError(
+          operation: "校验任务代次", code: SQLITE_CONSTRAINT,
+          message: "按代次更新不得修改 generation"
+        )
+      }
+      try upsertUnlocked(job)
+      try execute("COMMIT", operation: "提交按代次任务更新")
+      return true
+    } catch {
+      try? execute("ROLLBACK", operation: "回滚按代次任务更新")
+      throw error
+    }
+  }
+
   func deleteJob(id: String) throws {
     lock.lock()
     defer { lock.unlock() }

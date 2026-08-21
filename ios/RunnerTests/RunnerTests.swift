@@ -202,6 +202,46 @@ class RunnerTests: XCTestCase {
     XCTAssertTrue(try reopened.allJobs().isEmpty)
   }
 
+  func testBackupJobStoreAtomicallyRejectsStaleGenerationUpdate() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL, defaults: fixture.defaults
+    )
+    try store.upsert(makeBackupJob(id: "generation-guard"))
+
+    XCTAssertTrue(
+      try store.updateJob(
+        id: "generation-guard",
+        expectedGeneration: "generation-generation-guard"
+      ) { job in
+        job["uploadedBytes"] = Int64(512)
+      }
+    )
+    XCTAssertTrue(
+      try store.updateJob(id: "generation-guard") { job in
+        job["generation"] = "replacement-generation"
+        job["state"] = "pending"
+      }
+    )
+    var staleMutationRan = false
+    XCTAssertFalse(
+      try store.updateJob(
+        id: "generation-guard",
+        expectedGeneration: "generation-generation-guard"
+      ) { job in
+        staleMutationRan = true
+        job["state"] = "completed"
+      }
+    )
+
+    XCTAssertFalse(staleMutationRan)
+    let current = try XCTUnwrap(store.allJobs().first)
+    XCTAssertEqual(current["generation"] as? String, "replacement-generation")
+    XCTAssertEqual(current["state"] as? String, "pending")
+    XCTAssertEqual((current["uploadedBytes"] as? NSNumber)?.int64Value, 512)
+  }
+
   func testBackupJobStoreRejectsUnopenableAndCorruptDatabases() throws {
     let fixture = try makeBackupStoreFixture()
     defer { removeBackupStoreFixture(fixture) }
@@ -413,6 +453,102 @@ class RunnerTests: XCTestCase {
     )
   }
 
+  func testCancelAndRequeueRejectOldUploadStateWrites() async throws {
+    let fixture = try makeRetentionCleanupFixture(id: "generation-lifecycle")
+    defer { removeRetentionCleanupFixture(fixture) }
+    var job = fixture.job
+    job["state"] = "uploading"
+    let initialGeneration = try XCTUnwrap(job["generation"] as? String)
+    try fixture.store.upsert(job)
+
+    try await awaitVoidResult { completion in
+      fixture.api.cancelJob(jobId: "generation-lifecycle", completion: completion)
+    }
+    let cancelled = try XCTUnwrap(fixture.store.allJobs().first)
+    let cancelledGeneration = try XCTUnwrap(cancelled["generation"] as? String)
+    XCTAssertNotEqual(cancelledGeneration, initialGeneration)
+    XCTAssertEqual(cancelled["state"] as? String, "paused")
+    XCTAssertFalse(
+      try fixture.api.updateUploadJob(
+        "generation-lifecycle",
+        expectedGeneration: initialGeneration
+      ) { current in
+        current["state"] = "completed"
+      }
+    )
+    let afterStaleCompletion = try fixture.store.allJobs().first
+    XCTAssertEqual(
+      afterStaleCompletion?["state"] as? String,
+      "paused"
+    )
+
+    try await awaitVoidResult { completion in
+      fixture.api.requeueJob(jobId: "generation-lifecycle", completion: completion)
+    }
+    let requeued = try XCTUnwrap(fixture.store.allJobs().first)
+    let requeuedGeneration = try XCTUnwrap(requeued["generation"] as? String)
+    XCTAssertNotEqual(requeuedGeneration, cancelledGeneration)
+    XCTAssertEqual(requeued["state"] as? String, "pending")
+    XCTAssertFalse(
+      try fixture.api.updateUploadJob(
+        "generation-lifecycle",
+        expectedGeneration: cancelledGeneration
+      ) { current in
+        current["state"] = "paused"
+        current["errorMessage"] = "旧任务失败"
+      }
+    )
+    let current = try XCTUnwrap(fixture.store.allJobs().first)
+    XCTAssertEqual(current["generation"] as? String, requeuedGeneration)
+    XCTAssertEqual(current["state"] as? String, "pending")
+    XCTAssertNil(current["errorMessage"])
+  }
+
+  func testEnqueueReplacesCallerProvidedGeneration() async throws {
+    let fixture = try makeRetentionCleanupFixture(id: "generation-enqueue")
+    defer { removeRetentionCleanupFixture(fixture) }
+    let request: [String?: Any?] = [
+      "id": "generation-enqueue",
+      "generation": "caller-provided-generation",
+      "filePath": fixture.file.path,
+      "lastModified": fixture.job["lastModified"],
+      "sessions": fixture.job["sessions"],
+    ]
+
+    try await awaitVoidResult { completion in
+      fixture.api.enqueueJob(request: request, completion: completion)
+    }
+
+    let current = try XCTUnwrap(fixture.store.allJobs().first)
+    XCTAssertNotEqual(
+      current["generation"] as? String,
+      "caller-provided-generation"
+    )
+    XCTAssertFalse((current["generation"] as? String)?.isEmpty ?? true)
+    XCTAssertEqual(current["state"] as? String, "pending")
+  }
+
+  func testFinishedUploadIdentityCannotRemoveReplacement() {
+    let old = IosBackupUploadIdentity(
+      generation: "old-generation",
+      token: UUID()
+    )
+    let replacement = IosBackupUploadIdentity(
+      generation: "new-generation",
+      token: UUID()
+    )
+
+    XCTAssertFalse(
+      IosBackupActiveUploadGate.shouldRemove(active: replacement, finished: old)
+    )
+    XCTAssertTrue(
+      IosBackupActiveUploadGate.shouldRemove(
+        active: replacement,
+        finished: replacement
+      )
+    )
+  }
+
   func testSystemIosKeychainClientRoundTrip() throws {
     let client = SystemIosKeychainClient()
     let service = "RunnerTests.keychain.\(UUID().uuidString)"
@@ -561,6 +697,16 @@ class RunnerTests: XCTestCase {
   private func removeRetentionCleanupFixture(_ fixture: RetentionCleanupFixture) {
     fixture.defaults.removePersistentDomain(forName: fixture.suiteName)
     try? FileManager.default.removeItem(at: fixture.root)
+  }
+
+  private func awaitVoidResult(
+    _ operation: (@escaping (Result<Void, Error>) -> Void) -> Void
+  ) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      operation { result in
+        continuation.resume(with: result)
+      }
+    }
   }
 
   private func makeBackupJob(id: String) -> [String: Any] {
