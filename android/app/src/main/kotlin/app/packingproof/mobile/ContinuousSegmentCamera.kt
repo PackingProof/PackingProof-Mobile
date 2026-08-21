@@ -15,10 +15,8 @@ import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.ImageReader
 import android.media.MediaCodec
-import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaRecorder
-import android.os.Bundle
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -173,13 +171,6 @@ class ContinuousSegmentCamera(
     private var initializeResult: MethodChannel.Result? = null
     private var previewResumeResult: MethodChannel.Result? = null
     private var openCameraAttempts = 0
-    private var preferredVideoMime = MediaFormat.MIMETYPE_VIDEO_HEVC
-    private var codecFallbackReason: String? = null
-
-    private var videoEncoder: MediaCodec? = null
-    private var videoInputSurface: Surface? = null
-    private var videoOutputFormat: MediaFormat? = null
-    @Volatile private var selectedVideoMime = MediaFormat.MIMETYPE_VIDEO_HEVC
     private var audioOutputFormat: MediaFormat? = null
 
     @Volatile private var recordingRequested = false
@@ -189,9 +180,17 @@ class ContinuousSegmentCamera(
     private var splitResult: MethodChannel.Result? = null
     private var pendingStartPath: String? = null
     private var pendingSplitPath: String? = null
+    private val recordingVideoEncoder = RecordingVideoEncoder(
+        recordingSpec = { recordingSpec },
+        onSample = ::handleVideoSample,
+        onSampleFailure = { error -> notifyWriteError("视频写入失败", error) },
+        onEncoderError = { error -> notifyNativeError("视频编码器异常", error) },
+        onOutputFormatChanged = ::handleVideoEncoderOutputFormatChanged,
+        onSyncFrameFailure = { error -> notifyNativeError("无法请求录像关键帧", error) },
+    )
     private val recordingMuxPipeline = RecordingMuxPipeline(
         AndroidSegmentMuxerFactory(
-            videoFormat = { videoOutputFormat },
+            videoFormat = { recordingVideoEncoder.outputFormat },
             audioFormat = { audioOutputFormat },
             onWriteCompleted = ::recordMuxWrite,
         ),
@@ -203,7 +202,9 @@ class ContinuousSegmentCamera(
         onOutputFormat = { format ->
             muxHandler?.post {
                 audioOutputFormat = format
-                if (recordingRequested && startResult != null) requestSyncFrame()
+                if (recordingRequested && startResult != null) {
+                    recordingVideoEncoder.requestSyncFrame()
+                }
             }
         },
         onFailure = { error ->
@@ -287,7 +288,7 @@ class ContinuousSegmentCamera(
         recordingFallbackMode = null
         capabilityMode = CameraCapabilityMode.fromWire(capabilityModeName)
         sessionFallbackEncoderAnalysis = false
-        preferredVideoMime = if (videoCodec == "h264") {
+        recordingVideoEncoder.preferredMime = if (videoCodec == "h264") {
             MediaFormat.MIMETYPE_VIDEO_AVC
         } else {
             MediaFormat.MIMETYPE_VIDEO_HEVC
@@ -297,7 +298,7 @@ class ContinuousSegmentCamera(
         muxHandler!!.post {
             try {
                 selectCameraConfiguration()
-                prepareVideoEncoder()
+                recordingVideoEncoder.prepare(videoSize.width, videoSize.height, muxHandler)
                 cameraHandler!!.post { openCamera() }
             } catch (error: Throwable) {
                 failInitialization("encoder_init", "视频编码器初始化失败", error)
@@ -338,7 +339,7 @@ class ContinuousSegmentCamera(
             startResult = result
             audioOutputFormat = null
             recordingMuxPipeline.beginRecording()
-            setVideoSuspended(false)
+            recordingVideoEncoder.setSuspended(false)
             if (recordAudio) {
                 recordingAudioPipeline.start(enabled = true)
             }
@@ -370,7 +371,7 @@ class ContinuousSegmentCamera(
                         onConfigured = {
                             muxHandler?.post {
                                 if (startResult != null && recordingRequested) {
-                                    requestSyncFrame()
+                                    recordingVideoEncoder.requestSyncFrame()
                                 }
                             }
                         },
@@ -419,7 +420,7 @@ class ContinuousSegmentCamera(
             pendingSplitPath = path
             splitResult = result
             recordingMuxPipeline.beginSplit()
-            requestSyncFrame()
+            recordingVideoEncoder.requestSyncFrame()
             handler.postDelayed({
                 if (splitResult === result) {
                     recordingMuxPipeline.flushPendingAudio()
@@ -542,9 +543,13 @@ class ContinuousSegmentCamera(
                     muxHandler?.post {
                         if (disposed) return@post
                         try {
-                            releaseVideoEncoder()
-                            prepareVideoEncoder()
-                            setVideoSuspended(true)
+                            recordingVideoEncoder.release()
+                            recordingVideoEncoder.prepare(
+                                videoSize.width,
+                                videoSize.height,
+                                muxHandler,
+                            )
+                            recordingVideoEncoder.setSuspended(true)
                             cameraHandler?.post(::openCamera)
                                 ?: failInitialization(
                                     "camera_thread",
@@ -709,17 +714,7 @@ class ContinuousSegmentCamera(
             recordingActive = false
             initialized = false
             recordingMuxPipeline.close(deleteOutput = false)
-            try {
-                videoEncoder?.stop()
-            } catch (_: Throwable) {
-            }
-            try {
-                videoEncoder?.release()
-            } catch (_: Throwable) {
-            }
-            videoEncoder = null
-            videoInputSurface?.release()
-            videoInputSurface = null
+            recordingVideoEncoder.release()
             finishCleanup()
         } else finishCleanup()
         if (activeCameraHandler != null) activeCameraHandler.post {
@@ -768,128 +763,6 @@ class ContinuousSegmentCamera(
             muxHandler = Handler(muxThread!!.looper)
         }
     }
-
-    private fun prepareVideoEncoder() {
-        var lastError: Throwable? = null
-        codecFallbackReason = null
-        val rawPreferred = if (preferredVideoMime == MediaFormat.MIMETYPE_VIDEO_AVC) {
-            MediaFormat.MIMETYPE_VIDEO_AVC
-        } else {
-            MediaFormat.MIMETYPE_VIDEO_HEVC
-        }
-        val fallback = if (rawPreferred == MediaFormat.MIMETYPE_VIDEO_AVC) {
-            MediaFormat.MIMETYPE_VIDEO_HEVC
-        } else {
-            MediaFormat.MIMETYPE_VIDEO_AVC
-        }
-        // 部分鸿蒙/低端机型只有 H.265 编码器却没有可用的 H.265 解码器，
-        // 录出的 H.265 在本机无法播放，必须直接回退到 H.264。
-        val hevcDecodable = CodecCapabilities.hasDecoder(MediaFormat.MIMETYPE_VIDEO_HEVC)
-        if (rawPreferred == MediaFormat.MIMETYPE_VIDEO_HEVC && !hevcDecodable) {
-            codecFallbackReason = RecordingCodecPolicy.FALLBACK_NO_HEVC_DECODER
-        }
-        val candidates = listOf(rawPreferred, fallback).filter {
-            it != MediaFormat.MIMETYPE_VIDEO_HEVC || hevcDecodable
-        }
-        for (mime in candidates) {
-            val formats = buildList {
-                add(createEncoderFormat(mime).apply {
-                    if (mime == MediaFormat.MIMETYPE_VIDEO_AVC) {
-                        setInteger(
-                            MediaFormat.KEY_PROFILE,
-                            MediaCodecInfo.CodecProfileLevel.AVCProfileMain,
-                        )
-                    }
-                })
-                if (mime == MediaFormat.MIMETYPE_VIDEO_AVC) {
-                    // 个别厂商编码器不接受显式 Main Profile，再试一次默认 Profile。
-                    add(createEncoderFormat(mime))
-                }
-            }
-            for (format in formats) {
-                var codec: MediaCodec? = null
-                try {
-                    codec = MediaCodec.createEncoderByType(mime)
-                    codec.setCallback(videoEncoderCallback(), muxHandler)
-                    codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-                    videoInputSurface = codec.createInputSurface()
-                    codec.start()
-                    videoEncoder = codec
-                    selectedVideoMime = mime
-                    setVideoSuspended(true)
-                    return
-                } catch (error: Throwable) {
-                    lastError = error
-                    try {
-                        codec?.release()
-                    } catch (_: Throwable) {
-                    }
-                    videoInputSurface?.release()
-                    videoInputSurface = null
-                }
-            }
-        }
-        throw IllegalStateException("设备没有可用的 H.265 或 H.264 编码器", lastError)
-    }
-
-    private fun createEncoderFormat(
-        mime: String,
-        width: Int = videoSize.width,
-        height: Int = videoSize.height,
-    ): MediaFormat =
-        MediaFormat.createVideoFormat(mime, width, height).apply {
-            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(
-                MediaFormat.KEY_BIT_RATE,
-                if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) {
-                    recordingSpec.hevcBitRate
-                } else {
-                    recordingSpec.avcBitRate
-                },
-            )
-            setInteger(MediaFormat.KEY_FRAME_RATE, recordingSpec.fps)
-            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
-            setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
-            }
-        }
-
-    private fun videoEncoderCallback(): MediaCodec.Callback =
-        object : MediaCodec.Callback() {
-            override fun onInputBufferAvailable(codec: MediaCodec, index: Int) = Unit
-
-            override fun onOutputBufferAvailable(
-                codec: MediaCodec,
-                index: Int,
-                info: MediaCodec.BufferInfo,
-            ) {
-                try {
-                    val buffer = codec.getOutputBuffer(index)
-                    if (buffer != null && info.size > 0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
-                        buffer.position(info.offset)
-                        buffer.limit(info.offset + info.size)
-                        handleVideoSample(buffer, info)
-                    }
-                } catch (error: Throwable) {
-                    notifyWriteError("视频写入失败", error)
-                } finally {
-                    try {
-                        codec.releaseOutputBuffer(index, false)
-                    } catch (_: Throwable) {
-                    }
-                }
-            }
-
-            override fun onError(codec: MediaCodec, error: MediaCodec.CodecException) {
-                notifyNativeError("视频编码器异常", error)
-            }
-
-            override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
-                videoOutputFormat = format
-                if (recordingRequested && startResult != null) requestSyncFrame()
-            }
-        }
 
     @SuppressLint("MissingPermission")
     private fun openCamera() {
@@ -1107,7 +980,8 @@ class ContinuousSegmentCamera(
                     Log.i(
                         CAMERA_LOG_TAG,
                         "camera session configured cameraId=$selectedCameraId " +
-                            "video=$videoSize analysis=$analysisSize mime=$selectedVideoMime",
+                            "video=$videoSize analysis=$analysisSize " +
+                                "mime=${recordingVideoEncoder.selectedMime}",
                     )
                     if (pendingSwitchStartedAtMs > 0L) {
                         lastSwitchDurationMs =
@@ -1307,10 +1181,16 @@ class ContinuousSegmentCamera(
             handler.post {
                 if (disposed) return@post
                 videoSize = video
-                releaseVideoEncoder()
+                recordingVideoEncoder.release()
                 try {
-                    prepareVideoEncoder()
-                    setVideoSuspended(!(recordingRequested || recordingActive))
+                    recordingVideoEncoder.prepare(
+                        videoSize.width,
+                        videoSize.height,
+                        muxHandler,
+                    )
+                    recordingVideoEncoder.setSuspended(
+                        !(recordingRequested || recordingActive),
+                    )
                 } catch (error: Throwable) {
                     notifyNativeError("视频编码器初始化失败", error)
                     onFailure(error.message ?: "视频编码器初始化失败")
@@ -1331,7 +1211,7 @@ class ContinuousSegmentCamera(
 
     private fun sessionSurfaces(config: StreamConfig): List<Surface> = buildList {
         previewSurface?.let(::add)
-        if (config.includeEncoder) videoInputSurface?.let(::add)
+        if (config.includeEncoder) recordingVideoEncoder.inputSurface?.let(::add)
         analysisReader?.surface?.let(::add)
     }
 
@@ -1356,21 +1236,6 @@ class ContinuousSegmentCamera(
             previewSurface = Surface(entry.surfaceTexture())
         }
         videoSize = size
-    }
-
-    private fun releaseVideoEncoder() {
-        try {
-            videoEncoder?.stop()
-        } catch (_: Throwable) {
-        }
-        try {
-            videoEncoder?.release()
-        } catch (_: Throwable) {
-        }
-        videoEncoder = null
-        videoInputSurface?.release()
-        videoInputSurface = null
-        videoOutputFormat = null
     }
 
     private fun analyzeImage(reader: ImageReader) {
@@ -1592,7 +1457,7 @@ class ContinuousSegmentCamera(
                 }
                 val camera = cameraDevice ?: return@post
                 val characteristics = selectedCameraCharacteristics ?: return@post
-                val encoder = videoInputSurface ?: return@post
+                val encoder = recordingVideoEncoder.inputSurface ?: return@post
                 val preview = previewSurface ?: return@post
                 val oldSession = captureSession
                 captureSession = null
@@ -1623,7 +1488,7 @@ class ContinuousSegmentCamera(
                             )
                             mux.post {
                                 if (startResult != null && recordingRequested) {
-                                    requestSyncFrame()
+                                    recordingVideoEncoder.requestSyncFrame()
                                 }
                                 onConfigured?.invoke()
                             }
@@ -1667,7 +1532,7 @@ class ContinuousSegmentCamera(
                 }
                 val camera = cameraDevice ?: return@post
                 val characteristics = selectedCameraCharacteristics ?: return@post
-                val encoder = videoInputSurface ?: return@post
+                val encoder = recordingVideoEncoder.inputSurface ?: return@post
                 val analysis = analysisReader?.surface ?: return@post
                 val oldSession = captureSession
                 captureSession = null
@@ -1700,7 +1565,7 @@ class ContinuousSegmentCamera(
                             emit("recordingFallback", mapOf("mode" to "encoder_analysis"))
                             mux.post {
                                 if (startResult != null && recordingRequested) {
-                                    requestSyncFrame()
+                                    recordingVideoEncoder.requestSyncFrame()
                                 }
                                 onConfigured?.invoke()
                             }
@@ -1817,7 +1682,9 @@ class ContinuousSegmentCamera(
             if (targets.includeEncoder) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW,
         ).apply {
             if (sessionHasPreview) previewSurface?.let(::addTarget)
-            if (targets.includeEncoder && sessionHasEncoder) videoInputSurface?.let(::addTarget)
+            if (targets.includeEncoder && sessionHasEncoder) {
+                recordingVideoEncoder.inputSurface?.let(::addTarget)
+            }
             if (targets.includeAnalysis && sessionHasAnalysis) analysisReader?.surface?.let(::addTarget)
             applyAutomaticCameraControls(this, characteristics)
             set(
@@ -1979,6 +1846,12 @@ class ContinuousSegmentCamera(
         recordingMuxPipeline.writeVideo(buffer, info.presentationTimeUs, info.flags)
     }
 
+    private fun handleVideoEncoderOutputFormatChanged() {
+        if (recordingRequested && startResult != null) {
+            recordingVideoEncoder.requestSyncFrame()
+        }
+    }
+
     private fun handleAudioSample(sample: EncodedMuxSample) {
         try {
             recordingMuxPipeline.acceptAudio(
@@ -2023,7 +1896,7 @@ class ContinuousSegmentCamera(
     }
 
     private fun formatsReady(): Boolean =
-        videoOutputFormat != null && (!recordAudio || audioOutputFormat != null)
+        recordingVideoEncoder.outputFormat != null && (!recordAudio || audioOutputFormat != null)
 
     private fun orientationHintDegrees(): Int = when (recordingOrientationName) {
         "landscapeLeft" -> 90
@@ -2041,7 +1914,7 @@ class ContinuousSegmentCamera(
         val result = stopResult ?: return
         try {
             val summary = recordingMuxPipeline.finishStop(System.currentTimeMillis())
-            setVideoSuspended(true)
+            recordingVideoEncoder.setSuspended(true)
             stopResult = null
             pendingStartPath = null
             pendingSplitPath = null
@@ -2061,26 +1934,6 @@ class ContinuousSegmentCamera(
         }
     }
 
-    private fun requestSyncFrame() {
-        try {
-            videoEncoder?.setParameters(Bundle().apply {
-                putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
-            })
-        } catch (error: Throwable) {
-            notifyNativeError("无法请求录像关键帧", error)
-        }
-    }
-
-    private fun setVideoSuspended(suspended: Boolean) {
-        try {
-            videoEncoder?.setParameters(Bundle().apply {
-                putInt(MediaCodec.PARAMETER_KEY_SUSPEND, if (suspended) 1 else 0)
-            })
-        } catch (_: Throwable) {
-            // A few vendor encoders omit dynamic suspend; discarding their idle output is safe.
-        }
-    }
-
     private fun failPendingStart(code: String, message: String) {
         val result = startResult ?: return
         Log.w(CAMERA_LOG_TAG, "start failed code=$code message=$message")
@@ -2093,7 +1946,7 @@ class ContinuousSegmentCamera(
         recordingActive = false
         resetStallRecovery()
         recreateCaptureSession()
-        setVideoSuspended(true)
+        recordingVideoEncoder.setSuspended(true)
         recordingAudioPipeline.stop()
         replyError(result, code, message)
     }
@@ -2217,7 +2070,7 @@ class ContinuousSegmentCamera(
                     add(reader.surface)
                 }
             }
-            if (config.includeEncoder) videoInputSurface?.let(::add)
+            if (config.includeEncoder) recordingVideoEncoder.inputSurface?.let(::add)
         }
         val expected = 1 +
             (if (config.analysisSize != null) 1 else 0) +
@@ -2414,9 +2267,9 @@ class ContinuousSegmentCamera(
                 return@post
             }
             // 探针使用独立临时编码器：先释放长驻编码器，结束后确定性恢复，
-            // 正式 preferredVideoMime / selectedVideoMime / codecFallbackReason
+            // 正式 preferredMime / selectedMime / fallbackReason
             // 均由同一确定性输入重建，与探测前一致。
-            releaseVideoEncoder()
+            recordingVideoEncoder.release()
             cam.post {
                 if (disposed || generation != probeGeneration) {
                     finishCapabilityProbe(normalized, result, "error", "cancelled", emptyList())
@@ -2439,7 +2292,7 @@ class ContinuousSegmentCamera(
                     },
                     videoSize = StreamSize(videoSize.width, videoSize.height),
                     analysisSize = StreamSize(analysisSize.width, analysisSize.height),
-                    selectedVideoMime = selectedVideoMime,
+                    selectedVideoMime = recordingVideoEncoder.selectedMime,
                     cameraId = { selectedCameraId },
                     cameraCharacteristics = { selectedCameraCharacteristics },
                     surfaceTexture = { textureEntry?.surfaceTexture() },
@@ -2448,7 +2301,7 @@ class ContinuousSegmentCamera(
                     cameraDevice = { cameraDevice },
                     updateCameraDevice = { cameraDevice = it },
                     isDisposed = { disposed },
-                    createEncoderFormat = ::createEncoderFormat,
+                    createEncoderFormat = recordingVideoEncoder::createFormat,
                     applyAutomaticCameraControls = ::applyAutomaticCameraControls,
                 )
                 CameraCapabilityProbeRunner(
@@ -2499,8 +2352,12 @@ class ContinuousSegmentCamera(
         mux.post {
             if (!disposed) {
                 try {
-                    prepareVideoEncoder()
-                    setVideoSuspended(true)
+                    recordingVideoEncoder.prepare(
+                        videoSize.width,
+                        videoSize.height,
+                        muxHandler,
+                    )
+                    recordingVideoEncoder.setSuspended(true)
                 } catch (error: Throwable) {
                     notifyNativeError("摄像头能力检测后编码器恢复失败", error)
                 }
@@ -2536,7 +2393,11 @@ class ContinuousSegmentCamera(
             CameraProbeIdentityDiagnostics(
                 selectedCameraId, StreamSize(videoSize.width, videoSize.height),
                 StreamSize(analysisSize.width, analysisSize.height),
-                if (selectedVideoMime == MediaFormat.MIMETYPE_VIDEO_AVC) "h264" else "hevc",
+                if (recordingVideoEncoder.selectedMime == MediaFormat.MIMETYPE_VIDEO_AVC) {
+                    "h264"
+                } else {
+                    "hevc"
+                },
                 recordingSpecName, CAPABILITY_PROBE_SCHEMA_VERSION, CAMERA_PIPELINE_VERSION,
             ),
         )
@@ -2552,7 +2413,8 @@ class ContinuousSegmentCamera(
                 ),
                 CameraStreamDiagnostics(
                     StreamSize(videoSize.width, videoSize.height),
-                    StreamSize(analysisSize.width, analysisSize.height), selectedVideoMime,
+                    StreamSize(analysisSize.width, analysisSize.height),
+                    recordingVideoEncoder.selectedMime,
                     if (recordingRequested || recordingActive) recordingSpec.fps else "auto",
                     recordingSpecName, recordAudio,
                 ),
@@ -2574,7 +2436,10 @@ class ContinuousSegmentCamera(
                     muxWriteMaxMs, muxWriteStallCount,
                 ),
                 CameraRecoveryDiagnostics(
-                    codecFallbackReason, lastRequestTemplate, stallActive, stallRecoveryStage,
+                    recordingVideoEncoder.fallbackReason,
+                    lastRequestTemplate,
+                    stallActive,
+                    stallRecoveryStage,
                     sessionConfigStage, sessionConfigAttempts, initFailureStage, initFailureDetail,
                     startFailureStage, startFailureDetail, recordingFallbackMode,
                 ),
@@ -2632,8 +2497,9 @@ class ContinuousSegmentCamera(
                 textureEntry?.id() ?: -1L, StreamSize(videoSize.width, videoSize.height),
                 sensorOrientation, selectedCameraId, selectedZoomRatio,
                 selectedLensFacing == CameraCharacteristics.LENS_FACING_FRONT,
-                canSwitchCamera, recordingSpec.fps, recordingSpecName, selectedVideoMime,
-                codecFallbackReason,
+                canSwitchCamera, recordingSpec.fps, recordingSpecName,
+                recordingVideoEncoder.selectedMime,
+                recordingVideoEncoder.fallbackReason,
                 selectedCameraCharacteristics?.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true,
             ),
         )
