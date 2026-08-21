@@ -78,6 +78,8 @@ check_diff_stream() {
         line ~ /debugPrint[[:space:]]*\(/ ||
         line ~ /(completeError|addError|resumeWithException)[[:space:]]*\(/ ||
         line ~ /Result\.failure[[:space:]]*\(/ ||
+        (language == "swift" &&
+          line ~ /(^|[^A-Za-z0-9_])completion[[:space:]]*\([[:space:]]*\.failure[[:space:]]*\(/) ||
         line ~ /(^|[^A-Za-z])(throw|rethrow)([^A-Za-z]|$)/
     }
 
@@ -180,6 +182,14 @@ diff --git a/ios/Runner/Propagated.swift b/ios/Runner/Propagated.swift
 +do {
 +} catch {
 +  throw error
+diff --git a/ios/Runner/CompletionPropagated.swift b/ios/Runner/CompletionPropagated.swift
+--- a/ios/Runner/CompletionPropagated.swift
++++ b/ios/Runner/CompletionPropagated.swift
+@@ -1,0 +1,4 @@
++do {
++} catch {
++  completion(.failure(error))
++  return
 EOF
 
   if check_diff_stream 2>/dev/null <<'EOF'
@@ -219,6 +229,20 @@ diff --git a/ios/Runner/Bad.swift b/ios/Runner/Bad.swift
 EOF
   then
     echo "Swift 宽泛 catch 失败夹具未被拒绝" >&2
+    exit 1
+  fi
+  if check_diff_stream 2>/dev/null <<'EOF'
+diff --git a/ios/Runner/BadSuccess.swift b/ios/Runner/BadSuccess.swift
+--- a/ios/Runner/BadSuccess.swift
++++ b/ios/Runner/BadSuccess.swift
+@@ -1,0 +1,4 @@
++do {
++} catch {
++  completion(.success(()))
++  return
+EOF
+  then
+    echo "Swift completion 成功值不应被视为错误传播" >&2
     exit 1
   fi
   if check_diff_stream 2>/dev/null <<'EOF'
