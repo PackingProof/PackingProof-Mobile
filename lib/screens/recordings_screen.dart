@@ -26,6 +26,7 @@ import '../services/remote_playback_compat.dart';
 import '../services/remote_video_clip_service.dart';
 import '../services/system_video_player_service.dart';
 import 'recordings_history_filter.dart';
+import 'recordings_history_pagination.dart';
 import 'video_playback_screen.dart';
 
 export 'recordings_history_filter.dart' show RecordingSourceFilter;
@@ -835,11 +836,9 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   }
 
   void _rebuildLocalRecordings() {
-    final entries = _localPages.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
     _sessions
       ..clear()
-      ..addAll(entries.expand((entry) => entry.value));
+      ..addAll(flattenRecordingHistoryPages(_localPages));
   }
 
   List<RecordingHistoryItem> get _visibleItems =>
@@ -932,11 +931,9 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   }
 
   void _rebuildRemoteRecordings() {
-    final entries = _remotePages.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
     _remoteRecordings
       ..clear()
-      ..addAll(entries.expand((entry) => entry.value));
+      ..addAll(flattenRecordingHistoryPages(_remotePages));
   }
 
   Future<void> _refreshRemoteStatuses(List<RemoteRecording> page) async {
@@ -1452,27 +1449,36 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
   }
 
   Future<void> _showNextHistoryPage(int pageCount) async {
-    if (_historyPage + 1 >= pageCount) return;
-    final int nextHistoryPage = _historyPage + 1;
-    final int remotePage = nextHistoryPage + 1;
-    if (!_remotePages.containsKey(remotePage) &&
+    final RecordingHistoryNextPagePlan? plan = recordingHistoryNextPagePlan(
+      currentPage: _historyPage,
+      pageCount: pageCount,
+    );
+    if (plan == null) return;
+    if (!_remotePages.containsKey(plan.dataPage) &&
         _backupSnapshot.connectionStatus == LanConnectionStatus.connected) {
-      await _loadRemote(pageNumber: remotePage);
+      await _loadRemote(pageNumber: plan.dataPage);
     }
-    if (!_localPages.containsKey(remotePage)) {
-      await _loadLocal(pageNumber: remotePage);
+    if (!_localPages.containsKey(plan.dataPage)) {
+      await _loadLocal(pageNumber: plan.dataPage);
     }
     if (!mounted) return;
-    setState(() => _historyPage = nextHistoryPage);
-    final int prefetchPage = remotePage + 1;
-    if (prefetchPage <= (_remoteTotal / _historyPageSize).ceil() &&
-        !_remotePages.containsKey(prefetchPage) &&
+    setState(() => _historyPage = plan.historyPage);
+    if (shouldPrefetchRecordingHistoryPage(
+          page: plan.prefetchPage,
+          total: _remoteTotal,
+          pageSize: _historyPageSize,
+          loadedPages: _remotePages.keys,
+        ) &&
         _backupSnapshot.connectionStatus == LanConnectionStatus.connected) {
-      unawaited(_loadRemote(pageNumber: prefetchPage));
+      unawaited(_loadRemote(pageNumber: plan.prefetchPage));
     }
-    if (prefetchPage <= (_localTotal / _historyPageSize).ceil() &&
-        !_localPages.containsKey(prefetchPage)) {
-      unawaited(_loadLocal(pageNumber: prefetchPage));
+    if (shouldPrefetchRecordingHistoryPage(
+      page: plan.prefetchPage,
+      total: _localTotal,
+      pageSize: _historyPageSize,
+      loadedPages: _localPages.keys,
+    )) {
+      unawaited(_loadLocal(pageNumber: plan.prefetchPage));
     }
   }
 
@@ -1521,29 +1527,20 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
         .map(lanBackupFileIdentity)
         .where((String path) => !confirmedBackupPaths.contains(path))
         .length;
-    final int estimatedCount = switch (_sourceFilter) {
-      RecordingSourceFilter.local =>
-        widget.onLoadLocalRecordings == null ? localCount : _localTotal,
-      RecordingSourceFilter.backedUp => _remoteDeviceTotal,
-      RecordingSourceFilter.computer => _remoteTotal,
-      RecordingSourceFilter.all =>
-        localLogicalCount +
-            _remoteTotal -
-            _remoteDeviceTotal.clamp(0, localLogicalCount),
-    };
-    final int historyPageCount = estimatedCount <= 0
-        ? (visibleItems.isEmpty ? 0 : 1)
-        : (estimatedCount / _historyPageSize).ceil();
-    final int historyPage = historyPageCount == 0
-        ? 0
-        : _historyPage >= historyPageCount
-        ? historyPageCount - 1
-        : _historyPage;
-    final List<RecordingHistoryItem> pageItems = visibleItems
-        .skip(historyPage * _historyPageSize)
-        .take(_historyPageSize)
-        .toList(growable: false);
-    final List<RecordingSession> currentPageSessions = pageItems
+    final RecordingHistoryPagination<RecordingHistoryItem> pagination =
+        buildRecordingHistoryPagination(
+          sourceFilter: _sourceFilter,
+          localCount: widget.onLoadLocalRecordings == null
+              ? localCount
+              : _localTotal,
+          localLogicalCount: localLogicalCount,
+          remoteTotal: _remoteTotal,
+          remoteDeviceTotal: _remoteDeviceTotal,
+          visibleItems: visibleItems,
+          requestedPage: _historyPage,
+          pageSize: _historyPageSize,
+        );
+    final List<RecordingSession> currentPageSessions = pagination.items
         .map((item) => item.session)
         .toList(growable: false);
     final bool historyMode = widget.mode == RecordingsScreenMode.history;
@@ -1875,8 +1872,8 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
               else if (visibleItems.isEmpty)
                 const SizedBox(height: 220, child: _NoSearchResults())
               else
-                ...List<Widget>.generate(pageItems.length, (int index) {
-                  final RecordingHistoryItem item = pageItems[index];
+                ...List<Widget>.generate(pagination.items.length, (int index) {
+                  final RecordingHistoryItem item = pagination.items[index];
                   final RecordingSession session = item.session;
                   final bool localAvailable =
                       item.local != null &&
@@ -1903,7 +1900,7 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                       completedBackupJob == null;
                   return Padding(
                     padding: EdgeInsets.only(
-                      bottom: index == pageItems.length - 1 ? 0 : 10,
+                      bottom: index == pagination.items.length - 1 ? 0 : 10,
                     ),
                     child: _RecordingTile(
                       session: session,
@@ -2021,21 +2018,23 @@ class _RecordingsScreenState extends State<RecordingsScreen> {
                     ),
                   );
                 }),
-              if (historyPageCount > 1)
+              if (pagination.pageCount > 1)
                 _HistoryPagination(
-                  currentPage: historyPage,
-                  pageCount: historyPageCount,
+                  currentPage: pagination.page,
+                  pageCount: pagination.pageCount,
                   loading: _loadingRemote || _loadingLocal,
                   offline:
                       _backupSnapshot.connected &&
                       _backupSnapshot.connectionStatus !=
                           LanConnectionStatus.connected,
-                  canLoadMore: historyPage + 1 < historyPageCount,
-                  onPrevious: historyPage == 0
+                  canLoadMore: pagination.page + 1 < pagination.pageCount,
+                  onPrevious: pagination.page == 0
                       ? null
-                      : () => setState(() => _historyPage = historyPage - 1),
-                  onNext: historyPage + 1 < historyPageCount
-                      ? () => _showNextHistoryPage(historyPageCount)
+                      : () => setState(
+                          () => _historyPage = pagination.page - 1,
+                        ),
+                  onNext: pagination.page + 1 < pagination.pageCount
+                      ? () => _showNextHistoryPage(pagination.pageCount)
                       : null,
                   pageSize: _historyPageSize,
                   onPageSizeChanged: _setHistoryPageSize,
