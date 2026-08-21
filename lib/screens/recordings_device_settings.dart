@@ -392,9 +392,9 @@ class _RecordingOrientationSettings extends StatelessWidget {
 
   static const List<RecordingOrientation> _displayOrder =
       <RecordingOrientation>[
-        RecordingOrientation.landscapeLeft,
-        RecordingOrientation.portrait,
         RecordingOrientation.landscapeRight,
+        RecordingOrientation.portrait,
+        RecordingOrientation.landscapeLeft,
       ];
 
   final RecordingOrientation orientation;

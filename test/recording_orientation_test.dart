@@ -10,7 +10,8 @@ void main() {
       recordingOrientationFromStorage('90'),
       RecordingOrientation.portrait,
     );
-    expect(recordingOrientationFromStorage('landscapeLeft').label, '横左');
+    expect(recordingOrientationFromStorage('landscapeLeft').label, '横右');
+    expect(recordingOrientationFromStorage('landscapeRight').label, '横左');
   });
 
   test('三种方向都把水印目标放在最终成片右上角', () {

@@ -527,10 +527,14 @@ void main() {
     expect(
       button.segments.map((segment) => segment.value),
       <RecordingOrientation>[
-        RecordingOrientation.landscapeLeft,
-        RecordingOrientation.portrait,
         RecordingOrientation.landscapeRight,
+        RecordingOrientation.portrait,
+        RecordingOrientation.landscapeLeft,
       ],
+    );
+    expect(
+      button.segments.map((segment) => (segment.label as Text).data),
+      <String>['横左', '竖屏', '横右'],
     );
   });
 
