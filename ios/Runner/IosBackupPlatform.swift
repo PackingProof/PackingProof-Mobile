@@ -25,7 +25,7 @@ private struct BackupTransferError: Error {
   }
 }
 
-private struct BackupSourceError: Error, LocalizedError {
+struct BackupSourceError: Error, LocalizedError {
   let message: String
   var errorDescription: String? { message }
 }
@@ -60,9 +60,13 @@ final class IosBackupFileReader {
   private let url: URL
   private let handle: FileHandle
 
-  init(url: URL) throws {
+  init(url: URL, handleOverride: FileHandle? = nil) throws {
     self.url = url
     snapshot = try IosBackupFileSnapshot.read(from: url)
+    if let handleOverride {
+      handle = handleOverride
+      return
+    }
     do {
       handle = try FileHandle(forReadingFrom: url)
     } catch {
@@ -74,13 +78,23 @@ final class IosBackupFileReader {
 
   func sha256(bufferSize: Int = 1024 * 1024) throws -> String {
     try assertUnchanged()
-    try handle.seek(toOffset: 0)
+    do {
+      try handle.seek(toOffset: 0)
+    } catch {
+      throw BackupSourceError(message: "无法读取录像文件")
+    }
     var hasher = SHA256()
     var consumed: Int64 = 0
     while consumed < snapshot.byteCount {
       try Task.checkCancellation()
       let requested = min(Int64(bufferSize), snapshot.byteCount - consumed)
-      guard let data = try handle.read(upToCount: Int(requested)), !data.isEmpty else {
+      let data: Data?
+      do {
+        data = try handle.read(upToCount: Int(requested))
+      } catch {
+        throw BackupSourceError(message: "无法读取录像文件")
+      }
+      guard let data, !data.isEmpty else {
         throw BackupSourceError(message: "录像文件读取不完整")
       }
       consumed += Int64(data.count)
@@ -96,8 +110,18 @@ final class IosBackupFileReader {
       throw BackupSourceError(message: "录像上传偏移无效")
     }
     let expected = min(Int64(count), snapshot.byteCount - offset)
-    try handle.seek(toOffset: UInt64(offset))
-    guard let data = try handle.read(upToCount: Int(expected)),
+    do {
+      try handle.seek(toOffset: UInt64(offset))
+    } catch {
+      throw BackupSourceError(message: "无法读取录像文件")
+    }
+    let data: Data?
+    do {
+      data = try handle.read(upToCount: Int(expected))
+    } catch {
+      throw BackupSourceError(message: "无法读取录像文件")
+    }
+    guard let data,
           data.count == Int(expected)
     else {
       throw BackupSourceError(message: "录像文件读取不完整")
@@ -232,6 +256,12 @@ enum IosBackupActiveUploadGate {
   }
 }
 
+enum IosBackupUploadFailureHandlingResult: Equatable {
+  case persisted
+  case staleGeneration
+  case persistenceFailed
+}
+
 final class IosBackupHostApi: BackupNativeHostApi {
   private struct ActiveUpload {
     let identity: IosBackupUploadIdentity
@@ -246,6 +276,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private let availableStorageBytesOverride: (() -> Int64)?
   private let storageAttestationOverride:
     (([String: Any], String, Int64) async -> String?)?
+  private let uploadFailureUpdateOverride: ((String, String) throws -> Bool)?
+  private let uploadPersistenceFailureReporter: ((String, String, Error) -> Void)?
   private let networkMonitor = NWPathMonitor()
   private let networkQueue = DispatchQueue(label: "ios.backup.network")
   private var lastLanReachable = false
@@ -258,6 +290,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private var lastCleanupAt = Date.distantPast
   private let emitLock = NSLock()
   private var emitScheduled = false
+  private let uploadFailureLock = NSLock()
+  private var uploadFailureOverrides: [String: (String, BackupTransferError)] = [:]
   private let keys = (
     deviceId: "ios_backup_device_id",
     deviceName: "ios_backup_device_name",
@@ -295,7 +329,10 @@ final class IosBackupHostApi: BackupNativeHostApi {
     recordingsRoot: URL? = nil,
     availableStorageBytesOverride: (() -> Int64)? = nil,
     storageAttestationOverride:
-      (([String: Any], String, Int64) async -> String?)? = nil
+      (([String: Any], String, Int64) async -> String?)? = nil,
+    uploadFailureUpdateOverride: ((String, String) throws -> Bool)? = nil,
+    uploadPersistenceFailureReporter:
+      ((String, String, Error) -> Void)? = nil
   ) {
     self.eventApi = eventApi
     self.defaults = defaults
@@ -305,6 +342,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
     self.recordingsRoot = recordingsRoot
     self.availableStorageBytesOverride = availableStorageBytesOverride
     self.storageAttestationOverride = storageAttestationOverride
+    self.uploadFailureUpdateOverride = uploadFailureUpdateOverride
+    self.uploadPersistenceFailureReporter = uploadPersistenceFailureReporter
     networkMonitor.pathUpdateHandler = { [weak self] path in
       self?.lastLanReachable =
         path.status == .satisfied && !path.usesInterfaceType(.cellular)
@@ -704,7 +743,26 @@ final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   private func jobs() throws -> [[String: Any]] {
-    try jobStore.get().allJobs()
+    let stored = try jobStore.get().allJobs()
+    uploadFailureLock.lock()
+    let overrides = uploadFailureOverrides
+    uploadFailureLock.unlock()
+    return stored.map { job in
+      guard
+        let id = job["id"] as? String,
+        let generation = job["generation"] as? String,
+        let (overrideGeneration, failure) = overrides[id],
+        overrideGeneration == generation
+      else { return job }
+      var visible = job
+      visible["state"] = "paused"
+      visible["errorMessage"] =
+        "\(failure.message)；任务状态写入失败，已保留内存告警"
+      visible["failureKind"] = failure.failureKind
+      visible["statusCode"] = failure.statusCode
+      visible["errorCode"] = failure.errorCode
+      return visible
+    }
   }
 
   private func upsert(_ job: [String: Any]) throws {
@@ -731,6 +789,55 @@ final class IosBackupHostApi: BackupNativeHostApi {
       expectedGeneration: expectedGeneration,
       mutate: mutate
     )
+  }
+
+  @discardableResult
+  func handleUploadFailure(
+    jobId: String,
+    expectedGeneration: String,
+    error: Error
+  ) -> IosBackupUploadFailureHandlingResult {
+    let failure = Self.backupFailureInfo(error)
+    do {
+      let updated: Bool
+      if let uploadFailureUpdateOverride {
+        updated = try uploadFailureUpdateOverride(jobId, expectedGeneration)
+      } else {
+        updated = try updateUploadJob(
+          jobId,
+          expectedGeneration: expectedGeneration,
+          mutate: { current in
+            current["state"] = "paused"
+            current["errorMessage"] = failure.message
+            current["failureKind"] = failure.failureKind
+            current["statusCode"] = failure.statusCode
+            current["errorCode"] = failure.errorCode
+          }
+        )
+      }
+      uploadFailureLock.lock()
+      uploadFailureOverrides.removeValue(forKey: jobId)
+      uploadFailureLock.unlock()
+      guard updated else { return .staleGeneration }
+      emitSnapshot()
+      return .persisted
+    } catch {
+      uploadFailureLock.lock()
+      uploadFailureOverrides[jobId] = (expectedGeneration, failure)
+      uploadFailureLock.unlock()
+      if let uploadPersistenceFailureReporter {
+        uploadPersistenceFailureReporter(jobId, expectedGeneration, error)
+      } else {
+        NSLog(
+          "iOS backup state persistence failed for job %@ generation %@: %@",
+          jobId,
+          expectedGeneration,
+          error.localizedDescription
+        )
+      }
+      emitSnapshot()
+      return .persistenceFailed
+    }
   }
 
   private func emitSnapshot() {
@@ -817,17 +924,19 @@ final class IosBackupHostApi: BackupNativeHostApi {
   ) async {
     guard let jobId = job["id"] as? String else { return }
     defer { finishActiveUpload(jobId: jobId, identity: identity) }
-    guard
-      let connection = defaults.dictionary(forKey: keys.connection),
-      let storedBaseUrl = connection["baseUrl"] as? String,
-      let path = job["filePath"] as? String
-    else {
-      return
-    }
-    var baseUrl = storedBaseUrl
-    let url = URL(fileURLWithPath: path)
 
     do {
+      guard
+        let connection = defaults.dictionary(forKey: keys.connection),
+        let storedBaseUrl = connection["baseUrl"] as? String
+      else {
+        throw pigeonError("未找到备份连接", code: "credential_missing")
+      }
+      guard let path = job["filePath"] as? String, !path.isEmpty else {
+        throw BackupSourceError(message: "备份任务缺少录像文件路径")
+      }
+      var baseUrl = storedBaseUrl
+      let url = URL(fileURLWithPath: path)
       guard let accessKey = try credentialStore.load() else {
         throw pigeonError("未找到备份访问密钥", code: "credential_missing")
       }
@@ -836,7 +945,10 @@ final class IosBackupHostApi: BackupNativeHostApi {
         rawSessions.count == 1,
         let completionSession = Self.backupCompletionSession(rawSessions[0])
       else {
-        throw BackupSourceError(message: "备份任务必须且只能包含一条录像记录")
+        throw pigeonError(
+          "备份任务必须且只能包含一条录像记录",
+          code: "backup_session_invalid"
+        )
       }
       let reader = try IosBackupFileReader(url: url)
       let totalBytes = reader.snapshot.byteCount
@@ -940,7 +1052,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
         }
         let nextOffset = next.int64Value
         guard nextOffset > offset, nextOffset <= totalBytes else {
-          throw BackupSourceError(message: "电脑返回的上传进度无效")
+          throw pigeonError("电脑返回的上传进度无效")
         }
         offsetResyncAttempts = 0
         offset = nextOffset
@@ -1031,21 +1143,11 @@ final class IosBackupHostApi: BackupNativeHostApi {
       emitSnapshot()
       triggerCleanup()
     } catch {
-      let failure = Self.backupFailureInfo(error)
-      let updated = try? updateUploadJob(
-        jobId,
+      handleUploadFailure(
+        jobId: jobId,
         expectedGeneration: identity.generation,
-        mutate: { current in
-          current["state"] = "paused"
-          current["errorMessage"] = failure.message
-          current["failureKind"] = failure.failureKind
-          current["statusCode"] = failure.statusCode
-          current["errorCode"] = failure.errorCode
-        }
+        error: error
       )
-      if updated == true {
-        emitSnapshot()
-      }
     }
   }
 
@@ -1220,7 +1322,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
         statusCode: 0,
         errorCode: pigeon.code,
         message: pigeon.message ?? pigeon.localizedDescription,
-        failureKind: "unknown"
+        failureKind: backupFailureKind(statusCode: 0, errorCode: pigeon.code)
       )
     }
     if let source = error as? BackupSourceError {
@@ -1228,7 +1330,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
         statusCode: 0,
         errorCode: "backup_source_unavailable",
         message: source.message,
-        failureKind: "unknown"
+        failureKind: "storage_unavailable"
       )
     }
     if error is CancellationError {
@@ -1252,7 +1354,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
     errorCode: String
   ) -> String {
     switch errorCode {
-    case "enrollment_required", "device_token_invalid":
+    case "credential_missing", "enrollment_required", "device_token_invalid":
       return "credential_invalid"
     case "backup_protocol_upgrade_required":
       return "incompatible_version"

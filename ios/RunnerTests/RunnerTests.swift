@@ -697,6 +697,169 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(current["state"] as? String, "pending")
   }
 
+  func testBackupSourceFailuresPersistStorageUnavailableState() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL,
+      defaults: fixture.defaults
+    )
+    let api = makeBackupApi(defaults: fixture.defaults, store: store)
+
+    func assertPersistedSourceFailure(
+      id: String,
+      error: Error,
+      message: String
+    ) throws {
+      try store.upsert(makeBackupJob(id: id))
+      XCTAssertEqual(
+        api.handleUploadFailure(
+          jobId: id,
+          expectedGeneration: "generation-\(id)",
+          error: error
+        ),
+        .persisted
+      )
+      let current = try XCTUnwrap(
+        store.allJobs().first { $0["id"] as? String == id }
+      )
+      XCTAssertEqual(current["state"] as? String, "paused")
+      XCTAssertEqual(current["failureKind"] as? String, "storage_unavailable")
+      XCTAssertEqual(current["errorMessage"] as? String, message)
+    }
+
+    let missing = fixture.root.appendingPathComponent("missing.mp4")
+    var missingError: Error?
+    XCTAssertThrowsError(try IosBackupFileReader(url: missing)) {
+      missingError = $0
+    }
+    try assertPersistedSourceFailure(
+      id: "source-missing",
+      error: try XCTUnwrap(missingError),
+      message: "无法读取录像文件信息"
+    )
+
+    let replaced = fixture.root.appendingPathComponent("replaced.mp4")
+    try Data(repeating: 1, count: 32).write(to: replaced)
+    let replacedReader = try IosBackupFileReader(url: replaced)
+    try Data(repeating: 2, count: 64).write(to: replaced)
+    var replacedError: Error?
+    XCTAssertThrowsError(try replacedReader.read(offset: 0, count: 8)) {
+      replacedError = $0
+    }
+    try assertPersistedSourceFailure(
+      id: "source-replaced",
+      error: try XCTUnwrap(replacedError),
+      message: "录像文件已被替换，已停止备份"
+    )
+
+    let unreadable = fixture.root.appendingPathComponent("unreadable.mp4")
+    try Data(repeating: 3, count: 32).write(to: unreadable)
+    let closedHandle = try FileHandle(forReadingFrom: unreadable)
+    let unreadableReader = try IosBackupFileReader(
+      url: unreadable,
+      handleOverride: closedHandle
+    )
+    try closedHandle.close()
+    var readError: Error?
+    XCTAssertThrowsError(try unreadableReader.sha256()) {
+      readError = $0
+    }
+    try assertPersistedSourceFailure(
+      id: "source-read-failed",
+      error: try XCTUnwrap(readError),
+      message: "无法读取录像文件"
+    )
+  }
+
+  func testUploadFailurePersistenceErrorIsReportedAndVisibleInSnapshot()
+    async throws
+  {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL,
+      defaults: fixture.defaults
+    )
+    let id = "failure-persistence"
+    try store.upsert(makeBackupJob(id: id))
+    var reportedJobId: String?
+    var reportedGeneration: String?
+    var reportedError: Error?
+    let api = makeBackupApi(
+      defaults: fixture.defaults,
+      store: store,
+      uploadFailureUpdateOverride: { _, _ in
+        throw IosBackupStoreError(
+          operation: "测试写入",
+          code: 10,
+          message: "只读数据库"
+        )
+      },
+      uploadPersistenceFailureReporter: { jobId, generation, error in
+        reportedJobId = jobId
+        reportedGeneration = generation
+        reportedError = error
+      }
+    )
+
+    XCTAssertEqual(
+      api.handleUploadFailure(
+        jobId: id,
+        expectedGeneration: "generation-\(id)",
+        error: BackupSourceError(message: "录像文件不存在或为空")
+      ),
+      .persistenceFailed
+    )
+    XCTAssertEqual(reportedJobId, id)
+    XCTAssertEqual(reportedGeneration, "generation-\(id)")
+    XCTAssertTrue(reportedError is IosBackupStoreError)
+    XCTAssertEqual(try store.allJobs().first?["state"] as? String, "pending")
+
+    let snapshot = try await awaitSnapshotResult(api)
+    let jobs = try XCTUnwrap(snapshot["jobs"] as? [[String: Any]])
+    let visible = try XCTUnwrap(jobs.first { $0["id"] as? String == id })
+    XCTAssertEqual(visible["state"] as? String, "paused")
+    XCTAssertEqual(visible["failureKind"] as? String, "storage_unavailable")
+    XCTAssertTrue(
+      (visible["errorMessage"] as? String)?.contains("任务状态写入失败") ?? false
+    )
+  }
+
+  func testOldWorkerFailureCannotOverrideReplacementGeneration() async throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL,
+      defaults: fixture.defaults
+    )
+    let id = "stale-failure-worker"
+    var replacement = makeBackupJob(id: id)
+    replacement["generation"] = "replacement-generation"
+    try store.upsert(replacement)
+    let api = makeBackupApi(defaults: fixture.defaults, store: store)
+
+    XCTAssertEqual(
+      api.handleUploadFailure(
+        jobId: id,
+        expectedGeneration: "old-generation",
+        error: BackupSourceError(message: "录像文件已被替换，已停止备份")
+      ),
+      .staleGeneration
+    )
+    let stored = try XCTUnwrap(store.allJobs().first)
+    XCTAssertEqual(stored["generation"] as? String, "replacement-generation")
+    XCTAssertEqual(stored["state"] as? String, "pending")
+    XCTAssertNil(stored["errorMessage"])
+
+    let snapshot = try await awaitSnapshotResult(api)
+    let jobs = try XCTUnwrap(snapshot["jobs"] as? [[String: Any]])
+    let visible = try XCTUnwrap(jobs.first)
+    XCTAssertEqual(visible["id"] as? String, id)
+    XCTAssertEqual(visible["state"] as? String, "pending")
+    XCTAssertNil(visible["errorMessage"])
+  }
+
   func testFinishedUploadIdentityCannotRemoveReplacement() {
     let old = IosBackupUploadIdentity(
       generation: "old-generation",
@@ -813,6 +976,29 @@ class RunnerTests: XCTestCase {
     try? FileManager.default.removeItem(at: fixture.root)
   }
 
+  private func makeBackupApi(
+    defaults: UserDefaults,
+    store: IosBackupJobStore,
+    uploadFailureUpdateOverride: ((String, String) throws -> Bool)? = nil,
+    uploadPersistenceFailureReporter:
+      ((String, String, Error) -> Void)? = nil
+  ) -> IosBackupHostApi {
+    IosBackupHostApi(
+      eventApi: FakeBackupNativeEventApi(),
+      defaults: defaults,
+      credentialStore: IosBackupCredentialStore(
+        defaults: defaults,
+        keychain: FakeIosKeychainClient(),
+        service: "RunnerTests.backup-api.\(UUID().uuidString)",
+        account: "access-key"
+      ),
+      jobStore: .success(store),
+      recordingsRoot: FileManager.default.temporaryDirectory,
+      uploadFailureUpdateOverride: uploadFailureUpdateOverride,
+      uploadPersistenceFailureReporter: uploadPersistenceFailureReporter
+    )
+  }
+
   private typealias RetentionCleanupFixture = (
     root: URL, defaults: UserDefaults, suiteName: String, store: IosBackupJobStore,
     api: IosBackupHostApi, file: URL, job: [String: Any]
@@ -890,6 +1076,16 @@ class RunnerTests: XCTestCase {
     try await withCheckedThrowingContinuation { continuation in
       operation { result in
         continuation.resume(with: result)
+      }
+    }
+  }
+
+  private func awaitSnapshotResult(
+    _ api: IosBackupHostApi
+  ) async throws -> [String?: Any?] {
+    try await withCheckedThrowingContinuation { continuation in
+      api.snapshot { result in
+        continuation.resume(with: result.map { $0 ?? [:] })
       }
     }
   }
