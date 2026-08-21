@@ -328,11 +328,6 @@ private final class IosMediaProcessingHostApi: MediaProcessingHostApi {
           width: textSize.width,
           height: textSize.height
         )
-        switch request.recordingOrientation {
-        case "landscapeLeft": text.setAffineTransform(CGAffineTransform(rotationAngle: -.pi / 2))
-        case "landscapeRight": text.setAffineTransform(CGAffineTransform(rotationAngle: .pi / 2))
-        default: break
-        }
         parentLayer.addSublayer(text)
         videoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
           postProcessingAsVideoLayer: videoLayer,

@@ -1383,7 +1383,7 @@ class _CameraWatermarkPreview extends StatelessWidget {
       if (trackingNumber.isNotEmpty) 'Order:$trackingNumber',
     ].join('\n');
     const TextStyle baseStyle = TextStyle(
-      fontSize: 12,
+      fontSize: 16,
       height: 1.25,
       fontWeight: FontWeight.w700,
     );

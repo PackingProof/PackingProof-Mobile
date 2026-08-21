@@ -88,9 +88,14 @@ class VideoWatermarkPlugin(
         output.parentFile?.mkdirs()
         output.delete()
 
+        val (anchorX, anchorY) = when (recordingOrientation) {
+            "landscapeLeft" -> -1f to 1f
+            "landscapeRight" -> 1f to -1f
+            else -> 1f to 1f
+        }
         val settings = StaticOverlaySettings.Builder()
-            .setOverlayFrameAnchor(1f, 1f)
-            .setBackgroundFrameAnchor(0.96f, 0.08f)
+            .setOverlayFrameAnchor(anchorX, anchorY)
+            .setBackgroundFrameAnchor(anchorX, anchorY)
             .build()
         val overlay = object : BitmapOverlay() {
             private val formatter = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.ROOT)
