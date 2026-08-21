@@ -24,6 +24,7 @@ import '../services/continuous_camera_service.dart';
 import '../services/camera_capability_policy.dart';
 import '../services/session_repository.dart';
 import '../services/speech_prompt_service.dart';
+import '../services/watermark_geometry.dart';
 import '../widgets/order_info_sheet.dart';
 import 'recordings_screen.dart';
 
@@ -967,14 +968,11 @@ class _CameraArea extends StatelessWidget {
         fit: StackFit.expand,
         children: <Widget>[
           Positioned.fill(child: preview),
-          Positioned(
-            key: const Key('camera-watermark-position'),
-            top: view._isRecording ? 68 : 22,
-            right: view.flashAvailable ? 72 : 18,
-            child: _CameraWatermarkPreview(
-              timestamp: view.watermarkTimestamp ?? DateTime.now(),
-              trackingNumber: view.currentCode,
-              orientation: view.recordingOrientation,
+          Positioned.fill(
+            child: _CameraWatermarkPlacement(
+              view: view,
+              topMargin: view._isRecording ? 68 : 22,
+              rightMargin: view.flashAvailable ? 72 : 18,
             ),
           ),
           Positioned(
@@ -1426,6 +1424,48 @@ class _CameraWatermarkPreview extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CameraWatermarkPlacement extends StatelessWidget {
+  const _CameraWatermarkPlacement({
+    required this.view,
+    required this.topMargin,
+    required this.rightMargin,
+  });
+
+  final PackingHomeView view;
+  final double topMargin;
+  final double rightMargin;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final Size viewport = constraints.biggest;
+        final Size watermarkSize = const Size(250, 44);
+        final WatermarkGeometry geometry = watermarkGeometry(
+          orientation: view.recordingOrientation,
+          videoSize: viewport,
+          watermarkSize: watermarkSize,
+          margin: math.max(topMargin, rightMargin),
+        );
+        return Stack(
+          children: <Widget>[
+            Positioned(
+              key: const Key('camera-watermark-position'),
+              left: geometry.sourceOffset.dx,
+              top: geometry.sourceOffset.dy,
+              child: _CameraWatermarkPreview(
+                timestamp: view.watermarkTimestamp ?? DateTime.now(),
+                trackingNumber: view.currentCode,
+                orientation: view.recordingOrientation,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -442,7 +442,8 @@ void main() {
       find.byKey(const Key('camera-watermark-position')),
     );
     expect(watermarkPosition.top, 68);
-    expect(watermarkPosition.right, 18);
+    expect(watermarkPosition.left, 72);
+    expect(watermarkPosition.right, isNull);
 
     final Text watermarkOutline = tester.widget<Text>(
       find.byKey(const Key('camera-watermark-outline')),
