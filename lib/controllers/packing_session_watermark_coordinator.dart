@@ -4,6 +4,10 @@ final class _WatermarkFinalizationPersistenceException implements Exception {
   const _WatermarkFinalizationPersistenceException();
 }
 
+final class _WatermarkFinalizationStateUnknownException implements Exception {
+  const _WatermarkFinalizationStateUnknownException();
+}
+
 /// 发布水印成片并将最终可用文件衔接到备份队列。
 mixin _PackingSessionWatermarkCoordinator on _PackingSessionStorageCoordinator {
   static const int _maximumWatermarkAttempts = 3;
@@ -108,26 +112,24 @@ mixin _PackingSessionWatermarkCoordinator on _PackingSessionStorageCoordinator {
             _sessions = await _repository.updateSession(finalized);
           } on Object {
             // upsert 可能已提交、仅后续 recent reload 失败；先重读再决定补偿。
-            List<RecordingSession>? latestSessions;
+            late final List<RecordingSession> latestSessions;
             try {
               latestSessions = await _repository.loadSessions(
                 includeMissingFiles: true,
               );
             } on Object {
-              latestSessions = null;
+              throw const _WatermarkFinalizationStateUnknownException();
             }
-            final bool completedWasPersisted =
-                latestSessions?.any(
-                  (RecordingSession current) =>
-                      current.id == finalized.id &&
-                      current.filePath == finalPath &&
-                      current.watermarkStatus ==
-                          WatermarkProcessingStatus.completed,
-                ) ??
-                false;
+            final bool completedWasPersisted = latestSessions.any(
+              (RecordingSession current) =>
+                  current.id == finalized.id &&
+                  current.filePath == finalPath &&
+                  current.watermarkStatus ==
+                      WatermarkProcessingStatus.completed,
+            );
             if (completedWasPersisted) {
-              _sessions = latestSessions!;
-            } else if (latestSessions != null && finalPath != savedPath) {
+              _sessions = latestSessions;
+            } else if (finalPath != savedPath) {
               // 只有确认 DB 未指向新成片时才清理，绝不删原片或状态不明的成片。
               try {
                 await _repository.deleteFileIfUnreferenced(finalPath);
@@ -168,6 +170,22 @@ mixin _PackingSessionWatermarkCoordinator on _PackingSessionStorageCoordinator {
         await _enqueueBackupIfNeeded(finalPath, <RecordingSession>[finalized]);
       } on Object catch (error) {
         stopwatch.stop();
+        if (error is _WatermarkFinalizationStateUnknownException) {
+          await _logWatermarkEvent(
+            kind: 'watermark_state_unknown',
+            extra: <String, Object?>{
+              'sessionId': session.id,
+              'orientation': recordingOrientation.storageValue,
+              'inputBytes': inputBytes,
+              'outputBytes': 0,
+              'elapsedMs': stopwatch.elapsedMilliseconds,
+              'errorType': error.runtimeType.toString(),
+              'attempt': processingSession.watermarkAttemptCount,
+            },
+          );
+          if (!_disposed) notifyListeners();
+          return;
+        }
         final bool retryable = _isRetryableWatermarkError(error);
         final bool retryPending =
             retryable &&

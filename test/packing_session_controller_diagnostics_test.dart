@@ -345,6 +345,48 @@ void main() {
     expect(log, isNot(contains('"kind":"watermark_failed"')));
   });
 
+  test('最终状态已提交且确认读取失败时不得用旧状态覆盖成片', () async {
+    final _UnknownPostCommitRepository repository =
+        _UnknownPostCommitRepository(root);
+    await repository.initialize();
+    final Directory pending = Directory('${root.path}/recordings/.pending');
+    await pending.create(recursive: true);
+    final File source = File('${pending.path}/state-unknown-original.mp4');
+    await source.writeAsBytes(<int>[1, 2, 3]);
+    final RecordingSession session = _pendingWatermarkSession(
+      id: 'session-state-unknown',
+      filePath: source.path,
+    );
+    await repository.addSession(session);
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _FakeSpeechSink(),
+      videoWatermarkService: _RecordingWatermarkSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    trackController(controller);
+
+    await controller.watermarkAndBackupForTesting(source.path, session);
+
+    expect(repository.staleWriteCount, 0);
+    expect(await source.exists(), isTrue);
+    final String log = await File(
+      '${root.path}/diagnostics/runtime.jsonl',
+    ).readAsString();
+    expect(log, contains('"kind":"watermark_state_unknown"'));
+    expect(log, isNot(contains('"kind":"watermark_failed"')));
+
+    final SessionRepository verifier = SessionRepository(rootDirectory: root);
+    final RecordingSession saved = (await verifier.loadSessions(
+      includeMissingFiles: true,
+    )).single;
+    await verifier.dispose();
+    expect(saved.watermarkStatus, WatermarkProcessingStatus.completed);
+    expect(saved.filePath, isNot(source.path));
+    expect(await File(saved.filePath).exists(), isTrue);
+  });
+
   test('成片落库后原片清理异常不得把已完成状态回退为失败', () async {
     final SessionRepository repository = _CleanupFailingRepository(root);
     final File source = File('${root.path}/cleanup-failed-original.mp4');
@@ -1032,6 +1074,38 @@ class _PostCommitFailingRepository extends SessionRepository {
       throw StateError('recent sessions reload failed after commit');
     }
     return result;
+  }
+}
+
+class _UnknownPostCommitRepository extends SessionRepository {
+  _UnknownPostCommitRepository(Directory root) : super(rootDirectory: root);
+
+  bool completedCommitted = false;
+  int staleWriteCount = 0;
+
+  @override
+  Future<List<RecordingSession>> updateSession(
+    RecordingSession updatedSession,
+  ) async {
+    if (updatedSession.watermarkStatus == WatermarkProcessingStatus.completed) {
+      await super.updateSession(updatedSession);
+      completedCommitted = true;
+      throw StateError('final state committed before reload failure');
+    }
+    if (completedCommitted) {
+      staleWriteCount++;
+    }
+    return super.updateSession(updatedSession);
+  }
+
+  @override
+  Future<List<RecordingSession>> loadSessions({
+    bool includeMissingFiles = false,
+  }) {
+    if (completedCommitted) {
+      throw StateError('confirmation read failed');
+    }
+    return super.loadSessions(includeMissingFiles: includeMissingFiles);
   }
 }
 
