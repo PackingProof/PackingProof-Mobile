@@ -209,12 +209,8 @@ class ContinuousSegmentCamera(
     private var videoTrack = -1
     private var audioTrack = -1
     private var currentPath: String? = null
-    private var segmentBasePtsUs = 0L
     private var segmentStartedAtMs = 0L
-    private var lastVideoPtsUs = -1L
-    private var lastAudioPtsUs = -1L
-    private var lastMediaPtsUs = 0L
-    private var audioToVideoPtsOffsetUs: Long? = null
+    private val muxTimeline = MuxTimelinePolicy()
     private var storageFailureReported = false
 
     private var scannerBusy = false
@@ -331,7 +327,7 @@ class ContinuousSegmentCamera(
             pendingStartPath = path
             startResult = result
             audioOutputFormat = null
-            audioToVideoPtsOffsetUs = null
+            muxTimeline.beginRecording()
             pendingAudio.clear()
             setVideoSuspended(false)
             if (recordAudio) {
@@ -2125,12 +2121,16 @@ class ContinuousSegmentCamera(
         val completedPath = currentPath ?: return
         val boundaryPtsUs = info.presentationTimeUs
         val completedStartedAt = segmentStartedAtMs
-        val boundaryAtMs = segmentStartedAtMs + max(0L, boundaryPtsUs - segmentBasePtsUs) / 1_000L
+        val boundaryAtMs = muxTimeline.boundaryAtMs(segmentStartedAtMs, boundaryPtsUs)
         try {
-            pendingAudio.filter { audioPtsOnVideoTimeline(it) < boundaryPtsUs }.forEach(::writeAudio)
+            pendingAudio
+                .filter { muxTimeline.audioSourcePtsUs(it.presentationTimeUs) < boundaryPtsUs }
+                .forEach(::writeAudio)
             closeMuxer(deleteEmpty = false)
             openMuxer(nextPath, boundaryPtsUs, boundaryAtMs)
-            pendingAudio.filter { audioPtsOnVideoTimeline(it) >= boundaryPtsUs }.forEach(::writeAudio)
+            pendingAudio
+                .filter { muxTimeline.audioSourcePtsUs(it.presentationTimeUs) >= boundaryPtsUs }
+                .forEach(::writeAudio)
             pendingAudio.clear()
             writeVideo(buffer, info.presentationTimeUs, info.flags)
             splitResult = null
@@ -2176,19 +2176,13 @@ class ContinuousSegmentCamera(
         newMuxer.start()
         muxer = newMuxer
         currentPath = path
-        segmentBasePtsUs = basePtsUs
         segmentStartedAtMs = startedAtMs
-        lastVideoPtsUs = -1L
-        lastAudioPtsUs = -1L
-        lastMediaPtsUs = basePtsUs
+        muxTimeline.openSegment(basePtsUs)
     }
 
     private fun writeVideo(buffer: ByteBuffer, sourcePtsUs: Long, flags: Int) {
         val activeMuxer = muxer ?: return
-        var ptsUs = max(0L, sourcePtsUs - segmentBasePtsUs)
-        if (ptsUs <= lastVideoPtsUs) ptsUs = lastVideoPtsUs + 1L
-        lastVideoPtsUs = ptsUs
-        lastMediaPtsUs = max(lastMediaPtsUs, sourcePtsUs)
+        val ptsUs = muxTimeline.videoPtsUs(sourcePtsUs)
         val sample = buffer.slice()
         val info = MediaCodec.BufferInfo().apply {
             set(
@@ -2208,13 +2202,8 @@ class ContinuousSegmentCamera(
     }
 
     private fun writeAudio(sample: EncodedSample) {
-        val sourcePtsUs = audioPtsOnVideoTimeline(sample)
-        if (sourcePtsUs < segmentBasePtsUs) return
         val activeMuxer = muxer ?: return
-        var ptsUs = sourcePtsUs - segmentBasePtsUs
-        if (ptsUs <= lastAudioPtsUs) ptsUs = lastAudioPtsUs + 1L
-        lastAudioPtsUs = ptsUs
-        lastMediaPtsUs = max(lastMediaPtsUs, sourcePtsUs)
+        val ptsUs = muxTimeline.audioPtsUs(sample.presentationTimeUs) ?: return
         val info = MediaCodec.BufferInfo().apply {
             set(0, sample.bytes.size, ptsUs, 0)
         }
@@ -2229,14 +2218,6 @@ class ContinuousSegmentCamera(
         if (elapsedMs > MUX_WRITE_STALL_THRESHOLD_MS) muxWriteStallCount++
     }
 
-    private fun audioPtsOnVideoTimeline(sample: EncodedSample): Long {
-        val offsetUs = audioToVideoPtsOffsetUs
-            ?: (segmentBasePtsUs - sample.presentationTimeUs).also {
-                audioToVideoPtsOffsetUs = it
-            }
-        return sample.presentationTimeUs + offsetUs
-    }
-
     private fun flushPendingAudioToCurrent() {
         pendingAudio.forEach(::writeAudio)
         pendingAudio.clear()
@@ -2247,11 +2228,7 @@ class ContinuousSegmentCamera(
         flushPendingAudioToCurrent()
         val path = currentPath
         val startedAt = segmentStartedAtMs
-        val endedAt = if (lastMediaPtsUs >= segmentBasePtsUs) {
-            startedAt + (lastMediaPtsUs - segmentBasePtsUs) / 1_000L
-        } else {
-            System.currentTimeMillis()
-        }
+        val endedAt = muxTimeline.endedAtMs(startedAt, System.currentTimeMillis())
         try {
             closeMuxer(deleteEmpty = false)
             setVideoSuspended(true)
