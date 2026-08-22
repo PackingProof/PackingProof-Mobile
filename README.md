@@ -95,3 +95,9 @@ pwsh -NoProfile -File Tools\Publish-Android.ps1 `
 在不提交的根目录 `.env` 中配置 `PACKING_PROOF_SIGNING_DIRECTORY=<仓库外的签名目录>` 后，双击 `双击构建Release调试版.bat` 可生成能够直接覆盖同一签名已安装版本的 Release 测试 APK。该脚本读取 `pubspec.yaml` 版本并输出 `dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk`，不创建 Git 标签或发布记录。
 
 产物位于 `dist/android/`，包括 `PackingProof-Mobile-v<versionName>+<versionCode>.apk`、`SHA256SUMS.txt` 和 `build-manifest.json`，不会生成 ZIP 压缩包。
+
+## 开源许可证与品牌
+
+源代码使用 [AGPL-3.0 License](LICENSE)。公开分发修改版或使用修改版提供服务时，需要遵守相应的源码公开义务。
+
+`PackingProof`、`PackingProof Mobile`、“包裹留证”名称及官方应用图标属于项目品牌资产，不因源代码采用 AGPL-3.0 而授权第三方将其用于修改版的产品标识。公开发布修改版时，请使用不同的产品名称和图标，并明确标注“非官方修改版”；可以使用“基于 PackingProof 开发”说明来源。详见[品牌使用政策](BRAND_POLICY.md)。

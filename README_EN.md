@@ -93,3 +93,9 @@ The release workflow generates or reuses bundled speech assets, runs static anal
 To build a Release test APK that can replace an installed build signed with the same certificate, set `PACKING_PROOF_SIGNING_DIRECTORY=<external-signing-directory>` in the untracked root `.env` file and run `双击构建Release调试版.bat`. This helper reads the version from `pubspec.yaml`, outputs `dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk`, and does not create a Git tag or release.
 
 Release artifacts are written to `dist/android/` as `PackingProof-Mobile-v<versionName>+<versionCode>.apk`, `SHA256SUMS.txt`, and `build-manifest.json`. No ZIP archive is generated.
+
+## License and Branding
+
+The source code is available under the [AGPL-3.0 License](LICENSE). Distributing a modified version or providing it as a service requires compliance with the corresponding source-sharing obligations.
+
+The `PackingProof`, `PackingProof Mobile`, and `包裹留证` names and official application icons are project brand assets. The AGPL-3.0 source-code license does not grant permission to use them as the product identity of a modified version. Public modifications should use a distinct product name and icon, clearly identify themselves as unofficial, and may use “based on PackingProof” to describe their origin. See the [Brand Policy](BRAND_POLICY.md).
