@@ -39,7 +39,10 @@ try {
         throw "flutter pub get 失败，退出代码：$LASTEXITCODE"
     }
 
-    flutter build apk --debug --target-platform android-arm64
+    flutter build apk --debug `
+        --target-platform android-arm64 `
+        --dart-define="BUILD_REVISION=$revision" `
+        --dart-define="BUILD_TIMESTAMP=$buildTimestamp"
     if ($LASTEXITCODE -ne 0) {
         throw "flutter build apk --debug 失败，退出代码：$LASTEXITCODE"
     }
