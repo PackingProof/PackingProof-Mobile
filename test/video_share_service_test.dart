@@ -157,6 +157,25 @@ void main() {
       throwsUnsupportedError,
     );
   });
+
+  test('分享副本使用可读文件名并保留视频内容', () async {
+    final File source = File(
+      '${root.path}${Platform.pathSeparator}remux_hash.mp4',
+    );
+    await source.writeAsBytes(<int>[7, 8, 9]);
+    final VideoShareService service = VideoShareService(
+      cacheDirectory: Directory('${root.path}${Platform.pathSeparator}cache'),
+      nativeExportSupported: false,
+    );
+
+    final File result = await service.prepareForSharing(
+      source,
+      fileName: 'JT1234567890_20260901_010918_发货.mp4',
+    );
+
+    expect(result.path, endsWith('JT1234567890_20260901_010918_发货.mp4'));
+    expect(await result.readAsBytes(), <int>[7, 8, 9]);
+  });
 }
 
 class _FakeSystemMediaPresenter implements SystemMediaPresenter {

@@ -129,6 +129,40 @@ class VideoShareService {
     }
   }
 
+  Future<File> prepareForSharing(
+    File source, {
+    required String fileName,
+  }) async {
+    if (p.basename(source.path) == fileName) return source;
+    final Directory cache = await _cacheDirectory();
+    final String safeName = _sanitizeShareFileName(fileName);
+    String destinationPath = p.join(cache.path, safeName);
+    if (p.normalize(destinationPath) == p.normalize(source.path)) return source;
+    if (await File(destinationPath).exists()) {
+      final FileStat stat = await source.stat();
+      final String key = sha256
+          .convert(
+            utf8.encode(
+              '${source.path}|${stat.size}|${stat.modified.millisecondsSinceEpoch}',
+            ),
+          )
+          .toString()
+          .substring(0, 8);
+      final String stem = p.basenameWithoutExtension(safeName);
+      final String extension = p.extension(safeName);
+      destinationPath = p.join(cache.path, '${stem}_分享_$key$extension');
+    }
+    final File destination = await source.copy(destinationPath);
+    await destination.setLastModified(DateTime.now());
+    return destination;
+  }
+
+  static String _sanitizeShareFileName(String value) {
+    final String normalized = value.trim();
+    final String safe = normalized.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    return safe.isEmpty ? '未识别面单_录像.mp4' : safe;
+  }
+
   Future<bool> _requiresHevcRemux(File source) async {
     if (!_remuxFullRangeHevc || !_nativeExportSupported) return false;
     try {

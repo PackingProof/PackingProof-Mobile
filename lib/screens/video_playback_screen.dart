@@ -3,11 +3,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/lan_backup.dart';
 import '../models/recording_session.dart';
+import '../models/recording_operation_mode.dart';
 import '../services/camera_diagnostics_service.dart';
 import '../services/continuous_camera_service.dart';
 import '../services/diagnostics_log_service.dart';
@@ -487,10 +489,11 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         ),
       );
       if (clip != null && mounted) {
+        final File shareFile = await _namedShareFile(clip, suffix: '剪辑');
         await SharePlus.instance.share(
           ShareParams(
             title: _session.displayCode,
-            files: <XFile>[XFile(clip.path, mimeType: 'video/mp4')],
+            files: <XFile>[XFile(shareFile.path, mimeType: 'video/mp4')],
           ),
         );
       }
@@ -599,10 +602,11 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
           },
         );
       }
+      final File shareFile = await _namedShareFile(file);
       await SharePlus.instance.share(
         ShareParams(
           title: _session.displayCode,
-          files: <XFile>[XFile(file.path, mimeType: 'video/mp4')],
+          files: <XFile>[XFile(shareFile.path, mimeType: 'video/mp4')],
         ),
       );
     } on Object catch (error) {
@@ -764,10 +768,11 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         mediaEnd: _session.duration,
         sourceDuration: _session.duration,
       );
+      final File shareFile = await _namedShareFile(prepared);
       await SharePlus.instance.share(
         ShareParams(
           title: _session.displayCode,
-          files: <XFile>[XFile(prepared.path, mimeType: 'video/mp4')],
+          files: <XFile>[XFile(shareFile.path, mimeType: 'video/mp4')],
         ),
       );
     } on Object {
@@ -819,10 +824,11 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     setState(() => _fallbackBusy = true);
     try {
       final File file = await service.download(remote);
+      final File shareFile = await _namedShareFile(file);
       await SharePlus.instance.share(
         ShareParams(
           title: _session.displayCode,
-          files: <XFile>[XFile(file.path, mimeType: 'video/mp4')],
+          files: <XFile>[XFile(shareFile.path, mimeType: 'video/mp4')],
         ),
       );
     } on Object catch (error) {
@@ -846,6 +852,25 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         setState(() => _fallbackBusy = false);
       }
     }
+  }
+
+  Future<File> _namedShareFile(File file, {String suffix = ''}) {
+    final String stem = _shareNameStem();
+    final String name = suffix.isEmpty ? '$stem.mp4' : '${stem}_$suffix.mp4';
+    return _shareService.prepareForSharing(file, fileName: name);
+  }
+
+  String _shareNameStem() {
+    final String sourceStem = p.basenameWithoutExtension(_session.filePath);
+    final bool hasComputerNaming = RegExp(
+      r'^.+_\d{8}_\d{6}_(发货|退货)(_.+)?$',
+    ).hasMatch(sourceStem);
+    if (hasComputerNaming) return sourceStem;
+    final DateTime value = _session.startedAt;
+    final String date =
+        '${value.year.toString().padLeft(4, '0')}${value.month.toString().padLeft(2, '0')}${value.day.toString().padLeft(2, '0')}_'
+        '${value.hour.toString().padLeft(2, '0')}${value.minute.toString().padLeft(2, '0')}${value.second.toString().padLeft(2, '0')}';
+    return '${_session.displayCode}_${date}_${_session.operationMode.label}';
   }
 
   @override
