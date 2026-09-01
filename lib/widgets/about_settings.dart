@@ -53,7 +53,7 @@ class AboutSettings extends StatelessWidget {
           '关于',
           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
         ),
-        subtitle: const Text('版本、源码和开源项目'),
+        subtitle: const Text('源码和开源项目'),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: () => Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
@@ -298,8 +298,8 @@ class _AboutScreenState extends State<AboutScreen> {
                         ) {
                           final PackageInfo? info = snapshot.data;
                           final String version = info == null
-                              ? '正在读取版本'
-                              : '版本 ${info.version}+${info.buildNumber}';
+                              ? '正在读取'
+                              : 'v${info.version}+${info.buildNumber}';
                           final String revision = widget
                               .buildConfig
                               .buildRevision

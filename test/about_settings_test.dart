@@ -33,9 +33,9 @@ void main() {
 
     await tester.tap(find.byKey(const Key('about-settings-open')));
     await tester.pumpAndSettle();
-    expect(find.text('版本 0.3.1+9002 · abc1234'), findsOneWidget);
+    expect(find.text('v0.3.1+9002 · abc1234'), findsOneWidget);
     expect(find.text('构建修订'), findsNothing);
-    expect(find.text('版本 0.3.1+9002'), findsNothing);
+    expect(find.text('v0.3.1+9002'), findsNothing);
     expect(find.text('源码仓库'), findsOneWidget);
     expect(find.text('检查更新'), findsOneWidget);
     expect(find.byIcon(Icons.system_update_alt_rounded), findsOneWidget);
@@ -88,7 +88,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('版本 0.4.2+10002'));
+    await tester.tap(find.text('v0.4.2+10002'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('startup-notice-card')), findsOneWidget);
     expect(find.text('关闭'), findsOneWidget);
