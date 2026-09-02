@@ -34,6 +34,8 @@ class AppSettings {
     this.lanBackupAutoEnabled = true,
     this.unbackedRetention = UnbackedRetentionPolicy.days30,
     this.backedRetention = BackedRetentionPolicy.days7,
+    this.returnUnbackedRetention = UnbackedRetentionPolicy.days3,
+    this.returnBackedRetention = BackedRetentionPolicy.days1,
     this.hiddenRemoteRecordingIds = const <int>{},
     this.storageNoticeState = const StorageNoticeState(),
     this.minimumBarcodeLength = defaultMinimumBarcodeLength,
@@ -62,6 +64,8 @@ class AppSettings {
       ..remove('lanBackupAutoEnabled')
       ..remove('unbackedRetention')
       ..remove('backedRetention');
+    extraValues.remove('returnUnbackedRetention');
+    extraValues.remove('returnBackedRetention');
     extraValues.remove('storageNoticeState');
     extraValues.remove('minimumBarcodeLength');
     extraValues.remove('historyPageSize');
@@ -127,6 +131,12 @@ class AppSettings {
         json['unbackedRetention'],
       ),
       backedRetention: backedRetentionFromStorage(json['backedRetention']),
+      returnUnbackedRetention: json.containsKey('returnUnbackedRetention')
+          ? unbackedRetentionFromStorage(json['returnUnbackedRetention'])
+          : UnbackedRetentionPolicy.days3,
+      returnBackedRetention: json.containsKey('returnBackedRetention')
+          ? backedRetentionFromStorage(json['returnBackedRetention'])
+          : BackedRetentionPolicy.days1,
       hiddenRemoteRecordingIds: hiddenRemoteRecordingIds,
       storageNoticeState: StorageNoticeState.fromJson(
         json['storageNoticeState'],
@@ -184,6 +194,8 @@ class AppSettings {
   final bool lanBackupAutoEnabled;
   final UnbackedRetentionPolicy unbackedRetention;
   final BackedRetentionPolicy backedRetention;
+  final UnbackedRetentionPolicy returnUnbackedRetention;
+  final BackedRetentionPolicy returnBackedRetention;
   final Set<int> hiddenRemoteRecordingIds;
   final StorageNoticeState storageNoticeState;
   final int minimumBarcodeLength;
@@ -211,6 +223,8 @@ class AppSettings {
     bool? lanBackupAutoEnabled,
     UnbackedRetentionPolicy? unbackedRetention,
     BackedRetentionPolicy? backedRetention,
+    UnbackedRetentionPolicy? returnUnbackedRetention,
+    BackedRetentionPolicy? returnBackedRetention,
     Set<int>? hiddenRemoteRecordingIds,
     StorageNoticeState? storageNoticeState,
     int? minimumBarcodeLength,
@@ -243,6 +257,9 @@ class AppSettings {
       lanBackupAutoEnabled: lanBackupAutoEnabled ?? this.lanBackupAutoEnabled,
       unbackedRetention: unbackedRetention ?? this.unbackedRetention,
       backedRetention: backedRetention ?? this.backedRetention,
+      returnUnbackedRetention:
+          returnUnbackedRetention ?? this.returnUnbackedRetention,
+      returnBackedRetention: returnBackedRetention ?? this.returnBackedRetention,
       hiddenRemoteRecordingIds:
           hiddenRemoteRecordingIds ?? this.hiddenRemoteRecordingIds,
       storageNoticeState: storageNoticeState ?? this.storageNoticeState,
@@ -274,6 +291,8 @@ class AppSettings {
     'lanBackupAutoEnabled': lanBackupAutoEnabled,
     'unbackedRetention': unbackedRetention.storageValue,
     'backedRetention': backedRetention.storageValue,
+    'returnUnbackedRetention': returnUnbackedRetention.storageValue,
+    'returnBackedRetention': returnBackedRetention.storageValue,
     'hiddenRemoteRecordingIds': hiddenRemoteRecordingIds.toList()..sort(),
     'storageNoticeState': storageNoticeState.toJson(),
     'minimumBarcodeLength': minimumBarcodeLength,

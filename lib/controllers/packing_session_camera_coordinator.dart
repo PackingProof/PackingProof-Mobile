@@ -93,6 +93,8 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       _maxVolumeEnabled = settings.maxVolumeEnabled;
       _unbackedRetention = settings.unbackedRetention;
       _backedRetention = settings.backedRetention;
+      _returnUnbackedRetention = settings.returnUnbackedRetention;
+      _returnBackedRetention = settings.returnBackedRetention;
       _recordAudioEnabled = settings.recordAudioEnabled;
       _nativeRecordingFallback = settings.nativeRecordingFallback;
       _capabilityState = settings.cameraCapabilityState;

@@ -61,10 +61,14 @@ internal class LanBackupPlugin(
     fun initialize(request: Map<String?, Any?>): BackupSummaryDto {
         val unbackedDays = (request["unbackedRetentionDays"] as? Number)?.toInt()
         val backedDays = (request["backedRetentionDays"] as? Number)?.toInt()
+        val returnUnbackedDays = (request["returnUnbackedRetentionDays"] as? Number)?.toInt()
+        val returnBackedDays = (request["returnBackedRetentionDays"] as? Number)?.toInt()
         WorkManager.getInstance(context).cancelAllWorkByTag("lan-backup").result.get()
         if (store.migrateLegacyConnection() != null) credentials.clear()
         store.reconcileUnavailableJobs()
-        val retentionChanged = store.saveRetentionPolicies(unbackedDays, backedDays)
+        val retentionChanged = store.saveRetentionPolicies(
+            unbackedDays, backedDays, returnUnbackedDays, returnBackedDays,
+        )
         setAutoEnabled(request["autoEnabled"] as? Boolean ?: false)
         if (retentionChanged) {
             LanBackupCleanupScheduler.rescheduleAll(context, store)
@@ -210,6 +214,8 @@ internal class LanBackupPlugin(
         val changed = store.saveRetentionPolicies(
             (request["unbackedRetentionDays"] as? Number)?.toInt(),
             (request["backedRetentionDays"] as? Number)?.toInt(),
+            (request["returnUnbackedRetentionDays"] as? Number)?.toInt(),
+            (request["returnBackedRetentionDays"] as? Number)?.toInt(),
         )
         if (changed) {
             LanBackupCleanupScheduler.rescheduleAll(context, store)

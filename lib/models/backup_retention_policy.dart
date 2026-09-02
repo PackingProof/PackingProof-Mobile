@@ -1,11 +1,12 @@
-enum UnbackedRetentionPolicy { days3, days7, days30, days90, keepForever }
+enum UnbackedRetentionPolicy { days1, days3, days7, days30, days90, keepForever }
 
-enum BackedRetentionPolicy { immediately, days3, days7, days30, keepForever }
+enum BackedRetentionPolicy { immediately, days1, days3, days7, days30, keepForever }
 
 extension UnbackedRetentionPolicyStorage on UnbackedRetentionPolicy {
   String get storageValue => name;
 
   int? get days => switch (this) {
+    UnbackedRetentionPolicy.days1 => 1,
     UnbackedRetentionPolicy.days3 => 3,
     UnbackedRetentionPolicy.days7 => 7,
     UnbackedRetentionPolicy.days30 => 30,
@@ -21,6 +22,7 @@ extension BackedRetentionPolicyStorage on BackedRetentionPolicy {
 
   int? get days => switch (this) {
     BackedRetentionPolicy.immediately => 0,
+    BackedRetentionPolicy.days1 => 1,
     BackedRetentionPolicy.days3 => 3,
     BackedRetentionPolicy.days7 => 7,
     BackedRetentionPolicy.days30 => 30,

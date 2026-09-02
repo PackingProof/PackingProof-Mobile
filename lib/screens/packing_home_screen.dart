@@ -656,6 +656,8 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       historyPageSize: _controller.historyPageSize,
       unbackedRetention: _controller.unbackedRetention,
       backedRetention: _controller.backedRetention,
+      returnUnbackedRetention: _controller.returnUnbackedRetention,
+      returnBackedRetention: _controller.returnBackedRetention,
       backupSnapshot: _controller.backupSnapshot,
       backupListenable: _controller,
       backupSnapshotProvider: () => _controller.backupSnapshot,

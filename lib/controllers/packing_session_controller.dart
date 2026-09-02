@@ -205,6 +205,10 @@ class PackingSessionController extends ChangeNotifier
   UnbackedRetentionPolicy _unbackedRetention = UnbackedRetentionPolicy.days30;
   @override
   BackedRetentionPolicy _backedRetention = BackedRetentionPolicy.days7;
+  @override
+  UnbackedRetentionPolicy _returnUnbackedRetention = UnbackedRetentionPolicy.days3;
+  @override
+  BackedRetentionPolicy _returnBackedRetention = BackedRetentionPolicy.days1;
   bool _appIsActive = true;
   @override
   String? _errorMessage;
@@ -316,6 +320,8 @@ class PackingSessionController extends ChangeNotifier
               autoEnabled: settings.lanBackupAutoEnabled,
               unbackedRetention: settings.unbackedRetention,
               backedRetention: settings.backedRetention,
+              returnUnbackedRetention: settings.returnUnbackedRetention,
+              returnBackedRetention: settings.returnBackedRetention,
             )
             .timeout(const Duration(seconds: 8));
       } on Object catch (error) {

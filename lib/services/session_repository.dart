@@ -1101,9 +1101,16 @@ class SessionRepository {
   Future<void> saveBackupRetention({
     required UnbackedRetentionPolicy unbacked,
     required BackedRetentionPolicy backed,
+    UnbackedRetentionPolicy returnUnbacked = UnbackedRetentionPolicy.days3,
+    BackedRetentionPolicy returnBacked = BackedRetentionPolicy.days1,
   }) => _updateSettings(
     (AppSettings value) =>
-        value.copyWith(unbackedRetention: unbacked, backedRetention: backed),
+        value.copyWith(
+          unbackedRetention: unbacked,
+          backedRetention: backed,
+          returnUnbackedRetention: returnUnbacked,
+          returnBackedRetention: returnBacked,
+        ),
   );
 
   Future<void> queueStorageNotice(StorageNotice notice) => _updateSettings(

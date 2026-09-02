@@ -759,6 +759,7 @@ internal class LanBackupStateStore(
             val state: String,
             val fileCreatedAt: String?,
             val backupCompletedAt: String?,
+            val sessions: String?,
             val scheduledCleanupAt: String?,
             val waitingCleanup: Boolean,
         )
@@ -805,6 +806,7 @@ internal class LanBackupStateStore(
             arrayOf(
                 "id", "generation", "state", "file_created_at",
                 "backup_completed_at", "scheduled_cleanup_at", "waiting_cleanup",
+                "sessions",
             ),
             selection,
             afterId?.let { arrayOf(it) },
@@ -824,6 +826,7 @@ internal class LanBackupStateStore(
                             backupCompletedAt = if (cursor.isNull(4)) null else cursor.getString(4),
                             scheduledCleanupAt = if (cursor.isNull(5)) null else cursor.getString(5),
                             waitingCleanup = cursor.getInt(6) != 0,
+                            sessions = if (cursor.isNull(7)) null else cursor.getString(7),
                         ),
                     )
                 }
@@ -836,6 +839,9 @@ internal class LanBackupStateStore(
                 backupCompletedAt = row.backupCompletedAt,
                 unbackedDays = policyUnbackedDays,
                 backedDays = policyBackedDays,
+                returnGoods = LanBackupCleanupScheduler.isReturnGoods(
+                    JSONObject().put("sessions", row.sessions ?: JSONObject.NULL),
+                ),
             )?.toString()
             val clearWaiting = dueAt == null && row.waitingCleanup
             if (dueAt == row.scheduledCleanupAt && !clearWaiting) {
@@ -1347,15 +1353,24 @@ internal class LanBackupStateStore(
         LanBackupCleanupScheduler.nullableText(job, "fileCreatedAt")
             ?: "9999-12-31T23:59:59Z"
 
-    fun saveRetentionPolicies(unbackedDays: Int?, backedDays: Int?): Boolean {
+    fun saveRetentionPolicies(
+        unbackedDays: Int?, backedDays: Int?,
+        returnUnbackedDays: Int? = null, returnBackedDays: Int? = null,
+    ): Boolean {
         val unbacked = unbackedDays ?: -1
         val backed = backedDays ?: -1
+        val returnUnbacked = returnUnbackedDays ?: 3
+        val returnBacked = returnBackedDays ?: 1
         val preferences = context.getSharedPreferences(RETENTION_PREFS, Context.MODE_PRIVATE)
         val changed = preferences.getInt("unbackedDays", Int.MIN_VALUE) != unbacked ||
-            preferences.getInt("backedDays", Int.MIN_VALUE) != backed
+            preferences.getInt("backedDays", Int.MIN_VALUE) != backed ||
+            preferences.getInt("returnUnbackedDays", Int.MIN_VALUE) != returnUnbacked ||
+            preferences.getInt("returnBackedDays", Int.MIN_VALUE) != returnBacked
         preferences.edit()
             .putInt("unbackedDays", unbacked)
             .putInt("backedDays", backed)
+            .putInt("returnUnbackedDays", returnUnbacked)
+            .putInt("returnBackedDays", returnBacked)
             .apply()
         return changed
     }
@@ -1367,6 +1382,14 @@ internal class LanBackupStateStore(
     fun backedRetentionDays(): Int = context
         .getSharedPreferences(RETENTION_PREFS, Context.MODE_PRIVATE)
         .getInt("backedDays", 7)
+
+    fun returnUnbackedRetentionDays(): Int = context
+        .getSharedPreferences(RETENTION_PREFS, Context.MODE_PRIVATE)
+        .getInt("returnUnbackedDays", 3)
+
+    fun returnBackedRetentionDays(): Int = context
+        .getSharedPreferences(RETENTION_PREFS, Context.MODE_PRIVATE)
+        .getInt("returnBackedDays", 1)
 
     fun deviceId(): String {
         val androidId = Settings.Secure.getString(

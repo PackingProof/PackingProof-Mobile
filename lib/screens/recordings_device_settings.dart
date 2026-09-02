@@ -6,21 +6,25 @@ class _RetentionSettings extends StatelessWidget {
     required this.backedRetention,
     required this.onUnbackedRetentionChanged,
     required this.onBackedRetentionChanged,
+    required this.returnUnbackedRetention,
+    required this.returnBackedRetention,
+    required this.onReturnUnbackedRetentionChanged,
+    required this.onReturnBackedRetentionChanged,
   });
 
   final UnbackedRetentionPolicy unbackedRetention;
   final BackedRetentionPolicy backedRetention;
   final ValueChanged<UnbackedRetentionPolicy> onUnbackedRetentionChanged;
   final ValueChanged<BackedRetentionPolicy> onBackedRetentionChanged;
+  final UnbackedRetentionPolicy returnUnbackedRetention;
+  final BackedRetentionPolicy returnBackedRetention;
+  final ValueChanged<UnbackedRetentionPolicy> onReturnUnbackedRetentionChanged;
+  final ValueChanged<BackedRetentionPolicy> onReturnBackedRetentionChanged;
 
   static const String _retentionDescription =
-      '保留策略：\n'
-      '· 未备份录像超过“未备份保留”天数后会被清理；选“不清除”则一直保留。\n'
-      '· 已备份录像超过“备份后保留”天数后会被清理；选“不清除”则一直保留。\n'
-      '· 已备份录像清理前会向电脑确认，电脑离线时暂时保留。\n'
-      '空间不足时：\n'
-      '· 优先清理最老的、已完成电脑校验的备份录像；\n'
-      '· 不会为腾出空间删除未备份录像。\n'
+      '每组录像分别设置未备份和备份后的保留时间，选择“不清除”则一直保留。\n'
+      '已备份录像清理前会向电脑确认，电脑离线或校验未完成时会暂时保留。\n'
+      '空间不足时优先清理最老的、已完成电脑校验的备份录像，不会删除未备份录像。\n'
       '正在上传或等待备份的录像会延后清理';
 
   @override
@@ -33,7 +37,7 @@ class _RetentionSettings extends StatelessWidget {
           Row(
             children: <Widget>[
               const Text(
-                '录像清理',
+                '发货录像清理',
                 style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
               ),
               const Spacer(),
@@ -51,10 +55,24 @@ class _RetentionSettings extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           _RetentionDropdowns(
+            keyPrefix: 'shipping',
             unbackedRetention: unbackedRetention,
             backedRetention: backedRetention,
             onUnbackedRetentionChanged: onUnbackedRetentionChanged,
             onBackedRetentionChanged: onBackedRetentionChanged,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            '退货录像清理',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          _RetentionDropdowns(
+            keyPrefix: 'return',
+            unbackedRetention: returnUnbackedRetention,
+            backedRetention: returnBackedRetention,
+            onUnbackedRetentionChanged: onReturnUnbackedRetentionChanged,
+            onBackedRetentionChanged: onReturnBackedRetentionChanged,
           ),
         ],
       ),
@@ -80,12 +98,14 @@ class _RetentionSettings extends StatelessWidget {
 
 class _RetentionDropdowns extends StatelessWidget {
   const _RetentionDropdowns({
+    this.keyPrefix = '',
     required this.unbackedRetention,
     required this.backedRetention,
     required this.onUnbackedRetentionChanged,
     required this.onBackedRetentionChanged,
   });
 
+  final String keyPrefix;
   final UnbackedRetentionPolicy unbackedRetention;
   final BackedRetentionPolicy backedRetention;
   final ValueChanged<UnbackedRetentionPolicy> onUnbackedRetentionChanged;
@@ -93,14 +113,17 @@ class _RetentionDropdowns extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
     return Column(
       children: <Widget>[
         Row(
           children: <Widget>[
             Expanded(
               child: DropdownButtonFormField<UnbackedRetentionPolicy>(
-                key: const Key('unbacked-retention-dropdown'),
+                key: Key(
+                  keyPrefix == 'shipping'
+                      ? 'unbacked-retention-dropdown'
+                      : '$keyPrefix-unbacked-retention-dropdown',
+                ),
                 initialValue: unbackedRetention,
                 decoration: const InputDecoration(
                   labelText: '未备份保留',
@@ -122,7 +145,11 @@ class _RetentionDropdowns extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: DropdownButtonFormField<BackedRetentionPolicy>(
-                key: const Key('backed-retention-dropdown'),
+                key: Key(
+                  keyPrefix == 'shipping'
+                      ? 'backed-retention-dropdown'
+                      : '$keyPrefix-backed-retention-dropdown',
+                ),
                 initialValue: backedRetention,
                 decoration: const InputDecoration(
                   labelText: '备份后保留',
@@ -143,14 +170,6 @@ class _RetentionDropdowns extends StatelessWidget {
             ),
           ],
         ),
-        if (unbackedRetention !=
-            UnbackedRetentionPolicy.keepForever) ...<Widget>[
-          const SizedBox(height: 8),
-          Text(
-            '超过保留时间且仍未完成电脑备份的录像将从本机永久删除',
-            style: TextStyle(color: colors.error, fontSize: 11, height: 1.4),
-          ),
-        ],
       ],
     );
   }

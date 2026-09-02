@@ -44,6 +44,34 @@ class LanBackupCleanupSchedulerTest {
     }
 
     @Test
+    fun returnModeUsesReturnRetentionForScheduleAndLegacyTopLevelMode() {
+        val base = "2026-08-20T03:00:00Z"
+        val returnJob = JSONObject().put(
+            "sessions",
+            "[{\"mode\":\"return\"}]",
+        )
+        assertTrue(LanBackupCleanupScheduler.isReturnGoods(returnJob))
+        assertEquals(
+            Instant.parse("2026-08-21T03:00:00Z"),
+            LanBackupCleanupScheduler.dueAt(
+                state = "paused",
+                fileCreatedAt = base,
+                backupCompletedAt = base,
+                unbackedDays = 30,
+                backedDays = 7,
+                returnUnbackedDays = 3,
+                returnBackedDays = 1,
+                returnGoods = true,
+            ),
+        )
+        assertFalse(
+            LanBackupCleanupScheduler.isReturnGoods(
+                JSONObject().put("mode", "shipping"),
+            ),
+        )
+    }
+
+    @Test
     fun unreachableRemoteAttestationNeverAuthorizesLocalDeletion() {
         assertFalse(
             remoteAttestationAllowsLocalDeletion(RemoteRecordAttestation.Unreachable),

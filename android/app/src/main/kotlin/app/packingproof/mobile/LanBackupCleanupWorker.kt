@@ -9,6 +9,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import org.json.JSONObject
+import org.json.JSONArray
 import java.io.File
 import java.security.MessageDigest
 import java.time.Duration
@@ -136,6 +137,9 @@ internal object LanBackupCleanupScheduler {
             backupCompletedAt = nullableText(job, "backupCompletedAt"),
             unbackedDays = store.unbackedRetentionDays(),
             backedDays = store.backedRetentionDays(),
+            returnUnbackedDays = store.returnUnbackedRetentionDays(),
+            returnBackedDays = store.returnBackedRetentionDays(),
+            returnGoods = isReturnGoods(job),
         )
     }
 
@@ -145,14 +149,33 @@ internal object LanBackupCleanupScheduler {
         backupCompletedAt: String?,
         unbackedDays: Int,
         backedDays: Int,
+        returnUnbackedDays: Int = unbackedDays,
+        returnBackedDays: Int = 1,
+        returnGoods: Boolean = false,
     ): Instant? {
         if (state == "completed" && backupCompletedAt == null) return null
-        val days = if (backupCompletedAt != null) backedDays else unbackedDays
+        val days = if (backupCompletedAt != null) {
+            if (returnGoods) returnBackedDays else backedDays
+        } else {
+            if (returnGoods) returnUnbackedDays else unbackedDays
+        }
         if (days < 0) return null
         val base = runCatching {
             Instant.parse(backupCompletedAt ?: fileCreatedAt ?: return null)
         }.getOrNull() ?: return null
         return base.plus(Duration.ofDays(days.toLong()))
+    }
+
+    internal fun isReturnGoods(job: JSONObject): Boolean {
+        val directMode = nullableText(job, "mode")
+        if (directMode != null) return directMode.equals("return", ignoreCase = true)
+        val sessions = when (val value = job.opt("sessions")) {
+            is JSONArray -> value
+            is String -> runCatching { JSONArray(value) }.getOrNull()
+            else -> null
+        } ?: return false
+        return sessions.optJSONObject(0)?.optString("mode", "shipping")
+            ?.equals("return", ignoreCase = true) == true
     }
 
     internal fun nullableText(value: JSONObject, key: String): String? {

@@ -260,7 +260,7 @@ void main() {
     final double workModeY = tester
         .getTopLeft(find.byKey(const Key('work-mode-settings')))
         .dy;
-    final double retentionY = tester.getTopLeft(find.text('录像清理')).dy;
+    final double retentionY = tester.getTopLeft(find.text('发货录像清理')).dy;
     final double recordAudioY = tester
         .getTopLeft(find.byKey(const Key('record-audio-settings')))
         .dy;
@@ -287,8 +287,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('录像清理说明'), findsOneWidget);
-    expect(find.textContaining('未备份录像超过'), findsOneWidget);
+    expect(find.textContaining('每组录像分别设置'), findsOneWidget);
     expect(find.textContaining('最老的'), findsOneWidget);
+    expect(
+      find.text('超过保留时间且仍未完成电脑备份的录像将从本机永久删除'),
+      findsNothing,
+    );
   });
 
   testWidgets('面单条码最短长度可调整', (WidgetTester tester) async {
@@ -431,6 +435,14 @@ void main() {
     );
     expect(
       find.descendant(of: recordingCard, matching: find.text('录像清理')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: recordingCard, matching: find.text('发货录像清理')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: recordingCard, matching: find.text('退货录像清理')),
       findsOneWidget,
     );
     expect(

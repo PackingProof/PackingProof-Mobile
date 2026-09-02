@@ -181,6 +181,8 @@ class RecordingsScreen extends StatefulWidget {
     this.onRetryCapabilityProbe,
     this.unbackedRetention = UnbackedRetentionPolicy.days30,
     this.backedRetention = BackedRetentionPolicy.days7,
+    this.returnUnbackedRetention = UnbackedRetentionPolicy.days3,
+    this.returnBackedRetention = BackedRetentionPolicy.days1,
     this.onBackupRetentionChanged,
     this.onLoadRemoteRecordings,
     this.onLoadLocalRecordings,
@@ -259,9 +261,13 @@ class RecordingsScreen extends StatefulWidget {
   final VoidCallback? onRetryCapabilityProbe;
   final UnbackedRetentionPolicy unbackedRetention;
   final BackedRetentionPolicy backedRetention;
+  final UnbackedRetentionPolicy returnUnbackedRetention;
+  final BackedRetentionPolicy returnBackedRetention;
   final Future<void> Function({
     required UnbackedRetentionPolicy unbacked,
     required BackedRetentionPolicy backed,
+    required UnbackedRetentionPolicy returnUnbacked,
+    required BackedRetentionPolicy returnBacked,
   })?
   onBackupRetentionChanged;
   final Future<RemoteRecordingPage> Function({
@@ -346,6 +352,8 @@ class _RecordingsScreenState extends State<RecordingsScreen>
   late List<RecordingSession> _sessions;
   late UnbackedRetentionPolicy _unbackedRetention;
   late BackedRetentionPolicy _backedRetention;
+  late UnbackedRetentionPolicy _returnUnbackedRetention;
+  late BackedRetentionPolicy _returnBackedRetention;
   late Set<int> _hiddenRemoteIds;
   Timer? _remoteSearchTimer;
   final TextEditingController _searchController = TextEditingController();
@@ -408,6 +416,8 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _initializeBackupCoordinator();
     _unbackedRetention = widget.unbackedRetention;
     _backedRetention = widget.backedRetention;
+    _returnUnbackedRetention = widget.returnUnbackedRetention;
+    _returnBackedRetention = widget.returnBackedRetention;
     _hiddenRemoteIds = Set<int>.of(widget.hiddenRemoteRecordingIds);
     _applyExternalSearch(widget.externalSearchQuery);
     _attachBackupSnapshotListener();
@@ -468,6 +478,8 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _historyPageSize = widget.historyPageSize;
     _unbackedRetention = widget.unbackedRetention;
     _backedRetention = widget.backedRetention;
+    _returnUnbackedRetention = widget.returnUnbackedRetention;
+    _returnBackedRetention = widget.returnBackedRetention;
     if (!identical(
       oldWidget.hiddenRemoteRecordingIds,
       widget.hiddenRemoteRecordingIds,
@@ -689,6 +701,8 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     await widget.onBackupRetentionChanged?.call(
       unbacked: value,
       backed: _backedRetention,
+      returnUnbacked: _returnUnbackedRetention,
+      returnBacked: _returnBackedRetention,
     );
   }
 
@@ -709,6 +723,8 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     await widget.onBackupRetentionChanged?.call(
       unbacked: _unbackedRetention,
       backed: value,
+      returnUnbacked: _returnUnbackedRetention,
+      returnBacked: _returnBackedRetention,
     );
   }
 
@@ -1077,6 +1093,26 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                     backedRetention: _backedRetention,
                     onUnbackedRetentionChanged: _setUnbackedRetention,
                     onBackedRetentionChanged: _setBackedRetention,
+                    returnUnbackedRetention: _returnUnbackedRetention,
+                    returnBackedRetention: _returnBackedRetention,
+                    onReturnUnbackedRetentionChanged: (value) async {
+                      setState(() => _returnUnbackedRetention = value);
+                      await widget.onBackupRetentionChanged?.call(
+                        unbacked: _unbackedRetention,
+                        backed: _backedRetention,
+                        returnUnbacked: value,
+                        returnBacked: _returnBackedRetention,
+                      );
+                    },
+                    onReturnBackedRetentionChanged: (value) async {
+                      setState(() => _returnBackedRetention = value);
+                      await widget.onBackupRetentionChanged?.call(
+                        unbacked: _unbackedRetention,
+                        backed: _backedRetention,
+                        returnUnbacked: _returnUnbackedRetention,
+                        returnBacked: value,
+                      );
+                    },
                   ),
                   Divider(
                     height: 1,

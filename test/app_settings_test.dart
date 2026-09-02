@@ -42,6 +42,8 @@ void main() {
     expect(settings.lanBackupAutoEnabled, isTrue);
     expect(settings.unbackedRetention, UnbackedRetentionPolicy.days30);
     expect(settings.backedRetention, BackedRetentionPolicy.days7);
+    expect(settings.returnUnbackedRetention, UnbackedRetentionPolicy.days3);
+    expect(settings.returnBackedRetention, BackedRetentionPolicy.days1);
     expect(settings.minimumBarcodeLength, 11);
     expect(settings.operationMode, RecordingOperationMode.shipping);
 

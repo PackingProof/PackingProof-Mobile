@@ -691,7 +691,9 @@ final class IosBackupHostApi: BackupNativeHostApi {
     do {
       try saveRetentionDays(
         unbacked: (request["unbackedRetentionDays"] as? Int) ?? -1,
-        backed: (request["backedRetentionDays"] as? Int) ?? -1
+        backed: (request["backedRetentionDays"] as? Int) ?? -1,
+        returnUnbacked: (request["returnUnbackedRetentionDays"] as? Int) ?? 3,
+        returnBacked: (request["returnBackedRetentionDays"] as? Int) ?? 1
       )
       triggerCleanup()
       try applyAutoEnabled(request["autoEnabled"] as? Bool ?? false)
@@ -1013,7 +1015,9 @@ final class IosBackupHostApi: BackupNativeHostApi {
     do {
       try saveRetentionDays(
         unbacked: (request["unbackedRetentionDays"] as? Int) ?? -1,
-        backed: (request["backedRetentionDays"] as? Int) ?? -1
+        backed: (request["backedRetentionDays"] as? Int) ?? -1,
+        returnUnbacked: (request["returnUnbackedRetentionDays"] as? Int) ?? 3,
+        returnBacked: (request["returnBackedRetentionDays"] as? Int) ?? 1
       )
       triggerCleanup()
       completion(.success(()))
@@ -1585,14 +1589,22 @@ final class IosBackupHostApi: BackupNativeHostApi {
     return "本机"
   }
 
-  private func saveRetentionDays(unbacked: Int, backed: Int) throws {
+  private func saveRetentionDays(
+    unbacked: Int, backed: Int, returnUnbacked: Int, returnBacked: Int
+  ) throws {
     cleanupPolicyLock.lock()
     defer { cleanupPolicyLock.unlock() }
+    let previous = defaults.dictionary(forKey: keys.retention)
+    let returnChanged = (previous?["returnUnbackedRetentionDays"] as? Int ?? 3) != returnUnbacked
+      || (previous?["returnBackedRetentionDays"] as? Int ?? 1) != returnBacked
     try jobStore.get().activateCleanupPolicy(
-      unbackedRetentionDays: unbacked, backedRetentionDays: backed
+      unbackedRetentionDays: unbacked, backedRetentionDays: backed,
+      forceReset: returnChanged
     )
     defaults.set(
-      ["unbackedRetentionDays": unbacked, "backedRetentionDays": backed],
+      ["unbackedRetentionDays": unbacked, "backedRetentionDays": backed,
+       "returnUnbackedRetentionDays": returnUnbacked,
+       "returnBackedRetentionDays": returnBacked],
       forKey: keys.retention
     )
     guard unbackedRetentionDays() == unbacked, backedRetentionDays() == backed else {
@@ -1610,6 +1622,16 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private func backedRetentionDays() -> Int {
     let values = defaults.dictionary(forKey: keys.retention)
     return (values?["backedRetentionDays"] as? Int) ?? 7
+  }
+
+  private func returnUnbackedRetentionDays() -> Int {
+    let values = defaults.dictionary(forKey: keys.retention)
+    return (values?["returnUnbackedRetentionDays"] as? Int) ?? 3
+  }
+
+  private func returnBackedRetentionDays() -> Int {
+    let values = defaults.dictionary(forKey: keys.retention)
+    return (values?["returnBackedRetentionDays"] as? Int) ?? 1
   }
 
   private func jobsApplyingFailureOverrides(
@@ -2524,7 +2546,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   private func dueAt(
-    _ job: [String: Any], unbackedDays: Int, backedDays: Int
+    _ job: [String: Any], unbackedDays: Int, backedDays: Int,
+    returnUnbackedDays: Int? = nil, returnBackedDays: Int? = nil
   ) -> Date? {
     let state = job["state"] as? String ?? ""
     let completedAt = job["backupCompletedAt"] as? String
@@ -2534,17 +2557,28 @@ final class IosBackupHostApi: BackupNativeHostApi {
     }
     let days: Int
     let base: String?
+    let isReturn = isReturnGoods(job)
     if let completedAt {
-      days = backedDays
+      days = isReturn ? (returnBackedDays ?? self.returnBackedRetentionDays()) : backedDays
       base = completedAt
     } else {
-      days = unbackedDays
+      days = isReturn ? (returnUnbackedDays ?? self.returnUnbackedRetentionDays()) : unbackedDays
       base = job["fileCreatedAt"] as? String
     }
     guard days >= 0, let base, let baseDate = Self.isoFormatter.date(from: base) else {
       return nil
     }
     return baseDate.addingTimeInterval(Double(days) * 24 * 60 * 60)
+  }
+
+  private func isReturnGoods(_ job: [String: Any]) -> Bool {
+    if let mode = job["mode"] as? String {
+      return mode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "return"
+    }
+    guard let sessions = job["sessions"] as? [Any],
+          let session = sessions.first as? [String: Any],
+          let mode = session["mode"] as? String else { return false }
+    return mode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "return"
   }
 
   private func isConfirmationFresh(_ lastAttestedAt: String?, now: Date) -> Bool {

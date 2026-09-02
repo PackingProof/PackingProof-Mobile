@@ -697,14 +697,14 @@ final class IosBackupJobStore {
   }
 
   func activateCleanupPolicy(
-    unbackedRetentionDays: Int, backedRetentionDays: Int
+    unbackedRetentionDays: Int, backedRetentionDays: Int, forceReset: Bool = false
   ) throws {
     lock.lock()
     defer { lock.unlock() }
     try execute("BEGIN IMMEDIATE", operation: "开始切换清理策略")
     do {
       let current = try cleanupCheckpointUnlocked()
-      if current == nil
+      if forceReset || current == nil
           || current!.unbackedDays != unbackedRetentionDays
           || current!.backedDays != backedRetentionDays {
         // A claimed retention intent has not crossed the irreversible moving

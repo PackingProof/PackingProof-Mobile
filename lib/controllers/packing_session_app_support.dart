@@ -84,6 +84,8 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
   Map<String, Object?>? get _capabilityState;
   UnbackedRetentionPolicy get _unbackedRetention;
   BackedRetentionPolicy get _backedRetention;
+  UnbackedRetentionPolicy get _returnUnbackedRetention;
+  BackedRetentionPolicy get _returnBackedRetention;
   bool get _recordAudioEnabled;
   RecordingVideoCodec get _preferredVideoCodec;
   RecordingSpecPreset get _recordingSpec;
@@ -138,6 +140,8 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
       0;
   UnbackedRetentionPolicy get unbackedRetention => _unbackedRetention;
   BackedRetentionPolicy get backedRetention => _backedRetention;
+  UnbackedRetentionPolicy get returnUnbackedRetention => _returnUnbackedRetention;
+  BackedRetentionPolicy get returnBackedRetention => _returnBackedRetention;
   bool get recordAudioEnabled => _recordAudioEnabled;
   RecordingVideoCodec get preferredVideoCodec => _preferredVideoCodec;
   RecordingSpecPreset get recordingSpec => _recordingSpec;

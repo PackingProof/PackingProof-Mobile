@@ -160,6 +160,8 @@ abstract interface class LanBackupSink implements Listenable {
     required bool autoEnabled,
     required UnbackedRetentionPolicy unbackedRetention,
     required BackedRetentionPolicy backedRetention,
+    UnbackedRetentionPolicy returnUnbackedRetention = UnbackedRetentionPolicy.days3,
+    BackedRetentionPolicy returnBackedRetention = BackedRetentionPolicy.days1,
   });
   Future<void> pair(
     String qrValue, {
@@ -176,6 +178,8 @@ abstract interface class LanBackupSink implements Listenable {
   Future<void> setRetentionPolicies({
     required UnbackedRetentionPolicy unbacked,
     required BackedRetentionPolicy backed,
+    UnbackedRetentionPolicy returnUnbacked = UnbackedRetentionPolicy.days3,
+    BackedRetentionPolicy returnBacked = BackedRetentionPolicy.days1,
   });
   Future<void> enqueueFinalizedFile(
     String filePath,
@@ -307,6 +311,8 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     required bool autoEnabled,
     required UnbackedRetentionPolicy unbackedRetention,
     required BackedRetentionPolicy backedRetention,
+    UnbackedRetentionPolicy returnUnbackedRetention = UnbackedRetentionPolicy.days3,
+    BackedRetentionPolicy returnBackedRetention = BackedRetentionPolicy.days1,
   }) async {
     _attachNativeHandler();
     _snapshot = _snapshot.copyWith(autoEnabled: autoEnabled);
@@ -334,6 +340,8 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
             'autoEnabled': autoEnabled,
             'unbackedRetentionDays': unbackedRetention.days,
             'backedRetentionDays': backedRetention.days,
+            'returnUnbackedRetentionDays': returnUnbackedRetention.days,
+            'returnBackedRetentionDays': returnBackedRetention.days,
           });
       _accessKey = await _platform.loadAccessKey() ?? '';
       _applyNativeSummary(summary);
@@ -910,10 +918,14 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   Future<void> setRetentionPolicies({
     required UnbackedRetentionPolicy unbacked,
     required BackedRetentionPolicy backed,
+    UnbackedRetentionPolicy returnUnbacked = UnbackedRetentionPolicy.days3,
+    BackedRetentionPolicy returnBacked = BackedRetentionPolicy.days1,
   }) async {
     await _platform.updateRetentionSchedule(<String, Object?>{
       'unbackedRetentionDays': unbacked.days,
       'backedRetentionDays': backed.days,
+      'returnUnbackedRetentionDays': returnUnbacked.days,
+      'returnBackedRetentionDays': returnBacked.days,
     });
     await refresh();
   }

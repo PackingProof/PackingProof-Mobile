@@ -11,6 +11,8 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
   set _sessions(List<RecordingSession> value);
   set _unbackedRetention(UnbackedRetentionPolicy value);
   set _backedRetention(BackedRetentionPolicy value);
+  set _returnUnbackedRetention(UnbackedRetentionPolicy value);
+  set _returnBackedRetention(BackedRetentionPolicy value);
   bool get _disposed;
 
   bool _cleanupDrainRunning = false;
@@ -42,15 +44,26 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
   Future<void> setBackupRetention({
     required UnbackedRetentionPolicy unbacked,
     required BackedRetentionPolicy backed,
+    required UnbackedRetentionPolicy returnUnbacked,
+    required BackedRetentionPolicy returnBacked,
   }) async {
     _unbackedRetention = unbacked;
     _backedRetention = backed;
+    _returnUnbackedRetention = returnUnbacked;
+    _returnBackedRetention = returnBacked;
     notifyListeners();
     await _lanBackupService.setRetentionPolicies(
       unbacked: unbacked,
       backed: backed,
+      returnUnbacked: returnUnbacked,
+      returnBacked: returnBacked,
     );
-    await _repository.saveBackupRetention(unbacked: unbacked, backed: backed);
+    await _repository.saveBackupRetention(
+      unbacked: unbacked,
+      backed: backed,
+      returnUnbacked: returnUnbacked,
+      returnBacked: returnBacked,
+    );
   }
 
   Future<void> backupAllSessions() =>
