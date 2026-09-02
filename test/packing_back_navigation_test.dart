@@ -139,6 +139,7 @@ void main() {
   });
 
   testWidgets('电脑推荐版本过高时使用不阻塞工作的更新横幅', (WidgetTester tester) async {
+    Uri? opened;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -151,6 +152,10 @@ void main() {
                   minimumBuildNumber: 11006,
                   message: '当前 APP 版本过低，需要更新',
                 ),
+                openUrl: (Uri uri) async {
+                  opened = uri;
+                  return true;
+                },
               ),
               child: const Text('测试更新'),
             ),
@@ -165,7 +170,7 @@ void main() {
     expect(find.text('手机 App 更新'), findsOneWidget);
     expect(find.textContaining('当前 APP 版本过低，需要更新'), findsOneWidget);
     expect(find.textContaining('最低兼容版本：0.5.6'), findsOneWidget);
-    expect(find.textContaining('继续识别面单和录像'), findsOneWidget);
+    expect(find.textContaining('继续识别面单和录像'), findsNothing);
     expect(find.byType(MaterialBanner), findsOneWidget);
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.text('稍后'), findsOneWidget);
@@ -174,6 +179,13 @@ void main() {
       mobileAppDownloadUrl,
       'https://gitee.com/PackingProof/PackingProof-Mobile/releases/latest',
     );
+    await tester.tap(find.text('打开下载页面'));
+    await tester.pumpAndSettle();
+    expect(find.text('更新说明'), findsOneWidget);
+    expect(opened, isNull);
+    await tester.tap(find.text('继续'));
+    await tester.pump();
+    expect(opened.toString(), mobileAppDownloadUrl);
   });
 }
 

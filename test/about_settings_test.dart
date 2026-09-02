@@ -47,6 +47,10 @@ void main() {
     expect(find.text('Microsoft Edge TTS'), findsOneWidget);
 
     await tester.tap(find.text('检查更新'));
+    await tester.pumpAndSettle();
+    expect(find.text('更新说明'), findsOneWidget);
+    expect(opened, isNull);
+    await tester.tap(find.text('继续'));
     await tester.pump();
     expect(opened.toString(), packingProofReleasesUrl);
   });

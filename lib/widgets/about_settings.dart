@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app/app_build_config.dart';
+import '../app/app_update_links.dart';
 import '../app/packing_proof_mobile_app.dart';
 import '../services/camera_diagnostics_service.dart';
 import '../services/continuous_camera_service.dart';
@@ -15,8 +17,7 @@ import '../services/diagnostics_log_service.dart';
 
 const String packingProofRepositoryUrl =
     'https://github.com/PackingProof/PackingProof-Mobile';
-const String packingProofReleasesUrl =
-    'https://gitee.com/PackingProof/PackingProof-Mobile/releases/latest';
+const String packingProofReleasesUrl = packingProofAndroidReleasesUrl;
 const String packingProofSupportEmail = 'PackingProof@outlook.com';
 
 typedef PackageInfoLoader = Future<PackageInfo> Function();
@@ -124,6 +125,36 @@ class _AboutScreenState extends State<AboutScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('无法打开链接，请稍后重试')));
+    }
+  }
+
+  Future<void> _showUpdateInstructions() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        final bool ios = defaultTargetPlatform == TargetPlatform.iOS;
+        return AlertDialog(
+          title: const Text('更新说明'),
+          content: Text(
+            ios
+                ? '即将打开 TestFlight。请在 TestFlight 中完成更新；如果尚未安装 TestFlight，请先按系统提示安装'
+                : '即将打开 Gitee 下载页面。下载 APK 后，如果文件被自动追加了其他后缀，请删除多余后缀并恢复为 .apk，再覆盖安装。请勿卸载应用，以免影响本机录像和设置',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('继续'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true && mounted) {
+      await _open(packingProofAppUpdateUrl());
     }
   }
 
@@ -326,8 +357,8 @@ class _AboutScreenState extends State<AboutScreen> {
                   _LinkRow(
                     icon: Icons.system_update_alt_rounded,
                     title: '检查更新',
-                    subtitle: packingProofReleasesUrl,
-                    onTap: () => unawaited(_open(packingProofReleasesUrl)),
+                    subtitle: packingProofAppUpdateUrl(),
+                    onTap: () => unawaited(_showUpdateInstructions()),
                   ),
                   const SizedBox(height: 8),
                   _InfoRow(

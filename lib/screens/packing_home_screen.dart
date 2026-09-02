@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app/app_build_config.dart';
+import '../app/app_update_links.dart';
 import '../app/packing_proof_theme.dart';
 import '../controllers/packing_session_controller.dart';
 import '../models/barcode_marker.dart';
@@ -132,8 +133,7 @@ Future<bool> showComputerReplacementDialog(
       false;
 }
 
-const String mobileAppDownloadUrl =
-    'https://gitee.com/PackingProof/PackingProof-Mobile/releases/latest';
+const String mobileAppDownloadUrl = packingProofAndroidReleasesUrl;
 
 @visibleForTesting
 Future<void> showMobileAppUpdateNotice(
@@ -159,13 +159,10 @@ Future<void> showMobileAppUpdateNotice(
           Text(
             notice.message.isEmpty
                 ? '当前 APP 版本过低，需要更新\n'
-                      '电脑端要求使用 ${notice.minimumVersion} 或更高版本\n'
-                      '暂不更新时仍可继续识别面单和录像'
+                      '电脑端要求使用 ${notice.minimumVersion} 或更高版本'
                 : notice.updateRequired
-                ? '${notice.message}\n最低兼容版本：${notice.minimumVersion}\n'
-                      '暂不更新时仍可继续识别面单和录像'
-                : '${notice.message}\n最新版本：${notice.latestVersion}\n'
-                      '暂不更新时仍可继续识别面单和录像',
+                ? '${notice.message}\n最低兼容版本：${notice.minimumVersion}'
+                : '${notice.message}\n最新版本：${notice.latestVersion}',
           ),
         ],
       ),
@@ -177,14 +174,12 @@ Future<void> showMobileAppUpdateNotice(
         TextButton(
           onPressed: () {
             messenger.hideCurrentMaterialBanner();
-            final Uri uri = Uri.parse(mobileAppDownloadUrl);
             unawaited(
-              (openUrl ??
-                      (Uri value) => launchUrl(
-                        value,
-                        mode: LaunchMode.externalApplication,
-                      ))
-                  .call(uri),
+              _showMobileUpdateInstructions(
+                context,
+                Uri.parse(packingProofAppUpdateUrl()),
+                openUrl,
+              ),
             );
           },
           child: const Text('打开下载页面'),
@@ -193,6 +188,39 @@ Future<void> showMobileAppUpdateNotice(
     ),
   );
   return controller.closed.then<void>((_) {});
+}
+
+Future<void> _showMobileUpdateInstructions(
+  BuildContext context,
+  Uri uri,
+  Future<bool> Function(Uri uri)? openUrl,
+) async {
+  final bool ios = defaultTargetPlatform == TargetPlatform.iOS;
+  final bool? confirmed = await showDialog<bool>(
+    context: context,
+    builder: (BuildContext dialogContext) => AlertDialog(
+      title: const Text('更新说明'),
+      content: Text(
+        ios
+            ? '即将打开 TestFlight。请在 TestFlight 中完成更新；如果尚未安装 TestFlight，请先按系统提示安装'
+            : '即将打开 Gitee 下载页面。下载 APK 后，如果文件被自动追加了其他后缀，请删除多余后缀并恢复为 .apk，再覆盖安装。请勿卸载应用，以免影响本机录像和设置',
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('继续'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  await (openUrl ??
+          (Uri value) => launchUrl(value, mode: LaunchMode.externalApplication))
+      .call(uri);
 }
 
 class PackingHomeScreen extends StatefulWidget {
