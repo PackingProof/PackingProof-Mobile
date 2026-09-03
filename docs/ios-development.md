@@ -86,7 +86,7 @@ dist/ios/PackingProof-Mobile-profile-v<versionName>+<versionCode>.ipa
 
 脚本仍兼容原有的导出方式与可选缓存清理参数，例如 `Tools/Build-iOS.sh ad-hoc clean`。`clean` 只清理 Flutter 构建缓存；脚本不会安装或卸载 App，也不会删除设备容器或本地录像。
 
-脚本会在调用 Flutter 构建前读取当前 Git revision 和 UTC 构建时间，并同时注入 App 的 `BUILD_REVISION`、`BUILD_TIMESTAMP` 与外部构建清单。设备诊断中的构建身份必须与 `build-manifest.json` 一致；两者任一为空或不一致时，不得用该包作性能或发布验收。
+脚本会在调用 Flutter 构建前读取当前 Git revision 和 UTC 构建时间，并同时注入 App 的 `BUILD_REVISION`、`BUILD_TIMESTAMP` 与外部构建清单。设备诊断中的构建身份必须与 `build-manifest.json` 一致；两者任一为空或不一致时，不得用该包作性能或发布验收。构建清单和校验文件只用于本地发布门禁，不作为 TestFlight 或 Release 附件。
 
 临时内部分发可传入 `ad-hoc` 或 `development`。签名证书、描述文件和其他凭据不得提交、打印或复制进构建产物。
 

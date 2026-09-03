@@ -52,7 +52,7 @@ pwsh -NoProfile -File Tools\Publish-Android.ps1 `
 
 ## 产物与发布平台
 
-正式输出必须包含：
+正式构建目录输出必须包含（仅用于本地校验，不全部上传）：
 
 ```text
 dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk
@@ -64,12 +64,12 @@ build-manifest.json
 - 只有固定语音资源、元数据、Git revision、正式签名和 SHA256 全部验证通过，才算构建成功
 - keystore、`签名凭据.txt`、证书和其他签名配置必须位于仓库外，禁止打印、提交、复制或打包
 
-GitHub Release 使用 GitHub 插件或 `gh` 创建并上传 tag、APK、`SHA256SUMS.txt` 和发布笔记。Gitee Release 使用：
+GitHub/Gitee Release 只上传 APK。`SHA256SUMS.txt` 和 `build-manifest.json` 仅用于本地发布门禁与问题追踪，不作为 Release 附件。GitHub Release 使用 GitHub 插件或 `gh` 创建并上传 tag、APK 和发布笔记。Gitee Release 使用：
 
 ```powershell
 gitee auth status
 gitee release create --tag <tag> --name "..." --notes "..."
-gitee release upload <tag> dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk SHA256SUMS.txt
+gitee release upload <tag> dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk
 ```
 
 发布笔记必须基于仓库根目录的 `RELEASE_NOTES_TEMPLATE.md`：
