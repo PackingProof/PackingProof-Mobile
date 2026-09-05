@@ -59,6 +59,7 @@ part 'packing_session_pairing_coordinator.dart';
 part 'packing_session_settings_coordinator.dart';
 part 'packing_session_storage_coordinator.dart';
 part 'packing_session_watermark_coordinator.dart';
+part 'packing_session_watermark_helpers.dart';
 
 enum PackingSessionPhase {
   initializing,
@@ -206,7 +207,8 @@ class PackingSessionController extends ChangeNotifier
   @override
   BackedRetentionPolicy _backedRetention = BackedRetentionPolicy.days7;
   @override
-  UnbackedRetentionPolicy _returnUnbackedRetention = UnbackedRetentionPolicy.days3;
+  UnbackedRetentionPolicy _returnUnbackedRetention =
+      UnbackedRetentionPolicy.days3;
   @override
   BackedRetentionPolicy _returnBackedRetention = BackedRetentionPolicy.days1;
   bool _appIsActive = true;
@@ -1659,24 +1661,3 @@ class PackingSessionController extends ChangeNotifier
     super.dispose();
   }
 }
-
-@visibleForTesting
-WatermarkProcessingStatus nativeWatermarkStatus(
-  NativeWatermarkDisposition disposition,
-) => switch (disposition) {
-  NativeWatermarkDisposition.completed => WatermarkProcessingStatus.completed,
-  NativeWatermarkDisposition.postProcessRequired =>
-    WatermarkProcessingStatus.pending,
-  NativeWatermarkDisposition.failedPartial => WatermarkProcessingStatus.failed,
-};
-
-@visibleForTesting
-bool nativeWatermarkNeedsPostProcess(NativeWatermarkDisposition disposition) =>
-    switch (disposition) {
-      NativeWatermarkDisposition.completed => false,
-      NativeWatermarkDisposition.postProcessRequired => true,
-      NativeWatermarkDisposition.failedPartial => false,
-    };
-
-/// 备份触发原因是否要求强制重启已有上传任务：只有用户手动“立即备份”需要，
-/// 启动恢复、连接恢复等场景由原生状态机裁决，避免每次启动全量重启上传。
