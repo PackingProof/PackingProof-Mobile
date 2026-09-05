@@ -757,3 +757,118 @@ class _MaxVolumeSettings extends StatelessWidget {
     );
   }
 }
+
+extension _RecordingsSettingsView on _RecordingsScreenState {
+  List<Widget> buildRecordingsSettingsChildren(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return <Widget>[
+      _SettingsCard(
+        key: const Key('work-settings-card'),
+        children: <Widget>[
+          _WorkModeSettings(workMode: _workMode, onChanged: _setWorkMode),
+          if (widget.onMinimumBarcodeLengthChanged != null) ...<Widget>[
+            Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+            _MinimumBarcodeLengthSettings(
+              value: _minimumBarcodeLength,
+              onChanged: _setMinimumBarcodeLength,
+            ),
+          ],
+        ],
+      ),
+      if (widget.showCameraCapabilityCard &&
+          widget.capabilities?.supports(
+                PlatformCapability.cameraCapabilityNegotiation,
+              ) !=
+              false &&
+          widget.capabilityMode != null) ...<Widget>[
+        const SizedBox(height: 12),
+        _SettingsCard(
+          key: const Key('camera-capability-settings-card'),
+          children: <Widget>[
+            _CameraCapabilitySettings(
+              mode: widget.capabilityMode!,
+              statusText: widget.capabilityStatusText ?? '',
+              onRetry: widget.onRetryCapabilityProbe,
+            ),
+          ],
+        ),
+      ],
+      const SizedBox(height: 12),
+      _SettingsCard(
+        key: const Key('recording-settings-card'),
+        children: <Widget>[
+          _RetentionSettings(
+            unbackedRetention: _unbackedRetention,
+            backedRetention: _backedRetention,
+            onUnbackedRetentionChanged: _setUnbackedRetention,
+            onBackedRetentionChanged: _setBackedRetention,
+            returnUnbackedRetention: _returnUnbackedRetention,
+            returnBackedRetention: _returnBackedRetention,
+            onReturnUnbackedRetentionChanged: _setReturnUnbackedRetention,
+            onReturnBackedRetentionChanged: _setReturnBackedRetention,
+          ),
+          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+          _VideoCodecSettings(
+            codec: _preferredVideoCodec,
+            hevcEnabled: _deviceDecodeSupport?.supportsHevcRecording ?? false,
+            hevcWarning: _deviceDecodeSupport == null
+                ? null
+                : (!_deviceDecodeSupport!.supportsHevcRecording
+                      ? '当前设备不支持完整的 H.265 录制与播放能力，已使用 H.264'
+                      : null),
+            onChanged: _setPreferredVideoCodec,
+          ),
+          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+          _RecordingSpecSettings(
+            spec: _recordingSpec,
+            availableSpecs: widget.availableRecordingSpecs,
+            showUhd4kOption: widget.showUhd4kOption,
+            onChanged: _setRecordingSpec,
+          ),
+          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+          _RecordingOrientationSettings(
+            orientation: _recordingOrientation,
+            onChanged: (value) {
+              unawaited(_setRecordingOrientation(value));
+            },
+          ),
+          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+          _RecordAudioSettings(
+            enabled: _recordAudioEnabled,
+            onChanged: _setRecordAudioEnabled,
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      _SettingsCard(
+        key: const Key('voice-settings-card'),
+        children: <Widget>[
+          _SpeechPromptSettings(
+            enabled: _speechEnabled,
+            onChanged: _setSpeechEnabled,
+            onPreview: widget.onSpeechPreview,
+          ),
+          if (_maxVolumeSupported) ...<Widget>[
+            Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+            _MaxVolumeSettings(
+              enabled: _maxVolumeEnabled,
+              onChanged: _setMaxVolumeEnabled,
+            ),
+          ],
+        ],
+      ),
+      if (_orderReceiverSupported) ...<Widget>[
+        const SizedBox(height: 12),
+        _OrderReceiverSettings(
+          snapshot: widget.orderReceiverSnapshot,
+          onRetry: widget.onRetryOrderReceiver,
+          speechEnabled: _orderSpeechEnabled,
+          speechMasterEnabled: _speechEnabled,
+          onSpeechChanged: _setOrderSpeechEnabled,
+        ),
+      ],
+      const SizedBox(height: 12),
+      const AboutSettings(),
+    ];
+  }
+}
