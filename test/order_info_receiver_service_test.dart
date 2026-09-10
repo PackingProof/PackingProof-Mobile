@@ -34,7 +34,12 @@ class _FakeOrderReceiverPlatform implements OrderReceiverPlatform {
   Future<OrderReceiverPlatformSnapshot> status() async => statusResult;
 
   @override
-  Future<OrderInfo?> lookup(String trackingNumber) async => null;
+  Future<OrderInfo?> lookup(String trackingNumber) async {
+    lastLookup = trackingNumber;
+    return null;
+  }
+
+  String? lastLookup;
 
   @override
   Future<void> updateBackgroundDelivery(bool enabled) async {}
@@ -49,6 +54,13 @@ class _FakeOrderReceiverPlatform implements OrderReceiverPlatform {
 }
 
 void main() {
+  test('京东完整包裹号按裸运单号查询商品信息', () async {
+    final platform = _FakeOrderReceiverPlatform();
+    final service = OrderInfoReceiverService(platform: platform);
+    addTearDown(service.dispose);
+    await service.lookup('JD123456789012-1-1-');
+    expect(platform.lastLookup, 'JD123456789012');
+  });
   test('初始化时同步平台状态并转发订单事件', () async {
     final _FakeOrderReceiverPlatform platform = _FakeOrderReceiverPlatform(
       statusResult: const OrderReceiverPlatformSnapshot(

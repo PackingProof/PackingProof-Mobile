@@ -64,8 +64,11 @@ class BarcodeCandidatePolicy {
   static final RegExp _internationalPostalNumber = RegExp(r'^[A-Z]{2}\d{9}CN$');
 
   static String normalize(String? value) {
-    return JdBarcodePolicy.normalize(normalizeRaw(value));
+    return normalizeRaw(value);
   }
+
+  static String waybill(String code) =>
+      JdBarcodePolicy.waybill(normalizeRaw(code));
 
   static String normalizeRaw(String? value) =>
       (value ?? '').trim().replaceAll(' ', '').toUpperCase();

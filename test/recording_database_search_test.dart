@@ -46,6 +46,14 @@ void main() {
     await _expectSearch(database, '34567', <String>['mixed-content']);
     await _expectSearch(database, 'ABCdef', <String>['mixed-content']);
   });
+
+  test('京东裸号查询所有包裹，完整包裹码只查询对应录像', () async {
+    final database = RecordingDatabase(path: databasePath);
+    addTearDown(database.close);
+    await _expectSearch(database, 'JD987654321098', ['jd-first', 'jd-second']);
+    await _expectSearch(database, 'JD987654321098-1-2-', ['jd-first']);
+    await _expectSearch(database, 'JD987654321098-2-2-', ['jd-second']);
+  });
 }
 
 Future<void> _expectSearch(
@@ -79,6 +87,8 @@ Future<void> _seedSearchRows(String path) async {
         (id: 'literal-quote', searchText: "customer 'quoted' memo"),
         (id: 'mixed-content', searchText: 'sf123456789cn abcdef 红色连衣裙'),
         (id: 'plain-decoy', searchText: '普通商品 无特殊字符'),
+        (id: 'jd-first', searchText: 'JD987654321098-1-2-'),
+        (id: 'jd-second', searchText: 'JD987654321098-2-2-'),
       ];
   final Batch batch = db.batch();
   for (var index = 0; index < fixtures.length; index++) {

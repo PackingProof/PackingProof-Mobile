@@ -3,6 +3,24 @@ import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/services/recording_timeline.dart';
 
 void main() {
+  test('停录补全包裹号保留同一录像及原始时间，不覆盖已确定包裹', () {
+    final timeline = RecordingTimeline();
+    final now = DateTime(2026, 9, 11);
+    timeline.start(now);
+    timeline.bindCode('JD123456789012', now);
+    expect(
+      timeline.completePackageIdentity('JD123456789012-1-2-')?.code,
+      'JD123456789012-1-2-',
+    );
+    expect(timeline.completePackageIdentity('JD123456789012-2-2-'), isNull);
+    final sessions = timeline.buildSessions(
+      endedAt: now.add(const Duration(seconds: 10)),
+      filePath: 'test.mp4',
+      recordingId: 'one',
+    );
+    expect(sessions.single.displayCode, 'JD123456789012-1-2-');
+    expect(sessions.single.markers.single.occurredAt, now);
+  });
   test('拒绝把未物理分段的连续录像保存成多条记录', () {
     final RecordingTimeline timeline = RecordingTimeline();
     final DateTime startedAt = DateTime(2026, 7, 18, 9);

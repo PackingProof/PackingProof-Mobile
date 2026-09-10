@@ -9,6 +9,7 @@ import 'package:packing_proof_mobile/models/order_info.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
+import 'package:packing_proof_mobile/models/work_mode.dart';
 import 'package:packing_proof_mobile/platform/contracts/camera_platform.dart';
 import 'package:packing_proof_mobile/platform/contracts/backup_platform.dart';
 import 'package:packing_proof_mobile/platform/generated/platform_api.g.dart';
@@ -672,6 +673,38 @@ void main() {
 
     expect(controller.candidateCode, 'SF6048285539252');
     expect(controller.rejectedBarcodeMessage, isNull);
+  });
+
+  testWidgets('同码停录在最后一帧补全包裹号且只保存一个视频', (WidgetTester tester) async {
+    camera.fullSupported = true;
+    try {
+      await tester.runAsync(() async {
+        await controller.initialize();
+        await controller.retryCapabilityProbe();
+        await controller.setWorkMode(WorkMode.sameCodeStop);
+        await controller.startWork();
+      });
+      await _confirmBarcode(tester, controller, 'JD123456789012');
+      await _waitUntil(
+        tester,
+        () => camera.startWorkCalls == 1 && controller.isRecording,
+      );
+      // Both aliases remain the same visible label, so this must not stop it.
+      await _confirmBarcode(tester, controller, 'JD123456789012-1-2-');
+      expect(camera.stopWorkCalls, 0);
+      controller.handleNativeBarcodeFrameForTesting([]);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 3100)),
+      );
+      await _confirmBarcode(tester, controller, 'JD123456789012-1-2-');
+      await _waitUntil(tester, () => controller.sessions.isNotEmpty);
+      expect(controller.sessions.single.displayCode, 'JD123456789012-1-2-');
+      expect(camera.splitCalls, 0);
+      expect(camera.stopWorkCalls, 1);
+    } finally {
+      await _stopWorkIfNeeded(tester, controller);
+      await tester.pump(const Duration(seconds: 4));
+    }
   });
 
   testWidgets('原生录像开始前已暂停旧共享文件迁移', (WidgetTester tester) async {

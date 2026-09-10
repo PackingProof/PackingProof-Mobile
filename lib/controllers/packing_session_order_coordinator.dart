@@ -50,7 +50,8 @@ mixin _PackingSessionOrderCoordinator on _PackingSessionBarcodeCoordinator {
       return;
     }
     if (_timeline.currentCode.isEmpty ||
-        info.trackingNumber != _timeline.currentCode.trim().toUpperCase()) {
+        info.trackingNumber !=
+            BarcodeCandidatePolicy.waybill(_timeline.currentCode)) {
       return;
     }
     _setActiveOrderInfo(info, announce: false);

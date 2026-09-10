@@ -5,8 +5,8 @@ import 'package:packing_proof_mobile/services/jd_barcode_policy.dart';
 
 void main() {
   const vectors = <String, String>{
-    'JD123456789012-1-1-': 'JD123456789012',
-    ' jdva1234567891234-1-1- ': 'JDVA1234567891234',
+    'JD123456789012-1-1-': 'JD123456789012-1-1-',
+    ' jdva1234567891234-1-1- ': 'JDVA1234567891234-1-1-',
     'JD123456789012-1-2-': 'JD123456789012-1-2-',
     'JD123456789012-2-2-': 'JD123456789012-2-2-',
     'JD123456789012-1-1': 'JD123456789012-1-1',
@@ -33,10 +33,7 @@ void main() {
           ),
           (value: 'JD123456789012$suffix', area: 200.0, format: 'code128'),
         ], minimumLength: 11);
-        expect(
-          result,
-          suffix == '-1-1-' ? 'JD123456789012' : 'JD123456789012$suffix',
-        );
+        expect(result, 'JD123456789012$suffix');
       });
     }
   }
@@ -70,7 +67,7 @@ void main() {
             now.add(const Duration(milliseconds: 100)),
           )
           .confirmedCode,
-      'JD123456789012',
+      'JD123456789012-1-1-',
     );
     expect(
       tracker

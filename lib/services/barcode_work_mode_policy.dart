@@ -1,4 +1,5 @@
 import '../models/work_mode.dart';
+import 'jd_barcode_policy.dart';
 
 enum BarcodeWorkAction { bindCurrentVideo, startNextVideo, stopVideo, ignore }
 
@@ -15,11 +16,11 @@ class BarcodeWorkModePolicy {
     }
     return switch (mode) {
       WorkMode.continuousScan =>
-        currentCode == scannedCode
+        JdBarcodePolicy.sameRecordingCode(currentCode, scannedCode)
             ? BarcodeWorkAction.ignore
             : BarcodeWorkAction.startNextVideo,
       WorkMode.sameCodeStop =>
-        currentCode == scannedCode
+        JdBarcodePolicy.sameRecordingCode(currentCode, scannedCode)
             ? BarcodeWorkAction.stopVideo
             : BarcodeWorkAction.ignore,
     };

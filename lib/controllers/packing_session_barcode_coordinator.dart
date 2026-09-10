@@ -487,6 +487,10 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       case BarcodeWorkAction.stopVideo:
         _handlingBarcode = true;
         try {
+          final BarcodeMarker? completed = _timeline.completePackageIdentity(
+            code,
+          );
+          if (completed != null) _showMarkerFeedback(completed);
           await _saveCurrentVideoAndWait();
         } finally {
           _handlingBarcode = false;

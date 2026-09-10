@@ -1,4 +1,5 @@
 import 'barcode_candidate_policy.dart';
+import 'jd_barcode_policy.dart';
 
 class BarcodeObservation {
   const BarcodeObservation({this.candidateCode = '', this.confirmedCode = ''});
@@ -21,7 +22,7 @@ class BarcodeStabilityTracker {
   int _candidateObservations = 0;
 
   BarcodeObservation observe(String? code, DateTime now) {
-    final String normalized = BarcodeCandidatePolicy.normalize(code);
+    String normalized = BarcodeCandidatePolicy.normalize(code);
 
     _rearmLockedCode(normalized, now);
 
@@ -33,11 +34,12 @@ class BarcodeStabilityTracker {
           : BarcodeObservation(candidateCode: _candidateCode);
     }
 
-    if (_lockedCode == normalized) {
+    if (JdBarcodePolicy.sameRecordingCode(_lockedCode, normalized)) {
+      _lockedCode = JdBarcodePolicy.preferSpecific(_lockedCode, normalized);
       return const BarcodeObservation();
     }
 
-    if (_candidateCode != normalized ||
+    if (!JdBarcodePolicy.sameRecordingCode(_candidateCode, normalized) ||
         _candidateFirstSeen == null ||
         now.difference(_candidateFirstSeen!) > confirmationWindow) {
       _candidateCode = normalized;
@@ -51,6 +53,7 @@ class BarcodeStabilityTracker {
       return BarcodeObservation(candidateCode: normalized);
     }
 
+    normalized = JdBarcodePolicy.preferSpecific(_candidateCode, normalized);
     _lockedCode = normalized;
     _missingLockedSince = null;
     _candidateCode = '';
@@ -63,7 +66,7 @@ class BarcodeStabilityTracker {
     if (_lockedCode.isEmpty) {
       return;
     }
-    if (_lockedCode == normalized) {
+    if (JdBarcodePolicy.sameRecordingCode(_lockedCode, normalized)) {
       final DateTime? missingSince = _missingLockedSince;
       if (missingSince == null || now.difference(missingSince) < rearmDelay) {
         _missingLockedSince = null;

@@ -1,6 +1,7 @@
 import '../models/barcode_marker.dart';
 import '../models/recording_session.dart';
 import '../models/recording_operation_mode.dart';
+import 'jd_barcode_policy.dart';
 
 class RecordingTimeline {
   final List<RecordingSegmentDraft> _completedSegments =
@@ -47,6 +48,25 @@ class RecordingTimeline {
     _activeMarkers.clear();
     final BarcodeMarker marker = bindCode(code, occurredAt)!;
     return RecordingSegmentTransition(completed: completed, marker: marker);
+  }
+
+  /// Only enrich an active bare JD identity; never replace another package.
+  BarcodeMarker? completePackageIdentity(String observed) {
+    if (_segmentStartedAt == null || _activeMarkers.length != 1) return null;
+    final String specific = JdBarcodePolicy.preferSpecific(
+      _currentCode,
+      observed,
+    );
+    if (specific == _currentCode) return null;
+    final BarcodeMarker old = _activeMarkers.single;
+    final BarcodeMarker marker = BarcodeMarker(
+      code: specific,
+      occurredAt: old.occurredAt,
+      offset: old.offset,
+    );
+    _activeMarkers[0] = marker;
+    _currentCode = specific;
+    return marker;
   }
 
   RecordingSegmentDraft? finish(DateTime endedAt) {

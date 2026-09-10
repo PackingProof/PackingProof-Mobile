@@ -7,6 +7,7 @@ import '../models/order_info.dart';
 import '../platform/contracts/order_receiver_platform.dart';
 import '../platform/platform_container.dart';
 import '../platform/platform_exceptions.dart';
+import 'jd_barcode_policy.dart';
 
 class OrderInfoReceiverSnapshot {
   const OrderInfoReceiverSnapshot({
@@ -124,7 +125,9 @@ class OrderInfoReceiverService extends ChangeNotifier
   Future<OrderInfo?> lookup(String trackingNumber) async {
     if (_disposed || trackingNumber.trim().isEmpty) return null;
     try {
-      return await _platform.lookup(trackingNumber.trim());
+      return await _platform.lookup(
+        JdBarcodePolicy.waybill(trackingNumber.trim().toUpperCase()),
+      );
     } on CapabilityUnavailableException {
       return null;
     }

@@ -23,11 +23,17 @@ class JdBarcodePolicy {
     return JdPackageCode(code, match[1]!, index, count);
   }
 
-  /// Input has already received the caller's whitespace/case normalization.
-  static String normalize(String code) {
-    final JdPackageCode? package = parse(code);
-    return package?.count == 1 ? package!.waybill : code;
-  }
+  static bool sameRecordingCode(String a, String b) =>
+      a == b ||
+      (isBareWaybill(a) && parse(b)?.waybill == a) ||
+      (isBareWaybill(b) && parse(a)?.waybill == b);
+
+  static String preferSpecific(String current, String observed) =>
+      isBareWaybill(current) && parse(observed)?.waybill == current
+      ? observed
+      : current;
+
+  static String waybill(String code) => parse(code)?.waybill ?? code;
 
   /// Candidates must keep the existing ranking and their original suffixes.
   static String? select(Iterable<String> rankedCodes) {
@@ -36,10 +42,10 @@ class JdBarcodePolicy {
     final String first = codes.first;
     if (isBareWaybill(first)) {
       for (final String code in codes) {
-        if (parse(code)?.waybill == first) return normalize(code);
+        if (parse(code)?.waybill == first) return code;
       }
     }
-    return normalize(first);
+    return first;
   }
 }
 
