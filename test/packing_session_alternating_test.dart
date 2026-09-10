@@ -640,6 +640,24 @@ void main() {
     expect(controller.candidateCode, 'YT123456789012');
   });
 
+  test('京东同帧裸号面积更大时仍选对应多包裹号', () async {
+    await controller.initialize();
+    await controller.startWork();
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(
+        value: 'JD123456789012',
+        area: 300,
+        format: 'code128',
+      ),
+      const NativeBarcodeCandidate(
+        value: 'JD123456789012-1-2-',
+        area: 200,
+        format: 'code128',
+      ),
+    ]);
+    expect(controller.candidateCode, 'JD123456789012-1-2-');
+  });
+
   test('开始工作后接受顺丰 Code39 面单码', () async {
     await controller.initialize();
     await controller.startWork();

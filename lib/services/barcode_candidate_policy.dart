@@ -1,3 +1,5 @@
+import 'jd_barcode_policy.dart';
+
 class BarcodeCandidatePolicy {
   const BarcodeCandidatePolicy._();
 
@@ -62,7 +64,37 @@ class BarcodeCandidatePolicy {
   static final RegExp _internationalPostalNumber = RegExp(r'^[A-Z]{2}\d{9}CN$');
 
   static String normalize(String? value) {
-    return (value ?? '').trim().replaceAll(' ', '').toUpperCase();
+    return JdBarcodePolicy.normalize(normalizeRaw(value));
+  }
+
+  static String normalizeRaw(String? value) =>
+      (value ?? '').trim().replaceAll(' ', '').toUpperCase();
+
+  /// Both native and Flutter image paths use the same same-frame ranking.
+  static String? selectForWorkScan(
+    Iterable<({String value, double area, String? format})> candidates, {
+    required int minimumLength,
+  }) {
+    final ranked = candidates
+        .where(
+          (candidate) => isValidForWorkScan(
+            candidate.value,
+            format: candidate.format,
+            minimumLength: minimumLength,
+          ),
+        )
+        .toList();
+    // Insertion keeps the original ordering for equal areas.
+    for (int i = 1; i < ranked.length; i++) {
+      final candidate = ranked[i];
+      int j = i;
+      while (j > 0 && ranked[j - 1].area < candidate.area) {
+        ranked[j] = ranked[j - 1];
+        j--;
+      }
+      ranked[j] = candidate;
+    }
+    return JdBarcodePolicy.select(ranked.map((c) => normalizeRaw(c.value)));
   }
 
   /// 手机版支持的指令码：切发货、切退货、开始工作、停止工作。

@@ -165,19 +165,12 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
           ),
         )
         .toList(growable: false);
-    String? validCode;
-    int largestArea = -1;
-    for (final NativeBarcodeCandidate candidate in candidates) {
-      if (BarcodeCandidatePolicy.isValidForWorkScan(
-            candidate.value,
-            format: candidate.format,
-            minimumLength: _minimumBarcodeLength,
-          ) &&
-          candidate.area > largestArea) {
-        largestArea = candidate.area;
-        validCode = BarcodeCandidatePolicy.normalize(candidate.value);
-      }
-    }
+    final String? validCode = BarcodeCandidatePolicy.selectForWorkScan(
+      candidates.map(
+        (c) => (value: c.value, area: c.area.toDouble(), format: c.format),
+      ),
+      minimumLength: _minimumBarcodeLength,
+    );
     final DateTime now = DateTime.now();
     if (_capabilityMode == CameraCapabilityMode.alternating &&
         _alternatingLastCompletedCode != null) {
@@ -284,23 +277,16 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
             ),
           )
           .toList(growable: false);
-      String? validCode;
-      double largestArea = -1;
-      for (final Barcode barcode in barcodes) {
-        if (BarcodeCandidatePolicy.isValidForWorkScan(
-          barcode.rawValue,
-          format: barcode.format.name,
-          minimumLength: _minimumBarcodeLength,
-        )) {
-          final double area =
-              barcode.boundingBox.width.abs() *
-              barcode.boundingBox.height.abs();
-          if (area > largestArea) {
-            largestArea = area;
-            validCode = BarcodeCandidatePolicy.normalize(barcode.rawValue);
-          }
-        }
-      }
+      final String? validCode = BarcodeCandidatePolicy.selectForWorkScan(
+        barcodes.map(
+          (b) => (
+            value: b.rawValue ?? '',
+            area: b.boundingBox.width.abs() * b.boundingBox.height.abs(),
+            format: b.format.name,
+          ),
+        ),
+        minimumLength: _minimumBarcodeLength,
+      );
 
       final RejectedBarcodeDecision? rejected = RejectedBarcodePolicy.decide(
         candidates: rejectedCandidates,
