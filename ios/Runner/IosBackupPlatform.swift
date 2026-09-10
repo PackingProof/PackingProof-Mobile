@@ -528,6 +528,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private var uploadDispatchRequested = false
   private let hostLifecycleLock = NSLock()
   private var hostForeground: Bool
+  private let beforeUploadDispatcherFinalizationForTesting: (() -> Void)?
   private let maintenanceGate = IosBackupMaintenanceGate()
   private let cleanupLock = NSLock()
   private let cleanupPolicyLock = NSLock()
@@ -615,6 +616,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
     cleanupWorkPauseNanoseconds: UInt64? = nil,
     cleanupSliceIntervalNanoseconds: UInt64? = nil,
     hostForeground: Bool = true,
+    beforeUploadDispatcherFinalizationForTesting: (() -> Void)? = nil,
     afterCleanupRunnerDecisionForTesting: (() -> Void)? = nil,
     beforeCleanupRetrySleepForTesting: ((Int, UInt64) -> Void)? = nil,
     beforeCleanupCandidateForTesting: (([String: Any]) -> Void)? = nil,
@@ -646,6 +648,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
     self.cleanupSliceIntervalNanoseconds =
       cleanupSliceIntervalNanoseconds ?? Self.cleanupSliceIntervalNanoseconds
     self.hostForeground = hostForeground
+    self.beforeUploadDispatcherFinalizationForTesting =
+      beforeUploadDispatcherFinalizationForTesting
     self.afterCleanupRunnerDecisionForTesting =
       afterCleanupRunnerDecisionForTesting
     self.beforeCleanupRetrySleepForTesting = beforeCleanupRetrySleepForTesting
@@ -1856,9 +1860,20 @@ final class IosBackupHostApi: BackupNativeHostApi {
     uploadsLock.unlock()
   }
 
+  private func finishUploadDispatcher() {
+    beforeUploadDispatcherFinalizationForTesting?()
+    uploadsLock.lock()
+    uploadDispatcherTask = nil
+    let shouldRestart = uploadDispatchRequested
+    uploadsLock.unlock()
+    if shouldRestart {
+      requestUploadDispatch()
+    }
+  }
+
   private func runUploadDispatcher() async {
     guard isHostForeground() else {
-      withUploadsLock { uploadDispatcherTask = nil }
+      finishUploadDispatcher()
       return
     }
     do {
@@ -1866,7 +1881,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
         try recoverCleanupIntentsSlice()
       }
       if recovery.processedAny {
-        withUploadsLock { uploadDispatcherTask = nil }
+        finishUploadDispatcher()
         if recovery.hasMore {
           triggerCleanup()
         } else {
@@ -1876,7 +1891,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
       }
     } catch {
       NSLog("PackingProof cleanup recovery failed before upload: %@", error.localizedDescription)
-      withUploadsLock { uploadDispatcherTask = nil }
+      finishUploadDispatcher()
       triggerCleanup()
       return
     }
@@ -1960,7 +1975,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
       return
     }
 
-    withUploadsLock { uploadDispatcherTask = nil }
+    finishUploadDispatcher()
   }
 
   private func cancelActiveUpload(jobId: String) {
@@ -1997,6 +2012,13 @@ final class IosBackupHostApi: BackupNativeHostApi {
     let task = withUploadsLock { uploadDispatcherTask }
     await task?.value
     await drainSummaryQueue()
+  }
+
+  func finishUploadDispatcherForTesting() {
+    withUploadsLock {
+      uploadDispatcherTask = Task {}
+    }
+    finishUploadDispatcher()
   }
 
   private func upload(

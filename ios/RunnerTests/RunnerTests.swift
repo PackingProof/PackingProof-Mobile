@@ -4091,6 +4091,49 @@ class RunnerTests: XCTestCase {
     )
   }
 
+  func testUploadDispatcherDoesNotLoseForegroundWakeupWhileStopping()
+    async throws
+  {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    fixture.defaults.set(true, forKey: "ios_backup_auto_enabled")
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL,
+      defaults: fixture.defaults
+    )
+    try store.upsert(makeBackupJob(id: "foreground-race"))
+    let uploaded = expectation(description: "退出竞态后重新调度上传")
+    var api: IosBackupHostApi!
+    var restoredForeground = false
+    api = makeBackupApi(
+      defaults: fixture.defaults,
+      store: store,
+      uploadOperationOverride: { job, identity in
+        _ = try? store.updateJob(
+          id: job["id"] as? String ?? "",
+          expectedGeneration: identity.generation
+        ) { $0["state"] = "completed" }
+        uploaded.fulfill()
+      },
+      hostForeground: false,
+      beforeUploadDispatcherFinalizationForTesting: {
+        guard !restoredForeground else { return }
+        restoredForeground = true
+        api.onHostForeground()
+      }
+    )
+
+    api.finishUploadDispatcherForTesting()
+    await fulfillment(of: [uploaded], timeout: 5)
+    await api.waitForUploadDispatcherForTesting()
+
+    XCTAssertEqual(
+      try store.readJob(id: "foreground-race")?["state"] as? String,
+      "completed"
+    )
+    XCTAssertEqual(api.uploadTaskCountsForTesting().dispatcher, 0)
+  }
+
   func testUploadDispatcherCancelsAndRunsReplacementGeneration() async throws {
     let fixture = try makeBackupStoreFixture()
     defer { removeBackupStoreFixture(fixture) }
@@ -4479,6 +4522,7 @@ class RunnerTests: XCTestCase {
     cleanupWorkPauseNanoseconds: UInt64? = nil,
     cleanupSliceIntervalNanoseconds: UInt64? = nil,
     hostForeground: Bool = true,
+    beforeUploadDispatcherFinalizationForTesting: (() -> Void)? = nil,
     afterCleanupRunnerDecisionForTesting: (() -> Void)? = nil,
     beforeCleanupRetrySleepForTesting: ((Int, UInt64) -> Void)? = nil,
     beforeCleanupCandidateForTesting: (([String: Any]) -> Void)? = nil,
@@ -4510,6 +4554,8 @@ class RunnerTests: XCTestCase {
       cleanupWorkPauseNanoseconds: cleanupWorkPauseNanoseconds,
       cleanupSliceIntervalNanoseconds: cleanupSliceIntervalNanoseconds,
       hostForeground: hostForeground,
+      beforeUploadDispatcherFinalizationForTesting:
+        beforeUploadDispatcherFinalizationForTesting,
       afterCleanupRunnerDecisionForTesting:
         afterCleanupRunnerDecisionForTesting,
       beforeCleanupRetrySleepForTesting: beforeCleanupRetrySleepForTesting,
