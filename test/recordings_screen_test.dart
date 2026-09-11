@@ -5084,7 +5084,17 @@ void main() {
     );
     expect(
       tester.widget(find.byKey(const Key('finish-managing-button'))),
-      isA<FilledButton>(),
+      isA<OutlinedButton>(),
+    );
+    expect(
+      tester.widget(find.byKey(const Key('finish-managing-appbar-button'))),
+      isA<OutlinedButton>(),
+    );
+    expect(
+      tester.getSize(find.byKey(const Key('finish-managing-button'))).height,
+      tester
+          .getSize(find.byKey(const Key('select-all-recordings-button')))
+          .height,
     );
     final double selectAllTop = tester.getTopLeft(find.text('全选本页')).dy;
     final double finishTop = tester

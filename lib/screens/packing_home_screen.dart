@@ -84,7 +84,8 @@ bool shouldBlockTabSwitch({
 bool shouldHideMainBottomNavigation({
   required bool pairingScanActive,
   required bool working,
-}) => pairingScanActive || working;
+  bool historyManaging = false,
+}) => pairingScanActive || working || historyManaging;
 
 @visibleForTesting
 Future<void> showComputerPairingFailureDialog(
@@ -627,6 +628,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                 shouldHideMainBottomNavigation(
                   pairingScanActive: _controller.pairingScanActive,
                   working: _controller.isWorking,
+                  historyManaging: _selectedTab == 0 && _historyManaging,
                 )
                 ? null
                 : _PackingBottomNavigation(

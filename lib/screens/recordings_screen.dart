@@ -1056,7 +1056,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
               : const Text('设置'),
           actions: <Widget>[
             if (_managing)
-              TextButton(
+              OutlinedButton(
                 key: const Key('finish-managing-appbar-button'),
                 onPressed: _toggleManaging,
                 child: const Text('完成'),
@@ -1495,17 +1495,10 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                               ),
                             ),
                           const Spacer(),
-                          FilledButton.tonalIcon(
+                          OutlinedButton(
                             key: const Key('finish-managing-button'),
                             onPressed: _toggleManaging,
-                            // 全局 FilledButton 主题把最小宽度设为通栏
-                            // Size.fromHeight(58)，在 Row 的无界宽度约束下会把
-                            // 按钮撑成无限宽导致布局异常，这里显式收回宽度。
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size(64, 58),
-                            ),
-                            icon: const Icon(Icons.check_rounded, size: 18),
-                            label: const Text('完成'),
+                            child: const Text('完成'),
                           ),
                         ],
                       ),

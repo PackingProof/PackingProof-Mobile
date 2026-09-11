@@ -50,6 +50,19 @@ void main() {
     );
   });
 
+  test('历史管理时隐藏底部导航，退出管理后恢复', () {
+    for (final managing in [true, false]) {
+      expect(
+        shouldHideMainBottomNavigation(
+          pairingScanActive: false,
+          working: false,
+          historyManaging: managing,
+        ),
+        managing,
+      );
+    }
+  });
+
   test('工作中或配对扫码时隐藏底部导航', () {
     expect(
       shouldHideMainBottomNavigation(pairingScanActive: false, working: false),
