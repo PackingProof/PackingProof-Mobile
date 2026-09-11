@@ -283,9 +283,23 @@ void main() {
       );
     });
 
-    test('手机版不支持 CLEAR，普通单号不当作指令', () {
-      expect(BarcodeCandidatePolicy.mobileCommandFor('CLEAR'), isNull);
-      expect(BarcodeCandidatePolicy.mobileCommandFor('清除'), isNull);
+    test('手机版按包含内容识别指令码，普通单号不当作指令', () {
+      expect(
+        BarcodeCandidatePolicy.mobileCommandFor('1234 FLASH 1234'),
+        MobileBarcodeCommand.openFlash,
+      );
+      expect(
+        BarcodeCandidatePolicy.mobileCommandFor('1234 CLEAR 1234'),
+        MobileBarcodeCommand.clearInput,
+      );
+      expect(
+        BarcodeCandidatePolicy.mobileCommandFor('1234 CLEAN 1234'),
+        MobileBarcodeCommand.clearInput,
+      );
+      expect(
+        BarcodeCandidatePolicy.mobileCommandFor('清除输入'),
+        MobileBarcodeCommand.clearInput,
+      );
       expect(BarcodeCandidatePolicy.mobileCommandFor('YT123456789012'), isNull);
       expect(BarcodeCandidatePolicy.mobileCommandFor(''), isNull);
     });

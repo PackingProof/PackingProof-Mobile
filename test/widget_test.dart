@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/app/packing_proof_mobile_app.dart';
 import 'package:packing_proof_mobile/app/packing_proof_theme.dart';
@@ -57,6 +58,11 @@ void main() {
       find.byKey(const Key('recording-control-panel')),
     );
     expect(controlPanel.color, Colors.transparent);
+    final Material statusPill = tester.widget<Material>(
+      find.byKey(const Key('control-status-pill')),
+    );
+    expect(statusPill.color, const Color(0xE6000000));
+    expect(statusPill.shape, isA<StadiumBorder>());
     expect(find.byType(TextField), findsNothing);
     expect(find.byKey(const Key('recording-button-shimmer')), findsNothing);
   });
@@ -238,6 +244,125 @@ void main() {
       ),
     );
     expect(find.byIcon(Icons.flash_on_rounded), findsOneWidget);
+  });
+
+  testWidgets('手动输入按钮复用相机控制按钮样式', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.ready,
+          elapsed: Duration.zero,
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+          onManualTrackingPressed: () {},
+        ),
+      ),
+    );
+
+    final Finder button = find.byKey(const Key('manual-tracking-button'));
+    expect(button, findsOneWidget);
+    final Material background = tester.widget<Material>(
+      find.ancestor(of: button, matching: find.byType(Material)).first,
+    );
+    expect(background.color, const Color(0x99000000));
+    expect(background.shape, isA<CircleBorder>());
+    expect(tester.widget<IconButton>(button).tooltip, '输入单号');
+    expect(
+      tester.getRect(find.byKey(const Key('primary-work-button'))).right,
+      lessThan(tester.getRect(button).left),
+    );
+  });
+
+  testWidgets('手动输入单号可通过键盘完成键提交', (WidgetTester tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (BuildContext value) {
+            context = value;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+
+    String? submittedCode;
+    bool? submittedValidation;
+    final Future<void> dialog = showManualTrackingDialog(
+      context,
+      onSubmit: (String rawCode, {required bool validate}) async {
+        submittedCode = rawCode;
+        submittedValidation = validate;
+        return true;
+      },
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'TRACK-001');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    await dialog;
+
+    expect(submittedCode, 'TRACK-001');
+    expect(submittedValidation, isTrue);
+    expect(find.text('输入单号'), findsNothing);
+  });
+
+  testWidgets('提交失败后保持输入焦点且支持外接键盘回车', (WidgetTester tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (BuildContext value) {
+            context = value;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+
+    int submitCount = 0;
+    final Future<void> dialog = showManualTrackingDialog(
+      context,
+      onSubmit: (String rawCode, {required bool validate}) async {
+        submitCount++;
+        return submitCount == 3;
+      },
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'INVALID');
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isTrue,
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+    await tester.pump();
+    expect(submitCount, 0);
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isTrue,
+    );
+
+    await tester.tap(find.widgetWithText(FilledButton, '提交'));
+    await tester.pump();
+    EditableText input = tester.widget<EditableText>(find.byType(EditableText));
+    expect(input.focusNode.hasFocus, isTrue);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.numpadEnter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.numpadEnter);
+    await tester.pump();
+    input = tester.widget<EditableText>(find.byType(EditableText));
+    expect(submitCount, 2);
+    expect(input.focusNode.hasFocus, isTrue);
+
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    await dialog;
+
+    expect(submitCount, 3);
+    expect(find.text('输入单号'), findsNothing);
   });
 
   testWidgets('仅在待机时显示前后摄像头切换按钮', (WidgetTester tester) async {

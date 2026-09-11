@@ -149,6 +149,7 @@ void main() {
           previewOverride: Image(image: preview, fit: BoxFit.cover),
           onPrimaryPressed: () {},
           onRetryPressed: () {},
+          onManualTrackingPressed: () {},
         ),
       ),
     );
@@ -166,7 +167,7 @@ void main() {
     );
   }, skip: Platform.isWindows, tags: <String>['golden']);
 
-  testWidgets('390x844 录像中压缩半透明面板视觉基线', (WidgetTester tester) async {
+  testWidgets('390x844 录像中局部提示胶囊视觉基线', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -191,6 +192,7 @@ void main() {
           previewOverride: Image(image: preview, fit: BoxFit.cover),
           onPrimaryPressed: () {},
           onRetryPressed: () {},
+          onManualTrackingPressed: () {},
         ),
       ),
     );

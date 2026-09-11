@@ -19,6 +19,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   Duration get _analysisInterval;
   bool get _pairingScanActive;
   bool get _pairingBusy;
+  bool get torchEnabled;
 
   Future<void> _tryPairComputer(String value);
   void _showRejectedBarcodeNotice(
@@ -45,6 +46,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     required void Function(BarcodeMarker marker) onSegmentStarted,
   });
   Future<void> startWork();
+  Future<void> toggleTorch();
 
   final BarcodeStabilityTracker _stabilityTracker = BarcodeStabilityTracker();
   final BarcodeRecognizedBeepPolicy _recognizedBeepPolicy =
@@ -564,19 +566,32 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     String rawCode, {
     required bool validate,
   }) async {
-    if (_handlingBarcode || isBusy || _pairingScanActive || _historyScanActive)
+    if (_handlingBarcode ||
+        isBusy ||
+        _pairingScanActive ||
+        _historyScanActive) {
       return false;
+    }
     final String code = validate
         ? BarcodeCandidatePolicy.normalize(rawCode)
         : rawCode.trim();
     if (code.isEmpty) return false;
-    if (validate &&
-        !BarcodeCandidatePolicy.isValidForWorkScan(
-          code,
-          format: 'code128',
-          minimumLength: _minimumBarcodeLength,
-        ))
-      return false;
+    if (validate) {
+      final DateTime now = DateTime.now();
+      final RejectedBarcodeDecision? rejected = RejectedBarcodePolicy.decide(
+        candidates: <RejectedBarcodeCandidate>[
+          RejectedBarcodeCandidate(value: code, area: 1, format: 'code128'),
+        ],
+        minimumLength: _minimumBarcodeLength,
+        now: now,
+        lastCode: _lastRejectedBarcodeCode,
+        lastShownAt: _lastRejectedBarcodeAt,
+      );
+      if (rejected != null) {
+        _showRejectedBarcodeNotice(rejected, now);
+        return false;
+      }
+    }
     if (!isWorking) {
       await startWork();
       if (!isWorking) return false;
@@ -602,10 +617,18 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   bool _isCurrentSegmentCode(String code) =>
       _timeline.currentCode.trim().toUpperCase() == code.trim().toUpperCase();
 
-  /// 手机版指令码执行：切发货/切退货/停止录制。
-  /// 刻意不支持 START（扫码即自动开始）与 CLEAR（无输入框可清）。
+  /// 手机版指令码执行：清除输入、切发货/切退货、开始/停止工作。
   Future<void> _handleMobileBarcodeCommand(MobileBarcodeCommand command) async {
     switch (command) {
+      case MobileBarcodeCommand.clearInput:
+        _candidateCode = '';
+        _showCameraNotice('扫码框已清除');
+        break;
+      case MobileBarcodeCommand.openFlash:
+        if (!torchEnabled) {
+          await toggleTorch();
+        }
+        break;
       case MobileBarcodeCommand.switchShipping:
         if (_operationMode != RecordingOperationMode.shipping) {
           _operationMode = RecordingOperationMode.shipping;

@@ -225,6 +225,154 @@ Future<void> _showMobileUpdateInstructions(
       .call(uri);
 }
 
+@visibleForTesting
+Future<void> showManualTrackingDialog(
+  BuildContext context, {
+  required Future<bool> Function(String rawCode, {required bool validate})
+  onSubmit,
+}) => showDialog<void>(
+  context: context,
+  builder: (BuildContext dialogContext) =>
+      _ManualTrackingDialog(onSubmit: onSubmit),
+);
+
+class _ManualTrackingDialog extends StatefulWidget {
+  const _ManualTrackingDialog({required this.onSubmit});
+
+  final Future<bool> Function(String rawCode, {required bool validate})
+  onSubmit;
+
+  @override
+  State<_ManualTrackingDialog> createState() => _ManualTrackingDialogState();
+}
+
+class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
+  final TextEditingController _input = TextEditingController();
+  final FocusNode _inputFocus = FocusNode();
+  bool _validate = true;
+  bool _submitting = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _inputFocus.dispose();
+    _input.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit([String? submittedValue]) async {
+    if (_submitting) return;
+    if (submittedValue != null && submittedValue != _input.text) {
+      _input.text = submittedValue;
+    }
+    setState(() {
+      _submitting = true;
+      _errorMessage = null;
+    });
+    final bool ok = await widget.onSubmit(_input.text, validate: _validate);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() {
+      _submitting = false;
+      _errorMessage = _input.text.trim().isEmpty
+          ? '请输入单号'
+          : _validate
+          ? '单号格式或长度不符合要求'
+          : '当前无法提交，请稍后重试';
+    });
+    _inputFocus.requestFocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      title: const Text('输入单号', style: TextStyle(fontWeight: FontWeight.w800)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Focus(
+            onKeyEvent: (FocusNode node, KeyEvent event) {
+              if (event is KeyDownEvent &&
+                  (event.logicalKey == LogicalKeyboardKey.enter ||
+                      event.logicalKey == LogicalKeyboardKey.numpadEnter)) {
+                unawaited(_submit());
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: TextField(
+              controller: _input,
+              focusNode: _inputFocus,
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              onEditingComplete: () {},
+              onSubmitted: (String value) => unawaited(_submit(value)),
+            ),
+          ),
+          if (_errorMessage != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _errorMessage!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            ),
+          CheckboxListTile(
+            value: _validate,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('校验单号'),
+            onChanged: _submitting
+                ? null
+                : (bool? value) => setState(() => _validate = value ?? true),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: _submitting ? null : () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: _submitting ? null : _submit,
+                child: const Text('提交'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class PackingHomeScreen extends StatefulWidget {
   const PackingHomeScreen({
     this.repository,
@@ -255,6 +403,9 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   bool _capabilityNoticeDialogShown = false;
   int _transientReturnTab = 1;
   DateTime? _exitArmedAt;
+  String _scanInput = '';
+  final FocusNode _scanInputFocus = FocusNode();
+  bool _scanSubmitting = false;
 
   @override
   void initState() {
@@ -269,6 +420,9 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       cache: LanBackupHostFileCache(),
     );
     unawaited(_controller.initialize());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusScanInputSilently();
+    });
   }
 
   @override
@@ -291,7 +445,28 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
     _controller.removeListener(_handleControllerChanged);
     _controller.dispose();
     _backupHostDiscovery.dispose();
+    _scanInputFocus.dispose();
     super.dispose();
+  }
+
+  void _focusScanInputSilently() {
+    if (!mounted || _selectedTab != 1) return;
+    _scanInputFocus.requestFocus();
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
+  }
+
+  Future<void> _submitScanInput() async {
+    if (_scanSubmitting) return;
+    final String value = _scanInput;
+    if (value.trim().isEmpty) return;
+    setState(() {
+      _scanSubmitting = true;
+      _scanInput = '';
+    });
+    await _controller.submitExternalTrackingNumber(value, validate: true);
+    if (!mounted) return;
+    setState(() => _scanSubmitting = false);
+    _focusScanInputSilently();
   }
 
   void _handleControllerChanged() {
@@ -321,108 +496,10 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   }
 
   Future<void> _showManualTrackingDialog() async {
-    final TextEditingController input = TextEditingController();
-    bool validate = true;
-    String? errorMessage;
-    await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter setState) => AlertDialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
-          contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
-          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-          actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          title: const Text(
-            '输入单号',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              TextField(
-                controller: input,
-                autofocus: true,
-                textInputAction: TextInputAction.done,
-              ),
-              if (errorMessage != null)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      errorMessage!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ),
-                ),
-              CheckboxListTile(
-                value: validate,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('校验单号'),
-                onChanged: (bool? value) =>
-                    setState(() => validate = value ?? true),
-              ),
-            ],
-          ),
-          actions: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: () => Navigator.pop(dialogContext, false),
-                    child: const Text('取消'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: () async {
-                      final ok = await _controller.submitExternalTrackingNumber(
-                        input.text,
-                        validate: validate,
-                      );
-                      if (ok && dialogContext.mounted) {
-                        Navigator.pop(dialogContext, true);
-                      } else if (dialogContext.mounted) {
-                        setState(() {
-                          errorMessage = input.text.trim().isEmpty
-                              ? '请输入单号'
-                              : validate
-                              ? '单号格式或长度不符合要求'
-                              : '当前无法提交，请稍后重试';
-                        });
-                      }
-                    },
-                    child: const Text('提交'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+    await showManualTrackingDialog(
+      context,
+      onSubmit: _controller.submitExternalTrackingNumber,
     );
-    input.dispose();
   }
 
   Future<void> _toggleWork() async {
@@ -447,6 +524,9 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
     }
     _resetExitIntent();
     setState(() => _selectedTab = value);
+    if (value == 1) {
+      _focusScanInputSilently();
+    }
     unawaited(_controller.setPreviewActive(value == 1));
     if (value == 0) unawaited(_controller.refreshSessions());
   }
@@ -679,55 +759,110 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
           },
           child: Scaffold(
             extendBody: true,
-            body: IndexedStack(
-              index: _selectedTab,
+            body: Stack(
               children: <Widget>[
-                _buildRecordingsScreen(RecordingsScreenMode.history),
-                PackingHomeView(
-                  cameraController: _controller.cameraController,
-                  nativeTextureId: _controller.nativeTextureId,
-                  nativePreviewSize: _controller.nativePreviewSize,
-                  phase: _controller.phase,
-                  elapsed: _controller.elapsed,
-                  elapsedListenable: _controller.elapsedListenable,
-                  lastMarker: _controller.lastMarker,
-                  candidateCode: _controller.candidateCode,
-                  currentCode: _controller.currentCode,
-                  orderInfo: _controller.activeOrderInfo,
-                  workMode: _controller.workMode,
-                  operationMode: _controller.operationMode,
-                  recordingOrientation: _controller.recordingOrientation,
-                  nativeLiveWatermark: _controller.capabilities.supports(
-                    PlatformCapability.liveRecordingWatermark,
-                  ),
-                  capabilityMode: _controller.capabilityMode,
-                  capabilityProbeMessage: _controller.capabilityProbeMessage,
-                  canFinishCurrentOrder: _controller.canFinishCurrentOrder,
-                  errorMessage: _controller.errorMessage,
-                  scanWarningMessage: _controller.scanWarningMessage,
-                  cameraNotice: _controller.cameraNotice,
-                  rejectedBarcodeMessage: _controller.rejectedBarcodeMessage,
-                  pairingScanActive: _controller.pairingScanActive,
-                  pairingMessage: _controller.pairingMessage,
-                  historyScanActive: _controller.historyScanActive,
-                  flashAvailable: _controller.flashAvailable,
-                  torchEnabled: _controller.torchEnabled,
-                  cameraSwitchAvailable: _controller.cameraSwitchAvailable,
-                  frontCameraActive: _controller.frontCameraActive,
-                  backCameraLenses: _controller.backCameraLenses,
-                  activeCameraId: _controller.activeCameraId,
-                  onCameraSelected: _controller.switchToCamera,
-                  onPairingCancel: _cancelComputerPairingAndReturn,
-                  onHistoryScanCancel: _cancelHistoryScanAndReturn,
-                  onTorchPressed: _controller.toggleTorch,
-                  onCameraSwitchPressed: _controller.switchCamera,
-                  onOperationModeChanged: _controller.setOperationMode,
-                  onFinishOrder: _controller.finishCurrentOrder,
-                  onPrimaryPressed: _toggleWork,
-                  onManualTrackingPressed: _showManualTrackingDialog,
-                  onRetryPressed: _controller.retryInitialize,
+                IndexedStack(
+                  index: _selectedTab,
+                  children: <Widget>[
+                    _buildRecordingsScreen(RecordingsScreenMode.history),
+                    PackingHomeView(
+                      cameraController: _controller.cameraController,
+                      nativeTextureId: _controller.nativeTextureId,
+                      nativePreviewSize: _controller.nativePreviewSize,
+                      phase: _controller.phase,
+                      elapsed: _controller.elapsed,
+                      elapsedListenable: _controller.elapsedListenable,
+                      lastMarker: _controller.lastMarker,
+                      candidateCode: _scanInput.isNotEmpty
+                          ? _scanInput
+                          : _controller.candidateCode,
+                      currentCode: _controller.currentCode,
+                      orderInfo: _controller.activeOrderInfo,
+                      workMode: _controller.workMode,
+                      operationMode: _controller.operationMode,
+                      recordingOrientation: _controller.recordingOrientation,
+                      nativeLiveWatermark: _controller.capabilities.supports(
+                        PlatformCapability.liveRecordingWatermark,
+                      ),
+                      capabilityMode: _controller.capabilityMode,
+                      capabilityProbeMessage:
+                          _controller.capabilityProbeMessage,
+                      canFinishCurrentOrder: _controller.canFinishCurrentOrder,
+                      errorMessage: _controller.errorMessage,
+                      scanWarningMessage: _controller.scanWarningMessage,
+                      cameraNotice: _controller.cameraNotice,
+                      rejectedBarcodeMessage:
+                          _controller.rejectedBarcodeMessage,
+                      pairingScanActive: _controller.pairingScanActive,
+                      pairingMessage: _controller.pairingMessage,
+                      historyScanActive: _controller.historyScanActive,
+                      flashAvailable: _controller.flashAvailable,
+                      torchEnabled: _controller.torchEnabled,
+                      cameraSwitchAvailable: _controller.cameraSwitchAvailable,
+                      frontCameraActive: _controller.frontCameraActive,
+                      backCameraLenses: _controller.backCameraLenses,
+                      activeCameraId: _controller.activeCameraId,
+                      onCameraSelected: _controller.switchToCamera,
+                      onPairingCancel: _cancelComputerPairingAndReturn,
+                      onHistoryScanCancel: _cancelHistoryScanAndReturn,
+                      onTorchPressed: _controller.toggleTorch,
+                      onCameraSwitchPressed: _controller.switchCamera,
+                      onOperationModeChanged: _controller.setOperationMode,
+                      onFinishOrder: _controller.finishCurrentOrder,
+                      onPrimaryPressed: _toggleWork,
+                      onManualTrackingPressed: _showManualTrackingDialog,
+                      onRetryPressed: _controller.retryInitialize,
+                    ),
+                    _buildRecordingsScreen(RecordingsScreenMode.settings),
+                  ],
                 ),
-                _buildRecordingsScreen(RecordingsScreenMode.settings),
+                if (_selectedTab == 1)
+                  Positioned(
+                    left: 8,
+                    right: 8,
+                    bottom: 2,
+                    child: Focus(
+                      focusNode: _scanInputFocus,
+                      autofocus: true,
+                      onKeyEvent: (FocusNode node, KeyEvent event) {
+                        if (event is! KeyDownEvent) {
+                          return KeyEventResult.ignored;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.enter ||
+                            event.logicalKey ==
+                                LogicalKeyboardKey.numpadEnter) {
+                          unawaited(_submitScanInput());
+                          return KeyEventResult.handled;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.backspace) {
+                          if (_scanInput.isNotEmpty) {
+                            setState(() {
+                              _scanInput = _scanInput.substring(
+                                0,
+                                _scanInput.length - 1,
+                              );
+                            });
+                          }
+                          return KeyEventResult.handled;
+                        }
+                        final String character = event.character ?? '';
+                        if (character.isEmpty ||
+                            event.logicalKey == LogicalKeyboardKey.shiftLeft ||
+                            event.logicalKey == LogicalKeyboardKey.shiftRight ||
+                            event.logicalKey ==
+                                LogicalKeyboardKey.controlLeft ||
+                            event.logicalKey ==
+                                LogicalKeyboardKey.controlRight ||
+                            event.logicalKey == LogicalKeyboardKey.altLeft ||
+                            event.logicalKey == LogicalKeyboardKey.altRight) {
+                          return KeyEventResult.ignored;
+                        }
+                        setState(() => _scanInput += character);
+                        return KeyEventResult.handled;
+                      },
+                      child: const SizedBox(width: 1, height: 1),
+                    ),
+                  ),
               ],
             ),
             bottomNavigationBar:
@@ -1296,21 +1431,17 @@ class _CameraArea extends StatelessWidget {
             Positioned(
               right: 18,
               top: 20,
-              child: Material(
-                color: const Color(0x99000000),
-                shape: const CircleBorder(),
-                child: IconButton(
-                  key: const Key('torch-button'),
-                  tooltip: view.torchEnabled ? '关闭闪光灯' : '打开闪光灯',
-                  onPressed: view.onTorchPressed,
-                  color: view.torchEnabled
-                      ? const Color(0xFFFFD54F)
-                      : Colors.white,
-                  icon: Icon(
-                    view.torchEnabled
-                        ? Icons.flash_on_rounded
-                        : Icons.flash_off_rounded,
-                  ),
+              child: _CameraControlButton(
+                buttonKey: const Key('torch-button'),
+                tooltip: view.torchEnabled ? '关闭闪光灯' : '打开闪光灯',
+                onPressed: view.onTorchPressed,
+                color: view.torchEnabled
+                    ? const Color(0xFFFFD54F)
+                    : Colors.white,
+                icon: Icon(
+                  view.torchEnabled
+                      ? Icons.flash_on_rounded
+                      : Icons.flash_off_rounded,
                 ),
               ),
             ),
@@ -1322,19 +1453,45 @@ class _CameraArea extends StatelessWidget {
             Positioned(
               left: 18,
               top: 20,
-              child: Material(
-                color: const Color(0x99000000),
-                shape: const CircleBorder(),
-                child: IconButton(
-                  key: const Key('switch-camera-button'),
-                  tooltip: view.frontCameraActive ? '切换到后置摄像头' : '切换到前置摄像头',
-                  onPressed: view.onCameraSwitchPressed,
-                  color: Colors.white,
-                  icon: const Icon(Icons.cameraswitch_rounded),
-                ),
+              child: _CameraControlButton(
+                buttonKey: const Key('switch-camera-button'),
+                tooltip: view.frontCameraActive ? '切换到后置摄像头' : '切换到前置摄像头',
+                onPressed: view.onCameraSwitchPressed,
+                icon: const Icon(Icons.cameraswitch_rounded),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _CameraControlButton extends StatelessWidget {
+  const _CameraControlButton({
+    required this.buttonKey,
+    required this.tooltip,
+    required this.onPressed,
+    required this.icon,
+    this.color = Colors.white,
+  });
+
+  final Key buttonKey;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final Widget icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0x99000000),
+      shape: const CircleBorder(),
+      child: IconButton(
+        key: buttonKey,
+        tooltip: tooltip,
+        onPressed: onPressed,
+        color: color,
+        icon: icon,
       ),
     );
   }
@@ -2062,10 +2219,6 @@ class _ControlPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isError = view.phase == PackingSessionPhase.error;
-    final ColorScheme colors = Theme.of(context).colorScheme;
-    final Color secondaryText = colors.brightness == Brightness.dark
-        ? colors.onSurfaceVariant
-        : const Color(0xFF767D7A);
     return Container(
       key: const Key('recording-control-panel'),
       color: Colors.transparent,
@@ -2074,108 +2227,119 @@ class _ControlPanel extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             24,
-            view._isWorking ? 10 : 17,
+            view._isWorking ? 6 : 17,
             24,
-            view._isWorking ? 6 : 8,
+            view._isWorking ? 4 : 8,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               if (view._isWorking) ...<Widget>[
-                Text(
-                  view.currentCode.isEmpty ? '等待面单' : view.currentCode,
-                  key: const Key('current-shipping-code'),
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colors.onSurface,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    height: 1.2,
-                    shadows: const <Shadow>[
-                      Shadow(color: Colors.black54, blurRadius: 3),
+                _ControlStatusPill(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(
+                        view.currentCode.isEmpty ? '等待面单' : view.currentCode,
+                        key: const Key('current-shipping-code'),
+                        maxLines: 1,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      GestureDetector(
+                        key: const Key('active-order-summary'),
+                        onTap: view.orderInfo == null
+                            ? null
+                            : () =>
+                                  showOrderInfoSheet(context, view.orderInfo!),
+                        child: Text(
+                          view.orderInfo?.summary ?? _recordingHint(view),
+                          maxLines: 1,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: view.orderInfo?.hasRefundWarning == true
+                                ? const Color(0xFFFF8A80)
+                                : Colors.white70,
+                            fontSize: 12,
+                            height: 1.25,
+                            fontWeight: view.orderInfo == null
+                                ? FontWeight.normal
+                                : FontWeight.w700,
+                          ),
+                        ),
+                      ),
                     ],
-                  ),
-                ),
-                const SizedBox(height: 1),
-                GestureDetector(
-                  key: const Key('active-order-summary'),
-                  onTap: view.orderInfo == null
-                      ? null
-                      : () => showOrderInfoSheet(context, view.orderInfo!),
-                  child: Text(
-                    view.orderInfo?.summary ?? _recordingHint(view),
-                    maxLines: 1,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: view.orderInfo?.hasRefundWarning == true
-                          ? colors.error
-                          : secondaryText,
-                      fontSize: 12,
-                      height: 1.25,
-                      fontWeight: view.orderInfo == null
-                          ? FontWeight.normal
-                          : FontWeight.w700,
-                    ),
                   ),
                 ),
                 const SizedBox(height: 3),
               ] else ...<Widget>[
-                Text(
-                  view.historyScanActive
-                      ? '扫描条码以搜索历史记录'
-                      : view.pairingScanActive
-                      ? '正在连接电脑'
-                      : isError
-                      ? (view.errorMessage ?? '请重新检查摄像头权限')
-                      : '对准面单条码',
-                  maxLines: 1,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: secondaryText,
-                    fontSize: 14,
-                    height: 1.3,
-                    shadows: const <Shadow>[
-                      Shadow(color: Colors.black54, blurRadius: 3),
-                    ],
+                _ControlStatusPill(
+                  child: Text(
+                    view.historyScanActive
+                        ? '扫描条码以搜索历史记录'
+                        : view.pairingScanActive
+                        ? '正在连接电脑'
+                        : isError
+                        ? (view.errorMessage ?? '请重新检查摄像头权限')
+                        : '对准面单条码',
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      height: 1.3,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 6),
               ],
               Row(
                 children: <Widget>[
-                  const SizedBox(width: 8),
-                  const SizedBox(width: 48, height: 54),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 56, height: 48),
                   Expanded(
                     child: _PrimaryWorkButton(view: view, isError: isError),
                   ),
                   const SizedBox(width: 8),
-                  SizedBox(
-                    width: 54,
-                    height: 54,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size(54, 54),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      onPressed: view.onManualTrackingPressed,
-                      child: const Icon(Icons.keyboard_alt_outlined),
-                    ),
+                  _CameraControlButton(
+                    buttonKey: const Key('manual-tracking-button'),
+                    tooltip: '输入单号',
+                    onPressed: view.onManualTrackingPressed,
+                    icon: const Icon(Icons.keyboard_alt_outlined),
                   ),
-                  const SizedBox(width: 8),
                 ],
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ControlStatusPill extends StatelessWidget {
+  const _ControlStatusPill({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      key: const Key('control-status-pill'),
+      color: const Color(0xE6000000),
+      shape: const StadiumBorder(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+        child: child,
       ),
     );
   }

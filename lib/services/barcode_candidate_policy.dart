@@ -100,12 +100,19 @@ class BarcodeCandidatePolicy {
     return JdBarcodePolicy.select(ranked.map((c) => normalizeRaw(c.value)));
   }
 
-  /// 手机版支持的指令码：切发货、切退货、开始工作、停止工作。
-  /// 手机版刻意不支持 CLEAR（无输入框可清）。
+  /// 手机版支持的指令码。提交内容只要包含指令词，就按指令处理。
   static MobileBarcodeCommand? mobileCommandFor(String? value) {
     final String normalized = normalize(value);
     if (normalized.isEmpty) {
       return null;
+    }
+    if (normalized.contains('FLASH')) {
+      return MobileBarcodeCommand.openFlash;
+    }
+    if (normalized.contains('CLEAR') ||
+        normalized.contains('CLEAN') ||
+        normalized.contains('清除')) {
+      return MobileBarcodeCommand.clearInput;
     }
     if (normalized.contains('SHIP') ||
         normalized.contains('发货') ||
@@ -216,4 +223,11 @@ class BarcodeCandidatePolicy {
 enum WorkScanRejection { tooShort, productFormat, unsupportedFormat, invalid }
 
 /// 手机版摄像头可执行的指令码动作。
-enum MobileBarcodeCommand { switchShipping, switchReturn, startWork, stopWork }
+enum MobileBarcodeCommand {
+  clearInput,
+  openFlash,
+  switchShipping,
+  switchReturn,
+  startWork,
+  stopWork,
+}
