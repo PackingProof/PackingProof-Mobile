@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:packing_proof_mobile/models/work_mode.dart';
+import 'package:packing_proof_mobile/services/barcode_work_mode_policy.dart';
 import 'package:packing_proof_mobile/services/barcode_stability_tracker.dart';
 
 void main() {
@@ -113,6 +115,33 @@ void main() {
       now.add(const Duration(seconds: 2)),
     );
     expect(locked.confirmedCode, isEmpty);
+  });
+
+  test('原生空结果解除锁定后同码再次确认触发停录', () {
+    final tracker = BarcodeStabilityTracker();
+    final now = DateTime(2026, 9, 12);
+    const code = 'JT1234567890';
+    tracker.observe(code, now);
+    tracker.observe(code, now.add(const Duration(milliseconds: 100)));
+    // 原生识别器可能只在面单离开时发送一次空结果
+    tracker.observe(null, now.add(const Duration(seconds: 1)));
+    expect(
+      tracker.observe(code, now.add(const Duration(seconds: 5))).confirmedCode,
+      isEmpty,
+    );
+    final confirmed = tracker.observe(
+      code,
+      now.add(const Duration(milliseconds: 5100)),
+    );
+    expect(confirmed.confirmedCode, code);
+    expect(
+      BarcodeWorkModePolicy.decide(
+        mode: WorkMode.sameCodeStop,
+        currentCode: code,
+        scannedCode: confirmed.confirmedCode,
+      ),
+      BarcodeWorkAction.stopVideo,
+    );
   });
 
   test('条码离开画面后再次进入可重新确认', () {

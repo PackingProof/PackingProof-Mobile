@@ -1953,11 +1953,13 @@ final class IosCameraHostApi:
       metadataCandidateCount += Int64(candidates.count)
       metadataLastCandidateAt = now
       markVisionCandidate(at: now)
-      handleBarcodeBatchAction(barcodeBatchGate.submit(
-        candidates,
-        now: ProcessInfo.processInfo.systemUptime
-      ), generation: barcodeGeneration)
     }
+    // Empty observations let Dart rearm a previously confirmed barcode after
+    // the label leaves the frame, including same-code stop recording.
+    handleBarcodeBatchAction(barcodeBatchGate.submit(
+      candidates,
+      now: ProcessInfo.processInfo.systemUptime
+    ), generation: barcodeGeneration)
   }
 
   /// metadata 输出是首选路径；Vision 只在没有近期候选时低频补偿，避免在新设备
@@ -2056,8 +2058,9 @@ final class IosCameraHostApi:
             "latency_ms=\(durationMs) candidate_count=\(candidates.count)"
         )
       }
-      guard !candidates.isEmpty else { return }
-      markVisionCandidate(at: ProcessInfo.processInfo.systemUptime)
+      if !candidates.isEmpty {
+        markVisionCandidate(at: ProcessInfo.processInfo.systemUptime)
+      }
       metadataQueue.async { [weak self] in
         guard let self,
               !self.isDisposed,

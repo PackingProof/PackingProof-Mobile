@@ -13,6 +13,16 @@ final class IosLatestPendingGateTests: XCTestCase {
     assertNone(gate.complete(now: 10.2))
   }
 
+  func testEmptyBarcodeBatchReplacesPendingDetection() {
+    var gate = IosLatestPendingGate<[String]>(minimumInterval: 0.1)
+
+    assertSend(gate.submit(["JT1234567890"], now: 10), payload: ["JT1234567890"])
+    assertNone(gate.submit(["JT1234567890"], now: 10.01))
+    assertNone(gate.submit([], now: 10.02))
+    assertSend(gate.complete(now: 10.2), payload: [])
+    assertNone(gate.complete(now: 10.3))
+  }
+
   func testSlowCompletionSendsLatestPayloadImmediately() {
     var gate = IosLatestPendingGate<Int>(minimumInterval: 0.1)
 
