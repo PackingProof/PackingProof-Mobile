@@ -69,6 +69,9 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 dependency_overrides:
+  # 本地补丁适配 iOS SDK 蓝牙名称与 TTS 主线程隔离。
+  flutter_tts:
+    path: plugins/flutter_tts
   # 本地补丁明确忽略 iOS 字节复制返回值，保持图像转换行为不变。
   google_mlkit_commons:
     path: plugins/google_mlkit_commons

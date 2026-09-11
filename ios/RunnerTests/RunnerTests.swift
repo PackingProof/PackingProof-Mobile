@@ -5,6 +5,7 @@ import SQLite3
 import UIKit
 import XCTest
 @testable import Runner
+@testable import flutter_tts
 
 private final class FakeIosAudioSession: IosAudioSessionProtocol {
   enum Failure: Error {
@@ -4846,5 +4847,72 @@ private actor AsyncMaintenanceTracker {
 
   func counts() -> (started: Int, active: Int, maximumActive: Int) {
     (started, active, maximumActive)
+  }
+}
+
+
+private final class TtsTestMessenger: NSObject, FlutterBinaryMessenger {
+  var onCall: ((FlutterMethodCall) -> Void)?
+
+  func send(onChannel channel: String, message: Data?) {
+    XCTAssertTrue(Thread.isMainThread)
+    if let message = message {
+      onCall?(FlutterStandardMethodCodec.sharedInstance().decodeMethodCall(message))
+    }
+  }
+
+  func send(onChannel channel: String, message: Data?, binaryReply callback: FlutterBinaryReply?) {
+    send(onChannel: channel, message: message)
+    callback?(nil)
+  }
+
+  func setMessageHandlerOnChannel(_ channel: String, binaryMessageHandler handler: FlutterBinaryMessageHandler?) -> FlutterBinaryMessengerConnection { 0 }
+  func cleanUpConnection(_ connection: FlutterBinaryMessengerConnection) {}
+}
+
+final class IosTtsThreadingTests: XCTestCase {
+  @MainActor
+  func testBackgroundDelegateCompletionReturnsToMainActor() async {
+    let messenger = TtsTestMessenger()
+    let plugin = SwiftFlutterTtsPlugin(channel: FlutterMethodChannel(name: "tts-test", binaryMessenger: messenger))
+    plugin.autoStopSharedSession = false
+    plugin.awaitSpeakCompletion = true
+    let result = expectation(description: "completion result on main thread")
+    plugin.speakResult = { value in
+      XCTAssertTrue(Thread.isMainThread)
+      XCTAssertEqual(value as? Int, 1)
+      result.fulfill()
+    }
+    let event = expectation(description: "completion event on main thread")
+    messenger.onCall = { call in
+      XCTAssertEqual(call.method, "speak.onComplete")
+      event.fulfill()
+    }
+    DispatchQueue.global().async {
+      plugin.speechSynthesizer(AVSpeechSynthesizer(), didFinish: AVSpeechUtterance(string: "测试"))
+    }
+    await fulfillment(of: [result, event], timeout: 5)
+    XCTAssertNil(plugin.speakResult)
+  }
+
+  @MainActor
+  func testBackgroundProgressCopiesTextBeforeReturningToMainActor() async {
+    let messenger = TtsTestMessenger()
+    let plugin = SwiftFlutterTtsPlugin(channel: FlutterMethodChannel(name: "tts-test", binaryMessenger: messenger))
+    let event = expectation(description: "progress event on main thread")
+    messenger.onCall = { call in
+      XCTAssertEqual(call.method, "speak.onProgress")
+      XCTAssertEqual(call.arguments as? [String: String], ["text": "测试播报", "word": "测试", "start": "0", "end": "2"])
+      event.fulfill()
+    }
+    DispatchQueue.global().async {
+      plugin.speechSynthesizer(AVSpeechSynthesizer(), willSpeakRangeOfSpeechString: NSRange(location: 0, length: 2), utterance: AVSpeechUtterance(string: "测试播报"))
+    }
+    await fulfillment(of: [event], timeout: 5)
+  }
+
+  func testBluetoothOptionKeepsHfpFlag() {
+    XCTAssertEqual(AudioCategoryOptions.iosAudioCategoryOptionsAllowBluetooth.toAVAudioSessionCategoryOptions(), .allowBluetoothHFP)
+    XCTAssertEqual(AVAudioSession.CategoryOptions.allowBluetoothHFP.rawValue, 4)
   }
 }
