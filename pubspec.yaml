@@ -69,6 +69,9 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 dependency_overrides:
+  # 本地补丁明确忽略 iOS 字节复制返回值，保持图像转换行为不变。
+  google_mlkit_commons:
+    path: plugins/google_mlkit_commons
   # 国内镜像尚未同步 share_plus 13.3.0 所需接口版本，仅此包直连 pub.dev。
   share_plus_platform_interface:
     hosted: https://pub.dev

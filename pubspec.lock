@@ -368,12 +368,11 @@ packages:
     source: hosted
     version: "0.15.0"
   google_mlkit_commons:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: google_mlkit_commons
-      sha256: c7fc384bdb66c3b83e24e3a41818e61d7a378d900f65f5e775344fbca95a0917
-      url: "https://pub.flutter-io.cn"
-    source: hosted
+      path: "plugins/google_mlkit_commons"
+      relative: true
+    source: path
     version: "0.12.0"
   graphs:
     dependency: transitive
