@@ -2011,7 +2011,7 @@ class _ControlPanel extends StatelessWidget {
         : const Color(0xFF767D7A);
     return Container(
       key: const Key('recording-control-panel'),
-      color: colors.surface.withValues(alpha: 0.84),
+      color: Colors.transparent,
       child: SizedBox(
         height: height,
         child: Padding(

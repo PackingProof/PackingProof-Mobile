@@ -56,7 +56,7 @@ void main() {
     final Container controlPanel = tester.widget<Container>(
       find.byKey(const Key('recording-control-panel')),
     );
-    expect(controlPanel.color?.a, closeTo(0.84, 0.01));
+    expect(controlPanel.color, Colors.transparent);
     expect(find.byType(TextField), findsNothing);
     expect(find.byKey(const Key('recording-button-shimmer')), findsNothing);
   });
