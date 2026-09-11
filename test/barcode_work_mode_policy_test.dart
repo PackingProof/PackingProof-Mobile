@@ -7,6 +7,7 @@ void main() {
     for (final codes in [
       ('JD123456789012', 'JD123456789012-1-1-'),
       ('JD123456789012-1-2-', 'JD123456789012'),
+      ('JDX058278770023', 'JDX058278770023-1-1-'),
     ]) {
       expect(
         BarcodeWorkModePolicy.decide(

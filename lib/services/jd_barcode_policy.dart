@@ -2,10 +2,10 @@
 class JdBarcodePolicy {
   const JdBarcodePolicy._();
 
-  // Only confirmed JD / JDVA forms. Do not guess other courier prefixes.
-  static final RegExp _waybill = RegExp(r'^JD(?:VA)?[0-9]+$');
+  // JD 开头的字母数字单号统一关联合法包裹后缀。
+  static final RegExp _waybill = RegExp(r'^JD[A-Z0-9]+$');
   static final RegExp _package = RegExp(
-    r'^(JD(?:VA)?[0-9]+)-([1-9][0-9]*)-([1-9][0-9]*)-$',
+    r'^(JD[A-Z0-9]+)-([1-9][0-9]*)-([1-9][0-9]*)-$',
   );
 
   static bool isBareWaybill(String code) =>
