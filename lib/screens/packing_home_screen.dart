@@ -323,6 +323,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   Future<void> _showManualTrackingDialog() async {
     final TextEditingController input = TextEditingController();
     bool validate = true;
+    String? errorMessage;
     await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => StatefulBuilder(
@@ -336,6 +337,19 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                 autofocus: true,
                 textInputAction: TextInputAction.done,
               ),
+              if (errorMessage != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      errorMessage!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                ),
               CheckboxListTile(
                 value: validate,
                 contentPadding: EdgeInsets.zero,
@@ -356,8 +370,17 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                   input.text,
                   validate: validate,
                 );
-                if (ok && dialogContext.mounted)
+                if (ok && dialogContext.mounted) {
                   Navigator.pop(dialogContext, true);
+                } else if (dialogContext.mounted) {
+                  setState(() {
+                    errorMessage = input.text.trim().isEmpty
+                        ? '请输入单号'
+                        : validate
+                        ? '单号格式或长度不符合要求'
+                        : '当前无法提交，请稍后重试';
+                  });
+                }
               },
               child: const Text('提交'),
             ),
