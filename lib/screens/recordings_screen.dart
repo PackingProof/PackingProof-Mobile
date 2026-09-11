@@ -1065,7 +1065,12 @@ class _RecordingsScreenState extends State<RecordingsScreen>
         ),
         body: ListView(
           controller: _scrollController,
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+          padding: EdgeInsets.fromLTRB(
+            18,
+            8,
+            18,
+            28 + MediaQuery.paddingOf(context).bottom,
+          ),
           children: <Widget>[
             if (!historyMode)
               ...buildRecordingsSettingsChildren(context)

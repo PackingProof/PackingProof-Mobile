@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../widgets/floating_dock.dart';
 import '../app/app_build_config.dart';
 import '../app/app_update_links.dart';
 import '../app/packing_proof_theme.dart';
@@ -571,6 +572,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
             if (!didPop) _handleSystemBack();
           },
           child: Scaffold(
+            extendBody: true,
             body: IndexedStack(
               index: _selectedTab,
               children: <Widget>[
@@ -760,40 +762,44 @@ class _PackingBottomNavigation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return NavigationBar(
-      key: const Key('main-bottom-navigation'),
-      selectedIndex: selectedIndex,
-      onDestinationSelected: onSelected,
-      height: 72,
-      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      destinations: <NavigationDestination>[
-        const NavigationDestination(
-          icon: Icon(Icons.history_rounded),
-          selectedIcon: Icon(Icons.history_rounded),
-          label: '历史',
-        ),
-        NavigationDestination(
-          icon: CircleAvatar(
-            radius: 22,
-            backgroundColor: colors.secondaryContainer,
-            child: Icon(
-              Icons.videocam_rounded,
-              color: colors.onSecondaryContainer,
+    return FloatingDock(
+      child: NavigationBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        key: const Key('main-bottom-navigation'),
+        selectedIndex: selectedIndex,
+        onDestinationSelected: onSelected,
+        height: 64,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        destinations: <NavigationDestination>[
+          const NavigationDestination(
+            icon: Icon(Icons.history_rounded),
+            selectedIcon: Icon(Icons.history_rounded),
+            label: '历史',
+          ),
+          NavigationDestination(
+            icon: CircleAvatar(
+              radius: 18,
+              backgroundColor: colors.secondaryContainer,
+              child: Icon(
+                Icons.videocam_rounded,
+                color: colors.onSecondaryContainer,
+              ),
             ),
+            selectedIcon: CircleAvatar(
+              radius: 18,
+              backgroundColor: colors.primary,
+              child: Icon(Icons.videocam_rounded, color: colors.onPrimary),
+            ),
+            label: '录制',
           ),
-          selectedIcon: CircleAvatar(
-            radius: 22,
-            backgroundColor: colors.primary,
-            child: Icon(Icons.videocam_rounded, color: colors.onPrimary),
+          const NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings_rounded),
+            label: '设置',
           ),
-          label: '录制',
-        ),
-        const NavigationDestination(
-          icon: Icon(Icons.settings_outlined),
-          selectedIcon: Icon(Icons.settings_rounded),
-          label: '设置',
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
