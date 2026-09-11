@@ -1958,13 +1958,9 @@ class _ControlPanel extends StatelessWidget {
     final Color secondaryText = colors.brightness == Brightness.dark
         ? colors.onSurfaceVariant
         : const Color(0xFF767D7A);
-    return PhysicalShape(
+    return Container(
       key: const Key('recording-control-panel'),
-      clipper: const _ShallowUpwardArcClipper(),
-      color: colors.surface.withValues(alpha: 0.66),
-      shadowColor: const Color(0x44000000),
-      elevation: 10,
-      clipBehavior: Clip.antiAlias,
+      color: colors.surface,
       child: SizedBox(
         height: height,
         child: Padding(
@@ -2074,22 +2070,6 @@ class _AlternatingBanner extends StatelessWidget {
       ),
     );
   }
-}
-
-class _ShallowUpwardArcClipper extends CustomClipper<Path> {
-  const _ShallowUpwardArcClipper();
-
-  @override
-  Path getClip(Size size) => Path()
-    ..moveTo(0, 12)
-    ..cubicTo(size.width * 0.24, 12, size.width * 0.34, 0, size.width * 0.5, 0)
-    ..cubicTo(size.width * 0.66, 0, size.width * 0.76, 12, size.width, 12)
-    ..lineTo(size.width, size.height)
-    ..lineTo(0, size.height)
-    ..close();
-
-  @override
-  bool shouldReclip(_ShallowUpwardArcClipper oldClipper) => false;
 }
 
 class _PrimaryWorkButton extends StatefulWidget {

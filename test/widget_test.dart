@@ -53,10 +53,15 @@ void main() {
         tester.element(find.byKey(const Key('camera-preview-backing'))),
       ).colorScheme.surface,
     );
-    final PhysicalShape controlPanelShape = tester.widget<PhysicalShape>(
+    final Container controlPanel = tester.widget<Container>(
       find.byKey(const Key('recording-control-panel')),
     );
-    expect(controlPanelShape.color.a, closeTo(0.66, 0.01));
+    expect(
+      controlPanel.color,
+      Theme.of(
+        tester.element(find.byKey(const Key('recording-control-panel'))),
+      ).colorScheme.surface,
+    );
     expect(find.byType(TextField), findsNothing);
     expect(find.byKey(const Key('recording-button-shimmer')), findsNothing);
   });
