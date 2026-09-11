@@ -82,4 +82,80 @@ void main() {
       isEmpty,
     );
   });
+
+  test('starting with package code locks its bare alias', () {
+    final tracker = BarcodeStabilityTracker();
+    final now = DateTime(2026, 9, 11);
+    tracker.observe('JD123456789012-1-2-', now);
+    expect(
+      tracker
+          .observe(
+            'JD123456789012-1-2-',
+            now.add(const Duration(milliseconds: 100)),
+          )
+          .confirmedCode,
+      'JD123456789012-1-2-',
+    );
+    expect(
+      tracker
+          .observe('JD123456789012', now.add(const Duration(milliseconds: 200)))
+          .confirmedCode,
+      isEmpty,
+    );
+  });
+
+  test('same label alias confirms after the label leaves and returns', () {
+    final tracker = BarcodeStabilityTracker();
+    final now = DateTime(2026, 9, 11);
+    tracker.observe('JD123456789012-1-2-', now);
+    tracker.observe(
+      'JD123456789012-1-2-',
+      now.add(const Duration(milliseconds: 100)),
+    );
+    tracker.observe(null, now.add(const Duration(milliseconds: 200)));
+    tracker.observe(null, now.add(const Duration(milliseconds: 3300)));
+
+    tracker.observe(
+      'JD123456789012',
+      now.add(const Duration(milliseconds: 3400)),
+    );
+    expect(
+      tracker
+          .observe(
+            'JD123456789012',
+            now.add(const Duration(milliseconds: 3500)),
+          )
+          .confirmedCode,
+      'JD123456789012',
+    );
+  });
+
+  test('different package suffix remains a separate recording identity', () {
+    final tracker = BarcodeStabilityTracker();
+    final now = DateTime(2026, 9, 11);
+    tracker.observe('JD123456789012-1-2-', now);
+    tracker.observe(
+      'JD123456789012-1-2-',
+      now.add(const Duration(milliseconds: 100)),
+    );
+
+    expect(
+      tracker
+          .observe(
+            'JD123456789012-2-2-',
+            now.add(const Duration(milliseconds: 200)),
+          )
+          .confirmedCode,
+      isEmpty,
+    );
+    expect(
+      tracker
+          .observe(
+            'JD123456789012-2-2-',
+            now.add(const Duration(milliseconds: 300)),
+          )
+          .confirmedCode,
+      'JD123456789012-2-2-',
+    );
+  });
 }
