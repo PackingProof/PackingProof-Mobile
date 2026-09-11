@@ -2081,6 +2081,9 @@ class _ControlPanel extends StatelessWidget {
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                     height: 1.2,
+                    shadows: const <Shadow>[
+                      Shadow(color: Colors.black54, blurRadius: 3),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 1),
@@ -2123,6 +2126,9 @@ class _ControlPanel extends StatelessWidget {
                     color: secondaryText,
                     fontSize: 14,
                     height: 1.3,
+                    shadows: const <Shadow>[
+                      Shadow(color: Colors.black54, blurRadius: 3),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -2136,10 +2142,16 @@ class _ControlPanel extends StatelessWidget {
                   SizedBox(
                     width: 48,
                     height: 48,
-                    child: IconButton(
-                      tooltip: '输入单号',
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(48, 48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                       onPressed: view.onManualTrackingPressed,
-                      icon: const Icon(Icons.keyboard_alt_outlined),
+                      child: const Icon(Icons.keyboard_alt_outlined),
                     ),
                   ),
                 ],
