@@ -2135,25 +2135,29 @@ class _ControlPanel extends StatelessWidget {
               ],
               Row(
                 children: <Widget>[
-                  const SizedBox(width: 48, height: 48),
+                  const SizedBox(width: 8),
+                  const SizedBox(width: 48, height: 54),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: _PrimaryWorkButton(view: view, isError: isError),
                   ),
+                  const SizedBox(width: 8),
                   SizedBox(
-                    width: 48,
-                    height: 48,
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
+                    width: 54,
+                    height: 54,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
                         padding: EdgeInsets.zero,
-                        minimumSize: const Size(48, 48),
+                        minimumSize: const Size(54, 54),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                       ),
                       onPressed: view.onManualTrackingPressed,
                       child: const Icon(Icons.keyboard_alt_outlined),
                     ),
                   ),
+                  const SizedBox(width: 8),
                 ],
               ),
             ],
