@@ -323,7 +323,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   Future<void> _showManualTrackingDialog() async {
     final TextEditingController input = TextEditingController();
     bool validate = true;
-    final bool? submitted = await showDialog<bool>(
+    await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setState) => AlertDialog(
