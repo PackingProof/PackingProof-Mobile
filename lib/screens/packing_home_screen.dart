@@ -328,7 +328,20 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       context: context,
       builder: (BuildContext dialogContext) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setState) => AlertDialog(
-          title: const Text('输入单号'),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: const Text(
+            '输入单号',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
