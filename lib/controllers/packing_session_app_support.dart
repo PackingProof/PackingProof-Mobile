@@ -251,12 +251,14 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
     required int page,
     required int pageSize,
     String keyword = '',
+    RecordingOperationMode? operationMode,
     DateTime? start,
     DateTime? end,
   }) => _repository.querySessions(
     page: page,
     pageSize: pageSize,
     keyword: keyword,
+    operationMode: operationMode,
     start: start,
     end: end,
   );
@@ -268,6 +270,7 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
     required LocalRecordingPageDirection direction,
     required int knownTotal,
     String keyword = '',
+    RecordingOperationMode? operationMode,
     DateTime? start,
     DateTime? end,
   }) => _repository.queryAdjacentSessions(
@@ -277,6 +280,7 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
     direction: direction,
     knownTotal: knownTotal,
     keyword: keyword,
+    operationMode: operationMode,
     start: start,
     end: end,
   );
@@ -292,10 +296,12 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
     required int page,
     required int pageSize,
     String keyword = '',
+    RecordingOperationMode? operationMode,
   }) => _lanBackupService.fetchRemoteRecordings(
     page: page,
     pageSize: pageSize,
     keyword: keyword,
+    operationMode: operationMode,
   );
 
   Future<Map<int, ({RemoteRecordingStatus status, bool exists, String reason})>>

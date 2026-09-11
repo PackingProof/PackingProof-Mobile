@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
+import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/services/recording_database.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -26,6 +27,80 @@ void main() {
 
   tearDown(() async {
     if (await root.exists()) await root.delete(recursive: true);
+  });
+
+  test('业务类型在计数和游标翻页前筛选，支持组合搜索', () async {
+    final raw = await databaseFactory.openDatabase(databasePath);
+    await raw.update(
+      'recording_sessions',
+      {'operation_mode': 'return'},
+      where: 'id IN (?, ?)',
+      whereArgs: ['jd-first', 'jd-second'],
+    );
+    await raw.close();
+    final database = RecordingDatabase(path: databasePath);
+    addTearDown(database.close);
+    final first = await database.queryActiveSessions(
+      page: 1,
+      pageSize: 1,
+      keyword: 'JD',
+      operationMode: RecordingOperationMode.returnGoods,
+    );
+    expect(first.total, 2);
+    expect(first.data.single.id, 'jd-first');
+    final second = await database.queryAdjacentActiveSessions(
+      page: 2,
+      pageSize: 1,
+      cursor: first.lastCursor!,
+      direction: LocalRecordingPageDirection.older,
+      knownTotal: first.total,
+      keyword: 'JD',
+      operationMode: RecordingOperationMode.returnGoods,
+    );
+    expect(second.data.single.id, 'jd-second');
+    expect(second.total, 2);
+    final shipping = await database.queryActiveSessions(
+      page: 1,
+      pageSize: 10,
+      keyword: 'JD',
+      operationMode: RecordingOperationMode.shipping,
+    );
+    expect(shipping.total, 0);
+  });
+
+  test('版本5升级按原始记录回填业务类型且保留记录', () async {
+    final raw = await databaseFactory.openDatabase(databasePath);
+    final row = (await raw.query(
+      'recording_sessions',
+      where: 'id = ?',
+      whereArgs: ['jd-first'],
+    )).single;
+    final payload =
+        jsonDecode(row['payload_json']! as String) as Map<String, dynamic>;
+    payload['operationMode'] = 'return';
+    await raw.update(
+      'recording_sessions',
+      {'payload_json': jsonEncode(payload)},
+      where: 'id = ?',
+      whereArgs: ['jd-first'],
+    );
+    await raw.execute('DROP INDEX idx_recording_active_mode_time');
+    await raw.execute(
+      'ALTER TABLE recording_sessions DROP COLUMN operation_mode',
+    );
+    await raw.setVersion(5);
+    await raw.close();
+    final database = RecordingDatabase(path: databasePath);
+    addTearDown(database.close);
+    final returned = await database.queryActiveSessions(
+      page: 1,
+      pageSize: 10,
+      operationMode: RecordingOperationMode.returnGoods,
+    );
+    expect(returned.total, 1);
+    expect(returned.data.single.id, 'jd-first');
+    final all = await database.queryActiveSessions(page: 1, pageSize: 10);
+    expect(all.total, 8);
   });
 
   test('搜索把 LIKE 通配符、斜杠和引号按字面字符匹配', () async {

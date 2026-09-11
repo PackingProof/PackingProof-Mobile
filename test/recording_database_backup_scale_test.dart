@@ -53,7 +53,7 @@ void main() {
       options: OpenDatabaseOptions(singleInstance: false),
     );
     addTearDown(raw.close);
-    expect(await raw.getVersion(), 5);
+    expect(await raw.getVersion(), 6);
     final List<Map<String, Object?>> schema = await raw.rawQuery(
       "SELECT type, name, sql FROM sqlite_master "
       "WHERE name IN ('recording_metadata', 'recording_file_owners', "

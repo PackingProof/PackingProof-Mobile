@@ -1,6 +1,7 @@
 import '../models/barcode_marker.dart';
 import '../models/lan_backup.dart';
 import '../models/recording_session.dart';
+import '../models/recording_operation_mode.dart';
 
 enum RecordingSourceFilter { all, local, backedUp, computer }
 
@@ -105,6 +106,7 @@ List<RecordingHistoryItem> buildVisibleRecordingHistoryItems({
   required bool Function(RemoteRecording remote) isRemoteFromThisDevice,
   required bool Function(RecordingSession local) isLocalBackedUp,
   RecordingHistoryDateWindow? dateWindow,
+  RecordingOperationMode? operationMode,
 }) {
   final Map<String, RemoteRecording> remoteBySession =
       <String, RemoteRecording>{
@@ -150,7 +152,9 @@ List<RecordingHistoryItem> buildVisibleRecordingHistoryItems({
                 item.remote!.status == RemoteRecordingStatus.available &&
                 item.remote!.exists) ||
             (item.local != null && isLocalBackedUp(item.local!));
-        return inDateRange &&
+        return (operationMode == null ||
+                item.session.operationMode == operationMode) &&
+            inDateRange &&
             switch (sourceFilter) {
               RecordingSourceFilter.all => true,
               RecordingSourceFilter.local => hasLocalFile,

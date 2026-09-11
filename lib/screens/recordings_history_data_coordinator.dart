@@ -21,6 +21,7 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
   int _remoteDeviceTotal = 0;
   int _localTotal = 0;
   bool _loadingLocal = false;
+  String? _remoteFilterError;
   int _localRecordingBytes = 0;
   Set<String> _localRecordingPaths = <String>{};
   int _localRecordingStatsGeneration = 0;
@@ -33,6 +34,7 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
   int get _historyPageSize;
   List<RecordingSession> get _sessions;
   String get _query;
+  RecordingOperationMode? get _operationFilter;
   RecordingHistoryDateWindow? get _activeDateWindow;
 
   Future<void> _manualRefresh() async {
@@ -139,6 +141,7 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
         page: 1,
         pageSize: _historyPageSize,
         keyword: _query,
+        operationMode: _operationFilter,
         start: _activeDateWindow?.start,
         end: _activeDateWindow?.end,
       );
@@ -155,6 +158,7 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
           direction: LocalRecordingPageDirection.older,
           knownTotal: _localTotal,
           keyword: _query,
+          operationMode: _operationFilter,
           start: _activeDateWindow?.start,
           end: _activeDateWindow?.end,
         );
@@ -169,6 +173,7 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
           direction: LocalRecordingPageDirection.newer,
           knownTotal: _localTotal,
           keyword: _query,
+          operationMode: _operationFilter,
           start: _activeDateWindow?.start,
           end: _activeDateWindow?.end,
         );
@@ -180,6 +185,7 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
       page: pageNumber,
       pageSize: _historyPageSize,
       keyword: _query,
+      operationMode: _operationFilter,
       start: _activeDateWindow?.start,
       end: _activeDateWindow?.end,
     );
@@ -208,6 +214,7 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
     final int requestGeneration = ++_remoteRequestGeneration;
     setState(() {
       _loadingRemote = true;
+      _remoteFilterError = null;
       if (reset) {
         _remotePages.clear();
         _remoteRecordings.clear();
@@ -221,6 +228,7 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
         page: pageNumber,
         pageSize: _historyPageSize,
         keyword: _query,
+        operationMode: _operationFilter,
       );
       if (!mounted || requestGeneration != _remoteRequestGeneration) return;
       setState(() {
@@ -232,6 +240,10 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
       await _refreshRemoteStatuses(result.data);
       if (prefetchNext && result.hasMore && mounted) {
         await _loadRemotePageWithoutBusy(result.page + 1, requestGeneration);
+      }
+    } on UnsupportedError catch (error) {
+      if (mounted && requestGeneration == _remoteRequestGeneration) {
+        setState(() => _remoteFilterError = error.message?.toString());
       }
     } on Object {
       // broad-catch: Backup state owns all remote errors; keep cached rows visible.
@@ -257,6 +269,7 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
       page: pageNumber,
       pageSize: _historyPageSize,
       keyword: _query,
+      operationMode: _operationFilter,
     );
     if (!mounted || requestGeneration != _remoteRequestGeneration) return;
     setState(() {

@@ -1,3 +1,4 @@
+import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -896,6 +897,7 @@ class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
     required int page,
     required int pageSize,
     String keyword = '',
+    RecordingOperationMode? operationMode,
   }) async => const RemoteRecordingPage.empty();
 
   @override

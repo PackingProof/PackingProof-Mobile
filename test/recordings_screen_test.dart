@@ -289,10 +289,7 @@ void main() {
     expect(find.text('录像清理说明'), findsOneWidget);
     expect(find.textContaining('每组录像分别设置'), findsOneWidget);
     expect(find.textContaining('最老的'), findsOneWidget);
-    expect(
-      find.text('超过保留时间且仍未完成电脑备份的录像将从本机永久删除'),
-      findsNothing,
-    );
+    expect(find.text('超过保留时间且仍未完成电脑备份的录像将从本机永久删除'), findsNothing);
   });
 
   testWidgets('面单条码最短长度可调整', (WidgetTester tester) async {
@@ -2013,7 +2010,12 @@ void main() {
             connectionStatus: LanConnectionStatus.offline,
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async {
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async {
                 loadCount++;
                 return const RemoteRecordingPage.empty();
               },
@@ -2084,7 +2086,12 @@ void main() {
             connectionStatus: LanConnectionStatus.offline,
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async {
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async {
                 loadCount++;
                 return const RemoteRecordingPage.empty();
               },
@@ -2110,6 +2117,85 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('2 / 2 页'), findsOneWidget);
     expect(loadCount, 0);
+  });
+
+  testWidgets('业务类型筛选同步传给本地和电脑查询，取消恢复全部', (WidgetTester tester) async {
+    final localModes = <RecordingOperationMode?>[];
+    final remoteModes = <RecordingOperationMode?>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: const [],
+          historyPageSize: 20,
+          onLoadLocalRecordings:
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+                start,
+                end,
+              }) async {
+                localModes.add(operationMode);
+                return LocalRecordingPage(
+                  data: const [],
+                  page: page,
+                  pageSize: pageSize,
+                  total: 0,
+                );
+              },
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '仓库电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+          ),
+          onLoadRemoteRecordings:
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async {
+                remoteModes.add(operationMode);
+                return const RemoteRecordingPage.empty();
+              },
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onAutoBackupChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.ensureVisible(
+      find.byKey(const Key('recording-source-filter')),
+    );
+    await tester.tap(find.byKey(const Key('recording-source-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '退货'));
+    await tester.tap(find.text('应用筛选'));
+    await tester.pumpAndSettle();
+    expect(localModes.last, RecordingOperationMode.returnGoods);
+    expect(remoteModes.last, RecordingOperationMode.returnGoods);
+    expect(find.text('全部来源 · 退货'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('recording-source-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '全部类型'));
+    await tester.tap(find.text('应用筛选'));
+    await tester.pumpAndSettle();
+    expect(localModes.last, isNull);
+    expect(remoteModes.last, isNull);
   });
 
   testWidgets('删除电脑需要两次确认并显示名称与地址', (WidgetTester tester) async {
@@ -2665,6 +2751,7 @@ void main() {
                 required page,
                 required pageSize,
                 keyword = '',
+                operationMode,
                 DateTime? start,
                 DateTime? end,
               }) async {
@@ -2753,6 +2840,7 @@ void main() {
                 required page,
                 required pageSize,
                 keyword = '',
+                operationMode,
                 DateTime? start,
                 DateTime? end,
               }) => loadPage(page: page, pageSize: pageSize),
@@ -2836,6 +2924,7 @@ void main() {
                 required page,
                 required pageSize,
                 keyword = '',
+                operationMode,
                 DateTime? start,
                 DateTime? end,
               }) async {
@@ -2881,6 +2970,7 @@ void main() {
       required int page,
       required int pageSize,
       String keyword = '',
+      operationMode,
       DateTime? start,
       DateTime? end,
     }) async {
@@ -2947,6 +3037,7 @@ void main() {
       required int page,
       required int pageSize,
       String keyword = '',
+      operationMode,
     }) async {
       requestedPages.add(page);
       requestedKeywords.add(keyword);
@@ -3073,14 +3164,18 @@ void main() {
             connectionStatus: LanConnectionStatus.connected,
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1 ? <RemoteRecording>[remote] : const [],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 1,
-                    deviceTotal: 1,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1 ? <RemoteRecording>[remote] : const [],
+                page: page,
+                pageSize: pageSize,
+                total: 1,
+                deviceTotal: 1,
+              ),
           onLoadRemoteRecordingStatuses: (ids) async => {
             7: (
               status: RemoteRecordingStatus.deleted,
@@ -3187,16 +3282,20 @@ void main() {
             deviceName: '手机1',
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1
-                        ? <RemoteRecording>[computerRecording]
-                        : const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 1,
-                    deviceTotal: 0,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1
+                    ? <RemoteRecording>[computerRecording]
+                    : const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: 1,
+                deviceTotal: 0,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -3296,16 +3395,20 @@ void main() {
             deviceName: '手机1',
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1
-                        ? <RemoteRecording>[remote]
-                        : const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 1,
-                    deviceTotal: 0,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1
+                    ? <RemoteRecording>[remote]
+                    : const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: 1,
+                deviceTotal: 0,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -3398,14 +3501,18 @@ void main() {
             deviceName: '手机1',
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1 ? recordings : const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: recordings.length,
-                    deviceTotal: 0,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1 ? recordings : const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: recordings.length,
+                deviceTotal: 0,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -3636,27 +3743,31 @@ void main() {
             connectionStatus: LanConnectionStatus.connected,
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1
-                        ? <RemoteRecording>[
-                            remote(
-                              id: 1,
-                              deviceId: 'another-phone',
-                              code: 'OTHER-PHONE',
-                            ),
-                            remote(
-                              id: 2,
-                              deviceId: 'this-phone',
-                              code: 'THIS-PHONE',
-                            ),
-                          ]
-                        : const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 2,
-                    deviceTotal: 1,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1
+                    ? <RemoteRecording>[
+                        remote(
+                          id: 1,
+                          deviceId: 'another-phone',
+                          code: 'OTHER-PHONE',
+                        ),
+                        remote(
+                          id: 2,
+                          deviceId: 'this-phone',
+                          code: 'THIS-PHONE',
+                        ),
+                      ]
+                    : const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: 2,
+                deviceTotal: 1,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -3760,7 +3871,12 @@ void main() {
           backupListenable: snapshots,
           backupSnapshotProvider: () => snapshots.value,
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async {
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async {
                 remoteLoadCount++;
                 return RemoteRecordingPage(
                   data: const <RemoteRecording>[],
@@ -3830,7 +3946,12 @@ void main() {
           backupListenable: snapshots,
           backupSnapshotProvider: () => snapshots.value,
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async {
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async {
                 remoteLoadCount++;
                 return RemoteRecordingPage(
                   data: <RemoteRecording>[
@@ -4062,16 +4183,20 @@ void main() {
             connectionStatus: LanConnectionStatus.connected,
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1
-                        ? <RemoteRecording>[remoteToday, remoteOld]
-                        : const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 2,
-                    deviceTotal: 0,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1
+                    ? <RemoteRecording>[remoteToday, remoteOld]
+                    : const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: 2,
+                deviceTotal: 0,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -4190,16 +4315,20 @@ void main() {
             connectionStatus: LanConnectionStatus.connected,
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1
-                        ? <RemoteRecording>[remoteToday, remoteYesterday]
-                        : const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 2,
-                    deviceTotal: 0,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1
+                    ? <RemoteRecording>[remoteToday, remoteYesterday]
+                    : const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: 2,
+                deviceTotal: 0,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -4401,6 +4530,7 @@ void main() {
                 required page,
                 required pageSize,
                 keyword = '',
+                operationMode,
                 DateTime? start,
                 DateTime? end,
               }) async {
@@ -4481,6 +4611,7 @@ void main() {
                 required page,
                 required pageSize,
                 keyword = '',
+                operationMode,
                 DateTime? start,
                 DateTime? end,
               }) async {
@@ -4493,14 +4624,18 @@ void main() {
                 );
               },
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 0,
-                    deviceTotal: 0,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: 0,
+                deviceTotal: 0,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -4590,6 +4725,7 @@ void main() {
               required page,
               required pageSize,
               keyword = '',
+              operationMode,
               DateTime? start,
               DateTime? end,
             }) async {
@@ -4659,6 +4795,7 @@ void main() {
                 required page,
                 required pageSize,
                 keyword = '',
+                operationMode,
                 DateTime? start,
                 DateTime? end,
               }) async {
@@ -4761,6 +4898,7 @@ void main() {
                 required page,
                 required pageSize,
                 keyword = '',
+                operationMode,
                 DateTime? start,
                 DateTime? end,
               }) async {
@@ -4844,16 +4982,20 @@ void main() {
             connectionStatus: LanConnectionStatus.connected,
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1
-                        ? <RemoteRecording>[remote]
-                        : const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 1,
-                    deviceTotal: 0,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1
+                    ? <RemoteRecording>[remote]
+                    : const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: 1,
+                deviceTotal: 0,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -4910,16 +5052,20 @@ void main() {
             connectionStatus: LanConnectionStatus.connected,
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1
-                        ? <RemoteRecording>[remote]
-                        : const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 1,
-                    deviceTotal: 0,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1
+                    ? <RemoteRecording>[remote]
+                    : const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: 1,
+                deviceTotal: 0,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -4976,16 +5122,20 @@ void main() {
             connectionStatus: LanConnectionStatus.connected,
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1
-                        ? <RemoteRecording>[remote]
-                        : const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 1,
-                    deviceTotal: 0,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1
+                    ? <RemoteRecording>[remote]
+                    : const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: 1,
+                deviceTotal: 0,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -5199,6 +5349,7 @@ void main() {
                 required page,
                 required pageSize,
                 keyword = '',
+                operationMode,
                 DateTime? start,
                 DateTime? end,
               }) async {
@@ -5276,16 +5427,20 @@ void main() {
             connectionStatus: LanConnectionStatus.connected,
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1
-                        ? <RemoteRecording>[remote]
-                        : const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 1,
-                    deviceTotal: 0,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1
+                    ? <RemoteRecording>[remote]
+                    : const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: 1,
+                deviceTotal: 0,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -5534,6 +5689,8 @@ void main() {
     await tester.tap(find.byKey(const Key('recording-source-filter')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('本地').last);
+    await tester.pump();
+    await tester.tap(find.text('应用筛选'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('recording-source-chip')), findsNothing);
   });
@@ -5576,6 +5733,8 @@ void main() {
     await tester.tap(find.byKey(const Key('recording-source-filter')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('本地').last);
+    await tester.pump();
+    await tester.tap(find.text('应用筛选'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('recording-source-chip')), findsNothing);
   });
@@ -5618,16 +5777,20 @@ void main() {
             deviceName: '手机1',
           ),
           onLoadRemoteRecordings:
-              ({required page, required pageSize, keyword = ''}) async =>
-                  RemoteRecordingPage(
-                    data: page == 1
-                        ? <RemoteRecording>[computerRecording]
-                        : const <RemoteRecording>[],
-                    page: page,
-                    pageSize: pageSize,
-                    total: 1,
-                    deviceTotal: 0,
-                  ),
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: page == 1
+                    ? <RemoteRecording>[computerRecording]
+                    : const <RemoteRecording>[],
+                page: page,
+                pageSize: pageSize,
+                total: 1,
+                deviceTotal: 0,
+              ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},

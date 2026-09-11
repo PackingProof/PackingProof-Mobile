@@ -2,9 +2,44 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/barcode_marker.dart';
 import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
+import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/screens/recordings_history_filter.dart';
 
 void main() {
+  test('业务类型同时筛选本地与电脑记录', () {
+    final now = DateTime(2026, 9, 12);
+    final local = _session(
+      id: 'return-local',
+      code: 'R1',
+      startedAt: now,
+      operationMode: RecordingOperationMode.returnGoods,
+    );
+    final remote = _remote(
+      id: 1,
+      code: 'R2',
+      startedAt: now,
+      sourceDeviceId: 'other',
+      operationMode: RecordingOperationMode.returnGoods,
+    );
+    final shipping = _remote(
+      id: 2,
+      code: 'S1',
+      startedAt: now,
+      sourceDeviceId: 'other',
+    );
+    final items = buildVisibleRecordingHistoryItems(
+      localSessions: [local],
+      remoteRecordings: [remote, shipping],
+      hiddenRemoteIds: {},
+      localRecordingPaths: {local.filePath},
+      sourceFilter: RecordingSourceFilter.all,
+      isRemoteFromThisDevice: (_) => false,
+      isLocalBackedUp: (_) => false,
+      operationMode: RecordingOperationMode.returnGoods,
+    );
+    expect(items.map((item) => item.session.displayCode).toSet(), {'R1', 'R2'});
+  });
+
   test('关键词筛选保持单号、日期和订单字段的既有匹配范围', () {
     final RecordingSession session = _session(
       id: 'local-1',
@@ -141,8 +176,10 @@ RecordingSession _session({
   required String code,
   required DateTime startedAt,
   String filePath = '/recordings/video.mp4',
+  RecordingOperationMode operationMode = RecordingOperationMode.shipping,
 }) => RecordingSession(
   id: id,
+  operationMode: operationMode,
   filePath: filePath,
   startedAt: startedAt,
   endedAt: startedAt.add(const Duration(seconds: 8)),
@@ -157,8 +194,10 @@ RemoteRecording _remote({
   required DateTime startedAt,
   required String sourceDeviceId,
   String sourceSessionId = '',
+  RecordingOperationMode operationMode = RecordingOperationMode.shipping,
 }) => RemoteRecording(
   id: id,
+  operationMode: operationMode,
   trackingNumber: code,
   startedAt: startedAt,
   duration: const Duration(seconds: 8),

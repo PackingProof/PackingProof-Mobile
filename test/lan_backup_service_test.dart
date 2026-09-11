@@ -135,6 +135,23 @@ void main() {
 
     expect(result.data, isEmpty);
     expect(client.requestedHosts, <String>['192.168.1.20', '192.168.1.30']);
+    await expectLater(
+      service.fetchRemoteRecordings(
+        page: 1,
+        pageSize: 5,
+        operationMode: RecordingOperationMode.returnGoods,
+      ),
+      throwsUnsupportedError,
+    );
+    expect(client.requestedUris.last.queryParameters['mode'], 'return');
+    client.echoMode = true;
+    final filtered = await service.fetchRemoteRecordings(
+      page: 1,
+      pageSize: 5,
+      operationMode: RecordingOperationMode.returnGoods,
+    );
+    expect(filtered.total, 0);
+    expect(service.snapshot.connectionStatus, LanConnectionStatus.connected);
   });
 
   test('心跳看门狗在定时器丢失时自动补发心跳并记录状态', () async {
@@ -322,12 +339,14 @@ void main() {
       page: 2,
       pageSize: 10,
       keyword: 'TRACK-1',
+      operationMode: RecordingOperationMode.returnGoods,
     );
 
     expect(uri.path, '/api/mobile-backup/videos');
     expect(uri.queryParameters['page'], '2');
     expect(uri.queryParameters['size'], '10');
     expect(uri.queryParameters['keyword'], 'TRACK-1');
+    expect(uri.queryParameters['mode'], 'return');
     expect(uri.queryParameters.containsKey('deviceId'), isFalse);
   });
 
@@ -2363,17 +2382,27 @@ class _FakeHostLocator implements LanBackupHostLocator {
 
 class _FailThenSucceedHttpClient extends Fake implements HttpClient {
   final List<String> requestedHosts = <String>[];
+  final List<Uri> requestedUris = <Uri>[];
+  bool echoMode = false;
 
   @override
   Future<HttpClientRequest> getUrl(Uri url) async {
     requestedHosts.add(url.host);
+    requestedUris.add(url);
     if (requestedHosts.length == 1) {
       throw const SocketException('旧地址不可达');
     }
     return _CompletedHttpClientRequest(
       _StreamHttpResponse(
         HttpStatus.ok,
-        '{"data":[],"page":1,"pageSize":5,"total":0,"deviceTotal":0}',
+        jsonEncode({
+          'data': [],
+          'page': 1,
+          'pageSize': 5,
+          'total': 0,
+          'deviceTotal': 0,
+          if (echoMode) 'mode': url.queryParameters['mode'],
+        }),
       ),
     );
   }

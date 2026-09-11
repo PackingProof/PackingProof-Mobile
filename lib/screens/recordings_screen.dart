@@ -274,12 +274,14 @@ class RecordingsScreen extends StatefulWidget {
     required int page,
     required int pageSize,
     String keyword,
+    RecordingOperationMode? operationMode,
   })?
   onLoadRemoteRecordings;
   final Future<LocalRecordingPage> Function({
     required int page,
     required int pageSize,
     String keyword,
+    RecordingOperationMode? operationMode,
     DateTime? start,
     DateTime? end,
   })?
@@ -291,6 +293,7 @@ class RecordingsScreen extends StatefulWidget {
     required LocalRecordingPageDirection direction,
     required int knownTotal,
     String keyword,
+    RecordingOperationMode? operationMode,
     DateTime? start,
     DateTime? end,
   })?
@@ -362,12 +365,21 @@ class _RecordingsScreenState extends State<RecordingsScreen>
       <String, Future<String?>>{};
   @override
   String _query = '';
+  @override
+  RecordingOperationMode? _operationFilter;
+
   RecordingSourceFilter _sourceFilter = RecordingSourceFilter.all;
   RecordingHistoryDatePreset _datePreset = RecordingHistoryDatePreset.all;
   DateTimeRange? _customDateRange;
 
   List<RecordingSession> get _filteredSessions =>
-      filterRecordingSessionsByQuery(_sessions, _query);
+      filterRecordingSessionsByQuery(_sessions, _query)
+          .where(
+            (session) =>
+                _operationFilter == null ||
+                session.operationMode == _operationFilter,
+          )
+          .toList();
 
   bool get _hasOtherDeviceRecordings => _visibleItems.any(
     (RecordingHistoryItem item) =>
@@ -545,6 +557,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
         localRecordingPaths: _localRecordingPaths,
         sourceFilter: _sourceFilter,
         dateWindow: _activeDateWindow,
+        operationMode: _operationFilter,
         isRemoteFromThisDevice: _isRemoteFromThisDevice,
         isLocalBackedUp: (RecordingSession local) =>
             _backupJobsByPath[lanBackupFileIdentity(local.filePath)]?.any(
@@ -793,37 +806,77 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     FocusManager.instance.primaryFocus?.unfocus();
     await Future<void>.delayed(const Duration(milliseconds: 120));
     if (!mounted) return;
-    final RecordingSourceFilter? value =
-        await showModalBottomSheet<RecordingSourceFilter>(
-          context: context,
-          showDragHandle: true,
-          builder: (BuildContext context) => SafeArea(
+    var source = _sourceFilter;
+    var mode = _operationFilter;
+    final applied = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) => SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: RecordingSourceFilter.values
-                  .map(
-                    (filter) => ListTile(
-                      leading: Icon(
-                        filter == _sourceFilter
-                            ? Icons.check_circle_rounded
-                            : Icons.circle_outlined,
-                        color: filter == _sourceFilter
-                            ? Theme.of(context).colorScheme.primary
-                            : null,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('录像筛选', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 16),
+                const Text('来源'),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final value in RecordingSourceFilter.values)
+                      ChoiceChip(
+                        label: Text(recordingHistorySourceFilterLabel(value)),
+                        selected: source == value,
+                        onSelected: (_) => update(() => source = value),
                       ),
-                      title: Text(recordingHistorySourceFilterLabel(filter)),
-                      onTap: () => Navigator.of(context).pop(filter),
-                    ),
-                  )
-                  .toList(growable: false),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text('业务类型'),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final value in <RecordingOperationMode?>[
+                      null,
+                      ...RecordingOperationMode.values,
+                    ])
+                      ChoiceChip(
+                        label: Text(value?.label ?? '全部类型'),
+                        selected: mode == value,
+                        onSelected: (_) => update(() => mode = value),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('应用筛选'),
+                ),
+              ],
             ),
           ),
-        );
-    if (value != null && mounted) {
-      setState(() {
-        _sourceFilter = value;
-        _historyPage = 0;
-      });
+        ),
+      ),
+    );
+    if (applied != true || !mounted) return;
+    final modeChanged = mode != _operationFilter;
+    setState(() {
+      _sourceFilter = source;
+      _operationFilter = mode;
+      _historyPage = 0;
+    });
+    if (modeChanged) {
+      _remoteRequestGeneration++;
+      _loadingRemote = false;
+      _remotePages.clear();
+      _remoteRecordings.clear();
+      _remoteTotal = 0;
+      _remoteDeviceTotal = 0;
+      _remoteFilterError = null;
+      _reloadLocalAfterFilterChange();
+      unawaited(_loadRemote(reset: true, pageNumber: 1, prefetchNext: true));
     }
   }
 
@@ -1222,9 +1275,15 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                             size: 18,
                           ),
                           label: Text(
-                            recordingHistorySourceFilterLabel(_sourceFilter),
+                            [
+                              recordingHistorySourceFilterLabel(_sourceFilter),
+                              if (_operationFilter != null)
+                                _operationFilter!.label,
+                            ].join(' · '),
                           ),
-                          selected: _sourceFilter != RecordingSourceFilter.all,
+                          selected:
+                              _sourceFilter != RecordingSourceFilter.all ||
+                              _operationFilter != null,
                           showCheckmark: false,
                           onSelected: (_) => _showSourceFilter(),
                         ),
@@ -1440,6 +1499,11 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                     ),
                   );
                 }),
+              if (_remoteFilterError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(_remoteFilterError!),
+                ),
               if (pagination.pageCount > 1)
                 _HistoryPagination(
                   currentPage: pagination.page,

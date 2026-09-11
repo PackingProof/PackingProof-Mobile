@@ -332,6 +332,7 @@ class SessionRepository {
     required int page,
     required int pageSize,
     String keyword = '',
+    RecordingOperationMode? operationMode,
     DateTime? start,
     DateTime? end,
   }) async {
@@ -341,6 +342,7 @@ class SessionRepository {
           page: page,
           pageSize: pageSize,
           keyword: keyword,
+          operationMode: operationMode,
           start: start,
           end: end,
         );
@@ -365,6 +367,7 @@ class SessionRepository {
     required LocalRecordingPageDirection direction,
     required int knownTotal,
     String keyword = '',
+    RecordingOperationMode? operationMode,
     DateTime? start,
     DateTime? end,
   }) async {
@@ -377,6 +380,7 @@ class SessionRepository {
           direction: direction,
           knownTotal: knownTotal,
           keyword: keyword,
+          operationMode: operationMode,
           start: start,
           end: end,
         );

@@ -9,6 +9,7 @@ import 'package:crypto/crypto.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/lan_backup.dart';
+import '../models/recording_operation_mode.dart';
 import '../models/recording_session.dart';
 import '../models/backup_retention_policy.dart';
 import '../platform/adapters/pigeon_backup_platform.dart';
@@ -208,6 +209,7 @@ abstract interface class LanBackupSink implements Listenable {
     required int page,
     required int pageSize,
     String keyword = '',
+    RecordingOperationMode? operationMode,
   });
   Future<Map<int, ({RemoteRecordingStatus status, bool exists, String reason})>>
   fetchRemoteRecordingStatuses(Iterable<int> ids);
@@ -1342,6 +1344,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     required int page,
     required int pageSize,
     String keyword = '',
+    RecordingOperationMode? operationMode,
   }) async {
     for (int attempt = 0; attempt < 2; attempt++) {
       final LanBackupEndpoint? endpoint = _snapshot.endpoint;
@@ -1353,6 +1356,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
         page: page,
         pageSize: pageSize,
         keyword: keyword,
+        operationMode: operationMode,
       );
       try {
         final HttpClientRequest request = await _httpClient
@@ -1386,6 +1390,10 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
         final Map<String, Object?> payload = Map<String, Object?>.from(
           jsonDecode(body) as Map<Object?, Object?>,
         );
+        if (operationMode != null &&
+            payload['mode'] != operationMode.storageValue) {
+          throw UnsupportedError('电脑版本暂不支持发货／退货筛选，请更新电脑端');
+        }
         final List<RemoteRecording> recordings =
             ((payload['data'] as List<Object?>?) ?? const <Object?>[])
                 .map(
@@ -1406,6 +1414,8 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
           total: (payload['total'] as num?)?.toInt() ?? recordings.length,
           deviceTotal: (payload['deviceTotal'] as num?)?.toInt() ?? 0,
         );
+      } on UnsupportedError {
+        rethrow;
       } on Object {
         if (attempt == 0 && await _recoverChangedEndpoint(endpoint.baseUri)) {
           continue;
@@ -2139,6 +2149,7 @@ Uri buildRemoteRecordingsUri(
   required int page,
   required int pageSize,
   String keyword = '',
+  RecordingOperationMode? operationMode,
 }) {
   return baseUri.replace(
     path: '/api/mobile-backup/videos',
@@ -2146,6 +2157,7 @@ Uri buildRemoteRecordingsUri(
       'page': '$page',
       'size': '$pageSize',
       if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (operationMode != null) 'mode': operationMode.storageValue,
     },
   );
 }

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/recording_session.dart';
+import '../models/recording_operation_mode.dart';
 import '../models/recording_orientation.dart';
 
 typedef AutomaticCleanupRecord = ({
@@ -157,7 +158,7 @@ class RecordingDatabase {
   bool _closing = false;
   bool _watermarkRecoveryCompleted = false;
 
-  static const int _schemaVersion = 5;
+  static const int _schemaVersion = 6;
   static final String _watermarkProcessOwnerId =
       '${DateTime.now().microsecondsSinceEpoch}-${Object().hashCode}';
   static const String _sharedFileMigrationKey =
@@ -246,6 +247,7 @@ class RecordingDatabase {
           tracking_number TEXT NOT NULL DEFAULT '',
           order_id TEXT NOT NULL DEFAULT '',
           search_text TEXT NOT NULL DEFAULT '',
+          operation_mode TEXT NOT NULL DEFAULT 'shipping',
           payload_json TEXT NOT NULL,
           file_size_bytes INTEGER NOT NULL DEFAULT 0,
           is_deleted INTEGER NOT NULL DEFAULT 0,
@@ -279,6 +281,9 @@ class RecordingDatabase {
           value TEXT NOT NULL
         )
       ''');
+      await db.execute(
+        'CREATE INDEX idx_recording_active_mode_time ON recording_sessions(is_deleted, operation_mode, started_at DESC, id DESC)',
+      );
       await _createRecordingFileOwnersTable(db);
       await _markSharedFileMigrationComplete(db);
       await db.execute(
@@ -352,6 +357,44 @@ class RecordingDatabase {
         await _rebuildRecordingStatistics(
           db,
           todayStart: _todayStartMilliseconds(DateTime.now()),
+        );
+      }
+      if (oldVersion < 6) {
+        await db.execute(
+          "ALTER TABLE recording_sessions ADD COLUMN operation_mode TEXT NOT NULL DEFAULT 'shipping'",
+        );
+        String? lastId;
+        while (true) {
+          final rows = await db.query(
+            'recording_sessions',
+            columns: ['id', 'payload_json'],
+            where: lastId == null ? null : 'id > ?',
+            whereArgs: lastId == null ? null : [lastId],
+            orderBy: 'id',
+            limit: 200,
+          );
+          if (rows.isEmpty) break;
+          final batch = db.batch();
+          for (final row in rows) {
+            final payload =
+                jsonDecode(row['payload_json']! as String)
+                    as Map<String, dynamic>;
+            batch.update(
+              'recording_sessions',
+              {
+                'operation_mode': recordingOperationModeFromStorage(
+                  payload['operationMode'],
+                ).storageValue,
+              },
+              where: 'id = ?',
+              whereArgs: [row['id']],
+            );
+          }
+          await batch.commit(noResult: true);
+          lastId = rows.last['id']! as String;
+        }
+        await db.execute(
+          'CREATE INDEX idx_recording_active_mode_time ON recording_sessions(is_deleted, operation_mode, started_at DESC, id DESC)',
         );
       }
     },
@@ -711,6 +754,7 @@ class RecordingDatabase {
     required int page,
     required int pageSize,
     String keyword = '',
+    RecordingOperationMode? operationMode,
     DateTime? start,
     DateTime? end,
   }) async {
@@ -725,6 +769,7 @@ class RecordingDatabase {
       page: page,
       pageSize: pageSize,
       keyword: keyword,
+      operationMode: operationMode,
       start: start,
       end: end,
     );
@@ -737,12 +782,14 @@ class RecordingDatabase {
     required LocalRecordingPageDirection direction,
     required int knownTotal,
     String keyword = '',
+    RecordingOperationMode? operationMode,
     DateTime? start,
     DateTime? end,
   }) => _queryActiveSessions(
     page: page,
     pageSize: pageSize,
     keyword: keyword,
+    operationMode: operationMode,
     start: start,
     end: end,
     cursor: cursor,
@@ -754,6 +801,7 @@ class RecordingDatabase {
     required int page,
     required int pageSize,
     required String keyword,
+    RecordingOperationMode? operationMode,
     required DateTime? start,
     required DateTime? end,
     LocalRecordingCursor? cursor,
@@ -766,6 +814,10 @@ class RecordingDatabase {
     final String query = keyword.trim().toLowerCase();
     final List<String> conditions = <String>['is_deleted = 0'];
     final List<Object?> args = <Object?>[];
+    if (operationMode != null) {
+      conditions.add('operation_mode = ?');
+      args.add(operationMode.storageValue);
+    }
     if (query.isNotEmpty) {
       conditions.add('instr(search_text, ?) > 0');
       args.add(query);
@@ -1749,6 +1801,7 @@ class RecordingDatabase {
       'tracking_number': session.displayCode,
       'order_id': orderId,
       'search_text': searchText,
+      'operation_mode': session.operationMode.storageValue,
       'payload_json': jsonEncode(session.toJson()),
       'file_size_bytes': metadata.size,
       'is_deleted': 0,
