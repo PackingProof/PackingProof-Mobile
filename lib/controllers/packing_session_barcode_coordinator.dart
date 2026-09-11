@@ -559,6 +559,32 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     }
   }
 
+  /// 提交外部单号（手动输入或扫码枪），复用工作中的确认流程
+  Future<bool> submitExternalTrackingNumber(
+    String rawCode, {
+    required bool validate,
+  }) async {
+    if (_handlingBarcode || isBusy || _pairingScanActive || _historyScanActive)
+      return false;
+    final String code = validate
+        ? BarcodeCandidatePolicy.normalize(rawCode)
+        : rawCode.trim();
+    if (code.isEmpty) return false;
+    if (validate &&
+        !BarcodeCandidatePolicy.isValidForWorkScan(
+          code,
+          format: 'code128',
+          minimumLength: _minimumBarcodeLength,
+        ))
+      return false;
+    if (!isWorking) {
+      await startWork();
+      if (!isWorking) return false;
+    }
+    await _handleConfirmedBarcode(code, DateTime.now());
+    return true;
+  }
+
   Future<OrderInfo?> _lookupOrderInfoForSplit(String code) async {
     try {
       return await _orderInfoReceiver.lookup(code);

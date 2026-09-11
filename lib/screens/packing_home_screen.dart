@@ -320,6 +320,54 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
     );
   }
 
+  Future<void> _showManualTrackingDialog() async {
+    final TextEditingController input = TextEditingController();
+    bool validate = true;
+    final bool? submitted = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setState) => AlertDialog(
+          title: const Text('输入单号'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                controller: input,
+                autofocus: true,
+                textInputAction: TextInputAction.done,
+              ),
+              CheckboxListTile(
+                value: validate,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('校验单号'),
+                onChanged: (bool? value) =>
+                    setState(() => validate = value ?? true),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final ok = await _controller.submitExternalTrackingNumber(
+                  input.text,
+                  validate: validate,
+                );
+                if (ok && dialogContext.mounted)
+                  Navigator.pop(dialogContext, true);
+              },
+              child: const Text('提交'),
+            ),
+          ],
+        ),
+      ),
+    );
+    input.dispose();
+  }
+
   Future<void> _toggleWork() async {
     _resetExitIntent();
     if (_controller.isWorking) {
@@ -619,6 +667,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                   onOperationModeChanged: _controller.setOperationMode,
                   onFinishOrder: _controller.finishCurrentOrder,
                   onPrimaryPressed: _toggleWork,
+                  onManualTrackingPressed: _showManualTrackingDialog,
                   onRetryPressed: _controller.retryInitialize,
                 ),
                 _buildRecordingsScreen(RecordingsScreenMode.settings),
@@ -812,6 +861,7 @@ class PackingHomeView extends StatelessWidget {
     required this.elapsed,
     required this.onPrimaryPressed,
     required this.onRetryPressed,
+    this.onManualTrackingPressed,
     this.cameraController,
     this.nativeTextureId,
     this.nativePreviewSize,
@@ -890,6 +940,7 @@ class PackingHomeView extends StatelessWidget {
   final VoidCallback? onFinishOrder;
   final VoidCallback onPrimaryPressed;
   final VoidCallback onRetryPressed;
+  final VoidCallback? onManualTrackingPressed;
   final Widget? previewOverride;
   final DateTime? watermarkTimestamp;
   final ValueListenable<Duration>? elapsedListenable;
@@ -2032,7 +2083,23 @@ class _ControlPanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
               ],
-              _PrimaryWorkButton(view: view, isError: isError),
+              Row(
+                children: <Widget>[
+                  const SizedBox(width: 48, height: 48),
+                  Expanded(
+                    child: _PrimaryWorkButton(view: view, isError: isError),
+                  ),
+                  SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: IconButton(
+                      tooltip: '输入单号',
+                      onPressed: view.onManualTrackingPressed,
+                      icon: const Icon(Icons.keyboard_alt_outlined),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
