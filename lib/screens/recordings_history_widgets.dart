@@ -528,7 +528,6 @@ class _HistoryPagination extends StatelessWidget {
     required this.currentPage,
     required this.pageCount,
     required this.loading,
-    required this.offline,
     required this.canLoadMore,
     required this.onPrevious,
     required this.onNext,
@@ -539,7 +538,6 @@ class _HistoryPagination extends StatelessWidget {
   final int currentPage;
   final int pageCount;
   final bool loading;
-  final bool offline;
   final bool canLoadMore;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
@@ -567,16 +565,14 @@ class _HistoryPagination extends StatelessWidget {
               SizedBox(
                 width: 104,
                 child: Text(
-                  offline ? '电脑离线' : '${currentPage + 1} / $shownPageCount 页',
+                  '${currentPage + 1} / $shownPageCount 页',
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
               IconButton.outlined(
                 key: const Key('recording-page-next'),
-                tooltip: offline
-                    ? '电脑离线'
-                    : canLoadMore && currentPage + 1 >= pageCount
+                tooltip: canLoadMore && currentPage + 1 >= pageCount
                     ? '加载下一页'
                     : '下一页',
                 onPressed: loading ? null : onNext,

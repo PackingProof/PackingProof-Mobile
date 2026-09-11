@@ -1445,10 +1445,6 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                   currentPage: pagination.page,
                   pageCount: pagination.pageCount,
                   loading: _loadingRemote || _loadingLocal,
-                  offline:
-                      _backupSnapshot.connected &&
-                      _backupSnapshot.connectionStatus !=
-                          LanConnectionStatus.connected,
                   canLoadMore: pagination.page + 1 < pagination.pageCount,
                   onPrevious: pagination.page == 0
                       ? null

@@ -2056,6 +2056,62 @@ void main() {
     );
   });
 
+  testWidgets('电脑离线时仍显示本地页码并能翻页', (WidgetTester tester) async {
+    int loadCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: List.generate(
+            21,
+            (i) => _session(
+              'local-$i',
+              'CODE-$i',
+              DateTime(2026, 9, 12).subtract(Duration(minutes: i)),
+              filePath: 'pubspec.yaml',
+            ),
+          ),
+          historyPageSize: 20,
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '仓库电脑',
+            ),
+            connectionStatus: LanConnectionStatus.offline,
+          ),
+          onLoadRemoteRecordings:
+              ({required page, required pageSize, keyword = ''}) async {
+                loadCount++;
+                return const RemoteRecordingPage.empty();
+              },
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onAutoBackupChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('recording-page-next')),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('1 / 2 页'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('recording-page-next')));
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 2 页'), findsOneWidget);
+    expect(loadCount, 0);
+  });
+
   testWidgets('删除电脑需要两次确认并显示名称与地址', (WidgetTester tester) async {
     int deleteCount = 0;
     final _FakeBackupHostDiscovery discovery = _FakeBackupHostDiscovery();
