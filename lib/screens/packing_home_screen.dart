@@ -29,6 +29,7 @@ import '../services/session_repository.dart';
 import '../services/speech_prompt_service.dart';
 import '../services/watermark_geometry.dart';
 import '../widgets/order_info_sheet.dart';
+import '../widgets/tracking_number_keypad.dart';
 import '../widgets/two_button_confirm_dialog.dart';
 import 'recordings_screen.dart';
 
@@ -243,6 +244,12 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
   late bool _validate;
   bool _submitting = false;
   String? _errorMessage;
+  Timer? _keyboardProbe;
+  bool _systemKeyboardProbed = false;
+  bool _keypadDismissed = false;
+
+  /// 请求显示系统键盘后给它一点时间弹出来。
+  static const Duration _systemKeyboardProbeDelay = Duration(milliseconds: 450);
 
   @override
   void initState() {
@@ -257,10 +264,60 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
   void _showKeyboard() {
     _inputFocus.requestFocus();
     unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+    // 接了扫码枪或外接键盘时系统会抑制软键盘，这里不去猜有没有外设，
+    // 只看请求之后键盘到底有没有顶起来，没有才交给应用内键盘。
+    _keyboardProbe?.cancel();
+    _keyboardProbe = Timer(_systemKeyboardProbeDelay, () {
+      if (!mounted || _systemKeyboardProbed) return;
+      setState(() => _systemKeyboardProbed = true);
+    });
+  }
+
+  bool get _keypadVisible =>
+      _systemKeyboardProbed &&
+      !_keypadDismissed &&
+      MediaQuery.viewInsetsOf(context).bottom <= 0;
+
+  void _insertText(String text) {
+    final TextEditingValue value = _input.value;
+    final TextSelection selection = value.selection.isValid
+        ? value.selection
+        : TextSelection.collapsed(offset: value.text.length);
+    final String updated = value.text.replaceRange(
+      selection.start,
+      selection.end,
+      text,
+    );
+    _input.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(offset: selection.start + text.length),
+    );
+  }
+
+  void _backspace() {
+    final TextEditingValue value = _input.value;
+    if (value.text.isEmpty) return;
+    final TextSelection selection = value.selection.isValid
+        ? value.selection
+        : TextSelection.collapsed(offset: value.text.length);
+    if (selection.start != selection.end) {
+      _insertText('');
+      return;
+    }
+    if (selection.start == 0) return;
+    _input.value = TextEditingValue(
+      text: value.text.replaceRange(selection.start - 1, selection.start, ''),
+      selection: TextSelection.collapsed(offset: selection.start - 1),
+    );
+  }
+
+  void _clearInput() {
+    _input.value = TextEditingValue.empty;
   }
 
   @override
   void dispose() {
+    _keyboardProbe?.cancel();
     _inputFocus.dispose();
     _input.dispose();
     super.dispose();
@@ -295,6 +352,8 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      // 展开应用内键盘后内容会变高，交给对话框自己滚动，避免小屏溢出。
+      scrollable: true,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
@@ -360,6 +419,13 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
                     if (callback != null) unawaited(callback(enabled));
                   },
           ),
+          if (_keypadVisible)
+            TrackingNumberKeypad(
+              onInsert: _insertText,
+              onBackspace: _backspace,
+              onClear: _clearInput,
+              onHide: () => setState(() => _keypadDismissed = true),
+            ),
         ],
       ),
       actions: <Widget>[
