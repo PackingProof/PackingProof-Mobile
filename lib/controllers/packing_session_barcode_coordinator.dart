@@ -484,6 +484,19 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         return;
       case BarcodeWorkAction.ignore:
         _candidateCode = '';
+        if (_workMode == WorkMode.sameCodeStop &&
+            _timeline.currentCode.isNotEmpty &&
+            !JdBarcodePolicy.sameRecordingCode(_timeline.currentCode, code)) {
+          _showCameraNotice('单号不一致：$code');
+          if (_speechService case final DynamicSpeechPromptSink dynamicSpeech) {
+            dynamicSpeech.enqueueText(
+              '单号不一致，不会停止录制',
+              priority: SpeechPromptPriority.warning,
+              incidentKey: 'recording-order-mismatch',
+              playWarningTone: true,
+            );
+          }
+        }
         notifyListeners();
         return;
       case BarcodeWorkAction.stopVideo:

@@ -48,6 +48,7 @@ import '../services/recording_timeline.dart';
 import '../services/recording_database.dart';
 import '../services/session_repository.dart';
 import '../services/speech_prompt_service.dart';
+import '../services/jd_barcode_policy.dart';
 import '../services/video_watermark_service.dart';
 
 part 'packing_session_app_support.dart';
@@ -1399,6 +1400,14 @@ class PackingSessionController extends ChangeNotifier
       _rejectedBarcodeMessage = null;
       notifyListeners();
     });
+    if (_speechService case final DynamicSpeechPromptSink dynamicSpeech) {
+      dynamicSpeech.enqueueText(
+        '非法单号，已拦截',
+        priority: SpeechPromptPriority.warning,
+        incidentKey: 'invalid-order-number',
+        playWarningTone: true,
+      );
+    }
     notifyListeners();
   }
 
