@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -151,9 +152,11 @@ class FloatingDock extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final dark = colors.brightness == Brightness.dark;
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    // 安卓的手势条／导航栏会占掉底部安全区，SafeArea 只保证不被遮住，
+    // 面板会紧贴着安全区边缘。这里在安全区之上再留一点间距把它抬起来。
+    final double bottomInset = MediaQuery.paddingOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, math.max(bottomInset, 8) + 6),
       child: Align(
         heightFactor: 1,
         alignment: Alignment.bottomCenter,

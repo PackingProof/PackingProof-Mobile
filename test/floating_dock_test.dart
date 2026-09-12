@@ -104,7 +104,8 @@ void main() {
       expect(rect.left, 28);
       expect(rect.right, 292);
       expect(rect.height, 64);
-      expect(rect.bottom, 640 - (bottom == 0 ? 8 : bottom));
+      // 安全区之上再抬 6，避免贴着安卓手势条。
+      expect(rect.bottom, 640 - (math.max(bottom, 8) + 6));
       await tester.tap(find.text('设置'));
       await tester.pumpAndSettle();
       expect(selected, 1);
