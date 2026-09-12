@@ -37,6 +37,7 @@ class _FakeLensCameraPlatform implements CameraPlatform {
   bool reportPortraitUhdSize = false;
   bool flashAvailable = false;
   bool torchEnabled = false;
+  bool torchEnableRejected = false;
   final List<bool> torchRequests = <bool>[];
   String activeCameraId = 'wide';
   String requestedRecordingSpec = 'hd1080p30';
@@ -174,7 +175,7 @@ class _FakeLensCameraPlatform implements CameraPlatform {
   @override
   Future<bool> setTorchEnabled(bool enabled) async {
     torchRequests.add(enabled);
-    torchEnabled = enabled;
+    torchEnabled = enabled && !torchEnableRejected;
     return torchEnabled;
   }
 
@@ -368,6 +369,22 @@ void main() {
     await controller.toggleTorch();
     expect(controller.torchEnabled, isTrue);
     expect(camera.torchRequests, <bool>[true, false, true]);
+  });
+
+  test('原生拒绝点亮手电筒时保持关闭并提示', () async {
+    camera.flashAvailable = true;
+    camera.torchEnableRejected = true;
+    await controller.initialize();
+
+    await controller.toggleTorch();
+    expect(controller.torchEnabled, isFalse);
+    expect(controller.cameraNotice, '闪光灯暂时不可用');
+
+    // 下一次按下仍然是“开启”请求，不会被卡在错误状态里。
+    camera.torchEnableRejected = false;
+    await controller.toggleTorch();
+    expect(controller.torchEnabled, isTrue);
+    expect(camera.torchRequests, <bool>[true, true]);
   });
 
   test('订单接收初始化较慢时摄像头先进入可用状态', () async {

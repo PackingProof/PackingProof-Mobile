@@ -364,7 +364,12 @@ class PackingSessionController extends ChangeNotifier
           enabled,
         );
         if (enabled && !reportedEnabled) {
-          throw StateError('手电筒开启失败');
+          // 硬件拒绝点亮（不支持、过热或正在重配会话）时保持关闭并提示，
+          // 否则按钮会停在“已开启”，用户再按一次只会重复发送开启指令。
+          _torchEnabled = false;
+          _showCameraNotice('闪光灯暂时不可用');
+          if (!_disposed) notifyListeners();
+          return;
         }
       } else {
         await _cameraController!.setFlashMode(

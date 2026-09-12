@@ -788,6 +788,8 @@ final class IosCameraHostApi:
   private var pairingScanEnabled = false
   private var workScanEnabled = false
   private var previewActive = true
+  /// 手电筒的目标状态：换镜头或恢复预览会重置硬件，需要据此重新点亮。
+  private var torchEnabled = false
   private var disposed = false
   private var recoveryRuntimeError = false
   private var runtimeErrorObserver: NSObjectProtocol?
@@ -1700,6 +1702,7 @@ final class IosCameraHostApi:
           )))
           return
         }
+        self.applyTorchMode()
       } else {
         self.metadataQueue.sync {
           self.barcodeGeneration &+= 1
@@ -1718,19 +1721,37 @@ final class IosCameraHostApi:
     completion: @escaping (Result<Bool, Error>) -> Void
   ) {
     sessionQueue.async { [weak self] in
-      guard let self, let device = self.videoDeviceInput?.device, device.hasTorch else {
+      guard let self else {
         completion(.success(false))
         return
       }
-      do {
-        try device.lockForConfiguration()
-        device.torchMode = enabled ? .on : .off
-        device.unlockForConfiguration()
-        completion(.success(device.torchMode == .on))
-      } catch {
-        completion(.success(false))
-      }
+      self.torchEnabled = enabled
+      completion(.success(self.applyTorchMode()))
     }
+  }
+
+  /// 把 `torchEnabled` 写入当前视频设备，返回手电筒是否真的点亮。
+  /// 必须在 `sessionQueue` 上调用。
+  @discardableResult
+  private func applyTorchMode() -> Bool {
+    guard let device = videoDeviceInput?.device, device.hasTorch else {
+      torchEnabled = false
+      return false
+    }
+    // 关灯永远可以执行；开灯要等硬件可用（过热、会话重配期间会短暂不可用）。
+    guard !torchEnabled || device.isTorchAvailable else { return false }
+    do {
+      try device.lockForConfiguration()
+      defer { device.unlockForConfiguration() }
+      if torchEnabled {
+        try device.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+      } else {
+        device.torchMode = .off
+      }
+    } catch {
+      return false
+    }
+    return torchEnabled
   }
 
   func switchCamera(
@@ -2583,6 +2604,7 @@ final class IosCameraHostApi:
         self.session.addInput(input)
         self.videoDeviceInput = input
         self.configureVideoDevice(device)
+        self.applyTorchMode()
         self.applyCapturePresetWithinConfiguration(
           requestedSpec: self.requestedRecordingSpecName
         )
