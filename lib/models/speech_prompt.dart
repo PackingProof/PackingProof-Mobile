@@ -28,16 +28,6 @@ enum SpeechPrompt {
     assetName: 'preview_enabled.mp3',
     priority: SpeechPromptPriority.normal,
   ),
-  torchEnabled(
-    text: '手电筒已开启',
-    assetName: 'torch_enabled.mp3',
-    priority: SpeechPromptPriority.normal,
-  ),
-  torchDisabled(
-    text: '手电筒已关闭',
-    assetName: 'torch_disabled.mp3',
-    priority: SpeechPromptPriority.normal,
-  ),
   testOrderReceived(
     text: '已收到测试订单',
     assetName: 'test_order_received.mp3',

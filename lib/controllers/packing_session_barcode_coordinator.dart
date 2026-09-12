@@ -46,7 +46,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     required void Function(BarcodeMarker marker) onSegmentStarted,
   });
   Future<void> startWork();
-  Future<void> toggleTorch({bool announce = false});
+  Future<void> toggleTorch();
 
   final BarcodeStabilityTracker _stabilityTracker = BarcodeStabilityTracker();
   final BarcodeRecognizedBeepPolicy _recognizedBeepPolicy =
@@ -654,7 +654,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         _showCameraNotice('扫码框已清除');
         break;
       case MobileBarcodeCommand.openFlash:
-        await toggleTorch(announce: true);
+        await toggleTorch();
         break;
       case MobileBarcodeCommand.switchShipping:
         if (_operationMode != RecordingOperationMode.shipping) {

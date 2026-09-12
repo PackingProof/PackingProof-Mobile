@@ -53,26 +53,6 @@
       "cacheKey": "a6946a5f2d27365597d3ea75d818fd54bf9e1fbb8346b4e935cf064e79c058a8"
     },
     {
-      "id": "torchEnabled",
-      "text": "手电筒已开启",
-      "priority": "normal",
-      "voice": "zh-CN-XiaoxiaoNeural",
-      "file": "torch_enabled.mp3",
-      "bytes": 12672,
-      "sha256": "cc99a8145ecdd562b383c9e093a8040daae21f1b1a52efe908f70618bad1cc72",
-      "cacheKey": "55461d0ef575a677472f4b920e754cad0dbc3372804706fb61ac2fdea346feaf"
-    },
-    {
-      "id": "torchDisabled",
-      "text": "手电筒已关闭",
-      "priority": "normal",
-      "voice": "zh-CN-XiaoxiaoNeural",
-      "file": "torch_disabled.mp3",
-      "bytes": 12096,
-      "sha256": "cb0b9eb8e0250004bad84c85209acfaeaf811b0d6b7fd158ae549c6656db3597",
-      "cacheKey": "77b4eb9ba71cea868ca019ab1d169d8e6bda0af9113d3d1ade6b0e2c6644eec2"
-    },
-    {
       "id": "testOrderReceived",
       "text": "已收到测试订单",
       "priority": "normal",

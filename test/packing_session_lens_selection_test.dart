@@ -35,6 +35,9 @@ class _FakeLensCameraPlatform implements CameraPlatform {
   final Completer<void> previewDeactivationStarted = Completer<void>();
   final Set<String> uhdCameraIds = <String>{};
   bool reportPortraitUhdSize = false;
+  bool flashAvailable = false;
+  bool torchEnabled = false;
+  final List<bool> torchRequests = <bool>[];
   String activeCameraId = 'wide';
   String requestedRecordingSpec = 'hd1080p30';
 
@@ -58,14 +61,14 @@ class _FakeLensCameraPlatform implements CameraPlatform {
     initializeCalls++;
     requestedRecordingSpec = recordingSpec;
     recordingLifecycleEvents.add('initialize');
-    return const ContinuousCameraInitialization(
+    return ContinuousCameraInitialization(
       textureId: 1,
       previewWidth: 1920,
       previewHeight: 1080,
       sensorOrientation: 90,
       fps: 30,
       videoMime: 'video/hevc',
-      flashAvailable: false,
+      flashAvailable: flashAvailable,
       lensDirection: 'back',
       canSwitchCamera: false,
       cameraId: 'wide',
@@ -169,7 +172,12 @@ class _FakeLensCameraPlatform implements CameraPlatform {
   }
 
   @override
-  Future<bool> setTorchEnabled(bool enabled) async => false;
+  Future<bool> setTorchEnabled(bool enabled) async {
+    torchRequests.add(enabled);
+    torchEnabled = enabled;
+    return torchEnabled;
+  }
+
   @override
   Future<ContinuousCameraInitialization> switchCamera() async {
     switchCameraCalls++;
@@ -347,6 +355,19 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  test('手电筒可以连续开关且不触发语音', () async {
+    camera.flashAvailable = true;
+    await controller.initialize();
+
+    await controller.toggleTorch();
+    expect(controller.torchEnabled, isTrue);
+    await controller.toggleTorch();
+    expect(controller.torchEnabled, isFalse);
+    await controller.toggleTorch();
+    expect(controller.torchEnabled, isTrue);
+    expect(camera.torchRequests, <bool>[true, false, true]);
   });
 
   test('订单接收初始化较慢时摄像头先进入可用状态', () async {

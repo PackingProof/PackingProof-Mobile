@@ -355,25 +355,25 @@ class PackingSessionController extends ChangeNotifier
     if (!_disposed) notifyListeners();
   }
 
-  Future<void> toggleTorch({bool announce = false}) async {
+  Future<void> toggleTorch() async {
     if (!flashAvailable || isBusy) return;
     final bool enabled = !_torchEnabled;
     try {
       if (_supportsNativeCamera) {
-        _torchEnabled = await _nativeCamera!.setTorchEnabled(enabled);
+        final bool reportedEnabled = await _nativeCamera!.setTorchEnabled(
+          enabled,
+        );
+        if (enabled && !reportedEnabled) {
+          throw StateError('手电筒开启失败');
+        }
       } else {
         await _cameraController!.setFlashMode(
           enabled ? FlashMode.torch : FlashMode.off,
         );
-        _torchEnabled = enabled;
       }
-      if (announce) {
-        _speechService.enqueue(
-          _torchEnabled
-              ? SpeechPrompt.torchEnabled
-              : SpeechPrompt.torchDisabled,
-        );
-      }
+      // 原生关闭接口返回 false 是正常状态，成功完成后以请求值更新 UI，
+      // 避免把“已关闭”误当成调用失败并遗留旧的开启状态。
+      _torchEnabled = enabled;
       notifyListeners();
     } on Object {
       _torchEnabled = false;
