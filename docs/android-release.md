@@ -20,8 +20,22 @@ dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk
 
 它可覆盖安装到使用相同正式签名证书的现有应用，不用于正式发布。签名目录通过仓库外配置提供，任何凭据都不得写入仓库或日志。
 
+## 发布顺序
+
+固化为以下顺序，任一步失败都不得继续：
+
+1. 提交全部改动，确认工作区干净，版本号已更新
+2. 两台机器各跑一次本地 CI：`./Tools/test-ci.sh`（Mac 跑 golden/RunnerTests/iOS 构建那一半，Windows 编译机跑 Android 原生测试那一半），跳过项必须在另一台补齐
+3. 建本地精确标签 `v<versionName>+<versionCode>`
+4. 以该标签身份执行发布构建：Android 在 Windows 编译机执行 `Tools/Publish-Android.ps1`，iOS 在 Mac 执行 `Tools/Publish-iOS.sh`
+5. 构建与校验全部通过后，再推送 `main` 与标签到公开远端
+6. 创建 Release 并上传 Android APK；iOS 只上传 TestFlight，不附 IPA
+
+Android 正式发布在局域网 Windows 编译机执行 `Tools/Publish-Android.ps1`，签名目录来自仓库外配置。`.github/workflows/release.yml` 保留为手动触发（`workflow_dispatch`）的备用通道，日常发布不走它。
+
 ## 发布前验证与审计
 
+- 本地 CI（`Tools/test-ci.sh`）是发布门禁，检查项与 `.github/workflows/ci.yml` 保持一致；两者任一变更都要同步另一处
 - 执行 `flutter analyze`、完整 Flutter 测试、Android 原生测试和受影响的真机流程
 - 录制、相机、音频、权限、后台生命周期、安装升级和局域网备份变更必须真机验证
 - 审计自上个版本以来的完整变更，检查技术债、CPU/电池/IO/UI 性能、并发与竞态、遗漏需求、未解决缺陷或 TODO，以及资源生命周期回归
@@ -64,7 +78,7 @@ build-manifest.json
 - 只有固定语音资源、元数据、Git revision、正式签名和 SHA256 全部验证通过，才算构建成功
 - keystore、`签名凭据.txt`、证书和其他签名配置必须位于仓库外，禁止打印、提交、复制或打包
 
-GitHub/Gitee Release 只上传 APK。`SHA256SUMS.txt` 和 `build-manifest.json` 仅用于本地发布门禁与问题追踪，不作为 Release 附件。GitHub Release 使用 GitHub 插件或 `gh` 创建并上传 tag、APK 和发布笔记。Gitee Release 使用：
+GitHub/Gitee Release 只上传 Android APK。iOS 不再上传 IPA，只发布到 TestFlight。`SHA256SUMS.txt` 和 `build-manifest.json` 仅用于本地发布门禁与问题追踪，不作为 Release 附件。GitHub Release 使用 GitHub 插件或 `gh` 创建并上传 tag、APK 和发布笔记。Gitee Release 使用：
 
 ```powershell
 gitee auth status

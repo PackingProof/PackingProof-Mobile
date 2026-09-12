@@ -44,6 +44,7 @@ PackingProof-Mobile is a Flutter app for continuous package-recording and shippi
 
 ## Testing
 
+- 发布门禁是本地 CI：`./Tools/test-ci.sh`，检查项与 `.github/workflows/ci.yml` 一致。CI 分 macOS 与 Windows 两半，脚本只跑当前机器那一半并显式列出跳过项，发布前两半都要在各自机器跑通。
 - Add or update focused tests for every behavior change.
 - Run the affected test file while iterating.
 - Before committing, run `flutter analyze` and the relevant tests.

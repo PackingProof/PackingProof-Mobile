@@ -360,13 +360,9 @@ class PackingSessionController extends ChangeNotifier
     final bool enabled = !_torchEnabled;
     try {
       if (_supportsNativeCamera) {
-        final bool reportedEnabled = await _nativeCamera!.setTorchEnabled(
-          enabled,
-        );
-        if (enabled && !reportedEnabled) {
-          // 硬件拒绝点亮（不支持、过热或正在重配会话）时保持关闭并提示，
-          // 否则按钮会停在“已开启”，用户再按一次只会重复发送开启指令。
-          _torchEnabled = false;
+        final bool ok = await _nativeCamera!.setTorchEnabled(enabled);
+        if (enabled && !ok) {
+          // 硬件拒绝点亮：_torchEnabled 本来就是 false，提示后保持关闭。
           _showCameraNotice('闪光灯暂时不可用');
           if (!_disposed) notifyListeners();
           return;
@@ -376,8 +372,7 @@ class PackingSessionController extends ChangeNotifier
           enabled ? FlashMode.torch : FlashMode.off,
         );
       }
-      // 原生关闭接口返回 false 是正常状态，成功完成后以请求值更新 UI，
-      // 避免把“已关闭”误当成调用失败并遗留旧的开启状态。
+      // 原生关闭接口返回 false 是正常状态，成功后一律以请求值更新 UI。
       _torchEnabled = enabled;
       notifyListeners();
     } on Object {

@@ -92,6 +92,8 @@ dist/ios/PackingProof-Mobile-profile-v<versionName>+<versionCode>.ipa
 
 ## 正式发布
 
+iOS 只通过 TestFlight 分发，不再向 GitHub/Gitee Release 上传 IPA。`dist/ios/` 下的 IPA、`build-manifest.json` 和 `SHA256SUMS.txt` 都只用于本地发布门禁与问题追踪，禁止作为 Release 附件；对外下载入口只有 README 中的 TestFlight 链接。
+
 `Tools/Publish-iOS.sh` 是 App Store Connect/TestFlight 正式发布入口。它要求当前提交工作区干净且存在与 `pubspec.yaml` 一致的精确版本标签，并依次执行：
 
 - `flutter analyze` 和完整 Flutter 测试

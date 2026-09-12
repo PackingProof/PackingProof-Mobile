@@ -41,4 +41,7 @@ fi
 
 cd "$(dirname "$0")/.."
 dart run pigeon --input pigeons/platform.dart
+# Pigeon 直接输出的 Dart 未经格式化，而仓库里提交的是格式化后的版本；
+# 这里补上格式化，生成结果才可复现，check_pigeon.sh 才不会恒为红。
+dart format lib/platform/generated/platform_api.g.dart >/dev/null
 normalize_kotlin_file android/app/src/main/kotlin/app/packingproof/mobile/generated/PlatformApi.kt

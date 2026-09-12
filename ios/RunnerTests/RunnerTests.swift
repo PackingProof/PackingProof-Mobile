@@ -1988,7 +1988,8 @@ class RunnerTests: XCTestCase {
       if case .failure(let error) = result { XCTFail(error.localizedDescription) }
       policyUpdated.fulfill()
     }
-    await fulfillment(of: [policyUpdated], timeout: 0.5)
+    // 同样是等待真实回调，沿用 5 秒上限避免满负载下偶发超时。
+    await fulfillment(of: [policyUpdated], timeout: 5)
     proofMayContinue.signal()
     try await cleanup.value
     await fulfillment(of: [restartedCleanupFinished], timeout: 3)
@@ -3598,7 +3599,9 @@ class RunnerTests: XCTestCase {
       fixture.api.enqueueJob(request: request, completion: completion)
     }
 
-    await fulfillment(of: [emitted], timeout: 0.5)
+    // 等的是真实快照回调，不是“不应发生”的反向期望：满负载跑全量套件时
+    // 0.5 秒会偶发超时，期望一旦满足就立即返回，放宽超时不会拖慢用例。
+    await fulfillment(of: [emitted], timeout: 5)
     let current = try XCTUnwrap(fixture.store.readJob(id: "retention-registration"))
     XCTAssertEqual(current["state"] as? String, "pending")
   }
