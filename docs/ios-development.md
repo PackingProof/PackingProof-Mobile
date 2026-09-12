@@ -131,6 +131,9 @@ APPLE_APP_SPECIFIC_PASSWORD=<appleid.apple.com 生成的 App 专用密码>
 ```
 
 - API Key 在 App Store Connect 的「用户和访问 → 集成 → App Store Connect API」创建，Issuer ID 显示在同一页面顶部；`.p8` 只能下载一次
+- Issuer ID 不是 Team ID，两者填错会直接认证失败
+- 私钥不一定放在 altool 的默认目录，本机就在别处，所以 `.env` 里配 `APP_STORE_CONNECT_KEY_PATH` 最稳
+- 不带参数时脚本按当前精确 tag 推断 IPA；HEAD 不在 tag 上（例如打完 tag 后又有提交）会拒绝推断并列出 `dist/ios` 下现有的 IPA，需显式指定
 - `APP_STORE_CONNECT_KEY_PATH` 可省略，此时按 altool 约定在 `~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8` 查找
 - 私钥 `.p8` 必须位于仓库外，脚本会拒绝仓库内路径，也不会把私钥复制进仓库
 - App 专用密码支持写成 `@keychain:<item-name>`，避免明文落盘

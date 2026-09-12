@@ -76,7 +76,9 @@ IPA_PATH="${1:-}"
 if [ -z "$IPA_PATH" ]; then
   TAG="$(git describe --tags --exact-match 2>/dev/null || true)"
   if [ -z "$TAG" ]; then
-    echo "当前提交没有精确 tag，请显式传入 IPA 路径" >&2
+    echo "当前提交没有精确 tag，无法推断 IPA 路径，请显式传入" >&2
+    echo "dist/ios 下现有的 IPA：" >&2
+    ls -1 dist/ios/*.ipa 2>/dev/null | sed 's/^/  /' >&2 || echo "  （没有）" >&2
     exit 1
   fi
   IPA_PATH="dist/ios/PackingProof-Mobile-${TAG#v}.ipa"
