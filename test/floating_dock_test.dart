@@ -31,15 +31,36 @@ void main() {
         return (math.max(x, y) + 0.05) / (math.min(x, y) + 0.05);
       }
 
+      // 面板是半透明的，实际观感取决于它叠在什么背景之上。
+      expect(material.color!.a, lessThan(1));
+      expect(
+        find.descendant(
+          of: find.byType(FloatingDock),
+          matching: find.byType(BackdropFilter),
+        ),
+        findsOneWidget,
+      );
+
+      Color over(Color background) =>
+          Color.alphaBlend(material.color!, background);
+
       // A raised panel stays at least as bright as the page; shadows define its edge.
       expect(
-        material.color!.computeLuminance(),
+        over(theme.scaffoldBackgroundColor).computeLuminance(),
         greaterThanOrEqualTo(theme.scaffoldBackgroundColor.computeLuminance()),
       );
-      expect(
-        contrast(material.color!, theme.colorScheme.onSurface),
-        greaterThan(4.5),
-      );
+      // 录制页的底栏浮在摄像头画面上，最亮和最暗的背景都要读得清文字。
+      for (final background in [
+        theme.scaffoldBackgroundColor,
+        Colors.black,
+        Colors.white,
+      ]) {
+        expect(
+          contrast(over(background), theme.colorScheme.onSurface),
+          greaterThan(4.5),
+          reason: 'background $background',
+        );
+      }
       expect(tester.takeException(), isNull);
     });
   }
@@ -91,87 +112,114 @@ void main() {
     });
   }
 
-  testWidgets('选中项的胶囊高亮同时包住图标与文字', (tester) async {
-    // 窄屏也要放得下三个带文字的胶囊。
-    tester.view.physicalSize = const Size(320, 640);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final ThemeData theme = PackingProofTheme.light();
-    var selected = 1;
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: theme,
-        home: Scaffold(
-          bottomNavigationBar: FloatingDock(
-            child: StatefulBuilder(
-              builder: (context, setState) => DockNavigationBar(
-                selectedIndex: selected,
-                onSelected: (value) => setState(() => selected = value),
-                destinations: const [
-                  DockDestination(
-                    icon: Icons.history_rounded,
-                    selectedIcon: Icons.history_rounded,
-                    label: '历史',
-                  ),
-                  DockDestination(
-                    icon: Icons.videocam_outlined,
-                    selectedIcon: Icons.videocam_rounded,
-                    label: '录制',
-                  ),
-                  DockDestination(
-                    icon: Icons.settings_outlined,
-                    selectedIcon: Icons.settings_rounded,
-                    label: '设置',
-                  ),
-                ],
+  for (final brightness in Brightness.values) {
+    testWidgets('选中项的胶囊高亮同时包住图标与文字 $brightness', (tester) async {
+      // 窄屏也要放得下三个带文字的胶囊。
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final ThemeData theme = brightness == Brightness.dark
+          ? PackingProofTheme.dark()
+          : PackingProofTheme.light();
+      var selected = 1;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: Scaffold(
+            bottomNavigationBar: FloatingDock(
+              child: StatefulBuilder(
+                builder: (context, setState) => DockNavigationBar(
+                  selectedIndex: selected,
+                  onSelected: (value) => setState(() => selected = value),
+                  destinations: const [
+                    DockDestination(
+                      icon: Icons.history_rounded,
+                      selectedIcon: Icons.history_rounded,
+                      label: '历史',
+                    ),
+                    DockDestination(
+                      icon: Icons.videocam_outlined,
+                      selectedIcon: Icons.videocam_rounded,
+                      label: '录制',
+                    ),
+                    DockDestination(
+                      icon: Icons.settings_outlined,
+                      selectedIcon: Icons.settings_rounded,
+                      label: '设置',
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    ShapeDecoration decorationFor(String label) {
-      return tester
-              .widget<AnimatedContainer>(
-                find.ancestor(
-                  of: find.text(label),
-                  matching: find.byType(AnimatedContainer),
-                ),
-              )
-              .decoration!
-          as ShapeDecoration;
-    }
+      ShapeDecoration decorationFor(String label) {
+        return tester
+                .widget<AnimatedContainer>(
+                  find.ancestor(
+                    of: find.text(label),
+                    matching: find.byType(AnimatedContainer),
+                  ),
+                )
+                .decoration!
+            as ShapeDecoration;
+      }
 
-    // 选中项有胶囊底色，未选中项完全透明，三者形状一致。
-    expect(
-      decorationFor('录制').color,
-      theme.colorScheme.secondaryContainer,
-    );
-    expect(decorationFor('历史').color, Colors.transparent);
-    expect(decorationFor('设置').color, Colors.transparent);
-    for (final label in ['历史', '录制', '设置']) {
-      expect(decorationFor(label).shape, isA<StadiumBorder>());
-    }
+      // 选中项有胶囊底色，未选中项完全透明，三者形状一致。
+      expect(decorationFor('录制').color, dockIndicatorColor(theme.colorScheme));
+      expect(decorationFor('历史').color, Colors.transparent);
+      expect(decorationFor('设置').color, Colors.transparent);
+      for (final label in ['历史', '录制', '设置']) {
+        expect(decorationFor(label).shape, isA<StadiumBorder>());
+      }
 
-    // 高亮覆盖图标与文字整体，而不是只套住图标。
-    final Rect pill = tester.getRect(
-      find.ancestor(
-        of: find.text('录制'),
-        matching: find.byType(AnimatedContainer),
-      ),
-    );
-    final Rect icon = tester.getRect(find.byIcon(Icons.videocam_rounded));
-    final Rect label = tester.getRect(find.text('录制'));
-    expect(pill.left, lessThan(icon.left));
-    expect(pill.right, greaterThan(label.right));
+      // 选中项的图标和文字都是强调色，且在胶囊底色上读得清。
+      final Color selectedIconColor = tester
+          .widget<Icon>(find.byIcon(Icons.videocam_rounded))
+          .color!;
+      final Color selectedTextColor = tester
+          .widget<Text>(find.text('录制'))
+          .style!
+          .color!;
+      expect(selectedIconColor, theme.colorScheme.primary);
+      expect(selectedTextColor, theme.colorScheme.primary);
+      expect(
+        tester.widget<Icon>(find.byIcon(Icons.settings_outlined)).color,
+        theme.colorScheme.onSurfaceVariant,
+      );
+      double contrast(Color a, Color b) {
+        final x = a.computeLuminance();
+        final y = b.computeLuminance();
+        return (math.max(x, y) + 0.05) / (math.min(x, y) + 0.05);
+      }
 
-    await tester.tap(find.text('设置'));
-    await tester.pumpAndSettle();
-    expect(selected, 2);
-    expect(decorationFor('设置').color, theme.colorScheme.secondaryContainer);
-    expect(tester.takeException(), isNull);
-  });
+      // 胶囊底色不透明，所以对比度不会被下面的摄像头画面影响。
+      final Color pillColor = decorationFor('录制').color!;
+      expect(pillColor.a, 1);
+      expect(contrast(selectedTextColor, pillColor), greaterThan(4.5));
+
+      // 高亮覆盖图标与文字整体，而不是只套住图标。
+      final Rect pill = tester.getRect(
+        find.ancestor(
+          of: find.text('录制'),
+          matching: find.byType(AnimatedContainer),
+        ),
+      );
+      final Rect icon = tester.getRect(find.byIcon(Icons.videocam_rounded));
+      final Rect label = tester.getRect(find.text('录制'));
+      expect(pill.left, lessThan(icon.left));
+      expect(pill.right, greaterThan(label.right));
+
+      await tester.tap(find.text('设置'));
+      await tester.pumpAndSettle();
+      expect(selected, 2);
+      expect(decorationFor('设置').color, dockIndicatorColor(theme.colorScheme));
+      expect(tester.takeException(), isNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
