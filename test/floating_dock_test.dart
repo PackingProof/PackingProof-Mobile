@@ -175,7 +175,7 @@ void main() {
       expect(decorationFor('历史').color, Colors.transparent);
       expect(decorationFor('设置').color, Colors.transparent);
       for (final label in ['历史', '录制', '设置']) {
-        expect(decorationFor(label).shape, isA<RoundedRectangleBorder>());
+        expect(decorationFor(label).shape, isA<StadiumBorder>());
       }
 
       // 选中项的图标和文字都是强调色，且在胶囊底色上读得清。
@@ -218,6 +218,12 @@ void main() {
       expect(pill.bottom, greaterThan(label.bottom));
       expect(pill.left, lessThan(icon.left));
       expect(pill.right, greaterThan(label.right));
+
+      // 高亮几乎铺满整个入口格子，不是紧贴文字的细条。
+      final double cellWidth =
+          tester.getSize(find.byType(DockNavigationBar)).width / 3;
+      expect(pill.width, greaterThan(cellWidth - 8));
+      expect(pill.width, greaterThan(label.width * 2));
 
       await tester.tap(find.text('设置'));
       await tester.pumpAndSettle();

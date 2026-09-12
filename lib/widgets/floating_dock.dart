@@ -95,45 +95,52 @@ class _DockNavigationItem extends StatelessWidget {
       selected: selected,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Center(
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: ShapeDecoration(
-              // 内容上下排布后胶囊接近正方形，用圆角矩形而不是 StadiumBorder，
-              // 否则会退化成录制入口原来那种圆形底衬。
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.all(Radius.circular(18)),
+        borderRadius: BorderRadius.circular(27),
+        // 高亮铺满整个入口格子（只留 3 的缝），宽出来以后两端可以做成
+        // 和面板一样的全圆角，不会退化成圆形底衬。
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              width: double.infinity,
+              height: 54,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              alignment: Alignment.center,
+              decoration: ShapeDecoration(
+                shape: const StadiumBorder(),
+                color: selected
+                    ? dockIndicatorColor(colors)
+                    : Colors.transparent,
               ),
-              color: selected ? dockIndicatorColor(colors) : Colors.transparent,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Icon(
-                  selected ? destination.selectedIcon : destination.icon,
-                  size: 24,
-                  color: foreground,
-                ),
-                const SizedBox(height: 2),
-                Flexible(
-                  child: Text(
-                    destination.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.2,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: foreground,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Icon(
+                    selected ? destination.selectedIcon : destination.icon,
+                    size: 24,
+                    color: foreground,
+                  ),
+                  const SizedBox(height: 2),
+                  Flexible(
+                    child: Text(
+                      destination.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.2,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: foreground,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
