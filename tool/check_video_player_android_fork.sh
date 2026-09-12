@@ -20,10 +20,15 @@ upstream_dir="${VIDEO_PLAYER_ANDROID_UPSTREAM_DIR:-}"
 if [[ -z "${upstream_dir}" ]]; then
   temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/packingproof-video-player.XXXXXX")"
   archive="${temporary_root}/flutter-packages.tar.gz"
+  # 拉取上游基线要走公网，偶发的连接重置不应该把发布门禁判成代码问题。
   curl --fail --location --silent --show-error \
+    --retry 3 --retry-delay 2 --retry-all-errors \
     "https://github.com/flutter/packages/archive/${upstream_commit}.tar.gz" \
     --output "${archive}"
-  tar -xzf "${archive}" -C "${temporary_root}"
+  # 只解出要比对的子目录：整包解压会遇到仓库里的符号链接，Windows 上没有
+  # 创建符号链接的权限时 tar 会直接失败。
+  tar -xzf "${archive}" -C "${temporary_root}" \
+    "packages-${upstream_commit}/packages/video_player/video_player_android"
   upstream_dir="${temporary_root}/packages-${upstream_commit}/packages/video_player/video_player_android"
 fi
 

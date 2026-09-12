@@ -51,10 +51,10 @@ Android 正式发布在局域网 Windows 编译机执行 `Tools/Publish-Android.
 
 ```powershell
 git tag v0.5.4+11004
-pwsh -NoProfile -File Tools\Publish-Android.ps1 `
-  -SigningDirectory <external-signing-directory>
+pwsh -NoProfile -File Tools\Publish-Android.ps1
 ```
 
+- 签名目录不需要手动传：脚本会读取仓库根目录 `.env` 的 `PACKING_PROOF_SIGNING_DIRECTORY`。`.env` 已被 `.gitignore` 忽略，只存在于编译机本地，禁止提交。需要临时覆盖时才用 `-SigningDirectory <external-signing-directory>`；两者都缺失时脚本会直接失败
 - tag 优先使用 `v<versionName>+<increasing-versionCode>`，例如 `v0.5.4+11004`
 - 仅当 `pubspec.yaml` 中版本名称一致且包含 version code 时，才允许纯 `v<versionName>` tag
 - 正式脚本必须拒绝脏工作区、缺失或歧义 tag，以及缺少仓库外签名配置
