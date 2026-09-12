@@ -210,6 +210,10 @@ void main() {
       top('Z'),
       lessThan(tester.getRect(find.byKey(const Key('keypad-mode-button'))).top),
     );
+    // 逐排向右缩进的错落布局：数字行/Q 排齐头，A 排让半个键，Z 排再让一个键。
+    expect(left('1'), closeTo(left('Q'), 0.5));
+    expect(left('A'), greaterThan(left('Q')));
+    expect(left('Z'), greaterThan(left('A')));
     // 退格在第三排字母行尾，不在功能行。
     final Rect backspace = tester.getRect(
       find.byKey(const Key('keypad-backspace-button')),

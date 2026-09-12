@@ -72,16 +72,21 @@ class _TrackingNumberKeypadState extends State<TrackingNumberKeypad> {
       for (final List<String> row in _letterRows)
         _KeyRow(
           children: <Widget>[
-            // 第二、三排比第一排短，两侧留半个键的余量，保持系统键盘的错落感。
-            if (row.length < 10) const Spacer(),
+            // 逐排向右缩进，保持系统键盘的错落感：
+            // A 排让半个键，Z 排让一个半键（实体键盘上是 Shift 的位置）。
+            if (row.length == 9) const Spacer(),
+            if (row.length == 7) const Spacer(flex: 3),
             for (final String key in row)
               _KeypadKey(
                 label: key,
                 flex: 2,
                 onTap: () => widget.onInsert(key),
               ),
-            if (row.length == 7) _backspaceKey(flex: 4),
-            if (row.length < 10) const Spacer(),
+            // 行尾余量：Z 排交给退格，A 排留空。
+            if (row.length == 7)
+              _backspaceKey(flex: 3)
+            else if (row.length == 9)
+              const Spacer(),
           ],
         ),
       _KeyRow(
