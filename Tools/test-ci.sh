@@ -51,7 +51,6 @@ echo "增量检查基线：${DIFF_BASE}"
 run_step "改动文件空白字符" ./tool/check_diff.sh "$DIFF_BASE"
 run_step "新增宽泛 catch" ./tool/check_new_broad_catches.sh "$DIFF_BASE"
 run_step "大文件行数上限" ./tool/check_large_file_limits.sh
-run_step "video_player_android 分叉漂移" ./tool/check_video_player_android_fork.sh
 run_step "flutter pub get" flutter pub get
 run_step "flutter analyze" flutter analyze
 run_step "Flutter 非视觉测试" flutter test --exclude-tags golden
@@ -59,6 +58,8 @@ run_step "Pigeon 生成物漂移" ./tool/check_pigeon.sh
 
 # —— macOS 半：golden、iOS 原生测试与构建 ——
 if [ "$HOST_HALF" = "macos" ]; then
+  # 与 ci.yml 一致：分叉检查只在 macOS job 跑（依赖 shasum，Git Bash 里没有）。
+  run_step "video_player_android 分叉漂移" ./tool/check_video_player_android_fork.sh
   run_step "首页 golden 测试" flutter test test/home_golden_test.dart
 
   SIMULATOR_ID="$(
@@ -89,6 +90,7 @@ for runtime in sorted(runtimes, key=order, reverse=True):
 
   run_step "iOS 免签名构建" flutter build ios --no-codesign
 else
+  skip_step "video_player_android 分叉漂移" "只在 macOS 上跑，与 ci.yml 一致"
   skip_step "首页 golden 测试" "只在 macOS 上跑，字体渲染有差异"
   skip_step "RunnerTests（iOS 模拟器）" "需要 macOS 与 Xcode"
   skip_step "iOS 免签名构建" "需要 macOS 与 Xcode"
