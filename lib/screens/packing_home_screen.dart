@@ -550,8 +550,16 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
     super.dispose();
   }
 
+  /// 丢弃外接键盘／扫码枪敲了一半的缓冲。
+  /// 焦点离开过扫码框之后，这截内容不能再和下一次输入拼在一起。
+  void _clearScanInput() {
+    if (!mounted || _scanInput.isEmpty) return;
+    setState(() => _scanInput = '');
+  }
+
   void _focusScanInputSilently() {
     if (!mounted || _selectedTab != 1) return;
+    _clearScanInput();
     _scanInputFocus.requestFocus();
     unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
   }
@@ -607,12 +615,15 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   }
 
   Future<void> _showManualTrackingDialog() async {
+    // 外接键盘敲了一半又改用弹窗时，残留的缓冲会和之后的扫码内容拼在一起。
+    _clearScanInput();
     await showManualTrackingDialog(
       context,
       onSubmit: _controller.submitExternalTrackingNumber,
       initialValidate: _controller.manualTrackingValidationEnabled,
       onValidateChanged: _controller.setManualTrackingValidationEnabled,
     );
+    _focusScanInputSilently();
   }
 
   Future<void> _toggleWork() async {
