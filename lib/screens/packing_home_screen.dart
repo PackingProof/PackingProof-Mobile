@@ -2312,7 +2312,8 @@ class _ControlPanel extends StatelessWidget {
                         ? '正在连接电脑'
                         : isError
                         ? (view.errorMessage ?? '请重新检查摄像头权限')
-                        : '对准面单条码',
+                        // 这条提示只在未开始工作时出现，先说清要先点开始工作。
+                        : '点击开始工作后，对准条码',
                     maxLines: 1,
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,

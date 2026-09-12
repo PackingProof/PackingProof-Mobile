@@ -41,7 +41,7 @@ void main() {
 
     expect(find.text('开始工作'), findsOneWidget);
     expect(find.text('查看历史'), findsNothing);
-    expect(find.text('对准面单条码'), findsOneWidget);
+    expect(find.text('点击开始工作后，对准条码'), findsOneWidget);
     expect(find.text('摄像头已就绪'), findsNothing);
     expect(find.text('连续录像 · 面单自动标记 · 仅存本机'), findsNothing);
     expect(find.byKey(const Key('scan-guide')), findsOneWidget);
