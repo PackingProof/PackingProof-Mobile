@@ -1051,41 +1051,25 @@ class _PackingBottomNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
     return FloatingDock(
-      child: NavigationBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+      child: DockNavigationBar(
         key: const Key('main-bottom-navigation'),
         selectedIndex: selectedIndex,
-        onDestinationSelected: onSelected,
-        height: 64,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: <NavigationDestination>[
-          const NavigationDestination(
-            icon: Icon(Icons.history_rounded),
-            selectedIcon: Icon(Icons.history_rounded),
+        onSelected: onSelected,
+        destinations: const <DockDestination>[
+          DockDestination(
+            icon: Icons.history_rounded,
+            selectedIcon: Icons.history_rounded,
             label: '历史',
           ),
-          NavigationDestination(
-            icon: CircleAvatar(
-              radius: 18,
-              backgroundColor: colors.secondaryContainer,
-              child: Icon(
-                Icons.videocam_rounded,
-                color: colors.onSecondaryContainer,
-              ),
-            ),
-            selectedIcon: CircleAvatar(
-              radius: 18,
-              backgroundColor: colors.primary,
-              child: Icon(Icons.videocam_rounded, color: colors.onPrimary),
-            ),
+          DockDestination(
+            icon: Icons.videocam_outlined,
+            selectedIcon: Icons.videocam_rounded,
             label: '录制',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings_rounded),
+          DockDestination(
+            icon: Icons.settings_outlined,
+            selectedIcon: Icons.settings_rounded,
             label: '设置',
           ),
         ],

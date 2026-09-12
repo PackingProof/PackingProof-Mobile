@@ -90,4 +90,88 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('选中项的胶囊高亮同时包住图标与文字', (tester) async {
+    // 窄屏也要放得下三个带文字的胶囊。
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final ThemeData theme = PackingProofTheme.light();
+    var selected = 1;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: Scaffold(
+          bottomNavigationBar: FloatingDock(
+            child: StatefulBuilder(
+              builder: (context, setState) => DockNavigationBar(
+                selectedIndex: selected,
+                onSelected: (value) => setState(() => selected = value),
+                destinations: const [
+                  DockDestination(
+                    icon: Icons.history_rounded,
+                    selectedIcon: Icons.history_rounded,
+                    label: '历史',
+                  ),
+                  DockDestination(
+                    icon: Icons.videocam_outlined,
+                    selectedIcon: Icons.videocam_rounded,
+                    label: '录制',
+                  ),
+                  DockDestination(
+                    icon: Icons.settings_outlined,
+                    selectedIcon: Icons.settings_rounded,
+                    label: '设置',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    ShapeDecoration decorationFor(String label) {
+      return tester
+              .widget<AnimatedContainer>(
+                find.ancestor(
+                  of: find.text(label),
+                  matching: find.byType(AnimatedContainer),
+                ),
+              )
+              .decoration!
+          as ShapeDecoration;
+    }
+
+    // 选中项有胶囊底色，未选中项完全透明，三者形状一致。
+    expect(
+      decorationFor('录制').color,
+      theme.colorScheme.secondaryContainer,
+    );
+    expect(decorationFor('历史').color, Colors.transparent);
+    expect(decorationFor('设置').color, Colors.transparent);
+    for (final label in ['历史', '录制', '设置']) {
+      expect(decorationFor(label).shape, isA<StadiumBorder>());
+    }
+
+    // 高亮覆盖图标与文字整体，而不是只套住图标。
+    final Rect pill = tester.getRect(
+      find.ancestor(
+        of: find.text('录制'),
+        matching: find.byType(AnimatedContainer),
+      ),
+    );
+    final Rect icon = tester.getRect(find.byIcon(Icons.videocam_rounded));
+    final Rect label = tester.getRect(find.text('录制'));
+    expect(pill.left, lessThan(icon.left));
+    expect(pill.right, greaterThan(label.right));
+
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+    expect(selected, 2);
+    expect(decorationFor('设置').color, theme.colorScheme.secondaryContainer);
+    expect(tester.takeException(), isNull);
+  });
 }
