@@ -117,16 +117,24 @@ Tools/Publish-iOS.sh
 ./Tools/Upload-TestFlight.sh dist/ios/xxx.ipa      # 显式指定
 ```
 
-凭据用 App Store Connect API Key，从仓库根目录 `.env` 读取（`.env` 已被 `.gitignore` 忽略，禁止提交）：
+凭据从仓库根目录 `.env` 读取（`.env` 已被 `.gitignore` 忽略，禁止提交），两组二选一，优先 API Key：
 
 ```dotenv
+# 一、App Store Connect API Key（推荐，可无人值守）
 APP_STORE_CONNECT_KEY_ID=<API Key ID>
 APP_STORE_CONNECT_ISSUER_ID=<Issuer ID>
 APP_STORE_CONNECT_KEY_PATH=<AuthKey_<KEY_ID>.p8 的仓库外绝对路径>
+
+# 二、Apple ID 与 App 专用密码（没有 API Key 时的退路）
+APPLE_ID=<Apple ID 邮箱>
+APPLE_APP_SPECIFIC_PASSWORD=<appleid.apple.com 生成的 App 专用密码>
 ```
 
+- API Key 在 App Store Connect 的「用户和访问 → 集成 → App Store Connect API」创建，Issuer ID 显示在同一页面顶部；`.p8` 只能下载一次
 - `APP_STORE_CONNECT_KEY_PATH` 可省略，此时按 altool 约定在 `~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8` 查找
 - 私钥 `.p8` 必须位于仓库外，脚本会拒绝仓库内路径，也不会把私钥复制进仓库
+- App 专用密码支持写成 `@keychain:<item-name>`，避免明文落盘
 - 上传成功只代表已提交给苹果，构建包要等 App Store Connect 处理完才会出现在 TestFlight
+- 还有一条不走脚本的退路：Xcode Organizer 里选中归档直接 Distribute App
 
 仅在工具链或缓存故障确实需要完整清理时使用 `Tools/Publish-iOS.sh clean`。正式 TestFlight/App Store 包不得直接调用 `Tools/Build-iOS.sh` 绕过发布门禁；普通 Profile、ad-hoc 和 development 测试包仍使用构建脚本。
