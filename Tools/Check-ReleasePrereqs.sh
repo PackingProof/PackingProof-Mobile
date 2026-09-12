@@ -128,25 +128,32 @@ if [ "$HOST" = "mac" ]; then
 fi
 
 echo ""
-echo "== 发布渠道登录态 =="
+echo "== 发布渠道登录态（Tools/Publish-Releases.sh 在 Mac 上执行）=="
+# Release 统一从 Mac 创建，Windows 编译机只负责构建 APK，缺 CLI 不阻断。
+if [ "$HOST" = "mac" ]; then
+  channel_issue() { fail "$1"; }
+else
+  channel_issue() { warn "$1（Release 由 Mac 创建，属正常）"; }
+fi
+
 if command -v gh >/dev/null 2>&1; then
   if gh auth status >/dev/null 2>&1; then
     ok "gh 已登录"
   else
-    fail "gh 未登录，执行 gh auth login"
+    channel_issue "gh 未登录，执行 gh auth login"
   fi
 else
-  fail "未安装 gh，GitHub Release 无法创建"
+  channel_issue "未安装 gh，GitHub Release 无法创建"
 fi
 
 if command -v gitee >/dev/null 2>&1; then
   if gitee auth status >/dev/null 2>&1; then
     ok "gitee 已登录"
   else
-    fail "gitee 未登录，执行 gitee auth login --token <token>"
+    channel_issue "gitee 未登录，执行 gitee auth login --token <token>"
   fi
 else
-  fail "未安装 gitee CLI，Gitee Release 无法创建"
+  channel_issue "未安装 gitee CLI，Gitee Release 无法创建"
 fi
 
 echo ""
