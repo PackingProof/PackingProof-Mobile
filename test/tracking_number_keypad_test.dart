@@ -106,7 +106,87 @@ void main() {
     expect(submitted, '1');
   });
 
-  testWidgets('QWERTY 键位顺序与实体键盘一致', (WidgetTester tester) async {
+  testWidgets('打勾按钮直接提交', (WidgetTester tester) async {
+    final BuildContext context = await pumpHost(tester);
+    String? submitted;
+    await openSheet(
+      tester,
+      context,
+      onSubmit: (String rawCode, {required bool validate}) async {
+        submitted = rawCode;
+        return true;
+      },
+    );
+
+    await tester.tap(keyFinder('8'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('keypad-submit-button')));
+    await tester.pumpAndSettle();
+    expect(submitted, '8');
+  });
+
+  testWidgets('123 切到九宫格数字页并能切回字母页', (WidgetTester tester) async {
+    final BuildContext context = await pumpHost(tester);
+    await openSheet(
+      tester,
+      context,
+      onSubmit: (String rawCode, {required bool validate}) async => true,
+    );
+
+    await tester.tap(find.byKey(const Key('keypad-mode-button')));
+    await tester.pumpAndSettle();
+    // 数字页只剩九宫格，字母全部收起。
+    expect(keyFinder('Q'), findsNothing);
+    expect(keyFinder('5'), findsOneWidget);
+    // 九宫格：1/4/7 同列，1/2/3 同排。
+    expect(
+      tester.getRect(keyFinder('1')).left,
+      closeTo(tester.getRect(keyFinder('7')).left, 0.5),
+    );
+    expect(
+      tester.getRect(keyFinder('1')).top,
+      closeTo(tester.getRect(keyFinder('3')).top, 0.5),
+    );
+    // 退格仍然在第三排（和 7/8/9 同排）。
+    expect(
+      tester.getRect(find.byKey(const Key('keypad-backspace-button'))).top,
+      closeTo(tester.getRect(keyFinder('9')).top, 0.5),
+    );
+
+    await tester.tap(find.byKey(const Key('keypad-mode-button')));
+    await tester.pumpAndSettle();
+    expect(keyFinder('Q'), findsOneWidget);
+
+    Navigator.of(context).pop();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('输入框有内容时显示清除按钮', (WidgetTester tester) async {
+    final BuildContext context = await pumpHost(tester);
+    await openSheet(
+      tester,
+      context,
+      onSubmit: (String rawCode, {required bool validate}) async => true,
+    );
+
+    expect(find.byKey(const Key('manual-tracking-clear-button')), findsNothing);
+    await tester.tap(keyFinder('5'));
+    await tester.pump();
+    expect(
+      find.byKey(const Key('manual-tracking-clear-button')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('manual-tracking-clear-button')));
+    await tester.pump();
+    expect(currentInput(tester), isEmpty);
+    expect(find.byKey(const Key('manual-tracking-clear-button')), findsNothing);
+
+    Navigator.of(context).pop();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('字母页是五排且键位顺序与实体键盘一致', (WidgetTester tester) async {
     final BuildContext context = await pumpHost(tester);
     await openSheet(
       tester,
@@ -122,10 +202,20 @@ void main() {
     expect(left('W'), lessThan(left('E')));
     expect(left('E'), lessThan(left('R')));
     expect(left('P'), greaterThan(left('Q')));
-    // 数字排在字母上面，ASDF 排在 QWER 下面。
+    // 五排：数字行 / QWER / ASDF / ZXCV / 功能行。
     expect(top('1'), lessThan(top('Q')));
     expect(top('Q'), lessThan(top('A')));
     expect(top('A'), lessThan(top('Z')));
+    expect(
+      top('Z'),
+      lessThan(tester.getRect(find.byKey(const Key('keypad-mode-button'))).top),
+    );
+    // 退格在第三排字母行尾，不在功能行。
+    final Rect backspace = tester.getRect(
+      find.byKey(const Key('keypad-backspace-button')),
+    );
+    expect(backspace.top, closeTo(tester.getRect(keyFinder('Z')).top, 0.5));
+    expect(backspace.left, greaterThan(left('M')));
 
     Navigator.of(context).pop();
     await tester.pumpAndSettle();

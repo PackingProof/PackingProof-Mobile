@@ -252,6 +252,7 @@ class _ManualTrackingSheetState extends State<_ManualTrackingSheet> {
   String? _errorMessage;
   Timer? _keyboardProbe;
   bool _systemKeyboardProbed = false;
+  bool _hasInput = false;
 
   /// 应用内键盘的显示意图：null 表示交给自动判断，非空表示用户手动指定过。
   bool? _keypadOverride;
@@ -263,10 +264,18 @@ class _ManualTrackingSheetState extends State<_ManualTrackingSheet> {
   void initState() {
     super.initState();
     _validate = widget.initialValidate;
+    // 清除按钮要随“有没有内容”出现和消失。
+    _input.addListener(_handleInputChanged);
     // 主页扫码枪焦点会主动隐藏键盘；面板打开后才恢复软键盘输入。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _showKeyboard();
     });
+  }
+
+  void _handleInputChanged() {
+    final bool hasText = _input.text.isNotEmpty;
+    if (hasText == _hasInput) return;
+    setState(() => _hasInput = hasText);
   }
 
   void _showKeyboard() {
@@ -352,6 +361,7 @@ class _ManualTrackingSheetState extends State<_ManualTrackingSheet> {
   @override
   void dispose() {
     _keyboardProbe?.cancel();
+    _input.removeListener(_handleInputChanged);
     _inputFocus.dispose();
     _input.dispose();
     super.dispose();
@@ -391,7 +401,8 @@ class _ManualTrackingSheetState extends State<_ManualTrackingSheet> {
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          // 全面屏机型底部要留出手势区之外的余量，键盘不贴着屏幕下沿。
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -442,6 +453,13 @@ class _ManualTrackingSheetState extends State<_ManualTrackingSheet> {
                       onPressed: _pasteFromClipboard,
                       icon: const Icon(Icons.content_paste_rounded),
                     ),
+                    if (_hasInput)
+                      IconButton(
+                        key: const Key('manual-tracking-clear-button'),
+                        tooltip: '清除输入',
+                        onPressed: _clearInput,
+                        icon: const Icon(Icons.close_rounded),
+                      ),
                   ],
                 ),
               ),
@@ -516,6 +534,7 @@ class _ManualTrackingSheetState extends State<_ManualTrackingSheet> {
                     onInsert: _insertText,
                     onBackspace: _backspace,
                     onClear: _clearInput,
+                    onSubmit: _submitting ? null : () => unawaited(_submit()),
                   ),
                 ),
             ],
