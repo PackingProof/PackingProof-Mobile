@@ -589,6 +589,20 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         ? BarcodeCandidatePolicy.normalize(rawCode)
         : rawCode.trim();
     if (code.isEmpty) return false;
+
+    // 手动输入和扫码枪也支持与摄像头相同的包含式指令码。
+    final MobileBarcodeCommand? command =
+        BarcodeCandidatePolicy.mobileCommandFor(code);
+    if (command != null) {
+      _handlingBarcode = true;
+      try {
+        await _handleMobileBarcodeCommand(command);
+      } finally {
+        _handlingBarcode = false;
+      }
+      return true;
+    }
+
     if (validate) {
       final DateTime now = DateTime.now();
       final RejectedBarcodeDecision? rejected = RejectedBarcodePolicy.decide(
@@ -599,6 +613,8 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         now: now,
         lastCode: _lastRejectedBarcodeCode,
         lastShownAt: _lastRejectedBarcodeAt,
+        // 摄像头提示需要节流，提交结果不能因重复回车被节流而放行。
+        throttle: false,
       );
       if (rejected != null) {
         _showRejectedBarcodeNotice(rejected, now);

@@ -29,6 +29,7 @@ import '../services/session_repository.dart';
 import '../services/speech_prompt_service.dart';
 import '../services/watermark_geometry.dart';
 import '../widgets/order_info_sheet.dart';
+import '../widgets/two_button_confirm_dialog.dart';
 import 'recordings_screen.dart';
 
 @visibleForTesting
@@ -115,21 +116,11 @@ Future<bool> showComputerReplacementDialog(
   return await showDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (BuildContext dialogContext) => AlertDialog(
-          title: const Text('更换备份电脑？'),
-          content: Text(
-            '当前：${prompt.currentComputer}\n新的电脑：${prompt.newComputer}\n\n更换后，后续录像将备份到新的电脑',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('继续绑定'),
-            ),
-          ],
+        builder: (BuildContext dialogContext) => TwoButtonConfirmDialog(
+          title: '更换备份电脑？',
+          message:
+              '当前：${prompt.currentComputer}\n新的电脑：${prompt.newComputer}\n\n更换后，后续录像将备份到新的电脑',
+          confirmLabel: '继续绑定',
         ),
       ) ??
       false;
@@ -200,23 +191,12 @@ Future<void> _showMobileUpdateInstructions(
   final bool ios = defaultTargetPlatform == TargetPlatform.iOS;
   final bool? confirmed = await showDialog<bool>(
     context: context,
-    builder: (BuildContext dialogContext) => AlertDialog(
-      title: const Text('更新说明'),
-      content: Text(
-        ios
-            ? '即将打开 TestFlight。请在 TestFlight 中完成更新；如果尚未安装 TestFlight，请先按系统提示安装'
-            : '即将打开 Gitee 下载页面。下载 APK 后，如果文件被自动追加了其他后缀，请删除多余后缀并恢复为 .apk，再覆盖安装。请勿卸载应用，以免影响本机录像和设置',
-      ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(dialogContext).pop(true),
-          child: const Text('继续'),
-        ),
-      ],
+    builder: (BuildContext dialogContext) => TwoButtonConfirmDialog(
+      title: '更新说明',
+      message: ios
+          ? '即将打开 TestFlight。请在 TestFlight 中完成更新；如果尚未安装 TestFlight，请先按系统提示安装'
+          : '即将打开 Gitee 下载页面。下载 APK 后，如果文件被自动追加了其他后缀，请删除多余后缀并恢复为 .apk，再覆盖安装。请勿卸载应用，以免影响本机录像和设置',
+      confirmLabel: '继续',
     ),
   );
   if (confirmed != true) return;
@@ -254,6 +234,20 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
   String? _errorMessage;
 
   @override
+  void initState() {
+    super.initState();
+    // 主页扫码枪焦点会主动隐藏键盘；弹窗打开后才恢复软键盘输入。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showKeyboard();
+    });
+  }
+
+  void _showKeyboard() {
+    _inputFocus.requestFocus();
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+  }
+
+  @override
   void dispose() {
     _inputFocus.dispose();
     _input.dispose();
@@ -289,12 +283,23 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
       actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      title: const Text('输入单号', style: TextStyle(fontWeight: FontWeight.w800)),
+      title: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text('输入单号', style: TextStyle(fontWeight: FontWeight.w800)),
+          SizedBox(height: 4),
+          Text(
+            '支持扫码枪输入',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
@@ -312,6 +317,7 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
               controller: _input,
               focusNode: _inputFocus,
               autofocus: true,
+              onTap: _showKeyboard,
               textInputAction: TextInputAction.done,
               onEditingComplete: () {},
               onSubmitted: (String value) => unawaited(_submit(value)),
@@ -345,6 +351,11 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
+                  padding: EdgeInsets.zero,
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -358,6 +369,11 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
               child: FilledButton(
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(48),
+                  padding: EdgeInsets.zero,
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -404,6 +420,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   int _transientReturnTab = 1;
   DateTime? _exitArmedAt;
   String _scanInput = '';
+  String _lastCameraCandidateCode = '';
   final FocusNode _scanInputFocus = FocusNode();
   bool _scanSubmitting = false;
 
@@ -470,7 +487,17 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   }
 
   void _handleControllerChanged() {
-    if (!mounted || _capabilityNoticeDialogShown) return;
+    if (!mounted) return;
+    final String cameraCandidate = _controller.candidateCode;
+    if (cameraCandidate != _lastCameraCandidateCode) {
+      final bool hadCameraCandidate = _lastCameraCandidateCode.isNotEmpty;
+      _lastCameraCandidateCode = cameraCandidate;
+      if ((cameraCandidate.isNotEmpty || hadCameraCandidate) &&
+          _scanInput.isNotEmpty) {
+        setState(() => _scanInput = '');
+      }
+    }
+    if (_capabilityNoticeDialogShown) return;
     final String? notice = _controller.takeCapabilityNoticeForDisplay();
     if (notice == null || _controller.phase != PackingSessionPhase.ready) {
       return;
@@ -773,9 +800,9 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                       elapsed: _controller.elapsed,
                       elapsedListenable: _controller.elapsedListenable,
                       lastMarker: _controller.lastMarker,
-                      candidateCode: _scanInput.isNotEmpty
-                          ? _scanInput
-                          : _controller.candidateCode,
+                      candidateCode: _controller.candidateCode.isNotEmpty
+                          ? _controller.candidateCode
+                          : _scanInput,
                       currentCode: _controller.currentCode,
                       orderInfo: _controller.activeOrderInfo,
                       workMode: _controller.workMode,
@@ -1351,60 +1378,51 @@ class _CameraArea extends StatelessWidget {
               top: 72,
               child: _AlternatingBanner(),
             ),
-          if (view.scanWarningMessage != null)
-            Positioned(
-              left: 18,
-              right: 18,
-              bottom: lowerOverlayInset + 54,
-              child: _ScanWarningToast(message: view.scanWarningMessage!),
-            )
-          else if (view.cameraNotice != null)
-            Positioned(
-              left: 18,
-              right: 18,
-              bottom: lowerOverlayInset + 54,
-              child: _CameraNoticeBanner(message: view.cameraNotice!),
-            )
-          else if (view.lastMarker != null)
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: lowerOverlayInset + 54,
-              child: _RecognitionToast(marker: view.lastMarker!),
-            )
-          else if (view.candidateCode.isNotEmpty)
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: lowerOverlayInset + 54,
-              child: Text(
-                '正在确认 · ${view.candidateCode}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  shadows: <Shadow>[
-                    Shadow(color: Color(0x88000000), blurRadius: 8),
-                  ],
-                ),
-              ),
-            ),
-          if (view.rejectedBarcodeMessage != null)
-            Positioned(
-              left: 18,
-              right: 18,
-              bottom: lowerOverlayInset + 118,
-              child: Align(
-                alignment: Alignment.bottomRight,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 340),
-                  child: _ScanWarningToast(
-                    key: const Key('rejected-barcode-toast'),
-                    message: view.rejectedBarcodeMessage!,
+          Positioned(
+            left: 18,
+            right: 18,
+            bottom: lowerOverlayInset + 48,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                if (view.scanWarningMessage != null)
+                  _ScanWarningToast(message: view.scanWarningMessage!)
+                else if (view.cameraNotice != null)
+                  _CameraNoticeBanner(message: view.cameraNotice!)
+                else if (view.lastMarker != null)
+                  _RecognitionToast(marker: view.lastMarker!),
+                if (view.rejectedBarcodeMessage != null) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 340),
+                      child: _ScanWarningToast(
+                        key: const Key('rejected-barcode-toast'),
+                        message: view.rejectedBarcodeMessage!,
+                      ),
+                    ),
                   ),
-                ),
-              ),
+                ],
+                if (view.candidateCode.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '正在确认 · ${view.candidateCode}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        shadows: <Shadow>[
+                          Shadow(color: Color(0x88000000), blurRadius: 8),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
+          ),
           if (view.pairingScanActive || view.pairingMessage != null)
             Positioned(
               left: 20,

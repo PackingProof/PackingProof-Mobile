@@ -139,23 +139,13 @@ mixin _RecordingsBackupCoordinator on State<RecordingsScreen> {
       final bool replace =
           await showDialog<bool>(
             context: context,
-            builder: (BuildContext dialogContext) => AlertDialog(
-              title: const Text('更换备份电脑？'),
-              content: Text(
-                '当前：${error.currentEndpoint.computerName}\n'
-                '新的电脑：${error.candidateEndpoint.computerName}\n\n'
-                '仍有待备份录像，确认后才会向新电脑申请连接',
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(true),
-                  child: const Text('继续连接'),
-                ),
-              ],
+            builder: (BuildContext dialogContext) => TwoButtonConfirmDialog(
+              title: '更换备份电脑？',
+              message:
+                  '当前：${error.currentEndpoint.computerName}\n'
+                  '新的电脑：${error.candidateEndpoint.computerName}\n\n'
+                  '仍有待备份录像，确认后才会向新电脑申请连接',
+              confirmLabel: '继续连接',
             ),
           ) ??
           false;

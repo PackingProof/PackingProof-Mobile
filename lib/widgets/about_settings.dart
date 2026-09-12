@@ -14,6 +14,7 @@ import '../app/packing_proof_mobile_app.dart';
 import '../services/camera_diagnostics_service.dart';
 import '../services/continuous_camera_service.dart';
 import '../services/diagnostics_log_service.dart';
+import 'two_button_confirm_dialog.dart';
 
 const String packingProofRepositoryUrl =
     'https://github.com/PackingProof/PackingProof-Mobile';
@@ -133,23 +134,12 @@ class _AboutScreenState extends State<AboutScreen> {
       context: context,
       builder: (BuildContext dialogContext) {
         final bool ios = defaultTargetPlatform == TargetPlatform.iOS;
-        return AlertDialog(
-          title: const Text('更新说明'),
-          content: Text(
-            ios
-                ? '即将打开 TestFlight。请在 TestFlight 中完成更新；如果尚未安装 TestFlight，请先按系统提示安装'
-                : '即将打开 Gitee 下载页面。下载 APK 后，如果文件被自动追加了其他后缀，请删除多余后缀并恢复为 .apk，再覆盖安装。请勿卸载应用，以免影响本机录像和设置',
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('继续'),
-            ),
-          ],
+        return TwoButtonConfirmDialog(
+          title: '更新说明',
+          message: ios
+              ? '即将打开 TestFlight。请在 TestFlight 中完成更新；如果尚未安装 TestFlight，请先按系统提示安装'
+              : '即将打开 Gitee 下载页面。下载 APK 后，如果文件被自动追加了其他后缀，请删除多余后缀并恢复为 .apk，再覆盖安装。请勿卸载应用，以免影响本机录像和设置',
+          confirmLabel: '继续',
         );
       },
     );

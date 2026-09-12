@@ -298,6 +298,7 @@ void main() {
       },
     );
     await tester.pumpAndSettle();
+    expect(find.text('支持扫码枪输入'), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'TRACK-001');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();

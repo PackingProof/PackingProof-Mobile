@@ -39,6 +39,7 @@ class RejectedBarcodePolicy {
     required DateTime now,
     String? lastCode,
     DateTime? lastShownAt,
+    bool throttle = true,
   }) {
     if (candidates.isEmpty) {
       return null;
@@ -67,7 +68,8 @@ class RejectedBarcodePolicy {
     }
 
     final String code = BarcodeCandidatePolicy.normalize(largest.value);
-    if (code == lastCode &&
+    if (throttle &&
+        code == lastCode &&
         lastShownAt != null &&
         now.difference(lastShownAt) < perCodeThrottle) {
       return null;

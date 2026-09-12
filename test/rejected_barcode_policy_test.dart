@@ -100,6 +100,26 @@ void main() {
     expect(afterWindow, isNotNull);
   });
 
+  test('外部提交关闭提示节流后重复非法码仍会被拒绝', () {
+    const List<RejectedBarcodeCandidate> candidates =
+        <RejectedBarcodeCandidate>[
+          RejectedBarcodeCandidate(
+            value: '1234567890',
+            area: 100,
+            format: 'code128',
+          ),
+        ];
+    final RejectedBarcodeDecision? repeated = RejectedBarcodePolicy.decide(
+      candidates: candidates,
+      minimumLength: 11,
+      now: now.add(const Duration(seconds: 1)),
+      lastCode: '1234567890',
+      lastShownAt: now,
+      throttle: false,
+    );
+    expect(repeated, isNotNull);
+  });
+
   test('顺丰 Code39 是有效面单码且不再显示拦截横幅', () {
     final RejectedBarcodeDecision? decision = RejectedBarcodePolicy.decide(
       candidates: const <RejectedBarcodeCandidate>[

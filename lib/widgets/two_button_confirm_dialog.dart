@@ -19,6 +19,18 @@ class TwoButtonConfirmDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
+    const ButtonStyle sharedButtonStyle = ButtonStyle(
+      minimumSize: WidgetStatePropertyAll<Size>(Size.fromHeight(48)),
+      padding: WidgetStatePropertyAll<EdgeInsets>(EdgeInsets.zero),
+      textStyle: WidgetStatePropertyAll<TextStyle>(
+        TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+      ),
+      shape: WidgetStatePropertyAll<RoundedRectangleBorder>(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+        ),
+      ),
+    );
     return AlertDialog(
       title: Text(title),
       content: ConstrainedBox(
@@ -33,9 +45,13 @@ class TwoButtonConfirmDialog extends StatelessWidget {
             Expanded(
               child: FilledButton(
                 key: const Key('confirm-dialog-cancel'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: colors.surfaceContainerHigh,
-                  foregroundColor: colors.onSurface,
+                style: sharedButtonStyle.copyWith(
+                  backgroundColor: WidgetStatePropertyAll<Color?>(
+                    colors.surfaceContainerHigh,
+                  ),
+                  foregroundColor: WidgetStatePropertyAll<Color?>(
+                    colors.onSurface,
+                  ),
                 ),
                 onPressed: () => Navigator.of(context).pop(false),
                 child: Text(cancelLabel),
@@ -45,12 +61,14 @@ class TwoButtonConfirmDialog extends StatelessWidget {
             Expanded(
               child: FilledButton(
                 key: const Key('confirm-dialog-confirm'),
-                style: dangerous
-                    ? FilledButton.styleFrom(
-                        backgroundColor: colors.error,
-                        foregroundColor: colors.onError,
-                      )
-                    : null,
+                style: sharedButtonStyle.copyWith(
+                  backgroundColor: WidgetStatePropertyAll<Color?>(
+                    dangerous ? colors.error : colors.primary,
+                  ),
+                  foregroundColor: WidgetStatePropertyAll<Color?>(
+                    dangerous ? colors.onError : colors.onPrimary,
+                  ),
+                ),
                 onPressed: () => Navigator.of(context).pop(true),
                 child: Text(confirmLabel),
               ),
