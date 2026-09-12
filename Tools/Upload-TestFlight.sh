@@ -50,6 +50,8 @@ else
   echo "缺少上传凭据，请在 .env 配置以下任一组：" >&2
   echo "  APP_STORE_CONNECT_KEY_ID + APP_STORE_CONNECT_ISSUER_ID（推荐）" >&2
   echo "  APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD" >&2
+  echo "模板见 .env.example，流程见 docs/ios-development.md 的「上传 TestFlight」" >&2
+  echo "先跑 ./Tools/Check-ReleasePrereqs.sh 可以一次看清还缺什么" >&2
   exit 1
 fi
 

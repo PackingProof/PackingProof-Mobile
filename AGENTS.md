@@ -40,7 +40,8 @@ PackingProof-Mobile is a Flutter app for continuous package-recording and shippi
 - 日常命令、保留数据的 Android 安装、Mac/Windows 对等 SSH 验证或跨机同步：必须阅读 `docs/cross-machine-development.md`
 - 修改 iOS、Xcode、CocoaPods、Flutter iOS 插件或 IPA 构建：必须阅读 `docs/ios-development.md`
 - 修改局域网发现、配对、鉴权、上传、回执、远程播放或清理：必须阅读 `docs/mobile-backup-v2.md`
-- 构建本地 Release 测试 APK、准备版本、签名、打 tag 或发布：必须阅读 `docs/android-release.md` 和 `RELEASE_NOTES_TEMPLATE.md`
+- 构建本地 Release 测试 APK、准备版本、签名、打 tag 或发布：必须阅读 `docs/android-release.md` 和 `RELEASE_NOTES_TEMPLATE.md`；`docs/android-release.md` 的「脚本总览」是发布的唯一入口清单，先跑 `./Tools/Check-ReleasePrereqs.sh` 自检，不要自行拼凑发布命令
+- 发布凭据一律通过仓库根目录 `.env` 提供，键名见已跟踪的 `.env.example`；缺凭据时向持有发布权限的人索取或重新签发，禁止从 shell 历史、会话记录或其他缓存中翻找密钥
 
 ## Testing
 

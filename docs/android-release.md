@@ -2,6 +2,21 @@
 
 本文档约定 PackingProof-Mobile 的 Android 本地 Release 测试包和正式发布流程。Android 是主要发布目标；原生 Gradle/JVM 测试、APK 构建及 Android 真机验证优先在局域网 Windows 编译机执行。
 
+## 脚本总览
+
+发布涉及的脚本按调用顺序如下，接手发布时从上往下走即可：
+
+| 脚本 | 机器 | 作用 |
+| --- | --- | --- |
+| `Tools/Check-ReleasePrereqs.sh` | 两台 | 只读自检：`.env`、签名目录、TestFlight 凭据、`gh`/`gitee` 登录态、工具链 |
+| `Tools/test-ci.sh` | 两台 | 本地 CI 门禁，各跑自己那一半 |
+| `Tools/Publish-Android.ps1` | Windows | 构建并校验正式签名 APK |
+| `Tools/Publish-iOS.sh` | Mac | 构建并校验 App Store IPA（不上传） |
+| `Tools/Publish-Releases.sh` | Mac | 创建 GitHub + Gitee Release 并上传 APK |
+| `Tools/Upload-TestFlight.sh` | Mac | 上传 IPA 到 TestFlight |
+
+本机配置集中在仓库根目录 `.env`，模板是已跟踪的 `.env.example`；真实凭据只存在于本机与持有发布权限的人手里，仓库内不保存。
+
 ## 构建入口
 
 - `Tools/Publish-Android.ps1` 是正式发布入口，从当前精确 Git tag 解析版本，并委托 `Tools/Build-Android.ps1` 编译和验证
@@ -24,6 +39,7 @@ dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk
 
 固化为以下顺序，任一步失败都不得继续：
 
+0. 两台机器各跑一次 `./Tools/Check-ReleasePrereqs.sh` 自检前置条件（`.env` 配置、签名目录、TestFlight 凭据、`gh`/`gitee` 登录态、工具链）；有阻断项先解决，不要等构建到一半才发现凭据不齐
 1. 提交全部改动，确认工作区干净，版本号已更新
 2. 两台机器各跑一次本地 CI：`./Tools/test-ci.sh`（Mac 跑 golden/RunnerTests/iOS 构建那一半，Windows 编译机跑 Android 原生测试那一半），跳过项必须在另一台补齐
 3. 建本地精确标签 `v<versionName>+<versionCode>`
