@@ -28,8 +28,9 @@ dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk
 2. 两台机器各跑一次本地 CI：`./Tools/test-ci.sh`（Mac 跑 golden/RunnerTests/iOS 构建那一半，Windows 编译机跑 Android 原生测试那一半），跳过项必须在另一台补齐
 3. 建本地精确标签 `v<versionName>+<versionCode>`
 4. 以该标签身份执行发布构建：Android 在 Windows 编译机执行 `Tools/Publish-Android.ps1`，iOS 在 Mac 执行 `Tools/Publish-iOS.sh`
-5. 构建与校验全部通过后，再推送 `main` 与标签到公开远端
-6. 创建 Release 并上传 Android APK；iOS 只上传 TestFlight，不附 IPA
+5. 构建与校验全部通过后，再推送 `main` 与标签到 GitHub 和 Gitee
+6. 取回 APK 到 Mac 的 `dist/android/` 并核对 SHA256，执行 `./Tools/Publish-Releases.sh <发布笔记文件> --title "<一句话内容>"` 一次性创建 GitHub 与 Gitee Release 并上传 APK
+7. iOS 执行 `./Tools/Upload-TestFlight.sh` 上传 TestFlight，不附 IPA
 
 Android 正式发布在局域网 Windows 编译机执行 `Tools/Publish-Android.ps1`，签名目录来自仓库外配置。`.github/workflows/release.yml` 保留为手动触发（`workflow_dispatch`）的备用通道，日常发布不走它。
 
@@ -78,13 +79,18 @@ build-manifest.json
 - 只有固定语音资源、元数据、Git revision、正式签名和 SHA256 全部验证通过，才算构建成功
 - keystore、`签名凭据.txt`、证书和其他签名配置必须位于仓库外，禁止打印、提交、复制或打包
 
-GitHub/Gitee Release 只上传 Android APK。iOS 不再上传 IPA，只发布到 TestFlight。`SHA256SUMS.txt` 和 `build-manifest.json` 仅用于本地发布门禁与问题追踪，不作为 Release 附件。GitHub Release 使用 GitHub 插件或 `gh` 创建并上传 tag、APK 和发布笔记。Gitee Release 使用：
+GitHub/Gitee Release 只上传 Android APK。iOS 不再上传 IPA，只发布到 TestFlight。`SHA256SUMS.txt` 和 `build-manifest.json` 仅用于本地发布门禁与问题追踪，不作为 Release 附件。
 
-```powershell
-gitee auth status
-gitee release create --tag <tag> --name "..." --notes "..."
-gitee release upload <tag> dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk
+两个平台统一走 `Tools/Publish-Releases.sh`，它按当前精确 tag 找 `dist/android/` 下的 APK，先建 GitHub Release（连不上时自动重试），再建 Gitee Release 并上传同一个 APK；已存在的 Release 会跳过创建，可安全重跑：
+
+```bash
+./Tools/Publish-Releases.sh dist/android/RELEASE_NOTES-v<versionName>+<versionCode>.md \
+  --title "<一句话内容>" [--prerelease]
 ```
+
+- GitHub 登录态由 `gh auth status` 维护，Gitee 由 `gitee auth status` 维护，脚本不读也不存这两个平台的令牌
+- Gitee 会把附件名里的 `+` 显示成空格，属于平台行为，不是构建问题
+- 建 Gitee Release 必须带 `--target main`，否则接口会报 `target_commitish is missing`
 
 发布笔记必须基于仓库根目录的 `RELEASE_NOTES_TEMPLATE.md`：
 

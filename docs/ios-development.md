@@ -108,4 +108,25 @@ git tag v0.5.25+11040
 Tools/Publish-iOS.sh
 ```
 
+## 上传 TestFlight
+
+`Tools/Publish-iOS.sh` 只负责构建和校验，不上传。上传走 `Tools/Upload-TestFlight.sh`，它按当前精确 tag 找 `dist/ios/` 下的 IPA，先 `altool --validate-app` 再 `--upload-app`：
+
+```bash
+./Tools/Upload-TestFlight.sh                       # 按当前 tag 推断 IPA
+./Tools/Upload-TestFlight.sh dist/ios/xxx.ipa      # 显式指定
+```
+
+凭据用 App Store Connect API Key，从仓库根目录 `.env` 读取（`.env` 已被 `.gitignore` 忽略，禁止提交）：
+
+```dotenv
+APP_STORE_CONNECT_KEY_ID=<API Key ID>
+APP_STORE_CONNECT_ISSUER_ID=<Issuer ID>
+APP_STORE_CONNECT_KEY_PATH=<AuthKey_<KEY_ID>.p8 的仓库外绝对路径>
+```
+
+- `APP_STORE_CONNECT_KEY_PATH` 可省略，此时按 altool 约定在 `~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8` 查找
+- 私钥 `.p8` 必须位于仓库外，脚本会拒绝仓库内路径，也不会把私钥复制进仓库
+- 上传成功只代表已提交给苹果，构建包要等 App Store Connect 处理完才会出现在 TestFlight
+
 仅在工具链或缓存故障确实需要完整清理时使用 `Tools/Publish-iOS.sh clean`。正式 TestFlight/App Store 包不得直接调用 `Tools/Build-iOS.sh` 绕过发布门禁；普通 Profile、ad-hoc 和 development 测试包仍使用构建脚本。
