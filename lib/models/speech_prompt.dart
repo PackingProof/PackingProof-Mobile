@@ -28,6 +28,16 @@ enum SpeechPrompt {
     assetName: 'preview_enabled.mp3',
     priority: SpeechPromptPriority.normal,
   ),
+  torchEnabled(
+    text: '手电筒已开启',
+    assetName: 'torch_enabled.mp3',
+    priority: SpeechPromptPriority.normal,
+  ),
+  torchDisabled(
+    text: '手电筒已关闭',
+    assetName: 'torch_disabled.mp3',
+    priority: SpeechPromptPriority.normal,
+  ),
   testOrderReceived(
     text: '已收到测试订单',
     assetName: 'test_order_received.mp3',
@@ -37,6 +47,18 @@ enum SpeechPrompt {
   duplicateOrderWarning(
     text: '警告，重复单号，请确认',
     assetName: 'duplicate_order_warning.mp3',
+    priority: SpeechPromptPriority.warning,
+    cue: SpeechPromptCue.warning,
+  ),
+  invalidTrackingNumber(
+    text: '非法单号，已拦截',
+    assetName: 'invalid_tracking_number.mp3',
+    priority: SpeechPromptPriority.warning,
+    cue: SpeechPromptCue.warning,
+  ),
+  trackingNumberMismatch(
+    text: '单号不一致，不会停止录制',
+    assetName: 'tracking_number_mismatch.mp3',
     priority: SpeechPromptPriority.warning,
     cue: SpeechPromptCue.warning,
   ),

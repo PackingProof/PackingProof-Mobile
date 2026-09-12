@@ -130,6 +130,28 @@ void main() {
     await service.dispose();
   });
 
+  test('动态警告 incident 会自动释放，后续同类提示仍可播报', () async {
+    final _FakeSpeechOutput output = _FakeSpeechOutput();
+    final SpeechPromptService service = SpeechPromptService(output: output);
+
+    service.enqueueText(
+      '单号不一致，不会停止录制',
+      priority: SpeechPromptPriority.warning,
+      incidentKey: 'recording-order-mismatch',
+    );
+    await service.waitUntilIdle();
+    await Future<void>.delayed(const Duration(milliseconds: 3100));
+    service.enqueueText(
+      '单号不一致，不会停止录制',
+      priority: SpeechPromptPriority.warning,
+      incidentKey: 'recording-order-mismatch',
+    );
+    await service.waitUntilIdle();
+
+    expect(output.systemTexts, <String>['单号不一致，不会停止录制', '单号不一致，不会停止录制']);
+    await service.dispose();
+  });
+
   test('同一故障恢复前只播报一次', () async {
     final _FakeSpeechOutput output = _FakeSpeechOutput();
     final SpeechPromptService service = SpeechPromptService(output: output);

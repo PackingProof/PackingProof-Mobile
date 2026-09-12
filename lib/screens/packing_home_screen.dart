@@ -832,7 +832,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                       onCameraSelected: _controller.switchToCamera,
                       onPairingCancel: _cancelComputerPairingAndReturn,
                       onHistoryScanCancel: _cancelHistoryScanAndReturn,
-                      onTorchPressed: _controller.toggleTorch,
+                      onTorchPressed: () => _controller.toggleTorch(),
                       onCameraSwitchPressed: _controller.switchCamera,
                       onOperationModeChanged: _controller.setOperationMode,
                       onFinishOrder: _controller.finishCurrentOrder,

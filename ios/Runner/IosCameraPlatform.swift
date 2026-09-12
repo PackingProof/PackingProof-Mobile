@@ -1726,7 +1726,7 @@ final class IosCameraHostApi:
         try device.lockForConfiguration()
         device.torchMode = enabled ? .on : .off
         device.unlockForConfiguration()
-        completion(.success(true))
+        completion(.success(enabled))
       } catch {
         completion(.success(false))
       }

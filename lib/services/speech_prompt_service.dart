@@ -90,6 +90,8 @@ abstract interface class SpeechOutput {
 }
 
 class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
+  static const Duration _dynamicIncidentHoldDuration = Duration(seconds: 3);
+
   SpeechPromptService({SpeechOutput? output})
     : _output = output ?? DeviceSpeechOutput();
 
@@ -97,6 +99,7 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
   final ListQueue<_QueuedSpeechPrompt> _queue =
       ListQueue<_QueuedSpeechPrompt>();
   final Set<String> _activeIncidents = <String>{};
+  final Map<String, Timer> _dynamicIncidentTimers = <String, Timer>{};
 
   bool _enabled = true;
   bool _draining = false;
@@ -175,6 +178,11 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
     if (priority == SpeechPromptPriority.warning) {
       final String key = incidentKey ?? 'dynamic:$normalized';
       if (!_activeIncidents.add(key)) return;
+      _dynamicIncidentTimers[key]?.cancel();
+      _dynamicIncidentTimers[key] = Timer(_dynamicIncidentHoldDuration, () {
+        _activeIncidents.remove(key);
+        _dynamicIncidentTimers.remove(key);
+      });
       _queue.removeWhere(
         (_QueuedSpeechPrompt queued) =>
             queued.priority == SpeechPromptPriority.normal,
@@ -219,11 +227,18 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
   }
 
   @override
-  void resetIncidents() => _activeIncidents.clear();
+  void resetIncidents() {
+    _activeIncidents.clear();
+    for (final Timer timer in _dynamicIncidentTimers.values) {
+      timer.cancel();
+    }
+    _dynamicIncidentTimers.clear();
+  }
 
   @override
   void resolveIncident(String incidentKey) {
     _activeIncidents.remove(incidentKey);
+    _dynamicIncidentTimers.remove(incidentKey)?.cancel();
   }
 
   @override
@@ -248,7 +263,7 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
     _generation++;
     _queue.clear();
     _activePrompt = null;
-    _activeIncidents.clear();
+    resetIncidents();
     await _stopOutputBounded();
   }
 
@@ -343,7 +358,7 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
     }
     _disposed = true;
     _queue.clear();
-    _activeIncidents.clear();
+    resetIncidents();
     await _output.stop();
     await _output.dispose();
   }

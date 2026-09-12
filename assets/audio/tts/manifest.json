@@ -53,6 +53,26 @@
       "cacheKey": "a6946a5f2d27365597d3ea75d818fd54bf9e1fbb8346b4e935cf064e79c058a8"
     },
     {
+      "id": "torchEnabled",
+      "text": "手电筒已开启",
+      "priority": "normal",
+      "voice": "zh-CN-XiaoxiaoNeural",
+      "file": "torch_enabled.mp3",
+      "bytes": 12672,
+      "sha256": "cc99a8145ecdd562b383c9e093a8040daae21f1b1a52efe908f70618bad1cc72",
+      "cacheKey": "55461d0ef575a677472f4b920e754cad0dbc3372804706fb61ac2fdea346feaf"
+    },
+    {
+      "id": "torchDisabled",
+      "text": "手电筒已关闭",
+      "priority": "normal",
+      "voice": "zh-CN-XiaoxiaoNeural",
+      "file": "torch_disabled.mp3",
+      "bytes": 12096,
+      "sha256": "cb0b9eb8e0250004bad84c85209acfaeaf811b0d6b7fd158ae549c6656db3597",
+      "cacheKey": "77b4eb9ba71cea868ca019ab1d169d8e6bda0af9113d3d1ade6b0e2c6644eec2"
+    },
+    {
       "id": "testOrderReceived",
       "text": "已收到测试订单",
       "priority": "normal",
@@ -71,6 +91,26 @@
       "bytes": 20592,
       "sha256": "b35069ddbcf6a27042281006a5e98db1f45be60bbc22bef99bdd2857f6faf9d1",
       "cacheKey": "14ef8bc38ca34c70666079f9e52732c77f8026f3fb5390a847ed1fd93c8fdb79"
+    },
+    {
+      "id": "invalidTrackingNumber",
+      "text": "非法单号，已拦截",
+      "priority": "warning",
+      "voice": "zh-CN-YunjianNeural",
+      "file": "invalid_tracking_number.mp3",
+      "bytes": 16416,
+      "sha256": "a96e232540e8cda72170f62480220b54420c7596d426d4a1ee33f511494e35d9",
+      "cacheKey": "e8743aa97657544e022fa45b2ac14fc4ae0f06010c9729e6c9585df3edb4022d"
+    },
+    {
+      "id": "trackingNumberMismatch",
+      "text": "单号不一致，不会停止录制",
+      "priority": "warning",
+      "voice": "zh-CN-YunjianNeural",
+      "file": "tracking_number_mismatch.mp3",
+      "bytes": 20736,
+      "sha256": "a5e919c9074d4f462fd9b3cc4cbb3ff5a30aa0eb974eacb86b0042e5c1c504b9",
+      "cacheKey": "b1cb7bd11eea100e385ba5147d04ba80d0240456d1fbbdef5fe73cf8cec69ec5"
     },
     {
       "id": "cameraNotReady",

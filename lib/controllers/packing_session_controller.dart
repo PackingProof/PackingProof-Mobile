@@ -355,7 +355,7 @@ class PackingSessionController extends ChangeNotifier
     if (!_disposed) notifyListeners();
   }
 
-  Future<void> toggleTorch() async {
+  Future<void> toggleTorch({bool announce = false}) async {
     if (!flashAvailable || isBusy) return;
     final bool enabled = !_torchEnabled;
     try {
@@ -366,6 +366,13 @@ class PackingSessionController extends ChangeNotifier
           enabled ? FlashMode.torch : FlashMode.off,
         );
         _torchEnabled = enabled;
+      }
+      if (announce) {
+        _speechService.enqueue(
+          _torchEnabled
+              ? SpeechPrompt.torchEnabled
+              : SpeechPrompt.torchDisabled,
+        );
       }
       notifyListeners();
     } on Object {
@@ -1398,16 +1405,13 @@ class PackingSessionController extends ChangeNotifier
     _rejectedBarcodeTimer = Timer(const Duration(seconds: 4), () {
       if (_disposed) return;
       _rejectedBarcodeMessage = null;
+      _speechService.resolveIncident('invalid-order-number');
       notifyListeners();
     });
-    if (_speechService case final DynamicSpeechPromptSink dynamicSpeech) {
-      dynamicSpeech.enqueueText(
-        '非法单号，已拦截',
-        priority: SpeechPromptPriority.warning,
-        incidentKey: 'invalid-order-number',
-        playWarningTone: true,
-      );
-    }
+    _speechService.enqueue(
+      SpeechPrompt.invalidTrackingNumber,
+      incidentKey: 'invalid-order-number',
+    );
     notifyListeners();
   }
 

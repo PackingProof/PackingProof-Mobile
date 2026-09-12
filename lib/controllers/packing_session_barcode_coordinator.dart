@@ -46,7 +46,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     required void Function(BarcodeMarker marker) onSegmentStarted,
   });
   Future<void> startWork();
-  Future<void> toggleTorch();
+  Future<void> toggleTorch({bool announce = false});
 
   final BarcodeStabilityTracker _stabilityTracker = BarcodeStabilityTracker();
   final BarcodeRecognizedBeepPolicy _recognizedBeepPolicy =
@@ -488,14 +488,14 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
             _timeline.currentCode.isNotEmpty &&
             !JdBarcodePolicy.sameRecordingCode(_timeline.currentCode, code)) {
           _showCameraNotice('单号不一致：$code');
-          if (_speechService case final DynamicSpeechPromptSink dynamicSpeech) {
-            dynamicSpeech.enqueueText(
-              '单号不一致，不会停止录制',
-              priority: SpeechPromptPriority.warning,
-              incidentKey: 'recording-order-mismatch',
-              playWarningTone: true,
-            );
-          }
+          final String incidentKey = 'recording-order-mismatch:$code';
+          _speechService.enqueue(
+            SpeechPrompt.trackingNumberMismatch,
+            incidentKey: incidentKey,
+          );
+          Timer(const Duration(seconds: 3), () {
+            _speechService.resolveIncident(incidentKey);
+          });
         }
         notifyListeners();
         return;
@@ -654,9 +654,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         _showCameraNotice('扫码框已清除');
         break;
       case MobileBarcodeCommand.openFlash:
-        if (!torchEnabled) {
-          await toggleTorch();
-        }
+        await toggleTorch(announce: true);
         break;
       case MobileBarcodeCommand.switchShipping:
         if (_operationMode != RecordingOperationMode.shipping) {
