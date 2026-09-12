@@ -765,8 +765,10 @@ class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
     required bool autoEnabled,
     required UnbackedRetentionPolicy unbackedRetention,
     required BackedRetentionPolicy backedRetention,
-    UnbackedRetentionPolicy returnUnbackedRetention = UnbackedRetentionPolicy.days3,
-    BackedRetentionPolicy returnBackedRetention = BackedRetentionPolicy.immediately,
+    UnbackedRetentionPolicy returnUnbackedRetention =
+        UnbackedRetentionPolicy.days3,
+    BackedRetentionPolicy returnBackedRetention =
+        BackedRetentionPolicy.immediately,
   }) async {
     initializeCalls++;
     _snapshot = _snapshot.copyWith(autoEnabled: autoEnabled);

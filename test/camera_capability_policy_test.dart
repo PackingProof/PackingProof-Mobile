@@ -81,11 +81,7 @@ void main() {
       _phase('idle'),
     ];
     expect(
-      CameraCapabilityPolicy.evaluateSequence(
-        'alternating',
-        phases,
-        fps: 30,
-      ),
+      CameraCapabilityPolicy.evaluateSequence('alternating', phases, fps: 30),
       CameraSequenceVerdict.passed,
     );
   });
@@ -139,51 +135,42 @@ void main() {
 
   test('按顺序短路并区分 UNSUPPORTED 与 UNVERIFIED', () {
     expect(
-      CameraCapabilityPolicy.decide(
-        <String, List<CameraProbePhase>>{'full': _fullSequence()},
-        fps: 30,
-      ).mode,
+      CameraCapabilityPolicy.decide(<String, List<CameraProbePhase>>{
+        'full': _fullSequence(),
+      }, fps: 30).mode,
       CameraCapabilityMode.full,
     );
     expect(
-      CameraCapabilityPolicy.decide(
-        <String, List<CameraProbePhase>>{
-          'full': _fullSequence(recordOutcome: 'configure_failed'),
-          'encoder_analysis': <CameraProbePhase>[
-            _phase('idle'),
-            _phase('record', preview: 0, analysis: 30, encoder: 30),
-            _phase('idle'),
-            _phase('record', preview: 0, analysis: 30, encoder: 30),
-            _phase('idle'),
-          ],
-        },
-        fps: 30,
-      ).mode,
+      CameraCapabilityPolicy.decide(<String, List<CameraProbePhase>>{
+        'full': _fullSequence(recordOutcome: 'configure_failed'),
+        'encoder_analysis': <CameraProbePhase>[
+          _phase('idle'),
+          _phase('record', preview: 0, analysis: 30, encoder: 30),
+          _phase('idle'),
+          _phase('record', preview: 0, analysis: 30, encoder: 30),
+          _phase('idle'),
+        ],
+      }, fps: 30).mode,
       CameraCapabilityMode.encoderAnalysis,
     );
     expect(
-      CameraCapabilityPolicy.decide(
-        <String, List<CameraProbePhase>>{
-          'full': _fullSequence(recordOutcome: 'configure_failed'),
-          'encoder_analysis': _fullSequence(recordOutcome: 'configure_failed'),
-          'alternating': _fullSequence(recordOutcome: 'configure_failed'),
-        },
-        fps: 30,
-      ).mode,
+      CameraCapabilityPolicy.decide(<String, List<CameraProbePhase>>{
+        'full': _fullSequence(recordOutcome: 'configure_failed'),
+        'encoder_analysis': _fullSequence(recordOutcome: 'configure_failed'),
+        'alternating': _fullSequence(recordOutcome: 'configure_failed'),
+      }, fps: 30).mode,
       CameraCapabilityMode.unsupported,
     );
-    final CameraCapabilityDecision infraDecision = CameraCapabilityPolicy.decide(
-      <String, List<CameraProbePhase>>{
-        'full': <CameraProbePhase>[
-          _phase('idle'),
-          _phase('record', outcome: 'configure_timeout'),
-          _phase('idle'),
-          _phase('record'),
-          _phase('idle'),
-        ],
-      },
-      fps: 30,
-    );
+    final CameraCapabilityDecision infraDecision =
+        CameraCapabilityPolicy.decide(<String, List<CameraProbePhase>>{
+          'full': <CameraProbePhase>[
+            _phase('idle'),
+            _phase('record', outcome: 'configure_timeout'),
+            _phase('idle'),
+            _phase('record'),
+            _phase('idle'),
+          ],
+        }, fps: 30);
     expect(infraDecision.mode, CameraCapabilityMode.unverified);
     expect(infraDecision.infraReason, isNotNull);
   });

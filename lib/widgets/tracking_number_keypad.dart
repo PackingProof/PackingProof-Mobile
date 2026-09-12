@@ -6,38 +6,67 @@ import 'package:flutter/material.dart';
 /// 变成空调用，用户就没法手动补录单号。这块面板不依赖系统输入法，按键直接改写
 /// 输入框内容。
 ///
-/// 按键集合对应单号规则 `^[A-Z0-9-]{8,40}$`：数字、大写字母和连字符。
-class TrackingNumberKeypad extends StatefulWidget {
+/// 键位沿用 QWERTY 顺序，上面再加一排数字；按键集合对应单号规则
+/// `^[A-Z0-9-]{8,40}$`：数字、大写字母和连字符。
+class TrackingNumberKeypad extends StatelessWidget {
   const TrackingNumberKeypad({
     super.key,
     required this.onInsert,
     required this.onBackspace,
     required this.onClear,
-    this.onHide,
+    this.hint,
   });
 
   final ValueChanged<String> onInsert;
   final VoidCallback onBackspace;
   final VoidCallback onClear;
-  final VoidCallback? onHide;
+  final String? hint;
 
-  @override
-  State<TrackingNumberKeypad> createState() => _TrackingNumberKeypadState();
-}
-
-class _TrackingNumberKeypadState extends State<TrackingNumberKeypad> {
-  static const List<List<String>> _digitRows = <List<String>>[
-    <String>['1', '2', '3', '4', '5'],
-    <String>['6', '7', '8', '9', '0'],
+  static const List<String> _digits = <String>[
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '0',
   ];
-  static const List<List<String>> _letterRows = <List<String>>[
-    <String>['A', 'B', 'C', 'D', 'E', 'F', 'G'],
-    <String>['H', 'I', 'J', 'K', 'L', 'M', 'N'],
-    <String>['O', 'P', 'Q', 'R', 'S', 'T', 'U'],
-    <String>['V', 'W', 'X', 'Y', 'Z'],
+  static const List<String> _topRow = <String>[
+    'Q',
+    'W',
+    'E',
+    'R',
+    'T',
+    'Y',
+    'U',
+    'I',
+    'O',
+    'P',
   ];
-
-  bool _letters = false;
+  static const List<String> _homeRow = <String>[
+    'A',
+    'S',
+    'D',
+    'F',
+    'G',
+    'H',
+    'J',
+    'K',
+    'L',
+    '-',
+  ];
+  static const List<String> _bottomRow = <String>[
+    'Z',
+    'X',
+    'C',
+    'V',
+    'B',
+    'N',
+    'M',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -48,56 +77,43 @@ class _TrackingNumberKeypadState extends State<TrackingNumberKeypad> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  '外接设备占用了系统键盘，可用下方键盘输入',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
+          if (hint != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                hint!,
+                style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
               ),
-              if (widget.onHide != null)
-                IconButton(
-                  key: const Key('keypad-hide-button'),
-                  tooltip: '收起键盘',
-                  visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.keyboard_hide_rounded, size: 20),
-                  onPressed: widget.onHide,
-                ),
-            ],
-          ),
-          for (final List<String> row in _letters ? _letterRows : _digitRows)
+            ),
+          for (final List<String> row in <List<String>>[
+            _digits,
+            _topRow,
+            _homeRow,
+          ])
             _KeyRow(
               children: <Widget>[
                 for (final String key in row)
-                  _KeypadKey(label: key, onTap: () => widget.onInsert(key)),
+                  _KeypadKey(label: key, onTap: () => onInsert(key)),
               ],
             ),
           _KeyRow(
             children: <Widget>[
               _KeypadKey(
-                key: const Key('keypad-mode-button'),
-                label: _letters ? '123' : 'ABC',
-                emphasized: true,
-                flex: 2,
-                onTap: () => setState(() => _letters = !_letters),
-              ),
-              _KeypadKey(label: '-', onTap: () => widget.onInsert('-')),
-              _KeypadKey(
                 key: const Key('keypad-clear-button'),
                 label: '清空',
                 flex: 2,
-                onTap: widget.onClear,
+                emphasized: true,
+                fontSize: 14,
+                onTap: onClear,
               ),
+              for (final String key in _bottomRow)
+                _KeypadKey(label: key, onTap: () => onInsert(key)),
               _KeypadKey(
                 key: const Key('keypad-backspace-button'),
                 label: '⌫',
-                emphasized: true,
                 flex: 2,
-                onTap: widget.onBackspace,
+                emphasized: true,
+                onTap: onBackspace,
               ),
             ],
           ),
@@ -115,7 +131,7 @@ class _KeyRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.only(top: 6),
       child: Row(children: children),
     );
   }
@@ -128,12 +144,14 @@ class _KeypadKey extends StatelessWidget {
     required this.onTap,
     this.flex = 1,
     this.emphasized = false,
+    this.fontSize = 17,
   });
 
   final String label;
   final VoidCallback onTap;
   final int flex;
   final bool emphasized;
+  final double fontSize;
 
   @override
   Widget build(BuildContext context) {
@@ -146,19 +164,19 @@ class _KeypadKey extends StatelessWidget {
           color: emphasized
               ? colors.secondaryContainer
               : colors.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
             child: SizedBox(
-              height: 40,
+              height: 46,
               child: Center(
                 child: Text(
                   label,
                   maxLines: 1,
                   style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w600,
                     color: emphasized
                         ? colors.onSecondaryContainer
                         : colors.onSurface,

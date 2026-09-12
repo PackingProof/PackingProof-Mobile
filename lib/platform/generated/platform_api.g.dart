@@ -10,9 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:meta/meta.dart' show immutable, protected, visibleForTesting;
 
 Object? _extractReplyValueOrThrow(
-    List<Object?>? replyList,
-    String channelName, {
-    required bool isNullValid,
+  List<Object?>? replyList,
+  String channelName, {
+  required bool isNullValid,
 }) {
   if (replyList == null) {
     throw PlatformException(
@@ -34,8 +34,11 @@ Object? _extractReplyValueOrThrow(
   return replyList.firstOrNull;
 }
 
-
-List<Object?> wrapResponse({Object? result, PlatformException? error, bool empty = false}) {
+List<Object?> wrapResponse({
+  Object? result,
+  PlatformException? error,
+  bool empty = false,
+}) {
   if (empty) {
     return <Object?>[];
   }
@@ -44,6 +47,7 @@ List<Object?> wrapResponse({Object? result, PlatformException? error, bool empty
   }
   return <Object?>[error.code, error.message, error.details];
 }
+
 bool _deepEquals(Object? a, Object? b) {
   if (identical(a, b)) {
     return true;
@@ -56,8 +60,9 @@ bool _deepEquals(Object? a, Object? b) {
   }
   if (a is List && b is List) {
     return a.length == b.length &&
-        a.indexed
-            .every(((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]));
+        a.indexed.every(
+          ((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]),
+        );
   }
   if (a is Map && b is Map) {
     if (a.length != b.length) {
@@ -106,7 +111,6 @@ int _deepHash(Object? value) {
   return value.hashCode;
 }
 
-
 enum CameraWatermarkDisposition {
   completed,
   postProcessRequired,
@@ -114,26 +118,21 @@ enum CameraWatermarkDisposition {
 }
 
 class ThumbnailRequest {
-  ThumbnailRequest({
-    required this.path,
-  });
+  ThumbnailRequest({required this.path});
 
   String path;
 
   List<Object?> _toList() {
-    return <Object?>[
-      path,
-    ];
+    return <Object?>[path];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static ThumbnailRequest decode(Object result) {
     result as List<Object?>;
-    return ThumbnailRequest(
-      path: result[0]! as String,
-    );
+    return ThumbnailRequest(path: result[0]! as String);
   }
 
   @override
@@ -192,7 +191,8 @@ class WatermarkRequest {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static WatermarkRequest decode(Object result) {
     result as List<Object?>;
@@ -215,7 +215,12 @@ class WatermarkRequest {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(inputPath, other.inputPath) && _deepEquals(outputPath, other.outputPath) && _deepEquals(startedAtMs, other.startedAtMs) && _deepEquals(trackingNumber, other.trackingNumber) && _deepEquals(videoCodec, other.videoCodec) && _deepEquals(recordingOrientation, other.recordingOrientation);
+    return _deepEquals(inputPath, other.inputPath) &&
+        _deepEquals(outputPath, other.outputPath) &&
+        _deepEquals(startedAtMs, other.startedAtMs) &&
+        _deepEquals(trackingNumber, other.trackingNumber) &&
+        _deepEquals(videoCodec, other.videoCodec) &&
+        _deepEquals(recordingOrientation, other.recordingOrientation);
   }
 
   @override
@@ -248,17 +253,12 @@ class ExportRequest {
   bool passthrough;
 
   List<Object?> _toList() {
-    return <Object?>[
-      inputPath,
-      outputPath,
-      startMs,
-      endMs,
-      passthrough,
-    ];
+    return <Object?>[inputPath, outputPath, startMs, endMs, passthrough];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static ExportRequest decode(Object result) {
     result as List<Object?>;
@@ -280,7 +280,11 @@ class ExportRequest {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(inputPath, other.inputPath) && _deepEquals(outputPath, other.outputPath) && _deepEquals(startMs, other.startMs) && _deepEquals(endMs, other.endMs) && _deepEquals(passthrough, other.passthrough);
+    return _deepEquals(inputPath, other.inputPath) &&
+        _deepEquals(outputPath, other.outputPath) &&
+        _deepEquals(startMs, other.startMs) &&
+        _deepEquals(endMs, other.endMs) &&
+        _deepEquals(passthrough, other.passthrough);
   }
 
   @override
@@ -343,7 +347,8 @@ class VideoDecodeSupportDto {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static VideoDecodeSupportDto decode(Object result) {
     result as List<Object?>;
@@ -370,7 +375,16 @@ class VideoDecodeSupportDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(manufacturer, other.manufacturer) && _deepEquals(brand, other.brand) && _deepEquals(model, other.model) && _deepEquals(sdkInt, other.sdkInt) && _deepEquals(release, other.release) && _deepEquals(hasHevcDecoder, other.hasHevcDecoder) && _deepEquals(hasAvcDecoder, other.hasAvcDecoder) && _deepEquals(hasHevcEncoder, other.hasHevcEncoder) && _deepEquals(hasAvcEncoder, other.hasAvcEncoder) && _deepEquals(forceSoftwareDecode, other.forceSoftwareDecode);
+    return _deepEquals(manufacturer, other.manufacturer) &&
+        _deepEquals(brand, other.brand) &&
+        _deepEquals(model, other.model) &&
+        _deepEquals(sdkInt, other.sdkInt) &&
+        _deepEquals(release, other.release) &&
+        _deepEquals(hasHevcDecoder, other.hasHevcDecoder) &&
+        _deepEquals(hasAvcDecoder, other.hasAvcDecoder) &&
+        _deepEquals(hasHevcEncoder, other.hasHevcEncoder) &&
+        _deepEquals(hasAvcEncoder, other.hasAvcEncoder) &&
+        _deepEquals(forceSoftwareDecode, other.forceSoftwareDecode);
   }
 
   @override
@@ -437,7 +451,8 @@ class OrderInfoDto {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static OrderInfoDto decode(Object result) {
     result as List<Object?>;
@@ -465,7 +480,17 @@ class OrderInfoDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(trackingNumber, other.trackingNumber) && _deepEquals(orderId, other.orderId) && _deepEquals(buyerMessage, other.buyerMessage) && _deepEquals(sellerMemo, other.sellerMemo) && _deepEquals(productInfo, other.productInfo) && _deepEquals(hasRefund, other.hasRefund) && _deepEquals(isPrintedRefund, other.isPrintedRefund) && _deepEquals(refundStatus, other.refundStatus) && _deepEquals(refundProductInfo, other.refundProductInfo) && _deepEquals(pushTimeMs, other.pushTimeMs) && _deepEquals(isTest, other.isTest);
+    return _deepEquals(trackingNumber, other.trackingNumber) &&
+        _deepEquals(orderId, other.orderId) &&
+        _deepEquals(buyerMessage, other.buyerMessage) &&
+        _deepEquals(sellerMemo, other.sellerMemo) &&
+        _deepEquals(productInfo, other.productInfo) &&
+        _deepEquals(hasRefund, other.hasRefund) &&
+        _deepEquals(isPrintedRefund, other.isPrintedRefund) &&
+        _deepEquals(refundStatus, other.refundStatus) &&
+        _deepEquals(refundProductInfo, other.refundProductInfo) &&
+        _deepEquals(pushTimeMs, other.pushTimeMs) &&
+        _deepEquals(isTest, other.isTest);
   }
 
   @override
@@ -498,17 +523,12 @@ class OrderReceiverStatusDto {
   String errorMessage;
 
   List<Object?> _toList() {
-    return <Object?>[
-      running,
-      ipAddress,
-      url,
-      port,
-      errorMessage,
-    ];
+    return <Object?>[running, ipAddress, url, port, errorMessage];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static OrderReceiverStatusDto decode(Object result) {
     result as List<Object?>;
@@ -530,7 +550,11 @@ class OrderReceiverStatusDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(running, other.running) && _deepEquals(ipAddress, other.ipAddress) && _deepEquals(url, other.url) && _deepEquals(port, other.port) && _deepEquals(errorMessage, other.errorMessage);
+    return _deepEquals(running, other.running) &&
+        _deepEquals(ipAddress, other.ipAddress) &&
+        _deepEquals(url, other.url) &&
+        _deepEquals(port, other.port) &&
+        _deepEquals(errorMessage, other.errorMessage);
   }
 
   @override
@@ -569,7 +593,8 @@ class CameraInitializeRequest {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static CameraInitializeRequest decode(Object result) {
     result as List<Object?>;
@@ -590,7 +615,10 @@ class CameraInitializeRequest {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(videoCodec, other.videoCodec) && _deepEquals(recordingSpec, other.recordingSpec) && _deepEquals(capabilityMode, other.capabilityMode) && _deepEquals(recordingOrientation, other.recordingOrientation);
+    return _deepEquals(videoCodec, other.videoCodec) &&
+        _deepEquals(recordingSpec, other.recordingSpec) &&
+        _deepEquals(capabilityMode, other.capabilityMode) &&
+        _deepEquals(recordingOrientation, other.recordingOrientation);
   }
 
   @override
@@ -661,7 +689,8 @@ class CameraInitializationDto {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static CameraInitializationDto decode(Object result) {
     result as List<Object?>;
@@ -690,7 +719,18 @@ class CameraInitializationDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(textureId, other.textureId) && _deepEquals(previewWidth, other.previewWidth) && _deepEquals(previewHeight, other.previewHeight) && _deepEquals(sensorOrientation, other.sensorOrientation) && _deepEquals(fps, other.fps) && _deepEquals(videoMime, other.videoMime) && _deepEquals(codecFallbackReason, other.codecFallbackReason) && _deepEquals(flashAvailable, other.flashAvailable) && _deepEquals(lensDirection, other.lensDirection) && _deepEquals(canSwitchCamera, other.canSwitchCamera) && _deepEquals(cameraId, other.cameraId) && _deepEquals(zoomRatio, other.zoomRatio);
+    return _deepEquals(textureId, other.textureId) &&
+        _deepEquals(previewWidth, other.previewWidth) &&
+        _deepEquals(previewHeight, other.previewHeight) &&
+        _deepEquals(sensorOrientation, other.sensorOrientation) &&
+        _deepEquals(fps, other.fps) &&
+        _deepEquals(videoMime, other.videoMime) &&
+        _deepEquals(codecFallbackReason, other.codecFallbackReason) &&
+        _deepEquals(flashAvailable, other.flashAvailable) &&
+        _deepEquals(lensDirection, other.lensDirection) &&
+        _deepEquals(canSwitchCamera, other.canSwitchCamera) &&
+        _deepEquals(cameraId, other.cameraId) &&
+        _deepEquals(zoomRatio, other.zoomRatio);
   }
 
   @override
@@ -720,16 +760,12 @@ class CameraLensDto {
   bool isMain;
 
   List<Object?> _toList() {
-    return <Object?>[
-      cameraId,
-      focalLength,
-      zoomRatio,
-      isMain,
-    ];
+    return <Object?>[cameraId, focalLength, zoomRatio, isMain];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static CameraLensDto decode(Object result) {
     result as List<Object?>;
@@ -750,7 +786,10 @@ class CameraLensDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(cameraId, other.cameraId) && _deepEquals(focalLength, other.focalLength) && _deepEquals(zoomRatio, other.zoomRatio) && _deepEquals(isMain, other.isMain);
+    return _deepEquals(cameraId, other.cameraId) &&
+        _deepEquals(focalLength, other.focalLength) &&
+        _deepEquals(zoomRatio, other.zoomRatio) &&
+        _deepEquals(isMain, other.isMain);
   }
 
   @override
@@ -764,24 +803,19 @@ class CameraLensDto {
 }
 
 class CameraRecordingStartDto {
-  CameraRecordingStartDto({
-    required this.path,
-    required this.startedAtMs,
-  });
+  CameraRecordingStartDto({required this.path, required this.startedAtMs});
 
   String path;
 
   int startedAtMs;
 
   List<Object?> _toList() {
-    return <Object?>[
-      path,
-      startedAtMs,
-    ];
+    return <Object?>[path, startedAtMs];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static CameraRecordingStartDto decode(Object result) {
     result as List<Object?>;
@@ -800,7 +834,8 @@ class CameraRecordingStartDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(path, other.path) && _deepEquals(startedAtMs, other.startedAtMs);
+    return _deepEquals(path, other.path) &&
+        _deepEquals(startedAtMs, other.startedAtMs);
   }
 
   @override
@@ -843,7 +878,8 @@ class CameraRecordingSplitDto {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static CameraRecordingSplitDto decode(Object result) {
     result as List<Object?>;
@@ -865,7 +901,11 @@ class CameraRecordingSplitDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(completedPath, other.completedPath) && _deepEquals(nextPath, other.nextPath) && _deepEquals(completedStartedAtMs, other.completedStartedAtMs) && _deepEquals(boundaryAtMs, other.boundaryAtMs) && _deepEquals(watermarkDisposition, other.watermarkDisposition);
+    return _deepEquals(completedPath, other.completedPath) &&
+        _deepEquals(nextPath, other.nextPath) &&
+        _deepEquals(completedStartedAtMs, other.completedStartedAtMs) &&
+        _deepEquals(boundaryAtMs, other.boundaryAtMs) &&
+        _deepEquals(watermarkDisposition, other.watermarkDisposition);
   }
 
   @override
@@ -895,16 +935,12 @@ class CameraRecordingStopDto {
   CameraWatermarkDisposition watermarkDisposition;
 
   List<Object?> _toList() {
-    return <Object?>[
-      path,
-      startedAtMs,
-      endedAtMs,
-      watermarkDisposition,
-    ];
+    return <Object?>[path, startedAtMs, endedAtMs, watermarkDisposition];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static CameraRecordingStopDto decode(Object result) {
     result as List<Object?>;
@@ -925,7 +961,10 @@ class CameraRecordingStopDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(path, other.path) && _deepEquals(startedAtMs, other.startedAtMs) && _deepEquals(endedAtMs, other.endedAtMs) && _deepEquals(watermarkDisposition, other.watermarkDisposition);
+    return _deepEquals(path, other.path) &&
+        _deepEquals(startedAtMs, other.startedAtMs) &&
+        _deepEquals(endedAtMs, other.endedAtMs) &&
+        _deepEquals(watermarkDisposition, other.watermarkDisposition);
   }
 
   @override
@@ -955,16 +994,12 @@ class BarcodeCandidateDto {
   int detectedAtMs;
 
   List<Object?> _toList() {
-    return <Object?>[
-      value,
-      area,
-      format,
-      detectedAtMs,
-    ];
+    return <Object?>[value, area, format, detectedAtMs];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static BarcodeCandidateDto decode(Object result) {
     result as List<Object?>;
@@ -985,7 +1020,10 @@ class BarcodeCandidateDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(value, other.value) && _deepEquals(area, other.area) && _deepEquals(format, other.format) && _deepEquals(detectedAtMs, other.detectedAtMs);
+    return _deepEquals(value, other.value) &&
+        _deepEquals(area, other.area) &&
+        _deepEquals(format, other.format) &&
+        _deepEquals(detectedAtMs, other.detectedAtMs);
   }
 
   @override
@@ -1080,7 +1118,8 @@ class BackupJobDto {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static BackupJobDto decode(Object result) {
     result as List<Object?>;
@@ -1115,7 +1154,24 @@ class BackupJobDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(revision, other.revision) && _deepEquals(id, other.id) && _deepEquals(filePath, other.filePath) && _deepEquals(state, other.state) && _deepEquals(uploadedBytes, other.uploadedBytes) && _deepEquals(totalBytes, other.totalBytes) && _deepEquals(lastModifiedMs, other.lastModifiedMs) && _deepEquals(contentSha256, other.contentSha256) && _deepEquals(errorMessage, other.errorMessage) && _deepEquals(failureKind, other.failureKind) && _deepEquals(fileCreatedAtMs, other.fileCreatedAtMs) && _deepEquals(backupCompletedAtMs, other.backupCompletedAtMs) && _deepEquals(scheduledCleanupAtMs, other.scheduledCleanupAtMs) && _deepEquals(localDeletedAtMs, other.localDeletedAtMs) && _deepEquals(waitingCleanup, other.waitingCleanup) && _deepEquals(remoteRecordId, other.remoteRecordId) && _deepEquals(destinationComputerId, other.destinationComputerId) && _deepEquals(cleanupReason, other.cleanupReason);
+    return _deepEquals(revision, other.revision) &&
+        _deepEquals(id, other.id) &&
+        _deepEquals(filePath, other.filePath) &&
+        _deepEquals(state, other.state) &&
+        _deepEquals(uploadedBytes, other.uploadedBytes) &&
+        _deepEquals(totalBytes, other.totalBytes) &&
+        _deepEquals(lastModifiedMs, other.lastModifiedMs) &&
+        _deepEquals(contentSha256, other.contentSha256) &&
+        _deepEquals(errorMessage, other.errorMessage) &&
+        _deepEquals(failureKind, other.failureKind) &&
+        _deepEquals(fileCreatedAtMs, other.fileCreatedAtMs) &&
+        _deepEquals(backupCompletedAtMs, other.backupCompletedAtMs) &&
+        _deepEquals(scheduledCleanupAtMs, other.scheduledCleanupAtMs) &&
+        _deepEquals(localDeletedAtMs, other.localDeletedAtMs) &&
+        _deepEquals(waitingCleanup, other.waitingCleanup) &&
+        _deepEquals(remoteRecordId, other.remoteRecordId) &&
+        _deepEquals(destinationComputerId, other.destinationComputerId) &&
+        _deepEquals(cleanupReason, other.cleanupReason);
   }
 
   @override
@@ -1238,7 +1294,8 @@ class BackupSummaryDto {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static BackupSummaryDto decode(Object result) {
     result as List<Object?>;
@@ -1280,7 +1337,31 @@ class BackupSummaryDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(schemaVersion, other.schemaVersion) && _deepEquals(revision, other.revision) && _deepEquals(completedRevision, other.completedRevision) && _deepEquals(cleanupHighWatermark, other.cleanupHighWatermark) && _deepEquals(deviceId, other.deviceId) && _deepEquals(deviceName, other.deviceName) && _deepEquals(baseUrl, other.baseUrl) && _deepEquals(computerId, other.computerId) && _deepEquals(computerName, other.computerName) && _deepEquals(lastConnectedAtMs, other.lastConnectedAtMs) && _deepEquals(preferredHostId, other.preferredHostId) && _deepEquals(preferredHostName, other.preferredHostName) && _deepEquals(totalCount, other.totalCount) && _deepEquals(pendingCount, other.pendingCount) && _deepEquals(uploadingCount, other.uploadingCount) && _deepEquals(pausedCount, other.pausedCount) && _deepEquals(completedCount, other.completedCount) && _deepEquals(failedCount, other.failedCount) && _deepEquals(waitingCleanupCount, other.waitingCleanupCount) && _deepEquals(localDeletedCount, other.localDeletedCount) && _deepEquals(unfinishedUploadedBytes, other.unfinishedUploadedBytes) && _deepEquals(unfinishedTotalBytes, other.unfinishedTotalBytes) && _deepEquals(dominantFailureKind, other.dominantFailureKind) && _deepEquals(activeJob, other.activeJob) && _deepEquals(problemJob, other.problemJob);
+    return _deepEquals(schemaVersion, other.schemaVersion) &&
+        _deepEquals(revision, other.revision) &&
+        _deepEquals(completedRevision, other.completedRevision) &&
+        _deepEquals(cleanupHighWatermark, other.cleanupHighWatermark) &&
+        _deepEquals(deviceId, other.deviceId) &&
+        _deepEquals(deviceName, other.deviceName) &&
+        _deepEquals(baseUrl, other.baseUrl) &&
+        _deepEquals(computerId, other.computerId) &&
+        _deepEquals(computerName, other.computerName) &&
+        _deepEquals(lastConnectedAtMs, other.lastConnectedAtMs) &&
+        _deepEquals(preferredHostId, other.preferredHostId) &&
+        _deepEquals(preferredHostName, other.preferredHostName) &&
+        _deepEquals(totalCount, other.totalCount) &&
+        _deepEquals(pendingCount, other.pendingCount) &&
+        _deepEquals(uploadingCount, other.uploadingCount) &&
+        _deepEquals(pausedCount, other.pausedCount) &&
+        _deepEquals(completedCount, other.completedCount) &&
+        _deepEquals(failedCount, other.failedCount) &&
+        _deepEquals(waitingCleanupCount, other.waitingCleanupCount) &&
+        _deepEquals(localDeletedCount, other.localDeletedCount) &&
+        _deepEquals(unfinishedUploadedBytes, other.unfinishedUploadedBytes) &&
+        _deepEquals(unfinishedTotalBytes, other.unfinishedTotalBytes) &&
+        _deepEquals(dominantFailureKind, other.dominantFailureKind) &&
+        _deepEquals(activeJob, other.activeJob) &&
+        _deepEquals(problemJob, other.problemJob);
   }
 
   @override
@@ -1307,15 +1388,12 @@ class BackupJobsByPathsDto {
   List<String> missingPaths;
 
   List<Object?> _toList() {
-    return <Object?>[
-      revision,
-      jobs,
-      missingPaths,
-    ];
+    return <Object?>[revision, jobs, missingPaths];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static BackupJobsByPathsDto decode(Object result) {
     result as List<Object?>;
@@ -1335,7 +1413,9 @@ class BackupJobsByPathsDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(revision, other.revision) && _deepEquals(jobs, other.jobs) && _deepEquals(missingPaths, other.missingPaths);
+    return _deepEquals(revision, other.revision) &&
+        _deepEquals(jobs, other.jobs) &&
+        _deepEquals(missingPaths, other.missingPaths);
   }
 
   @override
@@ -1386,7 +1466,8 @@ class BackupCleanupEventDto {
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static BackupCleanupEventDto decode(Object result) {
     result as List<Object?>;
@@ -1410,7 +1491,13 @@ class BackupCleanupEventDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(revision, other.revision) && _deepEquals(eventId, other.eventId) && _deepEquals(jobId, other.jobId) && _deepEquals(filePath, other.filePath) && _deepEquals(fileSizeBytes, other.fileSizeBytes) && _deepEquals(deletedAtMs, other.deletedAtMs) && _deepEquals(reason, other.reason);
+    return _deepEquals(revision, other.revision) &&
+        _deepEquals(eventId, other.eventId) &&
+        _deepEquals(jobId, other.jobId) &&
+        _deepEquals(filePath, other.filePath) &&
+        _deepEquals(fileSizeBytes, other.fileSizeBytes) &&
+        _deepEquals(deletedAtMs, other.deletedAtMs) &&
+        _deepEquals(reason, other.reason);
   }
 
   @override
@@ -1440,16 +1527,12 @@ class BackupCleanupPageDto {
   List<BackupCleanupEventDto> events;
 
   List<Object?> _toList() {
-    return <Object?>[
-      latestRevision,
-      nextAfterRevision,
-      hasMore,
-      events,
-    ];
+    return <Object?>[latestRevision, nextAfterRevision, hasMore, events];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static BackupCleanupPageDto decode(Object result) {
     result as List<Object?>;
@@ -1470,7 +1553,10 @@ class BackupCleanupPageDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(latestRevision, other.latestRevision) && _deepEquals(nextAfterRevision, other.nextAfterRevision) && _deepEquals(hasMore, other.hasMore) && _deepEquals(events, other.events);
+    return _deepEquals(latestRevision, other.latestRevision) &&
+        _deepEquals(nextAfterRevision, other.nextAfterRevision) &&
+        _deepEquals(hasMore, other.hasMore) &&
+        _deepEquals(events, other.events);
   }
 
   @override
@@ -1484,24 +1570,19 @@ class BackupCleanupPageDto {
 }
 
 class CameraSessionStartedDto {
-  CameraSessionStartedDto({
-    required this.sessionId,
-    required this.startedAtMs,
-  });
+  CameraSessionStartedDto({required this.sessionId, required this.startedAtMs});
 
   String sessionId;
 
   int startedAtMs;
 
   List<Object?> _toList() {
-    return <Object?>[
-      sessionId,
-      startedAtMs,
-    ];
+    return <Object?>[sessionId, startedAtMs];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static CameraSessionStartedDto decode(Object result) {
     result as List<Object?>;
@@ -1520,7 +1601,8 @@ class CameraSessionStartedDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(sessionId, other.sessionId) && _deepEquals(startedAtMs, other.startedAtMs);
+    return _deepEquals(sessionId, other.sessionId) &&
+        _deepEquals(startedAtMs, other.startedAtMs);
   }
 
   @override
@@ -1547,15 +1629,12 @@ class CameraSegmentStartedDto {
   int startedAtMs;
 
   List<Object?> _toList() {
-    return <Object?>[
-      sessionId,
-      segmentId,
-      startedAtMs,
-    ];
+    return <Object?>[sessionId, segmentId, startedAtMs];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static CameraSegmentStartedDto decode(Object result) {
     result as List<Object?>;
@@ -1575,7 +1654,9 @@ class CameraSegmentStartedDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(sessionId, other.sessionId) && _deepEquals(segmentId, other.segmentId) && _deepEquals(startedAtMs, other.startedAtMs);
+    return _deepEquals(sessionId, other.sessionId) &&
+        _deepEquals(segmentId, other.segmentId) &&
+        _deepEquals(startedAtMs, other.startedAtMs);
   }
 
   @override
@@ -1608,17 +1689,12 @@ class CameraSegmentCompletedDto {
   int endedAtMs;
 
   List<Object?> _toList() {
-    return <Object?>[
-      sessionId,
-      segmentId,
-      path,
-      startedAtMs,
-      endedAtMs,
-    ];
+    return <Object?>[sessionId, segmentId, path, startedAtMs, endedAtMs];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static CameraSegmentCompletedDto decode(Object result) {
     result as List<Object?>;
@@ -1634,13 +1710,18 @@ class CameraSegmentCompletedDto {
   @override
   // ignore: avoid_equals_and_hash_code_on_mutable_classes
   bool operator ==(Object other) {
-    if (other is! CameraSegmentCompletedDto || other.runtimeType != runtimeType) {
+    if (other is! CameraSegmentCompletedDto ||
+        other.runtimeType != runtimeType) {
       return false;
     }
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(sessionId, other.sessionId) && _deepEquals(segmentId, other.segmentId) && _deepEquals(path, other.path) && _deepEquals(startedAtMs, other.startedAtMs) && _deepEquals(endedAtMs, other.endedAtMs);
+    return _deepEquals(sessionId, other.sessionId) &&
+        _deepEquals(segmentId, other.segmentId) &&
+        _deepEquals(path, other.path) &&
+        _deepEquals(startedAtMs, other.startedAtMs) &&
+        _deepEquals(endedAtMs, other.endedAtMs);
   }
 
   @override
@@ -1667,15 +1748,12 @@ class CameraSegmentFailedDto {
   String reason;
 
   List<Object?> _toList() {
-    return <Object?>[
-      sessionId,
-      segmentId,
-      reason,
-    ];
+    return <Object?>[sessionId, segmentId, reason];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static CameraSegmentFailedDto decode(Object result) {
     result as List<Object?>;
@@ -1695,7 +1773,9 @@ class CameraSegmentFailedDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(sessionId, other.sessionId) && _deepEquals(segmentId, other.segmentId) && _deepEquals(reason, other.reason);
+    return _deepEquals(sessionId, other.sessionId) &&
+        _deepEquals(segmentId, other.segmentId) &&
+        _deepEquals(reason, other.reason);
   }
 
   @override
@@ -1709,24 +1789,19 @@ class CameraSegmentFailedDto {
 }
 
 class CameraSessionFailedDto {
-  CameraSessionFailedDto({
-    required this.sessionId,
-    required this.reason,
-  });
+  CameraSessionFailedDto({required this.sessionId, required this.reason});
 
   String sessionId;
 
   String reason;
 
   List<Object?> _toList() {
-    return <Object?>[
-      sessionId,
-      reason,
-    ];
+    return <Object?>[sessionId, reason];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();
+  }
 
   static CameraSessionFailedDto decode(Object result) {
     result as List<Object?>;
@@ -1745,7 +1820,8 @@ class CameraSessionFailedDto {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(sessionId, other.sessionId) && _deepEquals(reason, other.reason);
+    return _deepEquals(sessionId, other.sessionId) &&
+        _deepEquals(reason, other.reason);
   }
 
   @override
@@ -1758,7 +1834,6 @@ class CameraSessionFailedDto {
   }
 }
 
-
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -1766,76 +1841,76 @@ class _PigeonCodec extends StandardMessageCodec {
     if (value is int) {
       buffer.putUint8(4);
       buffer.putInt64(value);
-    }    else if (value is CameraWatermarkDisposition) {
+    } else if (value is CameraWatermarkDisposition) {
       buffer.putUint8(129);
       writeValue(buffer, value.index);
-    }    else if (value is ThumbnailRequest) {
+    } else if (value is ThumbnailRequest) {
       buffer.putUint8(130);
       writeValue(buffer, value.encode());
-    }    else if (value is WatermarkRequest) {
+    } else if (value is WatermarkRequest) {
       buffer.putUint8(131);
       writeValue(buffer, value.encode());
-    }    else if (value is ExportRequest) {
+    } else if (value is ExportRequest) {
       buffer.putUint8(132);
       writeValue(buffer, value.encode());
-    }    else if (value is VideoDecodeSupportDto) {
+    } else if (value is VideoDecodeSupportDto) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    }    else if (value is OrderInfoDto) {
+    } else if (value is OrderInfoDto) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    }    else if (value is OrderReceiverStatusDto) {
+    } else if (value is OrderReceiverStatusDto) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraInitializeRequest) {
+    } else if (value is CameraInitializeRequest) {
       buffer.putUint8(136);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraInitializationDto) {
+    } else if (value is CameraInitializationDto) {
       buffer.putUint8(137);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraLensDto) {
+    } else if (value is CameraLensDto) {
       buffer.putUint8(138);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraRecordingStartDto) {
+    } else if (value is CameraRecordingStartDto) {
       buffer.putUint8(139);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraRecordingSplitDto) {
+    } else if (value is CameraRecordingSplitDto) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraRecordingStopDto) {
+    } else if (value is CameraRecordingStopDto) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    }    else if (value is BarcodeCandidateDto) {
+    } else if (value is BarcodeCandidateDto) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupJobDto) {
+    } else if (value is BackupJobDto) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupSummaryDto) {
+    } else if (value is BackupSummaryDto) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupJobsByPathsDto) {
+    } else if (value is BackupJobsByPathsDto) {
       buffer.putUint8(145);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupCleanupEventDto) {
+    } else if (value is BackupCleanupEventDto) {
       buffer.putUint8(146);
       writeValue(buffer, value.encode());
-    }    else if (value is BackupCleanupPageDto) {
+    } else if (value is BackupCleanupPageDto) {
       buffer.putUint8(147);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraSessionStartedDto) {
+    } else if (value is CameraSessionStartedDto) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraSegmentStartedDto) {
+    } else if (value is CameraSegmentStartedDto) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraSegmentCompletedDto) {
+    } else if (value is CameraSegmentCompletedDto) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraSegmentFailedDto) {
+    } else if (value is CameraSegmentFailedDto) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
-    }    else if (value is CameraSessionFailedDto) {
+    } else if (value is CameraSessionFailedDto) {
       buffer.putUint8(152);
       writeValue(buffer, value.encode());
     } else {
@@ -1905,9 +1980,13 @@ class MediaProcessingHostApi {
   /// Constructor for [MediaProcessingHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  MediaProcessingHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
-      : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  MediaProcessingHostApi({
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -1915,45 +1994,50 @@ class MediaProcessingHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<String?> generateThumbnail(ThumbnailRequest request) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.generateThumbnail$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.generateThumbnail$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as String?;
   }
 
   Future<String> applyWatermark(WatermarkRequest request) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.applyWatermark$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.applyWatermark$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as String;
   }
 
   Future<void> cancelWatermark() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.cancelWatermark$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.cancelWatermark$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -1963,34 +2047,36 @@ class MediaProcessingHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<String> exportRange(ExportRequest request) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.exportRange$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.exportRange$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as String;
   }
 
   Future<int> exportProgress() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.exportProgress$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.MediaProcessingHostApi.exportProgress$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2000,11 +2086,10 @@ class MediaProcessingHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as int;
   }
 }
@@ -2013,9 +2098,13 @@ class SystemMediaPresenterHostApi {
   /// Constructor for [SystemMediaPresenterHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  SystemMediaPresenterHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
-      : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  SystemMediaPresenterHostApi({
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -2023,26 +2112,29 @@ class SystemMediaPresenterHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<String?> getVideoTrackMime(String path) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.getVideoTrackMime$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.getVideoTrackMime$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[path]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[path],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as String?;
   }
 
   Future<VideoDecodeSupportDto?> getVideoDecodeSupport() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.getVideoDecodeSupport$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.getVideoDecodeSupport$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2052,30 +2144,31 @@ class SystemMediaPresenterHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as VideoDecodeSupportDto?;
   }
 
   Future<void> openWithSystemPlayer(String path) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.openWithSystemPlayer$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.openWithSystemPlayer$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[path]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[path],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 }
 
@@ -2083,9 +2176,13 @@ class AlertAudioSessionHostApi {
   /// Constructor for [AlertAudioSessionHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  AlertAudioSessionHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
-      : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  AlertAudioSessionHostApi({
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -2093,7 +2190,8 @@ class AlertAudioSessionHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<void> beginSession() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.beginSession$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.beginSession$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2103,15 +2201,15 @@ class AlertAudioSessionHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> endSession() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.endSession$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.endSession$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2121,15 +2219,15 @@ class AlertAudioSessionHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> disable() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.disable$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.disable$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2139,15 +2237,15 @@ class AlertAudioSessionHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> boost() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.boost$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.AlertAudioSessionHostApi.boost$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2157,11 +2255,10 @@ class AlertAudioSessionHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 }
 
@@ -2169,9 +2266,13 @@ class OrderReceiverHostApi {
   /// Constructor for [OrderReceiverHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  OrderReceiverHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
-      : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  OrderReceiverHostApi({
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -2179,26 +2280,29 @@ class OrderReceiverHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<OrderReceiverStatusDto> startReceiver(bool backgroundDelivery) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverHostApi.startReceiver$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverHostApi.startReceiver$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[backgroundDelivery]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[backgroundDelivery],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as OrderReceiverStatusDto;
   }
 
   Future<OrderReceiverStatusDto> getReceiverStatus() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverHostApi.getReceiverStatus$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverHostApi.getReceiverStatus$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2208,53 +2312,57 @@ class OrderReceiverHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as OrderReceiverStatusDto;
   }
 
   Future<OrderInfoDto?> lookup(String trackingNumber) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverHostApi.lookup$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverHostApi.lookup$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[trackingNumber]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[trackingNumber],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as OrderInfoDto?;
   }
 
   Future<void> updateBackgroundDelivery(bool enabled) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverHostApi.updateBackgroundDelivery$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverHostApi.updateBackgroundDelivery$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[enabled],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> stopReceiver() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverHostApi.stopReceiver$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverHostApi.stopReceiver$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2264,11 +2372,10 @@ class OrderReceiverHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 }
 
@@ -2277,25 +2384,36 @@ abstract class OrderReceiverEventApi {
 
   void orderInfoReceived(List<OrderInfoDto> items);
 
-  static void setUp(OrderReceiverEventApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
-    messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  static void setUp(
+    OrderReceiverEventApi? api, {
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty
+        ? '.$messageChannelSuffix'
+        : '';
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverEventApi.orderInfoReceived$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.OrderReceiverEventApi.orderInfoReceived$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final List<OrderInfoDto> arg_items = (args[0]! as List<Object?>).cast<OrderInfoDto>();
+          final List<OrderInfoDto> arg_items = (args[0]! as List<Object?>)
+              .cast<OrderInfoDto>();
           try {
             api.orderInfoReceived(arg_items);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
@@ -2307,93 +2425,115 @@ class CameraHostApi {
   /// Constructor for [CameraHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  CameraHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
-      : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  CameraHostApi({
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
 
   final String pigeonVar_messageChannelSuffix;
 
-  Future<CameraInitializationDto> initialize(CameraInitializeRequest request) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.initialize$pigeonVar_messageChannelSuffix';
+  Future<CameraInitializationDto> initialize(
+    CameraInitializeRequest request,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.initialize$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as CameraInitializationDto;
   }
 
   Future<bool> ensurePermissions(bool recordAudio) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.ensurePermissions$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.ensurePermissions$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[recordAudio]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[recordAudio],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
-  Future<CameraRecordingStartDto> startWork(String path, bool recordAudio, String trackingNumber) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.startWork$pigeonVar_messageChannelSuffix';
+  Future<CameraRecordingStartDto> startWork(
+    String path,
+    bool recordAudio,
+    String trackingNumber,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.startWork$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[path, recordAudio, trackingNumber]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[path, recordAudio, trackingNumber],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as CameraRecordingStartDto;
   }
 
-  Future<CameraRecordingSplitDto> split(String nextPath, String trackingNumber) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.split$pigeonVar_messageChannelSuffix';
+  Future<CameraRecordingSplitDto> split(
+    String nextPath,
+    String trackingNumber,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.split$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[nextPath, trackingNumber]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[nextPath, trackingNumber],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as CameraRecordingSplitDto;
   }
 
   Future<CameraRecordingStopDto> stopWork() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.stopWork$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.stopWork$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2403,16 +2543,16 @@ class CameraHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as CameraRecordingStopDto;
   }
 
   Future<Map<String?, Object?>?> getDiagnostics() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.getDiagnostics$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.getDiagnostics$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2422,89 +2562,98 @@ class CameraHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
-    return (pigeonVar_replyValue as Map<Object?, Object?>?)?.cast<String?, Object?>();
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return (pigeonVar_replyValue as Map<Object?, Object?>?)
+        ?.cast<String?, Object?>();
   }
 
   Future<void> setPairingScanEnabled(bool enabled) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setPairingScanEnabled$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setPairingScanEnabled$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[enabled],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> setWorkScanEnabled(bool enabled) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setWorkScanEnabled$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setWorkScanEnabled$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[enabled],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> setPreviewActive(bool active) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setPreviewActive$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setPreviewActive$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[active]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[active],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<bool> setTorchEnabled(bool enabled) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setTorchEnabled$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setTorchEnabled$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[enabled],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   Future<CameraInitializationDto> switchCamera() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.switchCamera$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.switchCamera$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2514,16 +2663,16 @@ class CameraHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as CameraInitializationDto;
   }
 
   Future<List<CameraLensDto>> listCameras() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.listCameras$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.listCameras$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2533,72 +2682,82 @@ class CameraHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return (pigeonVar_replyValue! as List<Object?>).cast<CameraLensDto>();
   }
 
   Future<CameraInitializationDto> switchToCamera(String cameraId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.switchToCamera$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.switchToCamera$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[cameraId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[cameraId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as CameraInitializationDto;
   }
 
-  Future<Map<String?, Object?>?> probeSequence(String sequence, int budgetMs) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.probeSequence$pigeonVar_messageChannelSuffix';
+  Future<Map<String?, Object?>?> probeSequence(
+    String sequence,
+    int budgetMs,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.probeSequence$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[sequence, budgetMs]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[sequence, budgetMs],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
-    return (pigeonVar_replyValue as Map<Object?, Object?>?)?.cast<String?, Object?>();
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return (pigeonVar_replyValue as Map<Object?, Object?>?)
+        ?.cast<String?, Object?>();
   }
 
   Future<void> setCapabilityMode(String mode) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setCapabilityMode$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.setCapabilityMode$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[mode]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[mode],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> dispose() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.dispose$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.CameraHostApi.dispose$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2608,11 +2767,10 @@ class CameraHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 }
 
@@ -2639,138 +2797,176 @@ abstract class CameraEventApi {
 
   void recordingFallback(Map<String?, Object?> info);
 
-  static void setUp(CameraEventApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
-    messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  static void setUp(
+    CameraEventApi? api, {
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty
+        ? '.$messageChannelSuffix'
+        : '';
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.sessionStarted$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.sessionStarted$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final CameraSessionStartedDto arg_event = args[0]! as CameraSessionStartedDto;
+          final CameraSessionStartedDto arg_event =
+              args[0]! as CameraSessionStartedDto;
           try {
             api.sessionStarted(arg_event);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
     }
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.segmentStarted$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.segmentStarted$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final CameraSegmentStartedDto arg_event = args[0]! as CameraSegmentStartedDto;
+          final CameraSegmentStartedDto arg_event =
+              args[0]! as CameraSegmentStartedDto;
           try {
             api.segmentStarted(arg_event);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
     }
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.segmentCompleted$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.segmentCompleted$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final CameraSegmentCompletedDto arg_event = args[0]! as CameraSegmentCompletedDto;
+          final CameraSegmentCompletedDto arg_event =
+              args[0]! as CameraSegmentCompletedDto;
           try {
             api.segmentCompleted(arg_event);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
     }
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.segmentFailed$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.segmentFailed$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final CameraSegmentFailedDto arg_event = args[0]! as CameraSegmentFailedDto;
+          final CameraSegmentFailedDto arg_event =
+              args[0]! as CameraSegmentFailedDto;
           try {
             api.segmentFailed(arg_event);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
     }
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.sessionFailed$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.sessionFailed$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final CameraSessionFailedDto arg_event = args[0]! as CameraSessionFailedDto;
+          final CameraSessionFailedDto arg_event =
+              args[0]! as CameraSessionFailedDto;
           try {
             api.sessionFailed(arg_event);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
     }
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.barcodeBatch$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.barcodeBatch$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final List<BarcodeCandidateDto> arg_candidates = (args[0]! as List<Object?>).cast<BarcodeCandidateDto>();
+          final List<BarcodeCandidateDto> arg_candidates =
+              (args[0]! as List<Object?>).cast<BarcodeCandidateDto>();
           try {
             api.barcodeBatch(arg_candidates);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
     }
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.nativeError$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.nativeError$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
@@ -2782,16 +2978,20 @@ abstract class CameraEventApi {
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
     }
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.storageCritical$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.storageCritical$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
@@ -2801,50 +3001,62 @@ abstract class CameraEventApi {
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
     }
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.probeFinished$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.probeFinished$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final Map<String?, Object?> arg_results = (args[0]! as Map<Object?, Object?>).cast<String?, Object?>();
+          final Map<String?, Object?> arg_results =
+              (args[0]! as Map<Object?, Object?>).cast<String?, Object?>();
           try {
             api.probeFinished(arg_results);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
     }
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.recordingFallback$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.CameraEventApi.recordingFallback$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final Map<String?, Object?> arg_info = (args[0]! as Map<Object?, Object?>).cast<String?, Object?>();
+          final Map<String?, Object?> arg_info =
+              (args[0]! as Map<Object?, Object?>).cast<String?, Object?>();
           try {
             api.recordingFallback(arg_info);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }
@@ -2856,9 +3068,13 @@ class BackupNativeHostApi {
   /// Constructor for [BackupNativeHostApi]. The [binaryMessenger] named argument is
   /// available for dependency injection. If it is left null, the default
   /// BinaryMessenger will be used which routes to the host platform.
-  BackupNativeHostApi({BinaryMessenger? binaryMessenger, String messageChannelSuffix = ''})
-      : pigeonVar_binaryMessenger = binaryMessenger,
-        pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  BackupNativeHostApi({
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) : pigeonVar_binaryMessenger = binaryMessenger,
+       pigeonVar_messageChannelSuffix = messageChannelSuffix.isNotEmpty
+           ? '.$messageChannelSuffix'
+           : '';
   final BinaryMessenger? pigeonVar_binaryMessenger;
 
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
@@ -2866,7 +3082,8 @@ class BackupNativeHostApi {
   final String pigeonVar_messageChannelSuffix;
 
   Future<BackupSummaryDto> summary() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.summary$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.summary$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -2876,128 +3093,143 @@ class BackupNativeHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as BackupSummaryDto;
   }
 
   Future<BackupSummaryDto> initialize(Map<String?, Object?> request) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.initialize$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.initialize$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as BackupSummaryDto;
   }
 
   Future<void> setAutoEnabled(bool enabled) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.setAutoEnabled$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.setAutoEnabled$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[enabled]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[enabled],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<BackupJobsByPathsDto> jobsForPaths(List<String> paths) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.jobsForPaths$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.jobsForPaths$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[paths]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[paths],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as BackupJobsByPathsDto;
   }
 
-  Future<BackupCleanupPageDto> cleanupEvents(int afterRevision, int limit) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.cleanupEvents$pigeonVar_messageChannelSuffix';
+  Future<BackupCleanupPageDto> cleanupEvents(
+    int afterRevision,
+    int limit,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.cleanupEvents$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[afterRevision, limit]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[afterRevision, limit],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as BackupCleanupPageDto;
   }
 
   Future<void> acknowledgeCleanupEvents(int throughRevision) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.acknowledgeCleanupEvents$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.acknowledgeCleanupEvents$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[throughRevision]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[throughRevision],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<bool> hasPendingJobsOutsideDestination(String computerId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.hasPendingJobsOutsideDestination$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.hasPendingJobsOutsideDestination$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[computerId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[computerId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   Future<String?> loadAccessKey() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.loadAccessKey$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.loadAccessKey$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3007,16 +3239,16 @@ class BackupNativeHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as String?;
   }
 
   Future<bool> isWifiConnected() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.isWifiConnected$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.isWifiConnected$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3026,34 +3258,36 @@ class BackupNativeHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
     return pigeonVar_replyValue! as bool;
   }
 
   Future<void> saveConnection(Map<String?, Object?> connection) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.saveConnection$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.saveConnection$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[connection]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[connection],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> disconnect() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.disconnect$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.disconnect$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3063,105 +3297,115 @@ class BackupNativeHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> enqueueJob(Map<String?, Object?> request) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.enqueueJob$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.enqueueJob$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> enqueueJobs(List<Map<String?, Object?>> requests) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.enqueueJobs$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.enqueueJobs$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[requests]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[requests],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> requeueJob(String jobId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.requeueJob$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.requeueJob$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[jobId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[jobId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> cancelJob(String jobId) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.cancelJob$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.cancelJob$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[jobId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[jobId],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<void> updateRetentionSchedule(Map<String?, Object?> request) async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.updateRetentionSchedule$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.updateRetentionSchedule$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[request]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[request],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<int?> availableRecordingStorageBytes() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.availableRecordingStorageBytes$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.availableRecordingStorageBytes$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3171,16 +3415,16 @@ class BackupNativeHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
     return pigeonVar_replyValue as int?;
   }
 
   Future<Map<String?, Object?>> reclaimStorageIfNeeded() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.reclaimStorageIfNeeded$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.reclaimStorageIfNeeded$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3190,16 +3434,17 @@ class BackupNativeHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: false,
-    )
-    ;
-    return (pigeonVar_replyValue! as Map<Object?, Object?>).cast<String?, Object?>();
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return (pigeonVar_replyValue! as Map<Object?, Object?>)
+        .cast<String?, Object?>();
   }
 
   Future<Map<String?, Object?>?> getNetworkDiagnostics() async {
-    final pigeonVar_channelName = 'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.getNetworkDiagnostics$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.getNetworkDiagnostics$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
@@ -3209,12 +3454,12 @@ class BackupNativeHostApi {
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
-        pigeonVar_replyList,
-        pigeonVar_channelName,
-        isNullValid: true,
-    )
-    ;
-    return (pigeonVar_replyValue as Map<Object?, Object?>?)?.cast<String?, Object?>();
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return (pigeonVar_replyValue as Map<Object?, Object?>?)
+        ?.cast<String?, Object?>();
   }
 }
 
@@ -3223,12 +3468,20 @@ abstract class BackupNativeEventApi {
 
   void summaryChanged(BackupSummaryDto summary);
 
-  static void setUp(BackupNativeEventApi? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
-    messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
+  static void setUp(
+    BackupNativeEventApi? api, {
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty
+        ? '.$messageChannelSuffix'
+        : '';
     {
       final pigeonVar_channel = BasicMessageChannel<Object?>(
-          'dev.flutter.pigeon.packing_proof_mobile.BackupNativeEventApi.summaryChanged$messageChannelSuffix', pigeonChannelCodec,
-          binaryMessenger: binaryMessenger);
+        'dev.flutter.pigeon.packing_proof_mobile.BackupNativeEventApi.summaryChanged$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
       if (api == null) {
         pigeonVar_channel.setMessageHandler(null);
       } else {
@@ -3240,8 +3493,10 @@ abstract class BackupNativeEventApi {
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
-          }          catch (e) {
-            return wrapResponse(error: PlatformException(code: 'error', message: e.toString()));
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
           }
         });
       }

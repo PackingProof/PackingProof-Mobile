@@ -5,10 +5,7 @@ import 'package:packing_proof_mobile/screens/packing_home_screen.dart';
 import 'package:packing_proof_mobile/services/camera_capability_policy.dart';
 
 void main() {
-  Widget buildHome({
-    required bool alternating,
-    required bool canFinish,
-  }) {
+  Widget buildHome({required bool alternating, required bool canFinish}) {
     return MaterialApp(
       home: PackingHomeView(
         phase: PackingSessionPhase.recording,
@@ -29,8 +26,14 @@ void main() {
     await tester.pumpWidget(buildHome(alternating: true, canFinish: true));
     await tester.pump();
 
-    expect(find.byKey(const Key('alternating-recording-banner')), findsOneWidget);
-    expect(find.byKey(const Key('finish-current-order-button')), findsOneWidget);
+    expect(
+      find.byKey(const Key('alternating-recording-banner')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('finish-current-order-button')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('完成本单按钮与工作模式 pills 位于同一行', (WidgetTester tester) async {
@@ -40,9 +43,7 @@ void main() {
     final Finder pills = find.byKey(
       const Key('recording-operation-mode-pills'),
     );
-    final Finder finish = find.byKey(
-      const Key('finish-current-order-button'),
-    );
+    final Finder finish = find.byKey(const Key('finish-current-order-button'));
     expect(pills, findsOneWidget);
     expect(finish, findsOneWidget);
     final Finder row = find

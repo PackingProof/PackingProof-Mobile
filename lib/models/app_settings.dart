@@ -270,7 +270,8 @@ class AppSettings {
       backedRetention: backedRetention ?? this.backedRetention,
       returnUnbackedRetention:
           returnUnbackedRetention ?? this.returnUnbackedRetention,
-      returnBackedRetention: returnBackedRetention ?? this.returnBackedRetention,
+      returnBackedRetention:
+          returnBackedRetention ?? this.returnBackedRetention,
       hiddenRemoteRecordingIds:
           hiddenRemoteRecordingIds ?? this.hiddenRemoteRecordingIds,
       storageNoticeState: storageNoticeState ?? this.storageNoticeState,

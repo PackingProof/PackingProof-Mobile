@@ -1,6 +1,20 @@
-enum UnbackedRetentionPolicy { days1, days3, days7, days30, days90, keepForever }
+enum UnbackedRetentionPolicy {
+  days1,
+  days3,
+  days7,
+  days30,
+  days90,
+  keepForever,
+}
 
-enum BackedRetentionPolicy { immediately, days1, days3, days7, days30, keepForever }
+enum BackedRetentionPolicy {
+  immediately,
+  days1,
+  days3,
+  days7,
+  days30,
+  keepForever,
+}
 
 extension UnbackedRetentionPolicyStorage on UnbackedRetentionPolicy {
   String get storageValue => name;

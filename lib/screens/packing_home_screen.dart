@@ -206,24 +206,30 @@ Future<void> _showMobileUpdateInstructions(
       .call(uri);
 }
 
+/// 手动补录单号的输入面板。
+///
+/// 用底部面板而不是对话框：应用内键盘要占满整屏宽度才放得下 QWERTY 键位。
 @visibleForTesting
-Future<void> showManualTrackingDialog(
+Future<void> showManualTrackingSheet(
   BuildContext context, {
   required Future<bool> Function(String rawCode, {required bool validate})
   onSubmit,
   bool initialValidate = true,
   Future<void> Function(bool enabled)? onValidateChanged,
-}) => showDialog<void>(
+}) => showModalBottomSheet<void>(
   context: context,
-  builder: (BuildContext dialogContext) => _ManualTrackingDialog(
+  isScrollControlled: true,
+  useSafeArea: true,
+  showDragHandle: true,
+  builder: (BuildContext sheetContext) => _ManualTrackingSheet(
     onSubmit: onSubmit,
     initialValidate: initialValidate,
     onValidateChanged: onValidateChanged,
   ),
 );
 
-class _ManualTrackingDialog extends StatefulWidget {
-  const _ManualTrackingDialog({
+class _ManualTrackingSheet extends StatefulWidget {
+  const _ManualTrackingSheet({
     required this.onSubmit,
     required this.initialValidate,
     this.onValidateChanged,
@@ -235,10 +241,10 @@ class _ManualTrackingDialog extends StatefulWidget {
   final Future<void> Function(bool enabled)? onValidateChanged;
 
   @override
-  State<_ManualTrackingDialog> createState() => _ManualTrackingDialogState();
+  State<_ManualTrackingSheet> createState() => _ManualTrackingSheetState();
 }
 
-class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
+class _ManualTrackingSheetState extends State<_ManualTrackingSheet> {
   final TextEditingController _input = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
   late bool _validate;
@@ -246,7 +252,9 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
   String? _errorMessage;
   Timer? _keyboardProbe;
   bool _systemKeyboardProbed = false;
-  bool _keypadDismissed = false;
+
+  /// 应用内键盘的显示意图：null 表示交给自动判断，非空表示用户手动指定过。
+  bool? _keypadOverride;
 
   /// 请求显示系统键盘后给它一点时间弹出来。
   static const Duration _systemKeyboardProbeDelay = Duration(milliseconds: 450);
@@ -255,7 +263,7 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
   void initState() {
     super.initState();
     _validate = widget.initialValidate;
-    // 主页扫码枪焦点会主动隐藏键盘；弹窗打开后才恢复软键盘输入。
+    // 主页扫码枪焦点会主动隐藏键盘；面板打开后才恢复软键盘输入。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _showKeyboard();
     });
@@ -274,9 +282,35 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
   }
 
   bool get _keypadVisible =>
-      _systemKeyboardProbed &&
-      !_keypadDismissed &&
-      MediaQuery.viewInsetsOf(context).bottom <= 0;
+      _keypadOverride ??
+      (_systemKeyboardProbed && MediaQuery.viewInsetsOf(context).bottom <= 0);
+
+  /// 输入框上的键盘按钮：手动收起后还能再叫回来，两套键盘始终只留一套。
+  void _toggleKeypad() {
+    final bool show = !_keypadVisible;
+    setState(() => _keypadOverride = show);
+    _inputFocus.requestFocus();
+    unawaited(
+      SystemChannels.textInput.invokeMethod<void>(
+        show ? 'TextInput.hide' : 'TextInput.show',
+      ),
+    );
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    final ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
+    final String value = data?.text?.trim() ?? '';
+    if (!mounted) return;
+    if (value.isEmpty) {
+      setState(() => _errorMessage = '剪贴板里没有可用文本');
+      return;
+    }
+    setState(() => _errorMessage = null);
+    _input.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
+  }
 
   void _insertText(String text) {
     final TextEditingValue value = _input.value;
@@ -351,124 +385,143 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      // 展开应用内键盘后内容会变高，交给对话框自己滚动，避免小屏溢出。
-      scrollable: true,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
-      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-      actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      title: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text('输入单号', style: TextStyle(fontWeight: FontWeight.w800)),
-          SizedBox(height: 4),
-          Text(
-            '支持扫码枪输入',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-          ),
-        ],
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Focus(
-            onKeyEvent: (FocusNode node, KeyEvent event) {
-              if (event is KeyDownEvent &&
-                  (event.logicalKey == LogicalKeyboardKey.enter ||
-                      event.logicalKey == LogicalKeyboardKey.numpadEnter)) {
-                unawaited(_submit());
-                return KeyEventResult.handled;
-              }
-              return KeyEventResult.ignored;
-            },
-            child: TextField(
-              controller: _input,
-              focusNode: _inputFocus,
-              autofocus: true,
-              onTap: _showKeyboard,
-              textInputAction: TextInputAction.done,
-              onEditingComplete: () {},
-              onSubmitted: (String value) => unawaited(_submit(value)),
-            ),
-          ),
-          if (_errorMessage != null)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  _errorMessage!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Padding(
+      // 系统键盘弹出时把面板顶上去，别盖住输入框。
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              const Text(
+                '输入单号',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 2),
+              const Text(
+                '支持扫码枪输入',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 12),
+              Focus(
+                onKeyEvent: (FocusNode node, KeyEvent event) {
+                  if (event is KeyDownEvent &&
+                      (event.logicalKey == LogicalKeyboardKey.enter ||
+                          event.logicalKey == LogicalKeyboardKey.numpadEnter)) {
+                    unawaited(_submit());
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                // 与历史页搜索框保持一致：同样的外观、粘贴按钮和清除按钮。
+                child: SearchBar(
+                  key: const Key('manual-tracking-input'),
+                  controller: _input,
+                  focusNode: _inputFocus,
+                  autoFocus: true,
+                  hintText: '输入或粘贴单号',
+                  leading: const Icon(Icons.local_shipping_rounded),
+                  onSubmitted: (String value) => unawaited(_submit(value)),
+                  trailing: <Widget>[
+                    IconButton(
+                      key: const Key('manual-tracking-keyboard-button'),
+                      tooltip: _keypadVisible ? '收起键盘' : '呼出键盘',
+                      onPressed: _toggleKeypad,
+                      icon: Icon(
+                        _keypadVisible
+                            ? Icons.keyboard_hide_rounded
+                            : Icons.keyboard_rounded,
+                      ),
+                    ),
+                    IconButton(
+                      key: const Key('manual-tracking-paste-button'),
+                      tooltip: '粘贴单号',
+                      onPressed: _pasteFromClipboard,
+                      icon: const Icon(Icons.content_paste_rounded),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          CheckboxListTile(
-            value: _validate,
-            contentPadding: EdgeInsets.zero,
-            title: const Text('校验单号'),
-            onChanged: _submitting
-                ? null
-                : (bool? value) {
-                    final bool enabled = value ?? true;
-                    setState(() => _validate = enabled);
-                    final Future<void> Function(bool enabled)? callback =
-                        widget.onValidateChanged;
-                    if (callback != null) unawaited(callback(enabled));
-                  },
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    _errorMessage!,
+                    style: TextStyle(color: colors.error),
+                  ),
+                ),
+              CheckboxListTile(
+                value: _validate,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('校验单号'),
+                onChanged: _submitting
+                    ? null
+                    : (bool? value) {
+                        final bool enabled = value ?? true;
+                        setState(() => _validate = enabled);
+                        final Future<void> Function(bool enabled)? callback =
+                            widget.onValidateChanged;
+                        if (callback != null) unawaited(callback(enabled));
+                      },
+              ),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        padding: EdgeInsets.zero,
+                        textStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: _submitting
+                          ? null
+                          : () => Navigator.pop(context),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        padding: EdgeInsets.zero,
+                        textStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: _submitting ? null : _submit,
+                      child: const Text('提交'),
+                    ),
+                  ),
+                ],
+              ),
+              if (_keypadVisible)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: TrackingNumberKeypad(
+                    hint: '外接设备占用了系统键盘，可用下方键盘输入',
+                    onInsert: _insertText,
+                    onBackspace: _backspace,
+                    onClear: _clearInput,
+                  ),
+                ),
+            ],
           ),
-          if (_keypadVisible)
-            TrackingNumberKeypad(
-              onInsert: _insertText,
-              onBackspace: _backspace,
-              onClear: _clearInput,
-              onHide: () => setState(() => _keypadDismissed = true),
-            ),
-        ],
-      ),
-      actions: <Widget>[
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  padding: EdgeInsets.zero,
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: _submitting ? null : () => Navigator.pop(context),
-                child: const Text('取消'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  padding: EdgeInsets.zero,
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: _submitting ? null : _submit,
-                child: const Text('提交'),
-              ),
-            ),
-          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -614,10 +667,10 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
     );
   }
 
-  Future<void> _showManualTrackingDialog() async {
+  Future<void> _showManualTrackingSheet() async {
     // 外接键盘敲了一半又改用弹窗时，残留的缓冲会和之后的扫码内容拼在一起。
     _clearScanInput();
-    await showManualTrackingDialog(
+    await showManualTrackingSheet(
       context,
       onSubmit: _controller.submitExternalTrackingNumber,
       initialValidate: _controller.manualTrackingValidationEnabled,
@@ -934,7 +987,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                       onOperationModeChanged: _controller.setOperationMode,
                       onFinishOrder: _controller.finishCurrentOrder,
                       onPrimaryPressed: _toggleWork,
-                      onManualTrackingPressed: _showManualTrackingDialog,
+                      onManualTrackingPressed: _showManualTrackingSheet,
                       onRetryPressed: _controller.retryInitialize,
                     ),
                     _buildRecordingsScreen(RecordingsScreenMode.settings),

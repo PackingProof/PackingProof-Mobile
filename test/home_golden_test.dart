@@ -105,109 +105,119 @@ void main() {
     goldenFileComparator = _TolerantGoldenFileComparator(comparator);
   }
 
-  testWidgets('390x844 首页视觉基线', (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    '390x844 首页视觉基线',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await _loadAppFonts(tester);
+      await _loadAppFonts(tester);
 
-    final MemoryImage preview = MemoryImage(
-      File('assets/images/packing-preview.png').readAsBytesSync(),
-    );
-    final ThemeData theme = _goldenTheme();
-
-    await tester.pumpWidget(
-      MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: theme,
-        home: PackingHomeView(
-          phase: PackingSessionPhase.ready,
-          elapsed: Duration.zero,
-          nativePreviewSize: const Size(1080, 1920),
-          backCameraLenses: const <NativeCameraLens>[
-            NativeCameraLens(
-              cameraId: 'ultra',
-              focalLength: 2.2,
-              zoomRatio: 0.5,
-            ),
-            NativeCameraLens(
-              cameraId: 'wide',
-              focalLength: 5.4,
-              zoomRatio: 1.0,
-              isMain: true,
-            ),
-            NativeCameraLens(
-              cameraId: 'tele',
-              focalLength: 6.8,
-              zoomRatio: 3.0,
-            ),
-          ],
-          activeCameraId: 'wide',
-          watermarkTimestamp: DateTime(2026, 7, 20, 10, 57, 50),
-          previewOverride: Image(image: preview, fit: BoxFit.cover),
-          onPrimaryPressed: () {},
-          onRetryPressed: () {},
-          onManualTrackingPressed: () {},
-        ),
-      ),
-    );
-    await tester.runAsync(() async {
-      await precacheImage(
-        preview,
-        tester.element(find.byType(PackingHomeView)),
+      final MemoryImage preview = MemoryImage(
+        File('assets/images/packing-preview.png').readAsBytesSync(),
       );
-    });
-    await tester.pumpAndSettle();
+      final ThemeData theme = _goldenTheme();
 
-    await expectLater(
-      find.byType(PackingHomeView),
-      matchesGoldenFile('goldens/home_ready.png'),
-    );
-  }, skip: Platform.isWindows, tags: <String>['golden']);
-
-  testWidgets('390x844 录像中局部提示胶囊视觉基线', (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await _loadAppFonts(tester);
-
-    final MemoryImage preview = MemoryImage(
-      File('assets/images/packing-preview.png').readAsBytesSync(),
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: _goldenTheme(),
-        home: PackingHomeView(
-          phase: PackingSessionPhase.recording,
-          elapsed: const Duration(seconds: 8),
-          currentCode: '770017871213193',
-          nativePreviewSize: const Size(1080, 1920),
-          watermarkTimestamp: DateTime(2026, 7, 20, 10, 57, 58),
-          previewOverride: Image(image: preview, fit: BoxFit.cover),
-          onPrimaryPressed: () {},
-          onRetryPressed: () {},
-          onManualTrackingPressed: () {},
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: theme,
+          home: PackingHomeView(
+            phase: PackingSessionPhase.ready,
+            elapsed: Duration.zero,
+            nativePreviewSize: const Size(1080, 1920),
+            backCameraLenses: const <NativeCameraLens>[
+              NativeCameraLens(
+                cameraId: 'ultra',
+                focalLength: 2.2,
+                zoomRatio: 0.5,
+              ),
+              NativeCameraLens(
+                cameraId: 'wide',
+                focalLength: 5.4,
+                zoomRatio: 1.0,
+                isMain: true,
+              ),
+              NativeCameraLens(
+                cameraId: 'tele',
+                focalLength: 6.8,
+                zoomRatio: 3.0,
+              ),
+            ],
+            activeCameraId: 'wide',
+            watermarkTimestamp: DateTime(2026, 7, 20, 10, 57, 50),
+            previewOverride: Image(image: preview, fit: BoxFit.cover),
+            onPrimaryPressed: () {},
+            onRetryPressed: () {},
+            onManualTrackingPressed: () {},
+          ),
         ),
-      ),
-    );
-    await tester.runAsync(() async {
-      await precacheImage(
-        preview,
-        tester.element(find.byType(PackingHomeView)),
       );
-    });
-    await tester.pump(const Duration(milliseconds: 250));
-    await tester.pump(const Duration(milliseconds: 100));
+      await tester.runAsync(() async {
+        await precacheImage(
+          preview,
+          tester.element(find.byType(PackingHomeView)),
+        );
+      });
+      await tester.pumpAndSettle();
 
-    await expectLater(
-      find.byType(PackingHomeView),
-      matchesGoldenFile('goldens/home_working.png'),
-    );
-  }, skip: Platform.isWindows, tags: <String>['golden']);
+      await expectLater(
+        find.byType(PackingHomeView),
+        matchesGoldenFile('goldens/home_ready.png'),
+      );
+    },
+    skip: Platform.isWindows,
+    tags: <String>['golden'],
+  );
+
+  testWidgets(
+    '390x844 录像中局部提示胶囊视觉基线',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await _loadAppFonts(tester);
+
+      final MemoryImage preview = MemoryImage(
+        File('assets/images/packing-preview.png').readAsBytesSync(),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: _goldenTheme(),
+          home: PackingHomeView(
+            phase: PackingSessionPhase.recording,
+            elapsed: const Duration(seconds: 8),
+            currentCode: '770017871213193',
+            nativePreviewSize: const Size(1080, 1920),
+            watermarkTimestamp: DateTime(2026, 7, 20, 10, 57, 58),
+            previewOverride: Image(image: preview, fit: BoxFit.cover),
+            onPrimaryPressed: () {},
+            onRetryPressed: () {},
+            onManualTrackingPressed: () {},
+          ),
+        ),
+      );
+      await tester.runAsync(() async {
+        await precacheImage(
+          preview,
+          tester.element(find.byType(PackingHomeView)),
+        );
+      });
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await expectLater(
+        find.byType(PackingHomeView),
+        matchesGoldenFile('goldens/home_working.png'),
+      );
+    },
+    skip: Platform.isWindows,
+    tags: <String>['golden'],
+  );
 }

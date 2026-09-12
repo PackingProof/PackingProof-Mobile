@@ -161,7 +161,8 @@ abstract interface class LanBackupSink implements Listenable {
     required bool autoEnabled,
     required UnbackedRetentionPolicy unbackedRetention,
     required BackedRetentionPolicy backedRetention,
-    UnbackedRetentionPolicy returnUnbackedRetention = UnbackedRetentionPolicy.days3,
+    UnbackedRetentionPolicy returnUnbackedRetention =
+        UnbackedRetentionPolicy.days3,
     BackedRetentionPolicy returnBackedRetention = BackedRetentionPolicy.days1,
   });
   Future<void> pair(
@@ -313,7 +314,8 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     required bool autoEnabled,
     required UnbackedRetentionPolicy unbackedRetention,
     required BackedRetentionPolicy backedRetention,
-    UnbackedRetentionPolicy returnUnbackedRetention = UnbackedRetentionPolicy.days3,
+    UnbackedRetentionPolicy returnUnbackedRetention =
+        UnbackedRetentionPolicy.days3,
     BackedRetentionPolicy returnBackedRetention = BackedRetentionPolicy.days1,
   }) async {
     _attachNativeHandler();

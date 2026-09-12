@@ -289,7 +289,7 @@ void main() {
 
     String? submittedCode;
     bool? submittedValidation;
-    final Future<void> dialog = showManualTrackingDialog(
+    final Future<void> dialog = showManualTrackingSheet(
       context,
       onSubmit: (String rawCode, {required bool validate}) async {
         submittedCode = rawCode;
@@ -323,7 +323,7 @@ void main() {
     );
 
     final List<bool> changes = <bool>[];
-    final Future<void> dialog = showManualTrackingDialog(
+    final Future<void> dialog = showManualTrackingSheet(
       context,
       initialValidate: false,
       onValidateChanged: (bool value) async => changes.add(value),
@@ -354,7 +354,7 @@ void main() {
     );
 
     int submitCount = 0;
-    final Future<void> dialog = showManualTrackingDialog(
+    final Future<void> dialog = showManualTrackingSheet(
       context,
       onSubmit: (String rawCode, {required bool validate}) async {
         submitCount++;

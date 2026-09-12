@@ -46,10 +46,7 @@ void main() {
           'activeFormatHeight': 1080,
           'recordAudio': false,
           'probeResults': <Object?>[
-            <String, Object?>{
-              'name': 'preview_only',
-              'result': 'configured',
-            },
+            <String, Object?>{'name': 'preview_only', 'result': 'configured'},
           ],
           'hardwareLevel': 0,
           'capabilities': <Object?>['backward_compatible'],

@@ -59,7 +59,9 @@ class _OrderReceiverEventSink extends OrderReceiverEventApi {
   void orderInfoReceived(List<OrderInfoDto> items) {
     for (final OrderInfoDto item in items) {
       if (!PigeonOrderReceiverPlatform._sharedController.isClosed) {
-        PigeonOrderReceiverPlatform._sharedController.add(_orderInfoFromDto(item));
+        PigeonOrderReceiverPlatform._sharedController.add(
+          _orderInfoFromDto(item),
+        );
       }
     }
   }

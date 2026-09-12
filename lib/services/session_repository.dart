@@ -1114,13 +1114,12 @@ class SessionRepository {
     UnbackedRetentionPolicy returnUnbacked = UnbackedRetentionPolicy.days3,
     BackedRetentionPolicy returnBacked = BackedRetentionPolicy.days1,
   }) => _updateSettings(
-    (AppSettings value) =>
-        value.copyWith(
-          unbackedRetention: unbacked,
-          backedRetention: backed,
-          returnUnbackedRetention: returnUnbacked,
-          returnBackedRetention: returnBacked,
-        ),
+    (AppSettings value) => value.copyWith(
+      unbackedRetention: unbacked,
+      backedRetention: backed,
+      returnUnbackedRetention: returnUnbacked,
+      returnBackedRetention: returnBacked,
+    ),
   );
 
   Future<void> queueStorageNotice(StorageNotice notice) => _updateSettings(

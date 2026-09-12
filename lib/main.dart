@@ -11,20 +11,15 @@ Future<void> main() async {
   final CrashLogService crashLog = CrashLogService();
   FlutterError.onError = (FlutterErrorDetails details) {
     unawaited(
-      crashLog.record(
-        details.exception,
-        details.stack ?? StackTrace.current,
-      ),
+      crashLog.record(details.exception, details.stack ?? StackTrace.current),
     );
     FlutterError.presentError(details);
   };
-  WidgetsBinding.instance.platformDispatcher.onError = (
-    Object error,
-    StackTrace stack,
-  ) {
-    unawaited(crashLog.record(error, stack));
-    return true;
-  };
+  WidgetsBinding.instance.platformDispatcher.onError =
+      (Object error, StackTrace stack) {
+        unawaited(crashLog.record(error, stack));
+        return true;
+      };
   await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
     DeviceOrientation.portraitUp,
   ]);

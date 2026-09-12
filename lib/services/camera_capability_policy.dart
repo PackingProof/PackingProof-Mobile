@@ -201,17 +201,21 @@ class CameraCapabilityPolicy {
     final int encoderNeeded = encoderBufferThreshold(fps);
     final bool passes;
     if (isIdle) {
-      passes = phase.previewFrames >= previewNeeded &&
+      passes =
+          phase.previewFrames >= previewNeeded &&
           phase.analysisFrames >= minAnalysisFrames;
     } else {
       passes = switch (sequence) {
-        'full' => phase.previewFrames >= previewNeeded &&
-            phase.analysisFrames >= minAnalysisFrames &&
-            phase.encoderBuffers >= encoderNeeded,
-        'encoder_analysis' => phase.analysisFrames >= minAnalysisFrames &&
-            phase.encoderBuffers >= encoderNeeded,
-        _ => phase.previewFrames >= previewNeeded &&
-            phase.encoderBuffers >= encoderNeeded,
+        'full' =>
+          phase.previewFrames >= previewNeeded &&
+              phase.analysisFrames >= minAnalysisFrames &&
+              phase.encoderBuffers >= encoderNeeded,
+        'encoder_analysis' =>
+          phase.analysisFrames >= minAnalysisFrames &&
+              phase.encoderBuffers >= encoderNeeded,
+        _ =>
+          phase.previewFrames >= previewNeeded &&
+              phase.encoderBuffers >= encoderNeeded,
       };
     }
     return passes
@@ -234,9 +238,7 @@ class CameraCapabilityPolicy {
         case CameraSequenceVerdict.passed:
           return CameraCapabilityDecision(_modeForSequence(sequence));
         case CameraSequenceVerdict.errorInfra:
-          return const CameraCapabilityDecision.unverified(
-            '探针阶段发生异常',
-          );
+          return const CameraCapabilityDecision.unverified('探针阶段发生异常');
         case CameraSequenceVerdict.failedCapability:
           continue;
       }

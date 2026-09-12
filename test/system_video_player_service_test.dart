@@ -3,18 +3,17 @@ import 'package:packing_proof_mobile/services/system_video_player_service.dart';
 
 void main() {
   test('VideoDecodeSupport 解析原生能力映射', () {
-    final VideoDecodeSupport support = VideoDecodeSupport.fromMap(
-      <Object?, Object?>{
-        'manufacturer': 'HUAWEI',
-        'brand': 'HUAWEI',
-        'model': 'test-model',
-        'sdkInt': 31,
-        'release': 'HarmonyOS',
-        'hasHevcDecoder': true,
-        'hasAvcDecoder': true,
-        'forceSoftwareDecode': true,
-      },
-    );
+    final VideoDecodeSupport support =
+        VideoDecodeSupport.fromMap(<Object?, Object?>{
+          'manufacturer': 'HUAWEI',
+          'brand': 'HUAWEI',
+          'model': 'test-model',
+          'sdkInt': 31,
+          'release': 'HarmonyOS',
+          'hasHevcDecoder': true,
+          'hasAvcDecoder': true,
+          'forceSoftwareDecode': true,
+        });
     expect(support.manufacturer, 'HUAWEI');
     expect(support.model, 'test-model');
     expect(support.sdkInt, 31);
