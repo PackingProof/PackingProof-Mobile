@@ -309,6 +309,37 @@ void main() {
     expect(find.text('输入单号'), findsNothing);
   });
 
+  testWidgets('手动输入弹窗使用并保存校验开关状态', (WidgetTester tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (BuildContext value) {
+            context = value;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+
+    final List<bool> changes = <bool>[];
+    final Future<void> dialog = showManualTrackingDialog(
+      context,
+      initialValidate: false,
+      onValidateChanged: (bool value) async => changes.add(value),
+      onSubmit: (String rawCode, {required bool validate}) async => true,
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isFalse);
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    expect(changes, <bool>[true]);
+
+    Navigator.of(context).pop();
+    await dialog;
+  });
+
   testWidgets('提交失败后保持输入焦点且支持外接键盘回车', (WidgetTester tester) async {
     late BuildContext context;
     await tester.pumpWidget(

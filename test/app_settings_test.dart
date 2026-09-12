@@ -103,6 +103,25 @@ void main() {
     expect(persisted['recordAudioEnabled'], isFalse);
   });
 
+  test('手动输入校验开关默认开启且可持久化', () async {
+    final SessionRepository repository = testRepository(root);
+
+    expect(
+      (await repository.loadSettings()).manualTrackingValidationEnabled,
+      isTrue,
+    );
+    await repository.saveManualTrackingValidationEnabled(false);
+
+    final AppSettings updated = await repository.loadSettings();
+    expect(updated.manualTrackingValidationEnabled, isFalse);
+
+    final Map<String, Object?> persisted = Map<String, Object?>.from(
+      jsonDecode(await File('${root.path}/settings.json').readAsString())
+          as Map<Object?, Object?>,
+    );
+    expect(persisted['manualTrackingValidationEnabled'], isFalse);
+  });
+
   test('录像降级模式默认关闭且可持久化', () async {
     final SessionRepository repository = testRepository(root);
 

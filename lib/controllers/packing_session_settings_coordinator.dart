@@ -18,6 +18,7 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
   bool _orderSpeechEnabled = true;
   bool _maxVolumeEnabled = true;
   bool _recordAudioEnabled = true;
+  bool _manualTrackingValidationEnabled = true;
   @override
   RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
   RecordingSpecPreset _recordingSpec = RecordingSpecPreset.hd1080p30;
@@ -32,6 +33,14 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
   int _historyPageSize = AppSettings.defaultHistoryPageSize;
 
   bool get orderSpeechEnabled => _orderSpeechEnabled;
+  bool get manualTrackingValidationEnabled => _manualTrackingValidationEnabled;
+
+  Future<void> setManualTrackingValidationEnabled(bool enabled) async {
+    if (_manualTrackingValidationEnabled == enabled) return;
+    _manualTrackingValidationEnabled = enabled;
+    notifyListeners();
+    await _repository.saveManualTrackingValidationEnabled(enabled);
+  }
 
   Future<void> setWorkMode(WorkMode mode) async {
     if (_workMode == mode || isWorking || isBusy) {

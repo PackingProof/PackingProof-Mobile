@@ -20,6 +20,7 @@ class AppSettings {
     this.orderSpeechEnabled = true,
     this.maxVolumeEnabled = true,
     this.recordAudioEnabled = true,
+    this.manualTrackingValidationEnabled = true,
     this.nativeRecordingFallback = false,
     this.cameraCapabilityState,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
@@ -51,6 +52,7 @@ class AppSettings {
       ..remove('orderSpeechEnabled')
       ..remove('maxVolumeEnabled')
       ..remove('nativeRecordingFallback')
+      ..remove('manualTrackingValidationEnabled')
       ..remove('cameraCapabilityState')
       ..remove('preferredVideoCodec')
       ..remove('recordingSpec')
@@ -90,6 +92,10 @@ class AppSettings {
           : true,
       recordAudioEnabled: json['recordAudioEnabled'] is bool
           ? json['recordAudioEnabled']! as bool
+          : true,
+      manualTrackingValidationEnabled:
+          json['manualTrackingValidationEnabled'] is bool
+          ? json['manualTrackingValidationEnabled']! as bool
           : true,
       nativeRecordingFallback: json['nativeRecordingFallback'] is bool
           ? json['nativeRecordingFallback']! as bool
@@ -180,6 +186,7 @@ class AppSettings {
   final bool orderSpeechEnabled;
   final bool maxVolumeEnabled;
   final bool recordAudioEnabled;
+  final bool manualTrackingValidationEnabled;
   final bool nativeRecordingFallback;
   final Map<String, Object?>? cameraCapabilityState;
   final RecordingVideoCodec preferredVideoCodec;
@@ -209,6 +216,7 @@ class AppSettings {
     bool? orderSpeechEnabled,
     bool? maxVolumeEnabled,
     bool? recordAudioEnabled,
+    bool? manualTrackingValidationEnabled,
     bool? nativeRecordingFallback,
     Map<String, Object?>? cameraCapabilityState,
     RecordingVideoCodec? preferredVideoCodec,
@@ -237,6 +245,9 @@ class AppSettings {
       orderSpeechEnabled: orderSpeechEnabled ?? this.orderSpeechEnabled,
       maxVolumeEnabled: maxVolumeEnabled ?? this.maxVolumeEnabled,
       recordAudioEnabled: recordAudioEnabled ?? this.recordAudioEnabled,
+      manualTrackingValidationEnabled:
+          manualTrackingValidationEnabled ??
+          this.manualTrackingValidationEnabled,
       nativeRecordingFallback:
           nativeRecordingFallback ?? this.nativeRecordingFallback,
       cameraCapabilityState:
@@ -277,6 +288,7 @@ class AppSettings {
     'orderSpeechEnabled': orderSpeechEnabled,
     'maxVolumeEnabled': maxVolumeEnabled,
     'recordAudioEnabled': recordAudioEnabled,
+    'manualTrackingValidationEnabled': manualTrackingValidationEnabled,
     'nativeRecordingFallback': nativeRecordingFallback,
     'cameraCapabilityState': cameraCapabilityState,
     'preferredVideoCodec': preferredVideoCodec.storageValue,

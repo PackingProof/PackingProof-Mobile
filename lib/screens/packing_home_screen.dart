@@ -210,17 +210,28 @@ Future<void> showManualTrackingDialog(
   BuildContext context, {
   required Future<bool> Function(String rawCode, {required bool validate})
   onSubmit,
+  bool initialValidate = true,
+  Future<void> Function(bool enabled)? onValidateChanged,
 }) => showDialog<void>(
   context: context,
-  builder: (BuildContext dialogContext) =>
-      _ManualTrackingDialog(onSubmit: onSubmit),
+  builder: (BuildContext dialogContext) => _ManualTrackingDialog(
+    onSubmit: onSubmit,
+    initialValidate: initialValidate,
+    onValidateChanged: onValidateChanged,
+  ),
 );
 
 class _ManualTrackingDialog extends StatefulWidget {
-  const _ManualTrackingDialog({required this.onSubmit});
+  const _ManualTrackingDialog({
+    required this.onSubmit,
+    required this.initialValidate,
+    this.onValidateChanged,
+  });
 
   final Future<bool> Function(String rawCode, {required bool validate})
   onSubmit;
+  final bool initialValidate;
+  final Future<void> Function(bool enabled)? onValidateChanged;
 
   @override
   State<_ManualTrackingDialog> createState() => _ManualTrackingDialogState();
@@ -229,13 +240,14 @@ class _ManualTrackingDialog extends StatefulWidget {
 class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
   final TextEditingController _input = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
-  bool _validate = true;
+  late bool _validate;
   bool _submitting = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
+    _validate = widget.initialValidate;
     // 主页扫码枪焦点会主动隐藏键盘；弹窗打开后才恢复软键盘输入。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _showKeyboard();
@@ -340,7 +352,13 @@ class _ManualTrackingDialogState extends State<_ManualTrackingDialog> {
             title: const Text('校验单号'),
             onChanged: _submitting
                 ? null
-                : (bool? value) => setState(() => _validate = value ?? true),
+                : (bool? value) {
+                    final bool enabled = value ?? true;
+                    setState(() => _validate = enabled);
+                    final Future<void> Function(bool enabled)? callback =
+                        widget.onValidateChanged;
+                    if (callback != null) unawaited(callback(enabled));
+                  },
           ),
         ],
       ),
@@ -526,6 +544,8 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
     await showManualTrackingDialog(
       context,
       onSubmit: _controller.submitExternalTrackingNumber,
+      initialValidate: _controller.manualTrackingValidationEnabled,
+      onValidateChanged: _controller.setManualTrackingValidationEnabled,
     );
   }
 

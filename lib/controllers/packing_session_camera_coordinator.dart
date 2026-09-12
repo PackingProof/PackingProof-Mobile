@@ -96,6 +96,8 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       _returnUnbackedRetention = settings.returnUnbackedRetention;
       _returnBackedRetention = settings.returnBackedRetention;
       _recordAudioEnabled = settings.recordAudioEnabled;
+      _manualTrackingValidationEnabled =
+          settings.manualTrackingValidationEnabled;
       _nativeRecordingFallback = settings.nativeRecordingFallback;
       _capabilityState = settings.cameraCapabilityState;
       _preferredVideoCodec = settings.preferredVideoCodec;

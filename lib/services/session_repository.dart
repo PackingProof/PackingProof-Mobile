@@ -941,6 +941,12 @@ class SessionRepository {
     (AppSettings value) => value.copyWith(recordAudioEnabled: enabled),
   );
 
+  Future<void> saveManualTrackingValidationEnabled(bool enabled) =>
+      _updateSettings(
+        (AppSettings value) =>
+            value.copyWith(manualTrackingValidationEnabled: enabled),
+      );
+
   Future<void> saveNativeRecordingFallback(bool enabled) => _updateSettings(
     (AppSettings value) => value.copyWith(nativeRecordingFallback: enabled),
   );
