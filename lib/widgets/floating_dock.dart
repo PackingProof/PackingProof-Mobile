@@ -2,12 +2,13 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
-/// 底栏面板底色：半透明配合背景模糊，让摄像头画面和列表透出一点，
-/// 同时保留足够不透明度维持文字对比度。
+/// 底栏面板底色：半透明配合背景模糊，让摄像头画面和列表透出一点。
+/// 不透明度被文字对比度卡住：深色主题的浅色文字压在明亮的摄像头画面上最吃亏，
+/// 所以深色改用更暗的 surfaceContainerLow 打底，才能在更透的同时守住 4.5:1。
 Color dockSurfaceColor(ColorScheme colors) {
   return colors.brightness == Brightness.dark
-      ? colors.surfaceContainerHighest.withValues(alpha: 0.76)
-      : Colors.white.withValues(alpha: 0.76);
+      ? colors.surfaceContainerLow.withValues(alpha: 0.68)
+      : Colors.white.withValues(alpha: 0.62);
 }
 
 /// 选中胶囊的底色：强调色的浅色调。这里必须是不透明色——面板本身已经半透明，
@@ -16,7 +17,7 @@ Color dockIndicatorColor(ColorScheme colors) {
   final bool dark = colors.brightness == Brightness.dark;
   return Color.alphaBlend(
     colors.primary.withValues(alpha: dark ? 0.16 : 0.14),
-    dark ? colors.surfaceContainerHighest : Colors.white,
+    dark ? colors.surfaceContainerHigh : Colors.white,
   );
 }
 
@@ -98,29 +99,34 @@ class _DockNavigationItem extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            height: 54,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: ShapeDecoration(
-              shape: const StadiumBorder(),
+              // 内容上下排布后胶囊接近正方形，用圆角矩形而不是 StadiumBorder，
+              // 否则会退化成录制入口原来那种圆形底衬。
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.all(Radius.circular(18)),
+              ),
               color: selected ? dockIndicatorColor(colors) : Colors.transparent,
             ),
-            child: Row(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
                 Icon(
                   selected ? destination.selectedIcon : destination.icon,
                   size: 24,
                   color: foreground,
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(height: 2),
                 Flexible(
                   child: Text(
                     destination.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 14,
-                      height: 1.1,
+                      fontSize: 13,
+                      height: 1.2,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                       color: foreground,
                     ),

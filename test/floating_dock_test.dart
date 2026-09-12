@@ -174,7 +174,7 @@ void main() {
       expect(decorationFor('历史').color, Colors.transparent);
       expect(decorationFor('设置').color, Colors.transparent);
       for (final label in ['历史', '录制', '设置']) {
-        expect(decorationFor(label).shape, isA<StadiumBorder>());
+        expect(decorationFor(label).shape, isA<RoundedRectangleBorder>());
       }
 
       // 选中项的图标和文字都是强调色，且在胶囊底色上读得清。
@@ -202,7 +202,7 @@ void main() {
       expect(pillColor.a, 1);
       expect(contrast(selectedTextColor, pillColor), greaterThan(4.5));
 
-      // 高亮覆盖图标与文字整体，而不是只套住图标。
+      // 图标在上、文字在下，高亮同时覆盖两者。
       final Rect pill = tester.getRect(
         find.ancestor(
           of: find.text('录制'),
@@ -211,6 +211,10 @@ void main() {
       );
       final Rect icon = tester.getRect(find.byIcon(Icons.videocam_rounded));
       final Rect label = tester.getRect(find.text('录制'));
+      expect(icon.bottom, lessThanOrEqualTo(label.top));
+      expect(icon.center.dx, closeTo(label.center.dx, 0.5));
+      expect(pill.top, lessThan(icon.top));
+      expect(pill.bottom, greaterThan(label.bottom));
       expect(pill.left, lessThan(icon.left));
       expect(pill.right, greaterThan(label.right));
 
