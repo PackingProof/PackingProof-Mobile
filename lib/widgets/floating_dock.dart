@@ -96,10 +96,10 @@ class _DockNavigationItem extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(27),
-        // 高亮铺满整个入口格子（只留 3 的缝），宽出来以后两端可以做成
+        // 高亮铺满整个入口格子（左右各留 7 的缝），宽出来以后两端可以做成
         // 和面板一样的全圆角，不会退化成圆形底衬。
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 7),
           child: Center(
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),

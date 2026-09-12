@@ -222,7 +222,7 @@ void main() {
       // 高亮几乎铺满整个入口格子，不是紧贴文字的细条。
       final double cellWidth =
           tester.getSize(find.byType(DockNavigationBar)).width / 3;
-      expect(pill.width, greaterThan(cellWidth - 8));
+      expect(pill.width, greaterThan(cellWidth - 16));
       expect(pill.width, greaterThan(label.width * 2));
 
       await tester.tap(find.text('设置'));
