@@ -214,6 +214,9 @@ void main() {
     expect(find.text('9月13日 10:00 录制'), findsOneWidget);
     // 进度条右侧也显示总时长，因此这里有两处 00:09。
     expect(find.text('00:09'), findsNWidgets(2));
+    // 业务类型与分辨率直接标在录像事实里。
+    expect(find.text('发货'), findsOneWidget);
+    expect(find.text('1080p'), findsOneWidget);
     expect(find.text('手机'), findsOneWidget);
     expect(find.text('未备份，仅在本机'), findsOneWidget);
     for (final String label in <String>['来源', '录制时间', '时长', '大小', '备份']) {

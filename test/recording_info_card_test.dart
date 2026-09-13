@@ -45,6 +45,29 @@ void main() {
     expect(formatRecordingSize(3 * 1024 * 1024 * 1024), '3.00 GB');
   });
 
+  test('分辨率按短边归类，横竖屏一致', () {
+    expect(formatRecordingResolution(const Size(3840, 2160)), '4K');
+    expect(formatRecordingResolution(const Size(2160, 3840)), '4K');
+    expect(formatRecordingResolution(const Size(1920, 1080)), '1080p');
+    expect(formatRecordingResolution(const Size(1080, 1920)), '1080p');
+    expect(formatRecordingResolution(const Size(1280, 720)), '720p');
+    expect(formatRecordingResolution(const Size(640, 480)), '480p');
+    expect(formatRecordingResolution(const Size(320, 240)), '240p');
+  });
+
+  test('分辨率拿不到时返回空文案', () {
+    expect(formatRecordingResolution(null), '');
+    expect(formatRecordingResolution(Size.zero), '');
+  });
+
+  test('编码文案归一化', () {
+    expect(formatRecordingCodec('h265'), 'H.265');
+    expect(formatRecordingCodec('HEVC'), 'H.265');
+    expect(formatRecordingCodec('h264'), 'H.264');
+    expect(formatRecordingCodec('avc'), 'H.264');
+    expect(formatRecordingCodec(''), '');
+  });
+
   testWidgets('信息卡片用位置表达含义，不写冗余标注', (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(

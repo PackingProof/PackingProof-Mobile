@@ -1185,8 +1185,17 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         ? widget.sourceLabel!.trim()
         : (remote ? '电脑' : '手机');
     final List<String> metadata = <String>[
+      _session.operationMode.label,
       formatRecordingDuration(_session.duration),
       if (_fileSizeBytes != null) formatRecordingSize(_fileSizeBytes!),
+      if (formatRecordingResolution(
+            _video.value.isInitialized ? _video.value.size : null,
+          )
+          case final String resolution when resolution.isNotEmpty)
+        resolution,
+      if (formatRecordingCodec(_session.videoCodec) case final String codec
+          when codec.isNotEmpty)
+        codec,
     ];
     final OrderInfo? orderInfo = _session.orderInfo;
     return RecordingInfoCard(

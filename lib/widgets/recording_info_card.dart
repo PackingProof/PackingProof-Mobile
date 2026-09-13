@@ -250,6 +250,32 @@ class _BackupStatus extends StatelessWidget {
   }
 }
 
+/// 录像分辨率文案：按视频实际短边归类（4K 取 2160 档）。
+String formatRecordingResolution(Size? videoSize) {
+  if (videoSize == null) return '';
+  final double width = videoSize.width;
+  final double height = videoSize.height;
+  if (width <= 0 || height <= 0) return '';
+  final double shorterSide = width < height ? width : height;
+  if (shorterSide >= 2160) return '4K';
+  if (shorterSide >= 1080) return '1080p';
+  if (shorterSide >= 720) return '720p';
+  if (shorterSide >= 480) return '480p';
+  return '${shorterSide.round()}p';
+}
+
+/// 编码文案：h265 显示 H.265，其余按 h264 显示 H.264。
+String formatRecordingCodec(String codec) {
+  final String normalized = codec.trim().toLowerCase();
+  if (normalized.contains('hevc') || normalized.contains('h265')) {
+    return 'H.265';
+  }
+  if (normalized.contains('avc') || normalized.contains('h264')) {
+    return 'H.264';
+  }
+  return '';
+}
+
 /// 录像时间：同一年只显示月日与时分，跨年补上年份。
 String formatRecordingTime(DateTime value, {DateTime? now}) {
   final DateTime reference = now ?? DateTime.now();
