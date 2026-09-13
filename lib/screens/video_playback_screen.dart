@@ -26,7 +26,7 @@ import '../services/remote_video_clip_service.dart';
 import '../widgets/two_button_confirm_dialog.dart';
 import '../widgets/order_info_sheet.dart';
 import '../widgets/playback_error_panel.dart';
-import '../widgets/recording_detail_card.dart';
+import '../widgets/recording_info_card.dart';
 import 'video_trim_screen.dart';
 import 'remote_video_trim_screen.dart';
 
@@ -1177,28 +1177,26 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     );
   }
 
-  /// 录像详情：来源、时间、时长、大小与备份状态，订单信息作为补充入口。
+  /// 录像信息：面单号、录像时间、时长与大小、来源与备份状态。
   Widget _buildRecordingDetails() {
     final bool remote = widget.remoteUri != null;
     final bool backedUp = widget.backedUp || remote;
     final String source = widget.sourceLabel?.trim().isNotEmpty == true
         ? widget.sourceLabel!.trim()
         : (remote ? '电脑' : '手机');
-    final String backupLabel = backedUp ? '已备份到电脑' : '仅在本机';
-    final List<RecordingDetail> details = <RecordingDetail>[
-      RecordingDetail('来源', source),
-      RecordingDetail('录制时间', formatRecordingTime(_session.startedAt)),
-      RecordingDetail('时长', formatRecordingDuration(_session.duration)),
-      RecordingDetail(
-        '大小',
-        _fileSizeBytes == null ? '—' : formatRecordingSize(_fileSizeBytes!),
-      ),
-      RecordingDetail('操作', _session.operationMode.label),
-      RecordingDetail('备份', backupLabel, emphasized: true),
+    final List<String> metadata = <String>[
+      formatRecordingDuration(_session.duration),
+      if (_fileSizeBytes != null) formatRecordingSize(_fileSizeBytes!),
     ];
     final OrderInfo? orderInfo = _session.orderInfo;
-    return RecordingDetailCard(
-      details: details,
+    return RecordingInfoCard(
+      code: _session.displayCode,
+      codeCopyable: _session.markers.isNotEmpty,
+      recordedAt: formatRecordingTime(_session.startedAt),
+      metadata: metadata,
+      source: source,
+      backupLabel: backedUp ? '已备份到电脑' : '未备份，仅在本机',
+      backupHighlighted: !backedUp,
       trailing: orderInfo == null
           ? null
           : _OrderInfoSummary(

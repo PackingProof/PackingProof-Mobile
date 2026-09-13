@@ -93,6 +93,7 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
 RecordingSession _session({
   RecordingOrientation orientation = RecordingOrientation.portrait,
   OrderInfo? orderInfo,
+  List<BarcodeMarker> markers = const <BarcodeMarker>[],
 }) {
   final DateTime startedAt = DateTime(2026, 9, 13, 10);
   return RecordingSession(
@@ -100,7 +101,7 @@ RecordingSession _session({
     filePath: 'C:/recordings/session-1.mp4',
     startedAt: startedAt,
     endedAt: startedAt.add(const Duration(seconds: 9)),
-    markers: const <BarcodeMarker>[],
+    markers: markers,
     recordingOrientation: orientation,
     orderInfo: orderInfo,
   );
@@ -140,6 +141,7 @@ void main() {
     WidgetTester tester, {
     RecordingOrientation orientation = RecordingOrientation.portrait,
     bool withOrder = false,
+    List<BarcodeMarker> markers = const <BarcodeMarker>[],
   }) async {
     tester.view.physicalSize = const Size(1080, 1920);
     tester.view.devicePixelRatio = 1;
@@ -156,6 +158,7 @@ void main() {
                       session: _session(
                         orientation: orientation,
                         orderInfo: withOrder ? _orderInfo : null,
+                        markers: markers,
                       ),
                       onSessionUpdated: (_) async {},
                       playbackDisplayPlatform: displayPlatform,
@@ -183,10 +186,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('窗口布局显示录像详情与订单信息入口', (WidgetTester tester) async {
-    await pumpPlayer(tester, withOrder: true);
+  testWidgets('播放页展示录像信息与订单信息入口', (WidgetTester tester) async {
+    await pumpPlayer(
+      tester,
+      withOrder: true,
+      markers: <BarcodeMarker>[
+        BarcodeMarker(
+          code: 'JD0001',
+          occurredAt: DateTime(2026, 9, 13, 10),
+          offset: Duration.zero,
+        ),
+      ],
+    );
 
-    // 竖版视频占位较高，详情卡片需要滚动才会进入可见区域。
+    // 竖版视频占位较高，信息卡片需要滚动才会进入可见区域。
     await tester.scrollUntilVisible(
       find.byKey(const Key('playback-order-info')),
       200,
@@ -194,17 +207,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 详情卡片把录像事实摆出来，页面不再只有视频和按钮。
-    expect(find.text('来源'), findsOneWidget);
-    expect(find.text('手机'), findsOneWidget);
-    expect(find.text('录制时间'), findsOneWidget);
-    expect(find.text('时长'), findsOneWidget);
+    // 面单号可复制；时间自带「录制」字样，不再写「来源 / 时长」这类标注。
+    expect(find.byKey(const Key('playback-copy-code')), findsOneWidget);
+    // 标题栏与信息卡片各有一处面单号。
+    expect(find.text('JD0001'), findsNWidgets(2));
+    expect(find.text('9月13日 10:00 录制'), findsOneWidget);
     // 进度条右侧也显示总时长，因此这里有两处 00:09。
     expect(find.text('00:09'), findsNWidgets(2));
-    expect(find.text('操作'), findsOneWidget);
-    expect(find.text('发货'), findsOneWidget);
-    expect(find.text('备份'), findsOneWidget);
-    expect(find.text('仅在本机'), findsOneWidget);
+    expect(find.text('手机'), findsOneWidget);
+    expect(find.text('未备份，仅在本机'), findsOneWidget);
+    for (final String label in <String>['来源', '录制时间', '时长', '大小', '备份']) {
+      expect(find.text(label), findsNothing, reason: '不应出现标注 $label');
+    }
 
     // 有订单信息时展示摘要，并保留查看入口。
     expect(find.byKey(const Key('playback-order-info')), findsOneWidget);
