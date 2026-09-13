@@ -1,5 +1,12 @@
 # Repository Guidelines
 
+本文件是本仓库的项目级规范，优先于以下跨工具通用规则。
+
+非 Codex 运行环境如果存在全局规则文件，请一并阅读：
+
+- Windows：`%USERPROFILE%\.codex\AGENTS.md`
+- macOS / Linux：`~/.codex/AGENTS.md`
+
 ## Project Overview
 
 PackingProof-Mobile is a Flutter app for continuous package-recording and shipping-label barcode marking. Android is the primary release target. Recordings, indexes, and settings are stored locally unless the operator explicitly configures LAN backup.
