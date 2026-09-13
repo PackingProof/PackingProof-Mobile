@@ -1356,11 +1356,11 @@ class PackingHomeView extends StatelessWidget {
                   ? (constraints.maxHeight * 0.14).clamp(112.0, 122.0)
                   : (constraints.maxHeight * 0.18).clamp(136.0, 156.0);
               final double previewAspectRatio = _portraitPreviewAspectRatio;
+              // 预览高度只由宽度和画面比例决定，不再按当前可用高度截断：
+              // 软键盘顶起来时 Android 会直接缩短窗口（adjustResize），
+              // 一旦按可用高度 clamp，取景就会跟着缩一圈。
               final double cameraHeight =
-                  (constraints.maxWidth / previewAspectRatio).clamp(
-                    0.0,
-                    constraints.maxHeight,
-                  );
+                  constraints.maxWidth / previewAspectRatio;
               final double panelTop =
                   constraints.maxHeight -
                   bottomInset -

@@ -606,6 +606,88 @@ void main() {
     expect(after, before);
   });
 
+  testWidgets('窗口被键盘缩短时预览取景同样不变', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true),
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 8),
+          currentCode: '770017871213193',
+          nativePreviewSize: const Size(1080, 1920),
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    final Rect before = tester.getRect(
+      find.byKey(const Key('camera-preview-viewport')),
+    );
+
+    // adjustResize 的另一种表现：窗口本身变矮，而不是 viewInsets 变大。
+    tester.view.physicalSize = const Size(390, 544);
+    await tester.pump();
+
+    expect(
+      tester.getRect(find.byKey(const Key('camera-preview-viewport'))),
+      before,
+    );
+  });
+
+  testWidgets('手动输入面板与系统键盘都不影响预览取景', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true),
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 8),
+          currentCode: '770017871213193',
+          nativePreviewSize: const Size(1080, 1920),
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    final Rect viewportBefore = tester.getRect(
+      find.byKey(const Key('camera-preview-viewport')),
+    );
+
+    // 真实路径：从录制页打开手动输入面板，再等系统软键盘顶起来。
+    final BuildContext context = tester.element(
+      find.byKey(const Key('camera-preview-viewport')),
+    );
+    showManualTrackingSheet(
+      context,
+      onSubmit: (String rawCode, {required bool validate}) async => true,
+    ).ignore();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(
+      tester.getRect(find.byKey(const Key('camera-preview-viewport'))),
+      viewportBefore,
+    );
+  });
+
   testWidgets('录像中显示时长胶囊、加粗单号和红色结束按钮', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
