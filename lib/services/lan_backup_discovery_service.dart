@@ -118,8 +118,19 @@ class LanBackupHostLocatorService implements LanBackupHostLocator {
     required Uri currentBaseUri,
     required String nodeId,
   }) async {
-    final LanBackupDiscoveredHost? current = await _probe(currentBaseUri);
-    if (_matches(current, nodeId)) return current!.baseUri;
+    final _LocateProbeResult fast = await _probe(currentBaseUri);
+    if (_matches(fast.host, nodeId)) return fast.host!.baseUri;
+    if (fast.transportFailed) {
+      // 首轮探测只给了 1 秒内的预算（见 _probe 的 [budget]），局域网正要唤醒
+      // 电脑或缓存地址失效时很容易误判离线；这里按心跳同样的预算（3s/4s）
+      // 重试一次再决定。首轮已经拿到 node-info 的返回时不重试：地址被别的
+      // 主机占用，重试没有意义。
+      final _LocateProbeResult retried = await _probe(
+        currentBaseUri,
+        budget: _slowProbeBudget,
+      );
+      if (_matches(retried.host, nodeId)) return retried.host!.baseUri;
+    }
 
     await _discovery.search();
     for (final LanBackupDiscoveredHost host in _discovery.snapshot.hosts) {
@@ -134,22 +145,46 @@ class LanBackupHostLocatorService implements LanBackupHostLocator {
       host.compatible &&
       host.nodeId.trim() == nodeId;
 
-  Future<LanBackupDiscoveredHost?> _probe(Uri uri) async {
+  /// 首轮探测预算：只覆盖本机同网段已经唤醒的主机。
+  static const _ProbeBudget _fastProbeBudget = _ProbeBudget(
+    connect: Duration(milliseconds: 700),
+    response: Duration(milliseconds: 900),
+  );
+
+  /// 重试预算：与心跳探测 `/api/node-info` 的 3s/4s 保持一致，避免同一请求
+  /// 因为两套预算给出不同结论。
+  static const _ProbeBudget _slowProbeBudget = _ProbeBudget(
+    connect: Duration(seconds: 3),
+    response: Duration(seconds: 4),
+  );
+
+  Future<_LocateProbeResult> _probe(
+    Uri uri, {
+    _ProbeBudget budget = _fastProbeBudget,
+  }) async {
     final LanBackupHostProbe? override = _probeOverride;
-    if (override != null) return override(uri);
+    if (override != null) {
+      try {
+        return _LocateProbeResult(host: await override(uri));
+      } on Object {
+        return const _LocateProbeResult(transportFailed: true);
+      }
+    }
     try {
       final HttpClientRequest request = await _httpClient
           .getUrl(uri.replace(path: '/api/node-info'))
-          .timeout(const Duration(milliseconds: 700));
+          .timeout(budget.connect);
       request.followRedirects = false;
       final HttpClientResponse response = await request.close().timeout(
-        const Duration(milliseconds: 900),
+        budget.response,
       );
       final String body = await utf8.decoder.bind(response).join();
-      if (response.statusCode != HttpStatus.ok) return null;
-      return parseLanBackupDiscoveredHost(uri, body);
+      if (response.statusCode != HttpStatus.ok) {
+        return const _LocateProbeResult();
+      }
+      return _LocateProbeResult(host: parseLanBackupDiscoveredHost(uri, body));
     } on Object {
-      return null;
+      return const _LocateProbeResult(transportFailed: true);
     }
   }
 
@@ -162,6 +197,25 @@ class LanBackupHostLocatorService implements LanBackupHostLocator {
 
 typedef LanBackupCandidateProvider = Future<List<Uri>> Function();
 typedef LanBackupHostProbe = Future<LanBackupDiscoveredHost?> Function(Uri uri);
+
+/// `/api/node-info` 探测的时间预算。
+class _ProbeBudget {
+  const _ProbeBudget({required this.connect, required this.response});
+
+  final Duration connect;
+  final Duration response;
+}
+
+/// 单次探测结果：区分「连不上」与「连上了但不是目标主机」。
+///
+/// 只有 [transportFailed] 为真时才值得用更大的预算重试；拿到 node-info 却
+/// NodeId 不匹配说明地址已被其他主机占用，重试没有意义。
+class _LocateProbeResult {
+  const _LocateProbeResult({this.host, this.transportFailed = false});
+
+  final LanBackupDiscoveredHost? host;
+  final bool transportFailed;
+}
 
 @visibleForTesting
 List<int> buildLanBackupHostScanOrder({int? localHost}) {

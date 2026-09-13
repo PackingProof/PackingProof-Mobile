@@ -120,6 +120,77 @@ void main() {
     expect(order.toSet().length, 253);
   });
 
+  test('当前地址探测超时会用更大预算重试后成功，且不再扫描网段', () async {
+    int currentProbeRequests = 0;
+    int candidateRequests = 0;
+    final LanBackupHostLocatorService locator = LanBackupHostLocatorService(
+      candidateProvider: () async {
+        candidateRequests++;
+        return const <Uri>[];
+      },
+      probe: (Uri uri) async {
+        currentProbeRequests++;
+        // 首轮按旧行为表现为「连不上」，第二轮才回主机信息。
+        if (currentProbeRequests == 1) {
+          throw const SocketException('连接超时');
+        }
+        return const LanBackupDiscoveredHost(
+          nodeId: 'host-1',
+          name: '仓库电脑',
+          address: '192.168.1.20:5280',
+        );
+      },
+    );
+    addTearDown(locator.dispose);
+
+    final Uri? located = await locator.locate(
+      currentBaseUri: Uri.parse('http://192.168.1.20:5280'),
+      nodeId: 'host-1',
+    );
+
+    expect(located, Uri.parse('http://192.168.1.20:5280'));
+    expect(currentProbeRequests, 2);
+    // 重试成功后不应再花时间扫描整个网段。
+    expect(candidateRequests, 0);
+  });
+
+  test('当前地址探测到别的主机时不重试，直接走网段扫描', () async {
+    int currentProbeRequests = 0;
+    int candidateRequests = 0;
+    final LanBackupHostLocatorService locator = LanBackupHostLocatorService(
+      candidateProvider: () async {
+        candidateRequests++;
+        return <Uri>[Uri.parse('http://192.168.1.30:5280')];
+      },
+      probe: (Uri uri) async {
+        if (uri.host == '192.168.1.20') {
+          currentProbeRequests++;
+          return const LanBackupDiscoveredHost(
+            nodeId: 'other-host',
+            name: '其他电脑',
+            address: '192.168.1.20:5280',
+          );
+        }
+        return const LanBackupDiscoveredHost(
+          nodeId: 'host-1',
+          name: '仓库电脑',
+          address: '192.168.1.30:5280',
+        );
+      },
+    );
+    addTearDown(locator.dispose);
+
+    final Uri? located = await locator.locate(
+      currentBaseUri: Uri.parse('http://192.168.1.20:5280'),
+      nodeId: 'host-1',
+    );
+
+    expect(located, Uri.parse('http://192.168.1.30:5280'));
+    // 地址已被别的主机占用，用更大预算重试没有意义。
+    expect(currentProbeRequests, 1);
+    expect(candidateRequests, 1);
+  });
+
   test('地址定位只接受相同 NodeId 的兼容主机并合并并发请求', () async {
     final Completer<void> releaseCurrentProbe = Completer<void>();
     int candidateRequests = 0;

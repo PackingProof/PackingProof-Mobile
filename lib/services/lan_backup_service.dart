@@ -1276,23 +1276,46 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   }
 
   Future<Uri?> _runAddressRecovery() async {
+    final DateTime startedAt = DateTime.now();
     LanBackupEndpoint? endpoint = _snapshot.endpoint;
     if (endpoint == null ||
         endpoint.computerId.trim().isEmpty ||
         _accessKey.isEmpty) {
+      _logRemoteResolveFailed(
+        reason: endpoint == null
+            ? 'no_endpoint'
+            : endpoint.computerId.trim().isEmpty
+            ? 'no_computer_id'
+            : 'no_access_key',
+        startedAt: startedAt,
+      );
       return null;
     }
     final Uri? located = await _hostLocator.locate(
       currentBaseUri: endpoint.baseUri,
       nodeId: endpoint.computerId,
     );
-    if (located == null) return null;
+    if (located == null) {
+      // 这条以前完全静默：远程播放解析失败在导出日志里查不到任何痕迹。
+      _logRemoteResolveFailed(
+        reason: 'host_not_located',
+        startedAt: startedAt,
+        endpoint: endpoint,
+      );
+      return null;
+    }
 
     final LanBackupEndpoint? current = _snapshot.endpoint;
     if (current == null || current.computerId != endpoint.computerId) {
+      _logRemoteResolveFailed(
+        reason: 'endpoint_changed',
+        startedAt: startedAt,
+        endpoint: endpoint,
+      );
       return null;
     }
     if (_normalizedHostUri(current.baseUri) == _normalizedHostUri(located)) {
+      _logRemoteResolveOk(startedAt: startedAt, addressChanged: false);
       return current.baseUri;
     }
 
@@ -1321,7 +1344,33 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       'address': located.authority,
     });
     notifyListeners();
+    _logRemoteResolveOk(startedAt: startedAt, addressChanged: true);
     return located;
+  }
+
+  void _logRemoteResolveOk({
+    required DateTime startedAt,
+    required bool addressChanged,
+  }) {
+    _log('remote_playback_resolve_ok', <String, Object?>{
+      'addressChanged': addressChanged,
+      'totalMs': DateTime.now().difference(startedAt).inMilliseconds,
+    });
+  }
+
+  void _logRemoteResolveFailed({
+    required String reason,
+    required DateTime startedAt,
+    LanBackupEndpoint? endpoint,
+  }) {
+    _log('remote_playback_resolve_failed', <String, Object?>{
+      'reason': reason,
+      'endpoint': endpoint?.baseUri.toString(),
+      'nodeId': endpoint?.computerId,
+      'hasAccessKey': _accessKey.isNotEmpty,
+      'connectionStatus': _snapshot.connectionStatus.name,
+      'totalMs': DateTime.now().difference(startedAt).inMilliseconds,
+    });
   }
 
   Future<bool> _recoverChangedEndpoint(Uri failedBaseUri) async {

@@ -1429,7 +1429,9 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                           if (!context.mounted) return;
                           if (currentRemoteUri == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('保存主机暂时离线，请稍后重试')),
+                              const SnackBar(
+                                content: Text('暂时连不上电脑，请确认电脑端程序仍在运行后重试'),
+                              ),
                             );
                             return;
                           }

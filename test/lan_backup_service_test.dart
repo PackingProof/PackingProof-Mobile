@@ -97,6 +97,105 @@ void main() {
     expect(locator.requests, 1);
   });
 
+  test('远程播放解析失败时写明原因并落诊断日志', () async {
+    final MethodChannel channel = const MethodChannel(
+      'app.packingproof.mobile/lan_backup_resolve_failure_test',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (_) async => null);
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final List<({String kind, Map<String, Object?> extra})> logs =
+        <({String kind, Map<String, Object?> extra})>[];
+    final LanBackupService service = LanBackupService(
+      platform: _TestChannelBackupPlatform(channel),
+      hostLocator: _FakeHostLocator(null),
+      logEvent: (String kind, Map<String, Object?> extra) async {
+        logs.add((kind: kind, extra: extra));
+      },
+    );
+    addTearDown(service.dispose);
+    service.debugSetAccessKeyForTesting('a' * 64);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        deviceId: '00000000-0000-0000-0000-000000000001',
+        deviceName: '录像手机',
+        endpoint: LanBackupEndpoint(
+          baseUri: Uri.parse('http://192.168.1.20:5280'),
+          accessKey: '',
+          computerId: 'host-1',
+          computerName: '保存主机',
+        ),
+      ),
+    );
+
+    final Uri? resolved = await service.resolveRemoteUri(
+      Uri.parse('http://192.168.1.20:5280/api/mobile-backup/videos/7/play'),
+    );
+
+    expect(resolved, isNull);
+    // 这条以前完全静默，导致导出日志里查不到远程播放失败的痕迹。
+    final ({String kind, Map<String, Object?> extra}) failure = logs.firstWhere(
+      (({String kind, Map<String, Object?> extra}) item) =>
+          item.kind == 'remote_playback_resolve_failed',
+    );
+    expect(failure.extra['reason'], 'host_not_located');
+    expect(failure.extra['endpoint'], 'http://192.168.1.20:5280');
+    expect(failure.extra['nodeId'], 'host-1');
+    expect(failure.extra['hasAccessKey'], isTrue);
+  });
+
+  test('缺少访问密钥时远程播放解析失败原因可辨认', () async {
+    final MethodChannel channel = const MethodChannel(
+      'app.packingproof.mobile/lan_backup_resolve_no_key_test',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (_) async => null);
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final List<({String kind, Map<String, Object?> extra})> logs =
+        <({String kind, Map<String, Object?> extra})>[];
+    final LanBackupService service = LanBackupService(
+      platform: _TestChannelBackupPlatform(channel),
+      hostLocator: _FakeHostLocator(Uri.parse('http://192.168.1.20:5280')),
+      logEvent: (String kind, Map<String, Object?> extra) async {
+        logs.add((kind: kind, extra: extra));
+      },
+    );
+    addTearDown(service.dispose);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        deviceName: '录像手机',
+        endpoint: LanBackupEndpoint(
+          baseUri: Uri.parse('http://192.168.1.20:5280'),
+          accessKey: '',
+          computerId: 'host-1',
+          computerName: '保存主机',
+        ),
+      ),
+    );
+
+    final Uri? resolved = await service.resolveRemoteUri(
+      Uri.parse('http://192.168.1.20:5280/api/mobile-backup/videos/7/play'),
+    );
+
+    expect(resolved, isNull);
+    expect(
+      logs
+          .where(
+            (({String kind, Map<String, Object?> extra}) item) =>
+                item.kind == 'remote_playback_resolve_failed',
+          )
+          .single
+          .extra['reason'],
+      'no_access_key',
+    );
+  });
+
   test('录像列表请求失败后只在地址变化时改用新地址重试', () async {
     final MethodChannel channel = const MethodChannel(
       'app.packingproof.mobile/lan_backup_request_recovery_test',
