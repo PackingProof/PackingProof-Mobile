@@ -1335,60 +1335,71 @@ class PackingHomeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints constraints) {
-            final double bottomInset = MediaQuery.paddingOf(context).bottom;
-            final double bottomGap = _isWorking
-                ? PackingHomeView.workingBottomGap
-                : 0;
-            final double minimumPanelHeight = _isWorking
-                ? (constraints.maxHeight * 0.14).clamp(112.0, 122.0)
-                : (constraints.maxHeight * 0.18).clamp(136.0, 156.0);
-            final double previewAspectRatio = _portraitPreviewAspectRatio;
-            final double cameraHeight =
-                (constraints.maxWidth / previewAspectRatio).clamp(
-                  0.0,
-                  constraints.maxHeight,
-                );
-            final double panelTop =
-                constraints.maxHeight -
-                bottomInset -
-                bottomGap -
-                minimumPanelHeight;
-            final double panelHeight = minimumPanelHeight;
-            final double cameraPanelOverlap = (cameraHeight - panelTop).clamp(
-              0.0,
-              cameraHeight,
-            );
-            return Stack(
-              fit: StackFit.expand,
-              children: <Widget>[
-                Positioned(
-                  key: const Key('camera-preview-viewport'),
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  height: cameraHeight,
-                  child: _CameraArea(this, bottomOcclusion: cameraPanelOverlap),
-                ),
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: bottomInset + bottomGap),
-                    child: _ControlPanel(view: this, height: panelHeight),
+    // 忽略键盘与底部弹板带来的 viewInsets：预览视口只跟屏幕宽度有关。
+    // 不这么做时，手动输入面板一弹出，Scaffold 先按键盘缩短可用高度，预览
+    // 跟着整体缩一圈，拍摄画面会重排重采样（旗舰机上也能看出掉帧）。
+    // 手动输入面板是 Navigator 的模态路由，仍拿得到真实 viewInsets，
+    // 依旧会正确抬到键盘之上。
+    return MediaQuery.removeViewInsets(
+      context: context,
+      removeBottom: true,
+      child: Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final double bottomInset = MediaQuery.paddingOf(context).bottom;
+              final double bottomGap = _isWorking
+                  ? PackingHomeView.workingBottomGap
+                  : 0;
+              final double minimumPanelHeight = _isWorking
+                  ? (constraints.maxHeight * 0.14).clamp(112.0, 122.0)
+                  : (constraints.maxHeight * 0.18).clamp(136.0, 156.0);
+              final double previewAspectRatio = _portraitPreviewAspectRatio;
+              final double cameraHeight =
+                  (constraints.maxWidth / previewAspectRatio).clamp(
+                    0.0,
+                    constraints.maxHeight,
+                  );
+              final double panelTop =
+                  constraints.maxHeight -
+                  bottomInset -
+                  bottomGap -
+                  minimumPanelHeight;
+              final double panelHeight = minimumPanelHeight;
+              final double cameraPanelOverlap = (cameraHeight - panelTop).clamp(
+                0.0,
+                cameraHeight,
+              );
+              return Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  Positioned(
+                    key: const Key('camera-preview-viewport'),
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    height: cameraHeight,
+                    child: _CameraArea(
+                      this,
+                      bottomOcclusion: cameraPanelOverlap,
+                    ),
                   ),
-                ),
-              ],
-            );
-          },
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: bottomInset + bottomGap),
+                      child: _ControlPanel(view: this, height: panelHeight),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
   }
-
   double get _portraitPreviewAspectRatio {
     final Size? sourceSize =
         nativePreviewSize ??

@@ -568,6 +568,44 @@ void main() {
     expect(find.byKey(const Key('switch-camera-button')), findsNothing);
   });
 
+  testWidgets('打开底部输入面板时预览视口不缩放', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: true),
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 8),
+          currentCode: '770017871213193',
+          nativePreviewSize: const Size(1080, 1920),
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    final Rect before = tester.getRect(
+      find.byKey(const Key('camera-preview-viewport')),
+    );
+
+    // 手动输入面板/键盘顶起来：可用高度变小，但预览不该跟着缩，
+    // 否则拍摄画面会整体重排重采样，既改变取景也会掉帧。
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    // 录制态有持续动画，这里只泵一帧完成重排，不用 pumpAndSettle。
+    await tester.pump();
+
+    final Rect after = tester.getRect(
+      find.byKey(const Key('camera-preview-viewport')),
+    );
+    expect(after, before);
+  });
+
   testWidgets('录像中显示时长胶囊、加粗单号和红色结束按钮', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
