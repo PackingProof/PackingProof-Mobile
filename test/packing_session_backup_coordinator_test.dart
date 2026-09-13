@@ -911,6 +911,9 @@ class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
   Future<Uri?> resolveRemoteUri(Uri remoteUri) async => null;
 
   @override
+  bool get lastRemoteResolveNeedsRepair => false;
+
+  @override
   Map<String, String> get playbackHeaders => const <String, String>{};
 
   @override

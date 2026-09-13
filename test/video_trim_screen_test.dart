@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/barcode_marker.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/screens/video_trim_screen.dart';
-import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 /// 只实现剪辑页用到的播放器平台接口，避免打开平台通道。

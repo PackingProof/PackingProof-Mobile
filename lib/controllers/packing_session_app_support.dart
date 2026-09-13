@@ -312,6 +312,10 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
   Future<Uri?> resolveRemoteRecordingUri(Uri remoteUri) =>
       _lanBackupService.resolveRemoteUri(remoteUri);
 
+  /// 远程播放解析是否因电脑身份与配对记录不符而失败。
+  bool get remotePlaybackNeedsRepair =>
+      _lanBackupService.lastRemoteResolveNeedsRepair;
+
   Map<String, String> get remotePlaybackHeaders =>
       _lanBackupService.playbackHeaders;
 

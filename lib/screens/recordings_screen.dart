@@ -189,6 +189,7 @@ class RecordingsScreen extends StatefulWidget {
     this.onLoadAdjacentLocalRecordings,
     this.onLoadRemoteRecordingStatuses,
     this.onResolveRemoteUri,
+    this.remoteConnectionNeedsRepair,
     this.hiddenRemoteRecordingIds = const <int>{},
     this.onHideRemoteRecordings,
     this.remotePlaybackHeaders = const <String, String>{},
@@ -304,6 +305,9 @@ class RecordingsScreen extends StatefulWidget {
   Function(Iterable<int> ids)?
   onLoadRemoteRecordingStatuses;
   final Future<Uri?> Function(Uri remoteUri)? onResolveRemoteUri;
+
+  /// 解析失败后询问：是否属于"电脑配对已失效"，用于给出重新连接的提示。
+  final bool Function()? remoteConnectionNeedsRepair;
   final Set<int> hiddenRemoteRecordingIds;
   final Future<void> Function(Set<int> ids)? onHideRemoteRecordings;
   final Map<String, String> remotePlaybackHeaders;
@@ -1428,9 +1432,18 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                               : await resolver(item.remote!.playUri);
                           if (!context.mounted) return;
                           if (currentRemoteUri == null) {
+                            // 电脑换了身份或重装过时，旧配对凭据已经作废，
+                            // 这时提示"离线"会让人反复重试；要直接让他重新连接。
+                            final bool needsRepair =
+                                widget.remoteConnectionNeedsRepair?.call() ??
+                                false;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('暂时连不上电脑，请确认电脑端程序仍在运行后重试'),
+                              SnackBar(
+                                content: Text(
+                                  needsRepair
+                                      ? '这台电脑的配对已失效，请在电脑备份里重新连接'
+                                      : '暂时连不上电脑，请确认电脑端程序仍在运行后重试',
+                                ),
                               ),
                             );
                             return;

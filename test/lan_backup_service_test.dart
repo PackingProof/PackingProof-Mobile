@@ -42,6 +42,66 @@ void main() {
     expect(parseUploadVideoCodecFeature('not-json'), isFalse);
   });
 
+  test('电脑身份与配对记录不符时切到重新配对状态并写日志', () async {
+    final MethodChannel channel = const MethodChannel(
+      'app.packingproof.mobile/lan_backup_identity_mismatch_test',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (_) async => null);
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final List<({String kind, Map<String, Object?> extra})> logs =
+        <({String kind, Map<String, Object?> extra})>[];
+    final _IdentityMismatchHostLocator locator = _IdentityMismatchHostLocator();
+    final LanBackupService service = LanBackupService(
+      platform: _TestChannelBackupPlatform(channel),
+      hostLocator: locator,
+      logEvent: (String kind, Map<String, Object?> extra) async {
+        logs.add((kind: kind, extra: extra));
+      },
+    );
+    addTearDown(service.dispose);
+    service.debugSetAccessKeyForTesting('a' * 64);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        deviceName: '录像手机',
+        connectionStatus: LanConnectionStatus.connected,
+        endpoint: LanBackupEndpoint(
+          baseUri: Uri.parse('http://192.168.31.250:5280'),
+          accessKey: '',
+          computerId: '095c41f0-a7cb-467a-8926-29ddc2446eb6',
+          computerName: '保存主机',
+        ),
+      ),
+    );
+
+    final Uri? resolved = await service.resolveRemoteUri(
+      Uri.parse(
+        'http://192.168.31.250:5280/api/mobile-backup/videos/7/play?compat=1',
+      ),
+    );
+
+    expect(resolved, isNull);
+    // 不能再让界面以为只是"离线"：要明确引导重新连接。
+    expect(service.lastRemoteResolveNeedsRepair, isTrue);
+    expect(service.snapshot.connectionStatus, LanConnectionStatus.rePair);
+    final ({String kind, Map<String, Object?> extra}) mismatch = logs
+        .firstWhere(
+          (({String kind, Map<String, Object?> extra}) item) =>
+              item.kind == 'remote_playback_identity_mismatch',
+        );
+    expect(
+      mismatch.extra['expectedNodeId'],
+      '095c41f0-a7cb-467a-8926-29ddc2446eb6',
+    );
+    expect(
+      mismatch.extra['reportedNodeId'],
+      '202f543f-7b88-407d-b636-61fc0958abe8',
+    );
+  });
+
   test('播放前按 NodeId 更新主机地址并保留令牌与路径参数', () async {
     final MethodChannel channel = const MethodChannel(
       'app.packingproof.mobile/lan_backup_address_recovery_test',
@@ -141,7 +201,7 @@ void main() {
       (({String kind, Map<String, Object?> extra}) item) =>
           item.kind == 'remote_playback_resolve_failed',
     );
-    expect(failure.extra['reason'], 'host_not_located');
+    expect(failure.extra['reason'], 'unreachable');
     expect(failure.extra['endpoint'], 'http://192.168.1.20:5280');
     expect(failure.extra['nodeId'], 'host-1');
     expect(failure.extra['hasAccessKey'], isTrue);
@@ -2265,10 +2325,10 @@ class _FixedBackupHostLocator implements LanBackupHostLocator {
   final Uri uri;
 
   @override
-  Future<Uri?> locate({
+  Future<LanBackupLocateResult> locate({
     required Uri currentBaseUri,
     required String nodeId,
-  }) async => uri;
+  }) async => LanBackupLocateResult.located(uri);
 
   @override
   void dispose() {}
@@ -2467,12 +2527,35 @@ class _FakeHostLocator implements LanBackupHostLocator {
   int requests = 0;
 
   @override
-  Future<Uri?> locate({
+  Future<LanBackupLocateResult> locate({
     required Uri currentBaseUri,
     required String nodeId,
   }) async {
     requests++;
-    return result;
+    final Uri? located = result;
+    return located == null
+        ? const LanBackupLocateResult.failed(LanBackupLocateFailure.unreachable)
+        : LanBackupLocateResult.located(located);
+  }
+
+  @override
+  void dispose() {}
+}
+
+/// 返回"地址连通但电脑身份与配对记录不符"的定位器。
+class _IdentityMismatchHostLocator implements LanBackupHostLocator {
+  int requests = 0;
+
+  @override
+  Future<LanBackupLocateResult> locate({
+    required Uri currentBaseUri,
+    required String nodeId,
+  }) async {
+    requests++;
+    return const LanBackupLocateResult.failed(
+      LanBackupLocateFailure.identityMismatch,
+      reportedNodeId: '202f543f-7b88-407d-b636-61fc0958abe8',
+    );
   }
 
   @override

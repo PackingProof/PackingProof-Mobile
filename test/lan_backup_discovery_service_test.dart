@@ -143,12 +143,12 @@ void main() {
     );
     addTearDown(locator.dispose);
 
-    final Uri? located = await locator.locate(
+    final LanBackupLocateResult located = await locator.locate(
       currentBaseUri: Uri.parse('http://192.168.1.20:5280'),
       nodeId: 'host-1',
     );
 
-    expect(located, Uri.parse('http://192.168.1.20:5280'));
+    expect(located.baseUri, Uri.parse('http://192.168.1.20:5280'));
     expect(currentProbeRequests, 2);
     // 重试成功后不应再花时间扫描整个网段。
     expect(candidateRequests, 0);
@@ -180,12 +180,12 @@ void main() {
     );
     addTearDown(locator.dispose);
 
-    final Uri? located = await locator.locate(
+    final LanBackupLocateResult located = await locator.locate(
       currentBaseUri: Uri.parse('http://192.168.1.20:5280'),
       nodeId: 'host-1',
     );
 
-    expect(located, Uri.parse('http://192.168.1.30:5280'));
+    expect(located.baseUri, Uri.parse('http://192.168.1.30:5280'));
     // 地址已被别的主机占用，用更大预算重试没有意义。
     expect(currentProbeRequests, 1);
     expect(candidateRequests, 1);
@@ -230,20 +230,58 @@ void main() {
     );
     addTearDown(locator.dispose);
 
-    final Future<Uri?> first = locator.locate(
+    final Future<LanBackupLocateResult> first = locator.locate(
       currentBaseUri: Uri.parse('http://192.168.1.20:5280'),
       nodeId: 'host-1',
     );
-    final Future<Uri?> second = locator.locate(
+    final Future<LanBackupLocateResult> second = locator.locate(
       currentBaseUri: Uri.parse('http://192.168.1.20:5280'),
       nodeId: 'host-1',
     );
     releaseCurrentProbe.complete();
 
-    expect(await first, Uri.parse('http://192.168.1.30:5280'));
-    expect(await second, Uri.parse('http://192.168.1.30:5280'));
+    expect((await first).baseUri, Uri.parse('http://192.168.1.30:5280'));
+    expect((await second).baseUri, Uri.parse('http://192.168.1.30:5280'));
     expect(currentProbeRequests, 1);
     expect(candidateRequests, 1);
+  });
+
+  test('地址连通但电脑身份不匹配时上报 identityMismatch 而不是找不到', () async {
+    final LanBackupHostLocatorService locator = LanBackupHostLocatorService(
+      candidateProvider: () async => const <Uri>[],
+      probe: (Uri uri) async => const LanBackupDiscoveredHost(
+        nodeId: '202f543f-7b88-407d-b636-61fc0958abe8',
+        name: '电脑1',
+        address: '192.168.1.20:5280',
+      ),
+    );
+    addTearDown(locator.dispose);
+
+    final LanBackupLocateResult result = await locator.locate(
+      currentBaseUri: Uri.parse('http://192.168.1.20:5280'),
+      // 手机里保存的是这台电脑旧的身份。
+      nodeId: '095c41f0-a7cb-467a-8926-29ddc2446eb6',
+    );
+
+    expect(result.isLocated, isFalse);
+    expect(result.failure, LanBackupLocateFailure.identityMismatch);
+    expect(result.reportedNodeId, '202f543f-7b88-407d-b636-61fc0958abe8');
+  });
+
+  test('地址连不上且扫描无结果时上报 notFound', () async {
+    final LanBackupHostLocatorService locator = LanBackupHostLocatorService(
+      candidateProvider: () async => const <Uri>[],
+      probe: (Uri uri) async => throw const SocketException('连接超时'),
+    );
+    addTearDown(locator.dispose);
+
+    final LanBackupLocateResult result = await locator.locate(
+      currentBaseUri: Uri.parse('http://192.168.1.20:5280'),
+      nodeId: 'host-1',
+    );
+
+    expect(result.isLocated, isFalse);
+    expect(result.failure, LanBackupLocateFailure.notFound);
   });
 
   test('搜索进行中重复调用不会重启扫描或重复探测', () async {

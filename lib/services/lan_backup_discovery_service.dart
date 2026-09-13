@@ -72,8 +72,43 @@ abstract interface class LanBackupHostCache {
   Future<void> save(List<LanBackupDiscoveredHost> hosts);
 }
 
+/// 地址定位失败的原因。
+enum LanBackupLocateFailure {
+  /// 配置的地址始终连不上：主机确实不在线或不在同一网络。
+  unreachable,
+
+  /// 地址连通、也返回了 node-info，但随着配对一起保存的电脑标识不匹配：
+  /// 说明那台电脑已经换过身份或换过配置，旧的配对凭据作废，需要重新连接。
+  identityMismatch,
+
+  /// 地址连不上，扫描整个网段也没有找到匹配的主机。
+  notFound,
+}
+
+/// 地址定位结果：成功返回地址，失败区分原因，避免上层把"身份不匹配"
+/// 一律当成"主机离线"。
+class LanBackupLocateResult {
+  const LanBackupLocateResult.located(Uri this.baseUri)
+    : failure = null,
+      reportedNodeId = null;
+
+  const LanBackupLocateResult.failed(this.failure, {this.reportedNodeId})
+    : baseUri = null;
+
+  final Uri? baseUri;
+  final LanBackupLocateFailure? failure;
+
+  /// 配置地址实际返回的 nodeId，仅 [LanBackupLocateFailure.identityMismatch] 时有值。
+  final String? reportedNodeId;
+
+  bool get isLocated => baseUri != null;
+}
+
 abstract interface class LanBackupHostLocator {
-  Future<Uri?> locate({required Uri currentBaseUri, required String nodeId});
+  Future<LanBackupLocateResult> locate({
+    required Uri currentBaseUri,
+    required String nodeId,
+  });
 
   void dispose();
 }
@@ -96,15 +131,22 @@ class LanBackupHostLocatorService implements LanBackupHostLocator {
   final bool _ownsHttpClient;
   final LanBackupHostProbe? _probeOverride;
   final LanBackupHostDiscoveryService _discovery;
-  Future<Uri?>? _activeLocate;
+  Future<LanBackupLocateResult>? _activeLocate;
 
   @override
-  Future<Uri?> locate({required Uri currentBaseUri, required String nodeId}) {
+  Future<LanBackupLocateResult> locate({
+    required Uri currentBaseUri,
+    required String nodeId,
+  }) {
     final String expectedNodeId = nodeId.trim();
-    if (expectedNodeId.isEmpty) return Future<Uri?>.value();
-    final Future<Uri?>? active = _activeLocate;
+    if (expectedNodeId.isEmpty) {
+      return Future<LanBackupLocateResult>.value(
+        const LanBackupLocateResult.failed(LanBackupLocateFailure.notFound),
+      );
+    }
+    final Future<LanBackupLocateResult>? active = _activeLocate;
     if (active != null) return active;
-    final Future<Uri?> locating = _runLocate(
+    final Future<LanBackupLocateResult> locating = _runLocate(
       currentBaseUri: currentBaseUri,
       nodeId: expectedNodeId,
     );
@@ -114,12 +156,21 @@ class LanBackupHostLocatorService implements LanBackupHostLocator {
     });
   }
 
-  Future<Uri?> _runLocate({
+  Future<LanBackupLocateResult> _runLocate({
     required Uri currentBaseUri,
     required String nodeId,
   }) async {
+    // 配置地址返回了 node-info 但标识不是目标主机时记下它：这就是
+    // "电脑换了身份"的直接证据，后面即使扫描也没找到，也要按这个原因上报。
+    String? otherIdentityNodeId;
     final _LocateProbeResult fast = await _probe(currentBaseUri);
-    if (_matches(fast.host, nodeId)) return fast.host!.baseUri;
+    final LanBackupDiscoveredHost? fastHost = fast.host;
+    if (fastHost != null && !_sameIdentity(fastHost, nodeId)) {
+      otherIdentityNodeId = fastHost.nodeId.trim();
+    }
+    if (_matches(fastHost, nodeId)) {
+      return LanBackupLocateResult.located(fastHost!.baseUri);
+    }
     if (fast.transportFailed) {
       // 首轮探测只给了 1 秒内的预算（见 _probe 的 [budget]），局域网正要唤醒
       // 电脑或缓存地址失效时很容易误判离线；这里按心跳同样的预算（3s/4s）
@@ -129,15 +180,32 @@ class LanBackupHostLocatorService implements LanBackupHostLocator {
         currentBaseUri,
         budget: _slowProbeBudget,
       );
-      if (_matches(retried.host, nodeId)) return retried.host!.baseUri;
+      final LanBackupDiscoveredHost? retriedHost = retried.host;
+      if (retriedHost != null && !_sameIdentity(retriedHost, nodeId)) {
+        otherIdentityNodeId ??= retriedHost.nodeId.trim();
+      }
+      if (_matches(retriedHost, nodeId)) {
+        return LanBackupLocateResult.located(retriedHost!.baseUri);
+      }
     }
 
     await _discovery.search();
     for (final LanBackupDiscoveredHost host in _discovery.snapshot.hosts) {
-      if (_matches(host, nodeId)) return host.baseUri;
+      if (_matches(host, nodeId)) {
+        return LanBackupLocateResult.located(host.baseUri);
+      }
     }
-    return null;
+    if (otherIdentityNodeId != null && otherIdentityNodeId.isNotEmpty) {
+      return LanBackupLocateResult.failed(
+        LanBackupLocateFailure.identityMismatch,
+        reportedNodeId: otherIdentityNodeId,
+      );
+    }
+    return const LanBackupLocateResult.failed(LanBackupLocateFailure.notFound);
   }
+
+  bool _sameIdentity(LanBackupDiscoveredHost host, String nodeId) =>
+      host.reachable && host.nodeId.trim() == nodeId;
 
   bool _matches(LanBackupDiscoveredHost? host, String nodeId) =>
       host != null &&

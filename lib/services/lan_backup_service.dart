@@ -215,6 +215,9 @@ abstract interface class LanBackupSink implements Listenable {
   Future<Map<int, ({RemoteRecordingStatus status, bool exists, String reason})>>
   fetchRemoteRecordingStatuses(Iterable<int> ids);
   Future<Uri?> resolveRemoteUri(Uri remoteUri);
+
+  /// 最近一次远程播放解析是否因为电脑身份与配对记录不符而失败。
+  bool get lastRemoteResolveNeedsRepair;
   Map<String, String> get playbackHeaders;
   RemoteVideoClipSink? createRemoteVideoClipService(Uri remoteUri);
   Future<void> dispose();
@@ -265,6 +268,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   DateTime? _lastHeartbeatStallLoggedAt;
   DateTime? _lastHeartbeatSkipLoggedAt;
   DateTime? _lastHeartbeatErrorLoggedAt;
+  String? _lastResolveFailureReason;
   Future<void>? _refreshFuture;
   bool _refreshAgain = false;
   bool _nativeHandlerAttached = false;
@@ -1281,32 +1285,52 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     if (endpoint == null ||
         endpoint.computerId.trim().isEmpty ||
         _accessKey.isEmpty) {
+      _lastResolveFailureReason = endpoint == null
+          ? 'no_endpoint'
+          : endpoint.computerId.trim().isEmpty
+          ? 'no_computer_id'
+          : 'no_access_key';
       _logRemoteResolveFailed(
-        reason: endpoint == null
-            ? 'no_endpoint'
-            : endpoint.computerId.trim().isEmpty
-            ? 'no_computer_id'
-            : 'no_access_key',
+        reason: _lastResolveFailureReason!,
         startedAt: startedAt,
       );
       return null;
     }
-    final Uri? located = await _hostLocator.locate(
+    final LanBackupLocateResult located = await _hostLocator.locate(
       currentBaseUri: endpoint.baseUri,
       nodeId: endpoint.computerId,
     );
-    if (located == null) {
+    if (!located.isLocated) {
       // 这条以前完全静默：远程播放解析失败在导出日志里查不到任何痕迹。
+      if (located.failure == LanBackupLocateFailure.identityMismatch) {
+        // 地址通、node-info 也回来了，只是标识对不上：那台电脑已换身份或换过
+        // 配置，旧配对凭据作废。要明确提示重新连接，不能只说"离线"。
+        _lastResolveFailureReason = _resolveFailureIdentityMismatch;
+        _snapshot = _snapshot.copyWith(
+          connectionStatus: LanConnectionStatus.rePair,
+        );
+        _log('remote_playback_identity_mismatch', <String, Object?>{
+          'endpoint': endpoint.baseUri.toString(),
+          'expectedNodeId': endpoint.computerId,
+          'reportedNodeId': located.reportedNodeId,
+        });
+        notifyListeners();
+        return null;
+      }
+      final String failureReason = located.failure?.name ?? 'unknown';
+      _lastResolveFailureReason = failureReason;
       _logRemoteResolveFailed(
-        reason: 'host_not_located',
+        reason: failureReason,
         startedAt: startedAt,
         endpoint: endpoint,
       );
       return null;
     }
+    final Uri locatedBaseUri = located.baseUri!;
 
     final LanBackupEndpoint? current = _snapshot.endpoint;
     if (current == null || current.computerId != endpoint.computerId) {
+      _lastResolveFailureReason = 'endpoint_changed';
       _logRemoteResolveFailed(
         reason: 'endpoint_changed',
         startedAt: startedAt,
@@ -1314,20 +1338,22 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       );
       return null;
     }
-    if (_normalizedHostUri(current.baseUri) == _normalizedHostUri(located)) {
+    if (_normalizedHostUri(current.baseUri) ==
+        _normalizedHostUri(locatedBaseUri)) {
+      _lastResolveFailureReason = null;
       _logRemoteResolveOk(startedAt: startedAt, addressChanged: false);
       return current.baseUri;
     }
 
     final LanBackupEndpoint updated = LanBackupEndpoint(
-      baseUri: located,
+      baseUri: locatedBaseUri,
       accessKey: '',
       computerId: current.computerId,
       computerName: current.computerName,
       lastConnectedAt: DateTime.now(),
     );
     await _platform.saveConnection(<String, Object?>{
-      'baseUrl': located.toString(),
+      'baseUrl': locatedBaseUri.toString(),
       'accessKey': _accessKey,
       'computerId': updated.computerId,
       'computerName': updated.computerName,
@@ -1341,12 +1367,26 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     );
     _log('backup_host_address_updated', <String, Object?>{
       'computerId': updated.computerId,
-      'address': located.authority,
+      'address': locatedBaseUri.authority,
     });
     notifyListeners();
+    _lastResolveFailureReason = null;
     _logRemoteResolveOk(startedAt: startedAt, addressChanged: true);
-    return located;
+    return locatedBaseUri;
   }
+
+  /// 远程播放解析失败的原因，供界面区分"连不上电脑"与"配对已失效"。
+  ///
+  /// 取值与 `remote_playback_resolve_failed` 日志的 reason 一致；解析成功或
+  /// 尚未解析时为 null。
+  String? get lastRemoteResolveFailureReason => _lastResolveFailureReason;
+
+  /// 电脑身份与配对记录不匹配，需要用户重新连接。
+  @override
+  bool get lastRemoteResolveNeedsRepair =>
+      _lastResolveFailureReason == _resolveFailureIdentityMismatch;
+
+  static const String _resolveFailureIdentityMismatch = 'identity_mismatch';
 
   void _logRemoteResolveOk({
     required DateTime startedAt,
