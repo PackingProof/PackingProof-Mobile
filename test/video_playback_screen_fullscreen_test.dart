@@ -9,7 +9,7 @@ import 'package:packing_proof_mobile/models/recording_orientation.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/screens/video_playback_screen.dart';
 import 'package:packing_proof_mobile/services/playback_display_mode_controller.dart';
-import 'package:video_player/video_player.dart' show VideoPlayer;
+import 'package:video_player/video_player.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 /// 记录页面下发的方向，替代真实 `SystemChrome`。
@@ -19,10 +19,10 @@ class _FakePlaybackDisplayPlatform implements PlaybackDisplayPlatform {
   List<DeviceOrientation> get last => applied.last;
 
   @override
-  Future<void> setPreferredOrientations(
-    List<DeviceOrientation> orientations,
-  ) async {
+  Future<void> setPreferredOrientations(List<DeviceOrientation> orientations) {
+    // 同步记录，避免页面销毁时调用方来不及 await。
     applied.add(List<DeviceOrientation>.of(orientations));
+    return Future<void>.value();
   }
 }
 
@@ -61,7 +61,11 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Widget buildView(int playerId) => const ColoredBox(color: Colors.black);
 
   @override
-  Future<void> dispose(int playerId) async {}
+  Future<void> dispose(int playerId) async {
+    // 真实插件在释放时会关闭事件流；不关闭会让 controller.dispose() 卡在
+    // 取消订阅上，播放页也就关不掉。
+    await _events.remove(playerId)?.close();
+  }
 
   @override
   Future<void> play(int playerId) async {}
@@ -122,6 +126,7 @@ void main() {
     });
   });
 
+  /// 把播放页作为真实路由推入，确保关闭播放页的返回行为与线上一致。
   Future<void> pumpPlayer(
     WidgetTester tester, {
     RecordingOrientation orientation = RecordingOrientation.portrait,
@@ -131,13 +136,27 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
-        home: VideoPlaybackScreen(
-          session: _session(orientation: orientation),
-          onSessionUpdated: (_) async {},
-          playbackDisplayPlatform: displayPlatform,
+        home: Builder(
+          builder: (BuildContext context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (BuildContext context) => VideoPlaybackScreen(
+                      session: _session(orientation: orientation),
+                      onSessionUpdated: (_) async {},
+                      playbackDisplayPlatform: displayPlatform,
+                    ),
+                  ),
+                ),
+                child: const Text('打开录像'),
+              ),
+            ),
+          ),
         ),
       ),
     );
+    await tester.tap(find.text('打开录像'));
     // 初始化播放器并等待首个事件与后续 seek/play 完成。
     await tester.pumpAndSettle();
   }
@@ -158,6 +177,7 @@ void main() {
     expect(toggle, findsOneWidget);
     expect(tester.widget<IconButton>(toggle).tooltip, '全屏');
     expect(find.byIcon(Icons.fullscreen_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_back_rounded), findsNothing);
     expect(find.byType(AppBar), findsOneWidget);
 
     await pressFullscreenToggle(tester);
@@ -174,6 +194,45 @@ void main() {
     expect(find.byIcon(Icons.fullscreen_rounded), findsNothing);
   });
 
+  testWidgets('全屏按钮位于进度条右侧，且全屏态不引入多余按钮', (WidgetTester tester) async {
+    await pumpPlayer(tester);
+
+    final Finder toggle = find.byKey(const Key('playback-fullscreen-toggle'));
+    final Rect toggleRect = tester.getRect(toggle);
+    // 按钮与进度条同一行，且落在进度条右端。
+    final Rect sliderRect = tester.getRect(find.byType(Slider));
+    expect(toggleRect.center.dy, closeTo(sliderRect.center.dy, 1));
+    expect(toggleRect.left, greaterThanOrEqualTo(sliderRect.right - 1));
+
+    await pressFullscreenToggle(tester);
+
+    // 全屏只保留退出全屏这一个按钮，不再叠加返回按钮。
+    expect(toggle, findsOneWidget);
+    expect(find.byIcon(Icons.fullscreen_exit_rounded), findsOneWidget);
+    expect(find.byKey(const Key('playback-fullscreen-back')), findsNothing);
+    expect(find.byIcon(Icons.arrow_back_rounded), findsNothing);
+  });
+
+  testWidgets('窗口态系统返回键关闭播放页', (WidgetTester tester) async {
+    await pumpPlayer(tester);
+
+    expect(find.byType(AppBar), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    // 窗口态返回应当真正退出播放页，而不是被拦住。
+    expect(find.byType(VideoPlaybackScreen), findsNothing);
+  });
+
+  testWidgets('窗口态 AppBar 返回按钮关闭播放页', (WidgetTester tester) async {
+    await pumpPlayer(tester);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(VideoPlaybackScreen), findsNothing);
+  });
+
   testWidgets('横版录像全屏请求横屏方向', (WidgetTester tester) async {
     videoPlatform.videoSize = const Size(1920, 1080);
     await pumpPlayer(tester, orientation: RecordingOrientation.landscapeLeft);
@@ -186,30 +245,25 @@ void main() {
     ]);
   });
 
-  testWidgets('全屏中系统返回键只退出全屏', (WidgetTester tester) async {
+  testWidgets('全屏中系统返回键直接关闭播放页并恢复竖屏', (WidgetTester tester) async {
     videoPlatform.videoSize = const Size(1920, 1080);
     await pumpPlayer(tester, orientation: RecordingOrientation.landscapeLeft);
 
     await pressFullscreenToggle(tester);
     expect(find.byType(AppBar), findsNothing);
+    expect(displayPlatform.last, <DeviceOrientation>[
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
-    expect(find.byType(AppBar), findsOneWidget);
+    // 返回键一定能离开播放页，不会卡在全屏里。
+    expect(find.byType(VideoPlaybackScreen), findsNothing);
     expect(displayPlatform.last, <DeviceOrientation>[
       DeviceOrientation.portraitUp,
     ]);
-    expect(
-      tester
-          .widget<IconButton>(
-            find.byKey(const Key('playback-fullscreen-toggle')),
-          )
-          .tooltip,
-      '全屏',
-    );
-    // 页面没有被关闭，仍停留在播放页。
-    expect(find.text('分享'), findsOneWidget);
   });
 
   testWidgets('退出全屏按钮恢复竖屏并保持播放页', (WidgetTester tester) async {
@@ -224,14 +278,16 @@ void main() {
     ]);
     expect(find.byType(AppBar), findsOneWidget);
     expect(
-      tester.widget<IconButton>(
-        find.byKey(const Key('playback-fullscreen-toggle')),
-      ).tooltip,
+      tester
+          .widget<IconButton>(
+            find.byKey(const Key('playback-fullscreen-toggle')),
+          )
+          .tooltip,
       '全屏',
     );
   });
 
-  testWidgets('页面销毁时恢复竖屏', (WidgetTester tester) async {
+  testWidgets('全屏中关闭播放页会恢复竖屏', (WidgetTester tester) async {
     videoPlatform.videoSize = const Size(1920, 1080);
     await pumpPlayer(tester, orientation: RecordingOrientation.landscapeLeft);
 
@@ -241,9 +297,11 @@ void main() {
       DeviceOrientation.landscapeRight,
     ]);
 
-    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    // 页面被销毁（返回上一级）时也必须把方向恢复成竖屏。
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
+    expect(find.byType(VideoPlaybackScreen), findsNothing);
     expect(displayPlatform.last, <DeviceOrientation>[
       DeviceOrientation.portraitUp,
     ]);

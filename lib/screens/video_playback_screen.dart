@@ -168,8 +168,6 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
   late VideoPlayerController _video;
   late Future<void> _initialized;
   late final PlaybackDisposalGuard _disposalGuard;
-  bool _closing = false;
-  bool _allowPop = false;
   bool _remoteCompatRetryTried = false;
   late RecordingSession _session;
   late Duration _playbackStart;
@@ -353,8 +351,22 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
 
   @override
   void dispose() {
+    // 释放失败同样要记日志：这里不再有「先拦一次再补 pop」的兜底代码，
+    // 播放器异常不能连累页面退出。
+    unawaited(
+      _disposalGuard.dispose().catchError((Object error) {
+        unawaited(
+          DiagnosticsLogService().log(
+            kind: 'playback_dispose_failed',
+            extra: <String, Object?>{
+              'sessionId': _session.id,
+              'error': error.toString(),
+            },
+          ),
+        );
+      }),
+    );
     unawaited(_displayMode.dispose());
-    unawaited(_disposalGuard.dispose());
     super.dispose();
   }
 
@@ -376,17 +388,14 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     unawaited(_logPlaybackEnd());
   }
 
+  /// 主动关闭播放页（删除本机录像后调用）。
+  ///
+  /// 退出全屏恢复竖屏，然后直接让路由 pop；播放器释放交给 [dispose]，
+  /// 不在这里等释放完成，避免任何一步卡住就把页面锁死。
   Future<void> _closePlayback([Object? result]) async {
-    if (_closing) return;
-    // 关闭中的骨架屏没有全屏布局，先退出全屏避免残留横屏。
-    unawaited(_displayMode.restore());
-    setState(() => _closing = true);
-    await _disposalGuard.disposeAfter(WidgetsBinding.instance.endOfFrame);
+    await _displayMode.restore();
     if (!mounted) return;
-    setState(() => _allowPop = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) Navigator.of(context).pop(result);
-    });
+    Navigator.of(context).pop(result);
   }
 
   Future<void> _logPlaybackEnvironment() async {
@@ -973,26 +982,14 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope<Object?>(
-      canPop: _allowPop && !_fullscreen,
-      onPopInvokedWithResult: (bool didPop, Object? result) {
-        if (_fullscreen) {
-          unawaited(_exitFullscreen());
-          return;
-        }
-        if (!didPop) unawaited(_closePlayback(result));
-      },
-      child: _buildScaffold(context),
-    );
+    // 刻意不套 PopScope：窗口态与全屏态都放行路由 pop，系统返回与 iOS 侧滑
+    // 都能直接离开播放页（全屏也不例外）。方向恢复与播放器释放在 dispose 收尾，
+    // 不再用「先拦一次再补 pop」的两段式流程——那种写法一旦没有下一帧，
+    // 页面就永远关不上。
+    return _buildScaffold(context);
   }
 
   Widget _buildScaffold(BuildContext context) {
-    if (_closing) {
-      return Scaffold(
-        appBar: AppBar(title: Text(_session.displayCode)),
-        body: const SizedBox.expand(),
-      );
-    }
     return Scaffold(
       appBar: _fullscreen
           ? null
@@ -1142,7 +1139,7 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
           child: SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: 2),
               child: _buildPlaybackControls(value),
             ),
           ),
@@ -1208,7 +1205,7 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     );
   }
 
-  /// 播放控件：时间、进度条与全屏按钮；窗口态与全屏态共用。
+  /// 播放控件：时间行紧贴进度条，全屏按钮在进度条右侧。
   Widget _buildPlaybackControls(
     VideoPlayerValue value, {
     bool compact = false,
@@ -1217,14 +1214,14 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     final double position = _relativePositionMilliseconds(value);
     const TextStyle timeStyle = TextStyle(
       color: Colors.white,
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: FontWeight.w600,
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Padding(
-          padding: EdgeInsets.fromLTRB(compact ? 10 : 20, 0, 0, 0),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 4),
           child: Row(
             children: <Widget>[
               Text(
@@ -1233,37 +1230,46 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
               ),
               const Spacer(),
               Text(_formatDuration(_playbackDuration), style: timeStyle),
-              const SizedBox(width: 4),
-              IconButton(
-                key: const Key('playback-fullscreen-toggle'),
-                tooltip: _fullscreen ? '退出全屏' : '全屏',
-                onPressed: _fullscreen ? _exitFullscreen : _enterFullscreen,
-                icon: Icon(
-                  _fullscreen
-                      ? Icons.fullscreen_exit_rounded
-                      : Icons.fullscreen_rounded,
-                ),
-                color: Colors.white,
-              ),
             ],
           ),
         ),
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            activeTrackColor: Colors.white,
-            inactiveTrackColor: const Color(0x66FFFFFF),
-            thumbColor: Colors.white,
-            overlayColor: const Color(0x33FFFFFF),
-            trackHeight: 3,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-          ),
-          child: Slider(
-            value: maximum > 0 ? position : 0,
-            max: maximum > 0 ? maximum : 1,
-            onChangeStart: maximum > 0 ? _startScrubbing : null,
-            onChanged: maximum > 0 ? _scrubTo : null,
-            onChangeEnd: maximum > 0 ? _finishScrubbing : null,
-          ),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: Colors.white,
+                  inactiveTrackColor: const Color(0x66FFFFFF),
+                  thumbColor: Colors.white,
+                  overlayColor: const Color(0x33FFFFFF),
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6,
+                  ),
+                ),
+                child: Slider(
+                  value: maximum > 0 ? position : 0,
+                  max: maximum > 0 ? maximum : 1,
+                  onChangeStart: maximum > 0 ? _startScrubbing : null,
+                  onChanged: maximum > 0 ? _scrubTo : null,
+                  onChangeEnd: maximum > 0 ? _finishScrubbing : null,
+                ),
+              ),
+            ),
+            IconButton(
+              key: const Key('playback-fullscreen-toggle'),
+              tooltip: _fullscreen ? '退出全屏' : '全屏',
+              onPressed: _fullscreen ? _exitFullscreen : _enterFullscreen,
+              icon: Icon(
+                _fullscreen
+                    ? Icons.fullscreen_exit_rounded
+                    : Icons.fullscreen_rounded,
+              ),
+              iconSize: 22,
+              visualDensity: VisualDensity.compact,
+              color: Colors.white,
+            ),
+          ],
         ),
       ],
     );
