@@ -149,26 +149,33 @@ class _VideoTrimScreenState extends State<VideoTrimScreen> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(18, 8, 18, 30),
             children: <Widget>[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: AspectRatio(
-                  aspectRatio: _video.value.aspectRatio,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: <Widget>[
-                      VideoPlayer(_video),
-                      Center(
-                        child: IconButton.filled(
-                          onPressed: _togglePlayback,
-                          iconSize: 32,
-                          icon: Icon(
-                            _video.value.isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
+              // 竖版视频按原比例铺满时会把「保留范围」与保存按钮整块顶到屏幕外，
+              // 这里给预览加高度上限，保证底部剪辑控件始终留在可见区域内。
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.46,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: AspectRatio(
+                    aspectRatio: _video.value.aspectRatio,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: <Widget>[
+                        VideoPlayer(_video),
+                        Center(
+                          child: IconButton.filled(
+                            onPressed: _togglePlayback,
+                            iconSize: 32,
+                            icon: Icon(
+                              _video.value.isPlaying
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

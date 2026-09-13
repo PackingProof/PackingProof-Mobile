@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/barcode_marker.dart';
+import 'package:packing_proof_mobile/models/order_info.dart';
 import 'package:packing_proof_mobile/models/recording_orientation.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/screens/video_playback_screen.dart';
@@ -91,17 +92,25 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
 
 RecordingSession _session({
   RecordingOrientation orientation = RecordingOrientation.portrait,
+  OrderInfo? orderInfo,
 }) {
   final DateTime startedAt = DateTime(2026, 9, 13, 10);
   return RecordingSession(
     id: 'session-1',
     filePath: 'C:/recordings/session-1.mp4',
     startedAt: startedAt,
-    endedAt: startedAt.add(const Duration(seconds: 30)),
+    endedAt: startedAt.add(const Duration(seconds: 9)),
     markers: const <BarcodeMarker>[],
     recordingOrientation: orientation,
+    orderInfo: orderInfo,
   );
 }
+
+const OrderInfo _orderInfo = OrderInfo(
+  trackingNumber: 'JD0001',
+  orderId: 'ORDER-1',
+  buyerMessage: '请放门口',
+);
 
 void main() {
   late _FakeVideoPlayerPlatform videoPlatform;
@@ -130,6 +139,7 @@ void main() {
   Future<void> pumpPlayer(
     WidgetTester tester, {
     RecordingOrientation orientation = RecordingOrientation.portrait,
+    bool withOrder = false,
   }) async {
     tester.view.physicalSize = const Size(1080, 1920);
     tester.view.devicePixelRatio = 1;
@@ -143,7 +153,10 @@ void main() {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (BuildContext context) => VideoPlaybackScreen(
-                      session: _session(orientation: orientation),
+                      session: _session(
+                        orientation: orientation,
+                        orderInfo: withOrder ? _orderInfo : null,
+                      ),
                       onSessionUpdated: (_) async {},
                       playbackDisplayPlatform: displayPlatform,
                     ),
@@ -169,6 +182,35 @@ void main() {
         .onPressed!();
     await tester.pumpAndSettle();
   }
+
+  testWidgets('窗口布局显示录像详情与订单信息入口', (WidgetTester tester) async {
+    await pumpPlayer(tester, withOrder: true);
+
+    // 竖版视频占位较高，详情卡片需要滚动才会进入可见区域。
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('playback-order-info')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    // 详情卡片把录像事实摆出来，页面不再只有视频和按钮。
+    expect(find.text('来源'), findsOneWidget);
+    expect(find.text('手机'), findsOneWidget);
+    expect(find.text('录制时间'), findsOneWidget);
+    expect(find.text('时长'), findsOneWidget);
+    // 进度条右侧也显示总时长，因此这里有两处 00:09。
+    expect(find.text('00:09'), findsNWidgets(2));
+    expect(find.text('操作'), findsOneWidget);
+    expect(find.text('发货'), findsOneWidget);
+    expect(find.text('备份'), findsOneWidget);
+    expect(find.text('仅在本机'), findsOneWidget);
+
+    // 有订单信息时展示摘要，并保留查看入口。
+    expect(find.byKey(const Key('playback-order-info')), findsOneWidget);
+    expect(find.textContaining('买家留言'), findsOneWidget);
+    expect(find.text('查看'), findsOneWidget);
+  });
 
   testWidgets('窗口布局显示全屏按钮并可进入全屏', (WidgetTester tester) async {
     await pumpPlayer(tester);

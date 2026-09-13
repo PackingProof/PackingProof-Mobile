@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/lan_backup.dart';
+import '../models/order_info.dart';
 import '../models/recording_session.dart';
 import '../models/recording_operation_mode.dart';
 import '../models/recording_orientation.dart';
@@ -25,6 +26,7 @@ import '../services/remote_video_clip_service.dart';
 import '../widgets/two_button_confirm_dialog.dart';
 import '../widgets/order_info_sheet.dart';
 import '../widgets/playback_error_panel.dart';
+import '../widgets/recording_detail_card.dart';
 import 'video_trim_screen.dart';
 import 'remote_video_trim_screen.dart';
 
@@ -144,6 +146,9 @@ class VideoPlaybackScreen extends StatefulWidget {
     this.backedUpOffline = false,
     this.networkDiagnosticsLoader,
     this.playbackDisplayPlatform,
+    this.sourceLabel,
+    this.backedUp = false,
+    this.onOrderInfo,
     super.key,
   });
 
@@ -159,6 +164,16 @@ class VideoPlaybackScreen extends StatefulWidget {
 
   /// 测试可注入的系统显示设置通道；为空时直接下发 `SystemChrome`。
   final PlaybackDisplayPlatform? playbackDisplayPlatform;
+
+  /// 录像来源展示名，如「手机」或保存主机名；为空时按播放来源推断。
+  final String? sourceLabel;
+
+  /// 该录像是否已备份到电脑。
+  final bool backedUp;
+
+  /// 打开订单信息的回调；为空时使用内置的底部弹层。
+  final Future<void> Function(BuildContext context, OrderInfo info)?
+  onOrderInfo;
 
   @override
   State<VideoPlaybackScreen> createState() => _VideoPlaybackScreenState();
@@ -186,6 +201,7 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
   String _shareMessage = '';
   String? _playbackErrorDetail;
   String? _localVideoMime;
+  int? _fileSizeBytes;
   VideoDecodeSupport? _deviceDecodeSupport;
   bool _fallbackBusy = false;
   late final PlaybackDisplayModeController _displayMode;
@@ -228,6 +244,7 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
       ),
     );
     unawaited(_logPlaybackEnvironment());
+    unawaited(_loadLocalFileSize());
     try {
       await _video.initialize();
       await _video.setVolume(1);
@@ -292,6 +309,16 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
       return message.isEmpty ? error.code : '${error.code}：$message';
     }
     return '$error';
+  }
+
+  /// 读取本机录像文件大小，供详情卡片展示；远程录像没有本地文件。
+  Future<void> _loadLocalFileSize() async {
+    if (widget.remoteUri != null) return;
+    final File file = File(_session.filePath);
+    if (!await file.exists()) return;
+    final int bytes = await file.length();
+    if (!mounted || _fileSizeBytes == bytes) return;
+    setState(() => _fileSizeBytes = bytes);
   }
 
   Future<void> _loadLocalPlaybackContext() async {
@@ -1064,7 +1091,9 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
                     padding: const EdgeInsets.fromLTRB(18, 8, 18, 30),
                     children: <Widget>[
                       _buildVideoSurface(value),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
+                      _buildRecordingDetails(),
+                      const SizedBox(height: 18),
                       if (_sharing) ...<Widget>[
                         LinearProgressIndicator(value: _shareProgress),
                         const SizedBox(height: 8),
@@ -1148,7 +1177,48 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     );
   }
 
-  /// 窗口态视频面：带圆角、控件内嵌；全屏态由 [_buildFullscreenBody] 自行铺满。
+  /// 录像详情：来源、时间、时长、大小与备份状态，订单信息作为补充入口。
+  Widget _buildRecordingDetails() {
+    final bool remote = widget.remoteUri != null;
+    final bool backedUp = widget.backedUp || remote;
+    final String source = widget.sourceLabel?.trim().isNotEmpty == true
+        ? widget.sourceLabel!.trim()
+        : (remote ? '电脑' : '手机');
+    final String backupLabel = backedUp ? '已备份到电脑' : '仅在本机';
+    final List<RecordingDetail> details = <RecordingDetail>[
+      RecordingDetail('来源', source),
+      RecordingDetail('录制时间', formatRecordingTime(_session.startedAt)),
+      RecordingDetail('时长', formatRecordingDuration(_session.duration)),
+      RecordingDetail(
+        '大小',
+        _fileSizeBytes == null ? '—' : formatRecordingSize(_fileSizeBytes!),
+      ),
+      RecordingDetail('操作', _session.operationMode.label),
+      RecordingDetail('备份', backupLabel, emphasized: true),
+    ];
+    final OrderInfo? orderInfo = _session.orderInfo;
+    return RecordingDetailCard(
+      details: details,
+      trailing: orderInfo == null
+          ? null
+          : _OrderInfoSummary(
+              info: orderInfo,
+              onTap: () => _openOrderInfo(orderInfo),
+            ),
+    );
+  }
+
+  Future<void> _openOrderInfo(OrderInfo info) async {
+    final Future<void> Function(BuildContext, OrderInfo)? handler =
+        widget.onOrderInfo;
+    if (handler != null) {
+      await handler(context, info);
+      return;
+    }
+    await showOrderInfoSheet(context, info);
+  }
+
+  /// 视频面：窗口态带圆角、控件内嵌；全屏态由 [_buildFullscreenBody] 自行铺满。
   Widget _buildVideoSurface(VideoPlayerValue value) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
@@ -1272,6 +1342,65 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// 订单信息摘要：展示一行关键内容，点按查看完整订单信息。
+class _OrderInfoSummary extends StatelessWidget {
+  const _OrderInfoSummary({required this.info, required this.onTap});
+
+  final OrderInfo info;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final bool warning = info.hasRefundWarning;
+    return InkWell(
+      key: const Key('playback-order-info'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: <Widget>[
+            Icon(
+              Icons.receipt_long_outlined,
+              size: 18,
+              color: warning ? colors.error : colors.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                info.summary,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: warning ? colors.error : colors.onSurface,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '查看',
+              style: TextStyle(
+                color: colors.onSurfaceVariant,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: colors.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

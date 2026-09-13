@@ -1468,6 +1468,13 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                                       : null,
                                   remoteHeaders: widget.remotePlaybackHeaders,
                                   backedUpOffline: completedBackupJob != null,
+                                  sourceLabel: _recordingSourceLabel(item),
+                                  backedUp:
+                                      (remoteAvailable &&
+                                          _isRemoteFromThisDevice(
+                                            item.remote!,
+                                          )) ||
+                                      completedBackupJob != null,
                                   remoteClipService: localAvailable
                                       ? null
                                       : item.remote == null
