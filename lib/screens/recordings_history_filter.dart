@@ -89,12 +89,20 @@ String recordingSourceDeviceLabel(
   return name.isEmpty ? '外接设备' : name;
 }
 
-/// 组装来源筛选项：固定项在前，随后按设备分别列出。
+/// 来源筛选在界面上需要的东西：可选项，以及当前项的显示名。
+typedef RecordingSourceFilterPresentation = ({
+  List<RecordingSourceOption> options,
+  String label,
+});
+
+/// 组装筛选项并解析当前项的显示名。
 ///
-/// 设备项来自当前可见录像，所以只会出现真的存在录像的来源；主机（本机）
-/// 与各从机各自一项，不再用"电脑录像"把多台机器混在一起。
-List<RecordingSourceOption> recordingSourceOptions({
+/// 设备项来自当前远端录像，只列出真的有录像的来源；主机（本机）与各从机
+/// 各自一项，不再用"电脑录像"把多台机器混在一起。设备键优先用设备 ID，
+/// 避免同名设备相互串拢。
+RecordingSourceFilterPresentation recordingSourceFilterPresentation({
   required Iterable<RemoteRecording> remoteRecordings,
+  required RecordingSourceFilter current,
   String pairedComputerName = '',
 }) {
   final Map<String, String> labels = <String, String>{};
@@ -113,13 +121,19 @@ List<RecordingSourceOption> recordingSourceOptions({
   }
   final List<String> keys = labels.keys.toList()
     ..sort((String a, String b) => labels[a]!.compareTo(labels[b]!));
-  return <RecordingSourceOption>[
-    (filter: const RecordingSourceFilter.all(), label: '全部来源'),
-    (filter: const RecordingSourceFilter.local(), label: '本地'),
-    (filter: const RecordingSourceFilter.backedUp(), label: '已备份'),
-    for (final String key in keys)
-      (filter: RecordingSourceFilter.device(key), label: labels[key]!),
-  ];
+  return (
+    options: <RecordingSourceOption>[
+      (filter: const RecordingSourceFilter.all(), label: '全部来源'),
+      (filter: const RecordingSourceFilter.local(), label: '本地'),
+      (filter: const RecordingSourceFilter.backedUp(), label: '已备份'),
+      for (final String key in keys)
+        (filter: RecordingSourceFilter.device(key), label: labels[key]!),
+    ],
+    label: recordingHistorySourceFilterLabel(
+      current,
+      deviceLabel: labels[current.deviceKey],
+    ),
+  );
 }
 
 enum RecordingHistoryDatePreset { all, today, last7Days, last30Days, custom }

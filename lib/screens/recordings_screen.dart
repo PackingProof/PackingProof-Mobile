@@ -806,24 +806,13 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _onSearchChanged(value);
   }
 
-  /// 当前设备筛选项对应的显示名，用于筛选按钮上的文字。
-  String? get _sourceFilterDeviceLabel {
-    final String? key = _sourceFilter.deviceKey;
-    if (key == null) return null;
-    for (final RemoteRecording remote in _remoteRecordings) {
-      if (recordingSourceDeviceKey(
-            sourceDeviceId: remote.sourceDeviceId,
-            sourceDeviceName: remote.sourceDeviceName,
-          ) ==
-          key) {
-        return recordingSourceDeviceLabel(
-          remote,
-          pairedComputerName: _backupSnapshot.endpoint?.computerName ?? '',
-        );
-      }
-    }
-    return null;
-  }
+  /// 来源筛选项与当前显示名，筛选按钮与筛选面板共用。
+  RecordingSourceFilterPresentation get _sourceFilterPresentation =>
+      recordingSourceFilterPresentation(
+        remoteRecordings: _remoteRecordings,
+        current: _sourceFilter,
+        pairedComputerName: _backupSnapshot.endpoint?.computerName ?? '',
+      );
 
   Future<void> _showSourceFilter() async {
     FocusManager.instance.primaryFocus?.unfocus();
@@ -833,10 +822,8 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     var mode = _operationFilter;
     // 来源按实际来源设备列出：主机（电脑本机）之外，各从机单独一项，
     // 否则"电脑录像"会把所有从机的录像混在一起，无法按机器筛选。
-    final List<RecordingSourceOption> options = recordingSourceOptions(
-      remoteRecordings: _remoteRecordings,
-      pairedComputerName: _backupSnapshot.endpoint?.computerName ?? '',
-    );
+    final List<RecordingSourceOption> options =
+        _sourceFilterPresentation.options;
     final applied = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
@@ -1305,10 +1292,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                           ),
                           label: Text(
                             [
-                              recordingHistorySourceFilterLabel(
-                                _sourceFilter,
-                                deviceLabel: _sourceFilterDeviceLabel,
-                              ),
+                              _sourceFilterPresentation.label,
                               if (_operationFilter != null)
                                 _operationFilter!.label,
                             ].join(' · '),

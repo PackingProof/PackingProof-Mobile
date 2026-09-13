@@ -235,6 +235,8 @@ class LanBackupHostLocatorService implements LanBackupHostLocator {
       try {
         return _LocateProbeResult(host: await override(uri));
       } on Object {
+        // broad-catch: 注入的探测实现（测试或替换实现）连不上时一律按传输失败
+        // 处理，让调用方用更大的预算重试；不向上抛，避免定位流程直接失败。
         return const _LocateProbeResult(transportFailed: true);
       }
     }

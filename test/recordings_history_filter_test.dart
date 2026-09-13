@@ -180,26 +180,29 @@ void main() {
 
   test('来源筛选按设备分别列出，主机与从机不再混在一起', () {
     final DateTime now = DateTime(2026, 9, 13);
-    final List<RecordingSourceOption> options = recordingSourceOptions(
-      pairedComputerName: '电脑1',
-      remoteRecordings: <RemoteRecording>[
-        _remote(
-          id: 1,
-          code: 'H1',
-          startedAt: now,
-          sourceDeviceId: 'host-id',
-          sourceType: 'pc',
-          sourceDeviceName: '电脑1',
-        ),
-        _remote(
-          id: 2,
-          code: 'S1',
-          startedAt: now,
-          sourceDeviceId: 'slave-id',
-          sourceDeviceName: '从机2',
-        ),
-      ],
-    );
+    final RecordingSourceFilterPresentation presentation =
+        recordingSourceFilterPresentation(
+          pairedComputerName: '电脑1',
+          current: const RecordingSourceFilter.device('host-id'),
+          remoteRecordings: <RemoteRecording>[
+            _remote(
+              id: 1,
+              code: 'H1',
+              startedAt: now,
+              sourceDeviceId: 'host-id',
+              sourceType: 'pc',
+              sourceDeviceName: '电脑1',
+            ),
+            _remote(
+              id: 2,
+              code: 'S1',
+              startedAt: now,
+              sourceDeviceId: 'slave-id',
+              sourceDeviceName: '从机2',
+            ),
+          ],
+        );
+    final List<RecordingSourceOption> options = presentation.options;
 
     expect(
       options.map((RecordingSourceOption option) => option.label),
@@ -207,21 +210,25 @@ void main() {
     );
     // 设备项的筛选键用设备 ID，避免同名设备相互串拢。
     expect(options.last.filter, const RecordingSourceFilter.device('host-id'));
+    // 筛选按钮上的文字用设备自己的显示名。
+    expect(presentation.label, '电脑1');
   });
 
   test('从机没有名字时给出可识别的来源名', () {
     final DateTime now = DateTime(2026, 9, 13);
-    final List<RecordingSourceOption> options = recordingSourceOptions(
-      remoteRecordings: <RemoteRecording>[
-        _remote(
-          id: 1,
-          code: 'S1',
-          startedAt: now,
-          sourceDeviceId: 'slave-id',
-          sourceDeviceName: '',
-        ),
-      ],
-    );
+    final List<RecordingSourceOption> options =
+        recordingSourceFilterPresentation(
+          current: const RecordingSourceFilter.all(),
+          remoteRecordings: <RemoteRecording>[
+            _remote(
+              id: 1,
+              code: 'S1',
+              startedAt: now,
+              sourceDeviceId: 'slave-id',
+              sourceDeviceName: '',
+            ),
+          ],
+        ).options;
 
     expect(
       options.map((RecordingSourceOption option) => option.label),
@@ -231,19 +238,21 @@ void main() {
 
   test('主机没有名字时回退到已配对电脑名', () {
     final DateTime now = DateTime(2026, 9, 13);
-    final List<RecordingSourceOption> options = recordingSourceOptions(
-      pairedComputerName: '仓库电脑',
-      remoteRecordings: <RemoteRecording>[
-        _remote(
-          id: 1,
-          code: 'H1',
-          startedAt: now,
-          sourceDeviceId: 'host-id',
-          sourceType: 'pc',
-          sourceDeviceName: '',
-        ),
-      ],
-    );
+    final List<RecordingSourceOption> options =
+        recordingSourceFilterPresentation(
+          pairedComputerName: '仓库电脑',
+          current: const RecordingSourceFilter.all(),
+          remoteRecordings: <RemoteRecording>[
+            _remote(
+              id: 1,
+              code: 'H1',
+              startedAt: now,
+              sourceDeviceId: 'host-id',
+              sourceType: 'pc',
+              sourceDeviceName: '',
+            ),
+          ],
+        ).options;
 
     expect(
       options.map((RecordingSourceOption option) => option.label),
