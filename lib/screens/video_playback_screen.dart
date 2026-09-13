@@ -1184,10 +1184,12 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     final String source = widget.sourceLabel?.trim().isNotEmpty == true
         ? widget.sourceLabel!.trim()
         : (remote ? '电脑' : '手机');
-    final List<String> metadata = <String>[
-      _session.operationMode.label,
+    final List<String> summary = <String>[
       formatRecordingDuration(_session.duration),
       if (_fileSizeBytes != null) formatRecordingSize(_fileSizeBytes!),
+    ];
+    final List<String> tags = <String>[
+      _session.operationMode.label,
       if (formatRecordingResolution(
             _video.value.isInitialized ? _video.value.size : null,
           )
@@ -1202,7 +1204,8 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
       code: _session.displayCode,
       codeCopyable: _session.markers.isNotEmpty,
       recordedAt: formatRecordingTime(_session.startedAt),
-      metadata: metadata,
+      summary: summary,
+      tags: tags,
       source: source,
       backupLabel: backedUp ? '已备份到电脑' : '未备份，仅在本机',
       backupHighlighted: !backedUp,

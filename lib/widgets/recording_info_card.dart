@@ -11,7 +11,8 @@ class RecordingInfoCard extends StatelessWidget {
     required this.code,
     required this.codeCopyable,
     required this.recordedAt,
-    required this.metadata,
+    this.summary = const <String>[],
+    this.tags = const <String>[],
     this.source,
     this.backupLabel,
     this.backupHighlighted = false,
@@ -28,8 +29,11 @@ class RecordingInfoCard extends StatelessWidget {
   /// 录像时间（已是格式化后的文案）。
   final String recordedAt;
 
-  /// 与时长、大小并列的短标签，例如 `00:45`、`12.3 MB`。
-  final List<String> metadata;
+  /// 与录像时间同一行的读数，例如 `00:45`、`12.3 MB`：都属于"这段录像多大多久"。
+  final List<String> summary;
+
+  /// 归类性质的短标签，例如 `发货`、`1080p`、`H.265`。
+  final List<String> tags;
 
   /// 来源，例如「手机」「仓库电脑」。
   final String? source;
@@ -47,6 +51,13 @@ class RecordingInfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
     final String trimmedSource = source?.trim() ?? '';
+    final List<String> readings = <String>[
+      '$recordedAt 录制',
+      ...summary.where((String value) => value.trim().isNotEmpty),
+    ];
+    final List<String> visibleTags = tags
+        .where((String value) => value.trim().isNotEmpty)
+        .toList(growable: false);
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceContainerHighest.withValues(alpha: 0.45),
@@ -81,21 +92,32 @@ class RecordingInfoCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            Text(
-              '$recordedAt 录制',
-              style: TextStyle(
-                color: colors.onSurfaceVariant,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+            // 录像时间、时长、大小都是"读数"，排在同一行；归类性质的标签
+            // 另起一行，避免一行里混着两种不同性质的短标签。
+            Wrap(
+              spacing: 10,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: <Widget>[
+                for (final String reading in readings)
+                  Text(
+                    reading,
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
             ),
-            if (metadata.isNotEmpty) ...<Widget>[
+            if (visibleTags.isNotEmpty) ...<Widget>[
               const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
                 runSpacing: 6,
                 children: <Widget>[
-                  for (final String item in metadata) _MetadataChip(text: item),
+                  for (final String tag in visibleTags)
+                    _MetadataChip(text: tag),
                 ],
               ),
             ],

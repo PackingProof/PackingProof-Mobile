@@ -76,7 +76,8 @@ void main() {
             code: 'JD0001',
             codeCopyable: true,
             recordedAt: '9月13日 19:19',
-            metadata: <String>['00:45', '12.3 MB'],
+            summary: <String>['00:45', '12.3 MB'],
+            tags: <String>['发货', '1080p'],
             source: '仓库电脑',
             backupLabel: '已备份到电脑',
           ),
@@ -90,6 +91,23 @@ void main() {
     expect(find.text('12.3 MB'), findsOneWidget);
     expect(find.text('仓库电脑'), findsOneWidget);
     expect(find.text('已备份到电脑'), findsOneWidget);
+
+    // 录像时间与时长、大小同排；归类标签单独一行，排在读数下面。
+    final double readingsY = tester
+        .getRect(find.text('9月13日 19:19 录制'))
+        .center
+        .dy;
+    expect(tester.getRect(find.text('00:45')).center.dy, closeTo(readingsY, 1));
+    expect(
+      tester.getRect(find.text('12.3 MB')).center.dy,
+      closeTo(readingsY, 1),
+    );
+    expect(tester.getRect(find.text('发货')).top, greaterThan(readingsY));
+    expect(
+      tester.getRect(find.text('1080p')).center.dy,
+      closeTo(tester.getRect(find.text('发货')).center.dy, 1),
+    );
+
     // 这些标注由位置与形态表达，不再出现在卡片里。
     for (final String label in <String>['来源', '录制时间', '时长', '大小', '备份', '操作']) {
       expect(find.text(label), findsNothing, reason: '不应出现标注 $label');
@@ -117,7 +135,7 @@ void main() {
             code: 'JD0001',
             codeCopyable: true,
             recordedAt: '9月13日 19:19',
-            metadata: <String>['00:45'],
+            summary: <String>['00:45'],
           ),
         ),
       ),
@@ -139,7 +157,7 @@ void main() {
             code: '未识别面单',
             codeCopyable: false,
             recordedAt: '9月13日 19:19',
-            metadata: <String>['00:45'],
+            summary: <String>['00:45'],
           ),
         ),
       ),
@@ -157,7 +175,7 @@ void main() {
             code: 'JD0001',
             codeCopyable: true,
             recordedAt: '9月13日 19:19',
-            metadata: <String>['00:45'],
+            summary: <String>['00:45'],
             backupLabel: '未备份，仅在本机',
             backupHighlighted: true,
           ),
@@ -178,7 +196,7 @@ void main() {
             code: 'JD0001',
             codeCopyable: true,
             recordedAt: '9月13日 19:19',
-            metadata: const <String>['00:45'],
+            summary: const <String>['00:45'],
             trailing: TextButton(
               onPressed: () => taps++,
               child: const Text('查看订单'),
