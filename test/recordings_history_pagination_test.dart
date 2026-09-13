@@ -45,16 +45,17 @@ void main() {
           remoteDeviceTotal: 3,
         );
 
-    expect(estimate(RecordingSourceFilter.local), 4);
-    expect(estimate(RecordingSourceFilter.backedUp), 3);
-    expect(estimate(RecordingSourceFilter.computer), 6);
-    expect(estimate(RecordingSourceFilter.all), 11);
+    expect(estimate(const RecordingSourceFilter.local()), 4);
+    expect(estimate(const RecordingSourceFilter.backedUp()), 3);
+    // 单台设备的估算只能给出上界（本地逻辑数 + 远端总数），精确数量由实际可见项决定。
+    expect(estimate(const RecordingSourceFilter.device('device-1')), 14);
+    expect(estimate(const RecordingSourceFilter.all()), 11);
   });
 
   test('全部来源估算不会扣除超过本地逻辑总数的本机远端数', () {
     expect(
       estimateRecordingHistoryCount(
-        sourceFilter: RecordingSourceFilter.all,
+        sourceFilter: const RecordingSourceFilter.all(),
         localCount: 2,
         localLogicalCount: 2,
         remoteTotal: 9,
@@ -120,7 +121,7 @@ void main() {
   test('分页策略组合估算、页码裁剪和当前页切片', () {
     final RecordingHistoryPagination<int> pagination =
         buildRecordingHistoryPagination(
-          sourceFilter: RecordingSourceFilter.all,
+          sourceFilter: const RecordingSourceFilter.all(),
           localCount: 3,
           localLogicalCount: 6,
           remoteTotal: 5,

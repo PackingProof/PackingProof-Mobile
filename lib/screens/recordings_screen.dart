@@ -372,7 +372,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
   @override
   RecordingOperationMode? _operationFilter;
 
-  RecordingSourceFilter _sourceFilter = RecordingSourceFilter.all;
+  RecordingSourceFilter _sourceFilter = const RecordingSourceFilter.all();
   RecordingHistoryDatePreset _datePreset = RecordingHistoryDatePreset.all;
   DateTimeRange? _customDateRange;
 
@@ -806,12 +806,37 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _onSearchChanged(value);
   }
 
+  /// 当前设备筛选项对应的显示名，用于筛选按钮上的文字。
+  String? get _sourceFilterDeviceLabel {
+    final String? key = _sourceFilter.deviceKey;
+    if (key == null) return null;
+    for (final RemoteRecording remote in _remoteRecordings) {
+      if (recordingSourceDeviceKey(
+            sourceDeviceId: remote.sourceDeviceId,
+            sourceDeviceName: remote.sourceDeviceName,
+          ) ==
+          key) {
+        return recordingSourceDeviceLabel(
+          remote,
+          pairedComputerName: _backupSnapshot.endpoint?.computerName ?? '',
+        );
+      }
+    }
+    return null;
+  }
+
   Future<void> _showSourceFilter() async {
     FocusManager.instance.primaryFocus?.unfocus();
     await Future<void>.delayed(const Duration(milliseconds: 120));
     if (!mounted) return;
     var source = _sourceFilter;
     var mode = _operationFilter;
+    // 来源按实际来源设备列出：主机（电脑本机）之外，各从机单独一项，
+    // 否则"电脑录像"会把所有从机的录像混在一起，无法按机器筛选。
+    final List<RecordingSourceOption> options = recordingSourceOptions(
+      remoteRecordings: _remoteRecordings,
+      pairedComputerName: _backupSnapshot.endpoint?.computerName ?? '',
+    );
     final applied = await showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
@@ -829,11 +854,11 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                 Wrap(
                   spacing: 8,
                   children: [
-                    for (final value in RecordingSourceFilter.values)
+                    for (final RecordingSourceOption option in options)
                       ChoiceChip(
-                        label: Text(recordingHistorySourceFilterLabel(value)),
-                        selected: source == value,
-                        onSelected: (_) => update(() => source = value),
+                        label: Text(option.label),
+                        selected: source == option.filter,
+                        onSelected: (_) => update(() => source = option.filter),
                       ),
                   ],
                 ),
@@ -1083,7 +1108,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
           pageSize: _historyPageSize,
           firstLoadedPage:
               _localPages.isNotEmpty &&
-                  (_sourceFilter == RecordingSourceFilter.local ||
+                  (_sourceFilter.kind == RecordingSourceFilterKind.local ||
                       _remoteRecordings.isEmpty)
               ? (_localPages.keys.reduce((int a, int b) => a < b ? a : b) - 1)
               : 0,
@@ -1280,13 +1305,17 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                           ),
                           label: Text(
                             [
-                              recordingHistorySourceFilterLabel(_sourceFilter),
+                              recordingHistorySourceFilterLabel(
+                                _sourceFilter,
+                                deviceLabel: _sourceFilterDeviceLabel,
+                              ),
                               if (_operationFilter != null)
                                 _operationFilter!.label,
                             ].join(' · '),
                           ),
                           selected:
-                              _sourceFilter != RecordingSourceFilter.all ||
+                              _sourceFilter.kind !=
+                                  RecordingSourceFilterKind.all ||
                               _operationFilter != null,
                           showCheckmark: false,
                           onSelected: (_) => _showSourceFilter(),

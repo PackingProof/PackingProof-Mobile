@@ -32,7 +32,7 @@ void main() {
       remoteRecordings: [remote, shipping],
       hiddenRemoteIds: {},
       localRecordingPaths: {local.filePath},
-      sourceFilter: RecordingSourceFilter.all,
+      sourceFilter: const RecordingSourceFilter.all(),
       isRemoteFromThisDevice: (_) => false,
       isLocalBackedUp: (_) => false,
       operationMode: RecordingOperationMode.returnGoods,
@@ -134,7 +134,7 @@ void main() {
       ],
       hiddenRemoteIds: <int>{3},
       localRecordingPaths: <String>{pairedLocal.filePath},
-      sourceFilter: RecordingSourceFilter.all,
+      sourceFilter: const RecordingSourceFilter.all(),
       isRemoteFromThisDevice: (RemoteRecording remote) =>
           remote.sourceDeviceId == 'this-device',
       isLocalBackedUp: (RecordingSession local) => local.id == 'missing-local',
@@ -162,11 +162,92 @@ void main() {
               local.id == 'missing-local',
         );
 
-    expect(filtered(RecordingSourceFilter.local).single.local, pairedLocal);
-    expect(filtered(RecordingSourceFilter.backedUp), hasLength(2));
     expect(
-      filtered(RecordingSourceFilter.computer).single.remote,
+      filtered(const RecordingSourceFilter.local()).single.local,
+      pairedLocal,
+    );
+    expect(filtered(const RecordingSourceFilter.backedUp()), hasLength(2));
+    // 按来源设备筛选：只留下该设备的录像，不再把主机与从机混在一起。
+    expect(
+      filtered(const RecordingSourceFilter.device('computer')).single.remote,
       computerRemote,
+    );
+    expect(
+      filtered(const RecordingSourceFilter.device('other-device')),
+      isEmpty,
+    );
+  });
+
+  test('来源筛选按设备分别列出，主机与从机不再混在一起', () {
+    final DateTime now = DateTime(2026, 9, 13);
+    final List<RecordingSourceOption> options = recordingSourceOptions(
+      pairedComputerName: '电脑1',
+      remoteRecordings: <RemoteRecording>[
+        _remote(
+          id: 1,
+          code: 'H1',
+          startedAt: now,
+          sourceDeviceId: 'host-id',
+          sourceType: 'pc',
+          sourceDeviceName: '电脑1',
+        ),
+        _remote(
+          id: 2,
+          code: 'S1',
+          startedAt: now,
+          sourceDeviceId: 'slave-id',
+          sourceDeviceName: '从机2',
+        ),
+      ],
+    );
+
+    expect(
+      options.map((RecordingSourceOption option) => option.label),
+      <String>['全部来源', '本地', '已备份', '从机2', '电脑1'],
+    );
+    // 设备项的筛选键用设备 ID，避免同名设备相互串拢。
+    expect(options.last.filter, const RecordingSourceFilter.device('host-id'));
+  });
+
+  test('从机没有名字时给出可识别的来源名', () {
+    final DateTime now = DateTime(2026, 9, 13);
+    final List<RecordingSourceOption> options = recordingSourceOptions(
+      remoteRecordings: <RemoteRecording>[
+        _remote(
+          id: 1,
+          code: 'S1',
+          startedAt: now,
+          sourceDeviceId: 'slave-id',
+          sourceDeviceName: '',
+        ),
+      ],
+    );
+
+    expect(
+      options.map((RecordingSourceOption option) => option.label),
+      contains('外接设备'),
+    );
+  });
+
+  test('主机没有名字时回退到已配对电脑名', () {
+    final DateTime now = DateTime(2026, 9, 13);
+    final List<RecordingSourceOption> options = recordingSourceOptions(
+      pairedComputerName: '仓库电脑',
+      remoteRecordings: <RemoteRecording>[
+        _remote(
+          id: 1,
+          code: 'H1',
+          startedAt: now,
+          sourceDeviceId: 'host-id',
+          sourceType: 'pc',
+          sourceDeviceName: '',
+        ),
+      ],
+    );
+
+    expect(
+      options.map((RecordingSourceOption option) => option.label),
+      contains('仓库电脑'),
     );
   });
 }
@@ -194,6 +275,8 @@ RemoteRecording _remote({
   required DateTime startedAt,
   required String sourceDeviceId,
   String sourceSessionId = '',
+  String sourceType = 'external',
+  String sourceDeviceName = '',
   RecordingOperationMode operationMode = RecordingOperationMode.shipping,
 }) => RemoteRecording(
   id: id,
@@ -201,9 +284,9 @@ RemoteRecording _remote({
   trackingNumber: code,
   startedAt: startedAt,
   duration: const Duration(seconds: 8),
-  sourceType: 'external',
+  sourceType: sourceType,
   sourceDeviceId: sourceDeviceId,
-  sourceDeviceName: '',
+  sourceDeviceName: sourceDeviceName,
   sourceSessionId: sourceSessionId,
   contentSha256: '',
   status: RemoteRecordingStatus.available,

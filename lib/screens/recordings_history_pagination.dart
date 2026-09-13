@@ -34,11 +34,11 @@ int estimateRecordingHistoryCount({
   required int localLogicalCount,
   required int remoteTotal,
   required int remoteDeviceTotal,
-}) => switch (sourceFilter) {
-  RecordingSourceFilter.local => localCount,
-  RecordingSourceFilter.backedUp => remoteDeviceTotal,
-  RecordingSourceFilter.computer => remoteTotal,
-  RecordingSourceFilter.all =>
+}) => switch (sourceFilter.kind) {
+  RecordingSourceFilterKind.local => localCount,
+  RecordingSourceFilterKind.backedUp => remoteDeviceTotal,
+  RecordingSourceFilterKind.device => localLogicalCount + remoteTotal,
+  RecordingSourceFilterKind.all =>
     localLogicalCount +
         remoteTotal -
         remoteDeviceTotal.clamp(0, localLogicalCount),
