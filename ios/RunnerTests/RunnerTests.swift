@@ -2956,6 +2956,74 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(resumedCounts.started, 1)
   }
 
+  func testCleanupRunnerStaysIdleInBackgroundAndResumesOnForeground() async throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL, defaults: fixture.defaults
+    )
+    let tracker = AsyncMaintenanceTracker()
+    let resumed = expectation(description: "回到前台后补跑清理")
+    let api = makeBackupApi(
+      defaults: fixture.defaults,
+      store: store,
+      cleanupOperationOverride: {
+        _ = await tracker.begin()
+        await tracker.finish()
+        resumed.fulfill()
+      },
+      cleanupWorkPauseNanoseconds: 5_000_000,
+      cleanupSliceIntervalNanoseconds: 1_000_000,
+      hostForeground: false
+    )
+
+    for _ in 0..<1_000 { api.triggerCleanupForTesting() }
+    try await Task.sleep(nanoseconds: 50_000_000)
+    let backgroundCounts = await tracker.counts()
+    XCTAssertEqual(backgroundCounts.started, 0)
+
+    api.onHostForeground()
+    await fulfillment(of: [resumed], timeout: 2)
+    let foregroundCounts = await tracker.counts()
+    XCTAssertEqual(foregroundCounts.started, 1)
+    XCTAssertEqual(foregroundCounts.maximumActive, 1)
+  }
+
+  func testRunningCleanupRunnerStopsAfterEnteringBackground() async throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL, defaults: fixture.defaults
+    )
+    let tracker = AsyncMaintenanceTracker()
+    let backgrounded = expectation(description: "清理进行中切到后台")
+    final class ApiBox: @unchecked Sendable { weak var api: IosBackupHostApi? }
+    let box = ApiBox()
+    let api = makeBackupApi(
+      defaults: fixture.defaults,
+      store: store,
+      cleanupOperationOverride: {
+        _ = await tracker.begin()
+        await tracker.finish()
+        // 持续请求下一片，若不按前台状态收敛 runner 就会一直轮询下去
+        box.api?.triggerCleanupForTesting()
+        if await tracker.counts().started == 1 {
+          box.api?.onHostBackground()
+          backgrounded.fulfill()
+        }
+      },
+      cleanupWorkPauseNanoseconds: 5_000_000,
+      cleanupSliceIntervalNanoseconds: 1_000_000
+    )
+    box.api = api
+
+    api.triggerCleanupForTesting()
+    await fulfillment(of: [backgrounded], timeout: 2)
+    try await Task.sleep(nanoseconds: 100_000_000)
+    let counts = await tracker.counts()
+    XCTAssertLessThanOrEqual(counts.started, 2)
+  }
+
   func testUnconfiguredBackupSkipsTenThousandCleanupAndSummaryTriggers()
     async throws
   {

@@ -539,6 +539,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private var cleanupRetryAttempt = 0
   private var cleanupRunnerToken: UInt64 = 0
   private var cleanupRunnerTask: Task<Void, Never>?
+  private var cleanupDeferredByBackground = false
   private var lastCleanupAt = Date.distantPast
   private let emitLock = NSLock()
   private var summaryEventInFlight = false
@@ -1825,6 +1826,12 @@ final class IosBackupHostApi: BackupNativeHostApi {
     hostForeground = true
     hostLifecycleLock.unlock()
     requestUploadDispatch()
+    let deferred = withCleanupLock { () -> Bool in
+      let pending = cleanupDeferredByBackground
+      cleanupDeferredByBackground = false
+      return pending
+    }
+    if deferred { triggerCleanup() }
   }
 
   func onHostBackground() {
@@ -2637,6 +2644,12 @@ final class IosBackupHostApi: BackupNativeHostApi {
       withCleanupLock { lastCleanupAt = Date() }
       return
     }
+    // 后台进程不做清理扫描：远端确认要联网，上传本身也只在前台跑，
+    // 后台继续轮询只会持续占用 CPU，被 iOS 以资源超限杀掉。
+    guard isHostForeground() else {
+      withCleanupLock { cleanupDeferredByBackground = true }
+      return
+    }
     withCleanupLock {
       guard cleanupRunnerTask == nil else {
         cleanupRequested = true
@@ -2680,6 +2693,11 @@ final class IosBackupHostApi: BackupNativeHostApi {
     let workPause = cleanupWorkPauseNanoseconds
     cleanupRunnerTask = Task.detached(priority: .utility) { [weak self] in
       while !Task.isCancelled {
+        guard let foreground = self?.isHostForeground() else { return }
+        guard foreground else {
+          self?.deferCleanupForBackground(token: token)
+          return
+        }
         while activityState.isActive {
           do {
             try await Task.sleep(nanoseconds: workPause)
@@ -2779,6 +2797,15 @@ final class IosBackupHostApi: BackupNativeHostApi {
     cleanupRunnerToken &+= 1
     cleanupRunnerTask = nil
     cleanupRunning = false
+  }
+
+  /// 进入后台时结束当前 runner，并记下回到前台要补跑的清理。
+  private func deferCleanupForBackground(token: UInt64) {
+    withCleanupLock {
+      guard cleanupRunnerToken == token, cleanupRunnerTask != nil else { return }
+      cleanupDeferredByBackground = true
+      finalizeCleanupRunnerUnlocked(token: token)
+    }
   }
 
   private func finishCleanupRunner(token: UInt64) {
