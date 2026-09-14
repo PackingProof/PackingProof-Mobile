@@ -8,11 +8,13 @@
 
 | 脚本 | 机器 | 作用 |
 | --- | --- | --- |
-| `Tools/Check-ReleasePrereqs.sh` | 两台 | 只读自检：`.env`、签名目录、TestFlight 凭据、`gh` 登录态与 Gitee 令牌、工具链 |
+| `Tools/Check-ReleasePrereqs.ps1` | Windows | 只读自检（PowerShell 7）：`.env`、签名目录、`gh` 登录态与 Gitee 令牌、工具链 |
+| `Tools/Check-ReleasePrereqs.sh` | Mac | 只读自检：TestFlight 凭据、`altool`、工具链；渠道登录态只提示 |
 | `Tools/test-ci.sh` | 两台 | 本地 CI 门禁，各跑自己那一半 |
 | `Tools/Publish-Android.ps1` | Windows | 构建并校验正式签名 APK |
 | `Tools/Publish-iOS.sh` | Mac | 构建并校验 App Store IPA（不上传） |
-| `Tools/Publish-Releases.sh` | Mac | 创建 GitHub + Gitee Release 并上传 APK |
+| `双击发布Release.bat` | Windows | 发布入口，调用 `Tools/Publish-Releases.ps1` |
+| `Tools/Publish-Releases.ps1` | Windows | 创建 GitHub + Gitee Release 并上传 APK |
 | `Tools/Upload-TestFlight.sh` | Mac | 上传 IPA 到 TestFlight |
 
 本机配置集中在仓库根目录 `.env`，模板是已跟踪的 `.env.example`；真实凭据只存在于本机与持有发布权限的人手里，仓库内不保存。
@@ -39,16 +41,16 @@ dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk
 
 固化为以下顺序，任一步失败都不得继续：
 
-0. 两台机器各跑一次 `./Tools/Check-ReleasePrereqs.sh` 自检前置条件（`.env` 配置、签名目录、TestFlight 凭据、`gh` 登录态与 Gitee 令牌、工具链）；有阻断项先解决，不要等构建到一半才发现凭据不齐
+0. 两台机器各自自检前置条件：Windows 编译机用 PowerShell 7 跑 `pwsh -NoProfile -File Tools\Check-ReleasePrereqs.ps1`，Mac 跑 `./Tools/Check-ReleasePrereqs.sh`；有阻断项先解决，不要等构建到一半才发现凭据不齐。渠道登录态在 Windows 编译机上是硬性要求（Release 在那里创建），Mac 上只提示
 1. 提交全部改动，确认工作区干净，版本号已更新
 2. 两台机器各跑一次本地 CI：`./Tools/test-ci.sh`（Mac 跑 golden/RunnerTests/iOS 构建那一半，Windows 编译机跑 Android 原生测试那一半），跳过项必须在另一台补齐
 3. 建本地精确标签 `v<versionName>+<versionCode>`
 4. 以该标签身份执行发布构建：Android 在 Windows 编译机执行 `Tools/Publish-Android.ps1`，iOS 在 Mac 执行 `Tools/Publish-iOS.sh`
 5. 构建与校验全部通过后，再推送 `main` 与标签到 GitHub 和 Gitee
-6. 取回 APK 到 Mac 的 `dist/android/` 并核对 SHA256，执行 `./Tools/Publish-Releases.sh <发布笔记文件> --title "<一句话内容>"` 一次性创建 GitHub 与 Gitee Release 并上传 APK
+6. 在 Windows 编译机上直接创建 Release：APK 已在 `dist/android/`，先按 `SHA256SUMS.txt` 核对，再双击 `双击发布Release.bat` 或执行 `pwsh -NoProfile -File Tools\Publish-Releases.ps1 <发布笔记文件> --title "<一句话内容>"`，一次性创建 GitHub 与 Gitee Release 并上传 APK，不需要把 APK 拷到 Mac
 7. iOS 执行 `./Tools/Upload-TestFlight.sh` 上传 TestFlight，不附 IPA
 
-Android 正式发布在局域网 Windows 编译机执行 `Tools/Publish-Android.ps1`，签名目录来自仓库外配置。`.github/workflows/release.yml` 保留为手动触发（`workflow_dispatch`）的备用通道，日常发布不走它。
+Android 正式发布在局域网 Windows 编译机执行 `Tools/Publish-Android.ps1`，Release 也由这台机器创建，签名目录来自仓库外配置。Mac 只负责 golden/RunnerTests/iOS 构建与 TestFlight 上传。`.github/workflows/release.yml` 保留为手动触发（`workflow_dispatch`）的备用通道，日常发布不走它。
 
 ## 发布前验证与审计
 
@@ -97,15 +99,15 @@ build-manifest.json
 
 GitHub/Gitee Release 只上传 Android APK。iOS 不再上传 IPA，只发布到 TestFlight。`SHA256SUMS.txt` 和 `build-manifest.json` 仅用于本地发布门禁与问题追踪，不作为 Release 附件。
 
-两个平台统一走 `Tools/Publish-Releases.sh`，它按当前精确 tag 找 `dist/android/` 下的 APK，先建 GitHub Release（连不上时自动重试），再建 Gitee Release 并上传同一个 APK；已存在的 Release 会跳过创建，可安全重跑：
+两个平台统一走 Windows 编译机上的 `Tools/Publish-Releases.ps1`（`Tools/Publish-Releases.sh` 是 Mac 上的等价实现，改动其一时必须同步另一处），它按当前精确 tag 找 `dist/android/` 下的 APK，先建 GitHub Release（连不上时自动重试），再建 Gitee Release 并上传同一个 APK；已存在的 Release 会跳过创建，可安全重跑：
 
-```bash
-./Tools/Publish-Releases.sh dist/android/RELEASE_NOTES-v<versionName>+<versionCode>.md \
+```powershell
+pwsh -NoProfile -File Tools\Publish-Releases.ps1 dist\android\RELEASE_NOTES-v<versionName>+<versionCode>.md `
   --title "<一句话内容>" [--prerelease]
 ```
 
-- Gitee 令牌固定取仓库根目录 `.env` 的 `GITEE_TOKEN`，由脚本导出成同名环境变量后交给 CLI，脚本不打印也不落盘；CLI 自己保存的登录态只作回退，而且它按身份字符串各存一份、`gitee auth status` 在令牌失效时仍返回 0，不能用来判断可用性。GitHub 登录态由 `gh` 自己维护
-- `Tools/Publish-Releases.sh` 在创建任何 Release 之前会先校验 Gitee 令牌，认证不可用时直接失败并指出令牌来源，避免 GitHub 建好之后才在 Gitee 这一步断掉
+- Gitee 令牌固定取仓库根目录 `.env` 的 `GITEE_TOKEN`，由脚本注入成同名环境变量后交给 CLI，脚本不打印也不落盘；CLI 自己保存的登录态只作回退，而且它按身份字符串各存一份、`gitee auth status` 在令牌失效时仍返回 0，不能用来判断可用性。GitHub 登录态由 `gh` 自己维护
+- 两个发布脚本在创建任何 Release 之前都会先校验 Gitee 令牌，认证不可用时直接失败并指出令牌来源，避免 GitHub 建好之后才在 Gitee 这一步断掉
 - Gitee 会把附件名里的 `+` 显示成空格，属于平台行为，不是构建问题
 - 建 Gitee Release 必须带 `--target main`，否则接口会报 `target_commitish is missing`
 

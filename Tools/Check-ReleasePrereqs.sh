@@ -4,8 +4,9 @@
 #   ./Tools/Check-ReleasePrereqs.sh
 #
 # 只读检查，不构建、不上传、不修改任何东西，也不打印凭据内容。
-# 按当前机器（Mac / Windows 编译机）分别检查它负责的那一半，
-# 另一半的缺失只提示、不算失败。
+# 按当前机器（Mac / Windows 编译机）分别检查它负责的那一半：
+# 签名与 Release 渠道登录态在 Windows 编译机上是阻断项（Release 在那里创建），
+# TestFlight 凭据在 Mac 上是阻断项；另一半的缺失只提示、不算失败。
 #
 # 完整发布顺序见 docs/android-release.md。
 
@@ -126,12 +127,12 @@ if [ "$HOST" = "mac" ]; then
 fi
 
 echo ""
-echo "== 发布渠道登录态（Tools/Publish-Releases.sh 在 Mac 上执行）=="
-# Release 统一从 Mac 创建，Windows 编译机只负责构建 APK，缺 CLI 不阻断。
-if [ "$HOST" = "mac" ]; then
+echo "== 发布渠道登录态（Tools/Publish-Releases.sh 在 Windows 编译机上执行）=="
+# Release 在 Windows 编译机创建：APK 与发布笔记就在那台机器上，不需要跨机拷贝。
+if [ "$HOST" = "windows" ]; then
   channel_issue() { fail "$1"; }
 else
-  channel_issue() { warn "$1（Release 由 Mac 创建，属正常）"; }
+  channel_issue() { warn "$1（Release 由 Windows 编译机创建，属正常）"; }
 fi
 
 if command -v gh >/dev/null 2>&1; then
