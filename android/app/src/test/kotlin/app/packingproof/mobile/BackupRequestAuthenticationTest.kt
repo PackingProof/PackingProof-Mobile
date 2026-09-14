@@ -1,6 +1,7 @@
 package app.packingproof.mobile
 
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -38,6 +39,25 @@ class BackupRequestAuthenticationTest {
         ).forEach { (field, value) ->
             assertFalse(field, verifyPersisted(JSONObject(receipt.toString()).put(field, value)))
         }
+    }
+
+    @Test
+    fun signatureHeadersAnnounceAndroidPlatformSoHostCanAssignNickname() {
+        val url = "http://192.168.1.20:5280/api/mobile-backup/capabilities"
+        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+
+        BackupRequestAuthentication.apply(
+            connection,
+            url,
+            "GET",
+            credential,
+            "device-1",
+            ByteArray(0),
+        )
+
+        // 主机按 X-EPM-Device-Platform 分配"安卓N"，缺了它只能落到"从机N"。
+        assertEquals("android", connection.getRequestProperty("X-EPM-Device-Platform"))
+        assertEquals("mobile", connection.getRequestProperty("X-EPM-Device-Kind"))
     }
 
     private fun verifyNetwork(receipt: JSONObject) = BackupRequestAuthentication.verifyReceipt(

@@ -2543,6 +2543,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
     request.setValue(signature, forHTTPHeaderField: "X-EPM-Signature")
     request.setValue(deviceId, forHTTPHeaderField: "X-EPM-Device-Id")
     request.setValue("mobile", forHTTPHeaderField: "X-EPM-Device-Kind")
+    // 主机按平台分配"安卓N/苹果N"昵称，缺了这个头只能落到"从机N"。
+    request.setValue("ios", forHTTPHeaderField: "X-EPM-Device-Platform")
   }
 
   fileprivate static func secretDataValue(_ value: String) -> Data {
