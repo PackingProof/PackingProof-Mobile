@@ -14,6 +14,11 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# shellcheck source=Tools/GiteeAuth.Common.sh
+. "$REPO_ROOT/Tools/GiteeAuth.Common.sh"
+
+GITEE_REPO_SLUG="PackingProof/PackingProof-Mobile"
+
 case "$(uname -s)" in
   Darwin) HOST="mac" ;;
   MINGW* | MSYS* | CYGWIN*) HOST="windows" ;;
@@ -27,13 +32,6 @@ ok()    { echo "  [OK]   $1"; }
 fail()  { echo "  [缺失] $1"; BLOCKERS+=("$1"); }
 warn()  { echo "  [提示] $1"; WARNINGS+=("$1"); }
 
-read_dotenv() {
-  local key="$1"
-  [ -f .env ] || return 0
-  sed -n "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*//p" .env |
-    head -n 1 |
-    sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
-}
 
 echo "发布前置条件自检"
 echo "仓库：${REPO_ROOT}"
@@ -147,10 +145,16 @@ else
 fi
 
 if command -v gitee >/dev/null 2>&1; then
-  if gitee auth status >/dev/null 2>&1; then
-    ok "gitee 已登录"
+  # 令牌固定来自 .env；`gitee auth status` 在令牌失效时仍返回 0，
+  # 所以这里做一次真实只读调用，避免构建完才发现认证不可用。
+  import_gitee_token
+  GITEE_TOKEN_LABEL="${GITEE_TOKEN_SOURCE:-gitee CLI 登录态}"
+  if test_gitee_authentication "$GITEE_REPO_SLUG"; then
+    ok "gitee 令牌可用（来源：${GITEE_TOKEN_LABEL}）"
+  elif [ -n "$GITEE_TOKEN_SOURCE" ]; then
+    channel_issue "gitee 令牌不可用（来源：${GITEE_TOKEN_LABEL}），请核对 .env 的 GITEE_TOKEN"
   else
-    channel_issue "gitee 未登录，执行 gitee auth login --token <token>"
+    channel_issue "gitee 不可用：.env 里没有 GITEE_TOKEN，gitee CLI 登录态也不可用"
   fi
 else
   channel_issue "未安装 gitee CLI，Gitee Release 无法创建"

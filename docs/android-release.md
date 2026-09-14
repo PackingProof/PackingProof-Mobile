@@ -8,7 +8,7 @@
 
 | 脚本 | 机器 | 作用 |
 | --- | --- | --- |
-| `Tools/Check-ReleasePrereqs.sh` | 两台 | 只读自检：`.env`、签名目录、TestFlight 凭据、`gh`/`gitee` 登录态、工具链 |
+| `Tools/Check-ReleasePrereqs.sh` | 两台 | 只读自检：`.env`、签名目录、TestFlight 凭据、`gh` 登录态与 Gitee 令牌、工具链 |
 | `Tools/test-ci.sh` | 两台 | 本地 CI 门禁，各跑自己那一半 |
 | `Tools/Publish-Android.ps1` | Windows | 构建并校验正式签名 APK |
 | `Tools/Publish-iOS.sh` | Mac | 构建并校验 App Store IPA（不上传） |
@@ -39,7 +39,7 @@ dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk
 
 固化为以下顺序，任一步失败都不得继续：
 
-0. 两台机器各跑一次 `./Tools/Check-ReleasePrereqs.sh` 自检前置条件（`.env` 配置、签名目录、TestFlight 凭据、`gh`/`gitee` 登录态、工具链）；有阻断项先解决，不要等构建到一半才发现凭据不齐
+0. 两台机器各跑一次 `./Tools/Check-ReleasePrereqs.sh` 自检前置条件（`.env` 配置、签名目录、TestFlight 凭据、`gh` 登录态与 Gitee 令牌、工具链）；有阻断项先解决，不要等构建到一半才发现凭据不齐
 1. 提交全部改动，确认工作区干净，版本号已更新
 2. 两台机器各跑一次本地 CI：`./Tools/test-ci.sh`（Mac 跑 golden/RunnerTests/iOS 构建那一半，Windows 编译机跑 Android 原生测试那一半），跳过项必须在另一台补齐
 3. 建本地精确标签 `v<versionName>+<versionCode>`
@@ -104,7 +104,8 @@ GitHub/Gitee Release 只上传 Android APK。iOS 不再上传 IPA，只发布到
   --title "<一句话内容>" [--prerelease]
 ```
 
-- GitHub 登录态由 `gh auth status` 维护，Gitee 由 `gitee auth status` 维护，脚本不读也不存这两个平台的令牌
+- Gitee 令牌固定取仓库根目录 `.env` 的 `GITEE_TOKEN`，由脚本导出成同名环境变量后交给 CLI，脚本不打印也不落盘；CLI 自己保存的登录态只作回退，而且它按身份字符串各存一份、`gitee auth status` 在令牌失效时仍返回 0，不能用来判断可用性。GitHub 登录态由 `gh` 自己维护
+- `Tools/Publish-Releases.sh` 在创建任何 Release 之前会先校验 Gitee 令牌，认证不可用时直接失败并指出令牌来源，避免 GitHub 建好之后才在 Gitee 这一步断掉
 - Gitee 会把附件名里的 `+` 显示成空格，属于平台行为，不是构建问题
 - 建 Gitee Release 必须带 `--target main`，否则接口会报 `target_commitish is missing`
 

@@ -7,12 +7,16 @@
 # - 只上传 Android APK，iOS 走 TestFlight（Tools/Upload-TestFlight.sh），不附 IPA
 # - APK 必须已经由 Tools/Publish-Android.ps1 生成在 dist/android/ 下
 # - 标题固定 `v<X.Y.Z+VVVV> <一句话内容>`，两个平台内容保持一致
-# - GitHub 用 gh、Gitee 用 gitee CLI，各自的登录态由 CLI 自己维护，不读凭据
+# - GitHub 用 gh、Gitee 用 gitee CLI；Gitee 令牌固定取 .env 的 GITEE_TOKEN
+#   导出到环境变量后交给 CLI，脚本不打印也不落盘凭据
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
+
+# shellcheck source=Tools/GiteeAuth.Common.sh
+. "$REPO_ROOT/Tools/GiteeAuth.Common.sh"
 
 REPO_SLUG="PackingProof/PackingProof-Mobile"
 
@@ -53,10 +57,24 @@ fi
 TITLE="$TAG"
 [ -n "$TITLE_SUFFIX" ] && TITLE="${TAG} ${TITLE_SUFFIX}"
 
+# Gitee 令牌固定来自 .env；CLI 的登录态可能停在失效的旧身份上，
+# 先做一次真实调用确认可用，避免 GitHub 建好之后才在 Gitee 这一步失败。
+GITEE_TOKEN_SOURCE=''
+import_gitee_token
+if ! test_gitee_authentication "$REPO_SLUG"; then
+  if [ -n "$GITEE_TOKEN_SOURCE" ]; then
+    echo "Gitee 认证失败（令牌来源：${GITEE_TOKEN_SOURCE}），请核对 .env 的 GITEE_TOKEN" >&2
+  else
+    echo "Gitee 认证失败：.env 里没有 GITEE_TOKEN，gitee CLI 登录态也不可用" >&2
+  fi
+  exit 1
+fi
+
 echo "发布 ${TAG}"
 echo "  APK    ${APK}"
 echo "  笔记   ${NOTES_FILE}"
 echo "  标题   ${TITLE}"
+echo "  Gitee 令牌   ${GITEE_TOKEN_SOURCE:-gitee CLI 登录态}"
 
 echo ""
 echo "==> GitHub Release"
