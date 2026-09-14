@@ -14,6 +14,7 @@ import '../models/recording_session.dart';
 import '../models/backup_retention_policy.dart';
 import '../platform/adapters/pigeon_backup_platform.dart';
 import '../platform/contracts/backup_platform.dart';
+import '../platform/device_platform.dart';
 import '../platform/generated/platform_api.g.dart';
 import 'lan_backup_compatibility.dart';
 import 'lan_backup_discovery_service.dart';
@@ -463,6 +464,8 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
           'deviceId': _signingDeviceId,
           'deviceName': _snapshot.deviceName,
           'deviceKind': 'mobile',
+          // 主机按平台分配"安卓N/苹果N"昵称；不带平台时只能落到"从机N"。
+          'platform': currentDevicePlatformId(),
           'clientVersion': _appVersion,
           'clientBuildNumber': _appBuildNumber,
           'backupProtocol': backupProtocol,
@@ -1730,6 +1733,12 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     request.headers.set('X-EPM-Signature', signature);
     request.headers.set('X-EPM-Device-Id', deviceId);
     request.headers.set('X-EPM-Device-Kind', 'mobile');
+    // 备份上传、能力查询等由 Dart 直接发出的请求也要带平台，
+    // 否则主机在这些路径上只能按"从机"兜底命名。
+    final String platformId = currentDevicePlatformId();
+    if (platformId.isNotEmpty) {
+      request.headers.set(devicePlatformHeaderName, platformId);
+    }
     if (_snapshot.deviceName.isNotEmpty) {
       request.headers.set(
         'X-EPM-Device-Name',
@@ -1778,6 +1787,8 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
           'connected': connected,
           'nodeId': _snapshot.deviceId,
           'deviceType': 'mobile',
+          // 主机只在注册/心跳时读到平台，缺了它昵称前缀会退回"从机"。
+          'platform': currentDevicePlatformId(),
           'orderReceiverPort': 5280,
           'capabilities': const <String>['recording', 'order-receiver'],
           'appVersion': _appVersion,

@@ -12,6 +12,7 @@ import 'package:packing_proof_mobile/models/order_info.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/platform/contracts/backup_platform.dart';
+import 'package:packing_proof_mobile/platform/device_platform.dart';
 import 'package:packing_proof_mobile/platform/generated/platform_api.g.dart';
 import 'package:packing_proof_mobile/services/lan_backup_service.dart';
 import 'package:packing_proof_mobile/services/lan_backup_discovery_service.dart';
@@ -1582,6 +1583,8 @@ void main() {
     expect(enrollmentRequest['backupProtocol'], 'mobile-backup-v2');
     expect(enrollmentRequest['enrollmentVersion'], 2);
     expect(enrollmentRequest['authVersion'], 3);
+    // 主机靠平台分配"安卓N/苹果N"昵称，注册请求必须带上它。
+    expect(enrollmentRequest['platform'], currentDevicePlatformId());
   });
 
   test('心跳分配的新昵称会立即显示并持久化', () async {

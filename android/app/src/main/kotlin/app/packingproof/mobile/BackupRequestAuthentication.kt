@@ -55,6 +55,8 @@ internal object BackupRequestAuthentication {
         connection.setRequestProperty("X-EPM-Signature", signature)
         connection.setRequestProperty("X-EPM-Device-Id", deviceId)
         connection.setRequestProperty("X-EPM-Device-Kind", "mobile")
+        // 主机按平台分配"安卓N/苹果N"昵称，缺了这个头只能落到"从机N"。
+        connection.setRequestProperty("X-EPM-Device-Platform", "android")
     }
 
     fun verifyReceipt(
