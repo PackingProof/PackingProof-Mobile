@@ -44,7 +44,7 @@ if [ -z "$TAG" ]; then
   exit 1
 fi
 
-APK="dist/android/PackingProof-Mobile-${TAG#v}.apk"
+APK="dist/android/PackingProof-Mobile-v${TAG#v}.apk"
 if [ ! -f "$APK" ]; then
   echo "找不到 APK：${APK}，请先在 Windows 编译机执行 Tools/Publish-Android.ps1 并取回产物" >&2
   exit 1

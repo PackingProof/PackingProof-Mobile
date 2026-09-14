@@ -83,7 +83,7 @@ if [ -z "$IPA_PATH" ]; then
     ls -1 dist/ios/*.ipa 2>/dev/null | sed 's/^/  /' >&2 || echo "  （没有）" >&2
     exit 1
   fi
-  IPA_PATH="dist/ios/PackingProof-Mobile-${TAG#v}.ipa"
+  IPA_PATH="dist/ios/PackingProof-Mobile-v${TAG#v}.ipa"
 fi
 
 if [ ! -f "$IPA_PATH" ]; then
