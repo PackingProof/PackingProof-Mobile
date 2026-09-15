@@ -30,6 +30,9 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
   @override
   int _remoteRequestGeneration = 0;
   int _localRequestGeneration = 0;
+  /// 曾经看到过的来源设备名，键与 `recordingSourceDeviceKey` 一致；那台设备的
+  /// 录像页被换出后，来源筛选仍显示原名而不是退化成"其他设备"
+  final Map<String, String> _rememberedSourceDeviceLabels = <String, String>{};
 
   int get _historyPageSize;
   List<RecordingSession> get _sessions;
@@ -285,6 +288,23 @@ mixin _RecordingsHistoryDataCoordinator on _RecordingsBackupCoordinator {
     _remoteRecordings
       ..clear()
       ..addAll(flattenRecordingHistoryPages(_remotePages));
+    _rememberRemoteSourceDeviceLabels();
+  }
+
+  /// 把当前远端录像里出现的设备名记下来；reset 清空列表时旧名字保留，
+  /// 新观测到的名字直接覆盖，设备改名后筛选芯片立即跟着变。
+  void _rememberRemoteSourceDeviceLabels() {
+    final String pairedComputerName =
+        _backupSnapshot.endpoint?.computerName ?? '';
+    for (final RemoteRecording remote in _remoteRecordings) {
+      _rememberedSourceDeviceLabels[recordingSourceDeviceKey(
+        sourceDeviceId: remote.sourceDeviceId,
+        sourceDeviceName: remote.sourceDeviceName,
+      )] = recordingSourceDeviceLabel(
+        remote,
+        pairedComputerName: pairedComputerName,
+      );
+    }
   }
 
   Future<void> _refreshRemoteStatuses(List<RemoteRecording> page) async {

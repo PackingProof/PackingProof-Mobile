@@ -259,6 +259,75 @@ void main() {
       contains('仓库电脑'),
     );
   });
+
+  test('设备录像页没加载时来源筛选仍显示记住的设备名', () {
+    final DateTime now = DateTime(2026, 9, 13);
+    final RecordingSourceFilterPresentation presentation =
+        recordingSourceFilterPresentation(
+          current: const RecordingSourceFilter.device('slave-id'),
+          // 用户翻页或换筛选后，这台设备的录像页已经不在当前列表里。
+          remoteRecordings: <RemoteRecording>[
+            _remote(
+              id: 1,
+              code: 'H1',
+              startedAt: now,
+              sourceDeviceId: 'host-id',
+              sourceType: 'pc',
+              sourceDeviceName: '电脑1',
+            ),
+          ],
+          rememberedDeviceLabels: const <String, String>{'slave-id': '从机2'},
+        );
+
+    expect(presentation.label, '从机2');
+    expect(
+      presentation.options.map((RecordingSourceOption option) => option.label),
+      <String>['全部来源', '本地', '已备份', '从机2', '电脑1'],
+    );
+  });
+
+  test('从没记住过名字的设备仍然显示其他设备', () {
+    expect(
+      recordingSourceFilterPresentation(
+        current: const RecordingSourceFilter.device('unknown-id'),
+        remoteRecordings: const <RemoteRecording>[],
+      ).label,
+      '其他设备',
+    );
+    // 记住的是空白名字时等同于没记住，不能拿空字符串当显示名。
+    expect(
+      recordingSourceFilterPresentation(
+        current: const RecordingSourceFilter.device('unknown-id'),
+        remoteRecordings: const <RemoteRecording>[],
+        rememberedDeviceLabels: const <String, String>{'unknown-id': '   '},
+      ).label,
+      '其他设备',
+    );
+  });
+
+  test('设备改名后当前观测到的名字压过记住的旧名字', () {
+    final DateTime now = DateTime(2026, 9, 13);
+    final RecordingSourceFilterPresentation presentation =
+        recordingSourceFilterPresentation(
+          current: const RecordingSourceFilter.device('slave-id'),
+          rememberedDeviceLabels: const <String, String>{'slave-id': '从机2'},
+          remoteRecordings: <RemoteRecording>[
+            _remote(
+              id: 1,
+              code: 'S1',
+              startedAt: now,
+              sourceDeviceId: 'slave-id',
+              sourceDeviceName: '安卓5',
+            ),
+          ],
+        );
+
+    expect(presentation.label, '安卓5');
+    expect(
+      presentation.options.map((RecordingSourceOption option) => option.label),
+      isNot(contains('从机2')),
+    );
+  });
 }
 
 RecordingSession _session({

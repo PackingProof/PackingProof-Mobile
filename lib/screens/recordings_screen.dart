@@ -811,6 +811,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
       recordingSourceFilterPresentation(
         remoteRecordings: _remoteRecordings,
         current: _sourceFilter,
+        rememberedDeviceLabels: _rememberedSourceDeviceLabels,
         pairedComputerName: _backupSnapshot.endpoint?.computerName ?? '',
       );
 

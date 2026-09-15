@@ -2198,6 +2198,96 @@ void main() {
     expect(remoteModes.last, isNull);
   });
 
+  testWidgets('来源设备名换页后仍记得，改名后立即显示新名字', (WidgetTester tester) async {
+    final DateTime startedAt = DateTime(2026, 9, 13, 10);
+    RemoteRecording slaveRecording(String name) => RemoteRecording(
+      id: 21,
+      trackingNumber: 'S-1',
+      startedAt: startedAt,
+      duration: const Duration(seconds: 5),
+      sourceType: 'external',
+      sourceDeviceId: 'slave-1',
+      sourceDeviceName: name,
+      sourceSessionId: '',
+      contentSha256: 'sha',
+      playUri: Uri.parse('http://192.168.1.20/video/21'),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            deviceId: 'this-phone',
+            deviceName: '手机3',
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '仓库电脑',
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+          ),
+          onLoadRemoteRecordings:
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => RemoteRecordingPage(
+                data: switch (keyword) {
+                  '没有这台设备' => const <RemoteRecording>[],
+                  '改名后' => <RemoteRecording>[slaveRecording('安卓5')],
+                  _ => <RemoteRecording>[slaveRecording('从机2')],
+                },
+                page: page,
+                pageSize: pageSize,
+                total: 1,
+                deviceTotal: 0,
+              ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Finder filterLabel(String text) => find.descendant(
+      of: find.byKey(const Key('recording-source-filter')),
+      matching: find.text(text),
+    );
+
+    await tester.ensureVisible(
+      find.byKey(const Key('recording-source-filter')),
+    );
+    await tester.tap(find.byKey(const Key('recording-source-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '从机2'));
+    await tester.tap(find.text('应用筛选'));
+    await tester.pumpAndSettle();
+    expect(filterLabel('从机2'), findsOneWidget);
+
+    // 换一次搜索条件后这台设备的录像页已经不在当前列表里，名字仍然记着。
+    await tester.enterText(find.byKey(const Key('recording-search')), '没有这台设备');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(filterLabel('从机2'), findsOneWidget);
+    expect(filterLabel('其他设备'), findsNothing);
+
+    // 设备改名后必须显示新名字，记住的旧名字不能压过刚刚观测到的名字。
+    await tester.enterText(find.byKey(const Key('recording-search')), '改名后');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(filterLabel('安卓5'), findsOneWidget);
+    expect(filterLabel('从机2'), findsNothing);
+  });
+
   testWidgets('删除电脑需要两次确认并显示名称与地址', (WidgetTester tester) async {
     int deleteCount = 0;
     final _FakeBackupHostDiscovery discovery = _FakeBackupHostDiscovery();
