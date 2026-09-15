@@ -1627,6 +1627,223 @@ void main() {
     expect(saved?['deviceName'], '手机3');
   });
 
+  test('心跳带回的新电脑名与昵称合并成一次写盘并立即生效', () async {
+    final MethodChannel channel = const MethodChannel(
+      'app.packingproof.mobile/lan_backup_heartbeat_computer_name_test',
+    );
+    final List<Map<Object?, Object?>> saved = <Map<Object?, Object?>>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'saveConnection') {
+            saved.add(Map<Object?, Object?>.from(call.arguments! as Map));
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final LanBackupService service = LanBackupService(
+      platform: _TestChannelBackupPlatform(channel),
+    );
+    addTearDown(service.dispose);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        deviceName: '设备 A1B2C3',
+        endpoint: LanBackupEndpoint(
+          baseUri: Uri.parse('http://192.168.1.20:5280'),
+          accessKey: '',
+          computerId: 'computer-1',
+          computerName: '仓库电脑',
+        ),
+      ),
+    );
+    int notifications = 0;
+    service.addListener(() => notifications++);
+
+    await service.debugApplyHeartbeatResponseForTesting(
+      '{"assignedDisplayName":"手机3","computerName":"打包电脑"}',
+    );
+
+    expect(service.snapshot.deviceName, '手机3');
+    expect(service.snapshot.endpoint?.computerName, '打包电脑');
+    // 改名不能带走配对身份和主机地址。
+    expect(service.snapshot.endpoint?.computerId, 'computer-1');
+    expect(
+      service.snapshot.endpoint?.baseUri.toString(),
+      'http://192.168.1.20:5280',
+    );
+    expect(saved, hasLength(1));
+    expect(saved.single['deviceName'], '手机3');
+    expect(saved.single['computerName'], '打包电脑');
+    expect(saved.single['computerId'], 'computer-1');
+    expect(notifications, 1);
+  });
+
+  test('心跳缺少或空白电脑名时保留已存电脑名', () async {
+    final MethodChannel channel = const MethodChannel(
+      'app.packingproof.mobile/lan_backup_heartbeat_absent_name_test',
+    );
+    final List<Map<Object?, Object?>> saved = <Map<Object?, Object?>>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'saveConnection') {
+            saved.add(Map<Object?, Object?>.from(call.arguments! as Map));
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final LanBackupService service = LanBackupService(
+      platform: _TestChannelBackupPlatform(channel),
+    );
+    addTearDown(service.dispose);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        deviceName: '手机3',
+        endpoint: LanBackupEndpoint(
+          baseUri: Uri.parse('http://192.168.1.20:5280'),
+          accessKey: '',
+          computerId: 'computer-1',
+          computerName: '仓库电脑',
+        ),
+      ),
+    );
+    int notifications = 0;
+    service.addListener(() => notifications++);
+
+    // 旧电脑端不回这个字段，或主机暂时拿不到电脑名。
+    await service.debugApplyHeartbeatResponseForTesting(
+      '{"assignedDisplayName":"手机3"}',
+    );
+    await service.debugApplyHeartbeatResponseForTesting(
+      '{"assignedDisplayName":"手机3","computerName":""}',
+    );
+    await service.debugApplyHeartbeatResponseForTesting(
+      '{"assignedDisplayName":"手机3","computerName":"   "}',
+    );
+
+    expect(service.snapshot.endpoint?.computerName, '仓库电脑');
+    expect(saved, isEmpty);
+    expect(notifications, 0);
+  });
+
+  test('心跳电脑名没变化时不重复写盘也不通知', () async {
+    final MethodChannel channel = const MethodChannel(
+      'app.packingproof.mobile/lan_backup_heartbeat_same_name_test',
+    );
+    final List<Map<Object?, Object?>> saved = <Map<Object?, Object?>>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'saveConnection') {
+            saved.add(Map<Object?, Object?>.from(call.arguments! as Map));
+          }
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final LanBackupService service = LanBackupService(
+      platform: _TestChannelBackupPlatform(channel),
+    );
+    addTearDown(service.dispose);
+    service.debugSetSnapshotForTesting(
+      LanBackupSnapshot(
+        deviceName: '手机3',
+        endpoint: LanBackupEndpoint(
+          baseUri: Uri.parse('http://192.168.1.20:5280'),
+          accessKey: '',
+          computerId: 'computer-1',
+          computerName: '仓库电脑',
+        ),
+      ),
+    );
+    int notifications = 0;
+    service.addListener(() => notifications++);
+
+    await service.debugApplyHeartbeatResponseForTesting(
+      '{"assignedDisplayName":"手机3","computerName":"仓库电脑"}',
+    );
+    await service.debugApplyHeartbeatResponseForTesting(
+      '{"assignedDisplayName":"手机3","computerName":"仓库电脑"}',
+    );
+
+    expect(service.snapshot.endpoint?.computerName, '仓库电脑');
+    expect(saved, isEmpty);
+    expect(notifications, 0);
+  });
+
+  test('能力刷新回写连接信息时使用心跳刚更新的电脑名', () async {
+    final MethodChannel channel = const MethodChannel(
+      'app.packingproof.mobile/lan_backup_host_features_name_test',
+    );
+    final List<Map<Object?, Object?>> saved = <Map<Object?, Object?>>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'saveConnection') {
+            saved.add(Map<Object?, Object?>.from(call.arguments! as Map));
+          }
+          if (call.method == 'loadAccessKey') return 'a' * 64;
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    final Completer<HttpClientResponse> capabilities =
+        Completer<HttpClientResponse>();
+    final _DeferredCapabilitiesHttpClient client =
+        _DeferredCapabilitiesHttpClient(capabilities);
+    final LanBackupService service = LanBackupService(
+      platform: _TestChannelBackupPlatform(
+        channel,
+        summary: _backupSnapshot(deviceName: '手机3')
+          ..deviceId = 'device-features'
+          ..baseUrl = 'http://192.168.1.20:5280'
+          ..computerId = 'computer-1'
+          ..computerName = '仓库电脑',
+      ),
+      httpClient: client,
+      hostLocator: _FakeHostLocator(null),
+      packageInfoLoader: () async => PackageInfo(
+        appName: 'PackingProof',
+        packageName: 'app.packingproof.mobile',
+        version: '0.5.25',
+        buildNumber: '11040',
+      ),
+    );
+    addTearDown(service.dispose);
+
+    await service.initialize(
+      autoEnabled: true,
+      unbackedRetention: UnbackedRetentionPolicy.days30,
+      backedRetention: BackedRetentionPolicy.days7,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(client.capabilitiesRequested, isTrue);
+
+    // 能力请求还没回来时，心跳先带来了新电脑名。
+    await service.debugApplyHeartbeatResponseForTesting(
+      '{"assignedDisplayName":"手机3","computerName":"打包电脑"}',
+    );
+    capabilities.complete(
+      _StreamHttpResponse(
+        HttpStatus.ok,
+        '{"features":{"uploadVideoCodec":true}}',
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(service.snapshot.endpoint?.computerName, '打包电脑');
+    expect(saved, hasLength(2));
+    // 后写的能力刷新不能把旧电脑名覆盖回磁盘。
+    expect(saved.last['computerName'], '打包电脑');
+  });
+
   test('保存主机拒绝时不写入连接配置', () async {
     final MethodChannel channel = const MethodChannel(
       'app.packingproof.mobile/lan_backup_v3_denied_test',
@@ -2457,6 +2674,37 @@ class _DeferredEnrollmentHttpClient extends Fake implements HttpClient {
     postRequested = true;
     return _DeferredHttpClientRequest(enrollment.future);
   }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _DeferredCapabilitiesHttpClient extends Fake implements HttpClient {
+  _DeferredCapabilitiesHttpClient(this.capabilities);
+
+  final Completer<HttpClientResponse> capabilities;
+  bool capabilitiesRequested = false;
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async {
+    // 只挂起能力请求；其余探测（/api/node-info）照常返回，心跳路径保持可预期。
+    if (!url.path.endsWith('/api/mobile-backup/capabilities')) {
+      return _CompletedHttpClientRequest(
+        _StreamHttpResponse(
+          HttpStatus.ok,
+          '{"protocol":"packingproof","capabilities":["host","mobile-backup"]}',
+        ),
+      );
+    }
+    capabilitiesRequested = true;
+    return _DeferredHttpClientRequest(capabilities.future);
+  }
+
+  @override
+  Future<HttpClientRequest> postUrl(Uri url) async =>
+      _CompletedHttpClientRequest(
+        _StreamHttpResponse(HttpStatus.ok, '{"ok":true}'),
+      );
 
   @override
   void close({bool force = false}) {}
