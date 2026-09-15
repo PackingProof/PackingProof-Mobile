@@ -100,18 +100,23 @@ typedef RecordingSourceFilterPresentation = ({
 /// 设备项来自当前远端录像，只列出真的有录像的来源；主机（本机）与各从机
 /// 各自一项，不再用"电脑录像"把多台机器混在一起。设备键优先用设备 ID，
 /// 避免同名设备相互串拢。
+///
+/// [rememberedDeviceLabels] 是界面记住的来源设备名：那台设备的录像页被换出、
+/// 当前只加载了别的页时，选中项仍然显示原来的设备名，而不是退化成"其他设备"。
+/// 当前观测到的名字优先，记住的名字只补空缺，设备改名后立即显示新名字。
 RecordingSourceFilterPresentation recordingSourceFilterPresentation({
   required Iterable<RemoteRecording> remoteRecordings,
   required RecordingSourceFilter current,
   String pairedComputerName = '',
+  Map<String, String> rememberedDeviceLabels = const <String, String>{},
 }) {
-  final Map<String, String> labels = <String, String>{};
+  final Map<String, String> observed = <String, String>{};
   for (final RemoteRecording remote in remoteRecordings) {
     final String key = recordingSourceDeviceKey(
       sourceDeviceId: remote.sourceDeviceId,
       sourceDeviceName: remote.sourceDeviceName,
     );
-    labels.putIfAbsent(
+    observed.putIfAbsent(
       key,
       () => recordingSourceDeviceLabel(
         remote,
@@ -119,6 +124,12 @@ RecordingSourceFilterPresentation recordingSourceFilterPresentation({
       ),
     );
   }
+  final Map<String, String> labels = <String, String>{
+    for (final MapEntry<String, String> entry in rememberedDeviceLabels.entries)
+      if (entry.key.trim().isNotEmpty && entry.value.trim().isNotEmpty)
+        entry.key.trim(): entry.value.trim(),
+    ...observed,
+  };
   final List<String> keys = labels.keys.toList()
     ..sort((String a, String b) => labels[a]!.compareTo(labels[b]!));
   return (
