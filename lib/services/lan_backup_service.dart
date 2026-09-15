@@ -1642,7 +1642,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       'baseUrl': endpoint.baseUri.toString(),
       'accessKey': _accessKey,
       'computerId': endpoint.computerId,
-      'computerName': endpoint.computerName,
+      'computerName': _latestComputerName(endpoint),
       'deviceName': _snapshot.deviceName,
       'supportsUploadVideoCodec': _uploadVideoCodecEnabled,
     });
@@ -1943,7 +1943,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       'baseUrl': endpoint.baseUri.toString(),
       'accessKey': _accessKey,
       'computerId': endpoint.computerId,
-      'computerName': endpoint.computerName,
+      'computerName': _latestComputerName(endpoint),
       'deviceName': _snapshot.deviceName,
       'supportsUploadVideoCodec': _uploadVideoCodecEnabled,
       'recoverIncompatibleFailuresOnly': true,
@@ -1958,19 +1958,43 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
 
       final String assignedDisplayName =
           '${decoded['assignedDisplayName'] ?? ''}'.trim();
+      // 电脑改名后心跳会带回新名字；缺字段或空白表示主机没给，不能清掉已存的名字
+      final String computerName = '${decoded['computerName'] ?? ''}'.trim();
       final LanBackupEndpoint? endpoint = _snapshot.endpoint;
-      if (assignedDisplayName.isNotEmpty &&
-          assignedDisplayName != _snapshot.deviceName &&
-          endpoint != null) {
+      final bool deviceNameChanged =
+          assignedDisplayName.isNotEmpty &&
+          assignedDisplayName != _snapshot.deviceName;
+      final bool computerNameChanged =
+          endpoint != null &&
+          computerName.isNotEmpty &&
+          computerName != endpoint.computerName;
+      if (endpoint != null && (deviceNameChanged || computerNameChanged)) {
+        final String nextDeviceName = deviceNameChanged
+            ? assignedDisplayName
+            : _snapshot.deviceName;
+        final String nextComputerName = computerNameChanged
+            ? computerName
+            : endpoint.computerName;
         await _platform.saveConnection(<String, Object?>{
           'baseUrl': endpoint.baseUri.toString(),
           'accessKey': _accessKey,
           'computerId': endpoint.computerId,
-          'computerName': endpoint.computerName,
-          'deviceName': assignedDisplayName,
+          'computerName': nextComputerName,
+          'deviceName': nextDeviceName,
           'supportsUploadVideoCodec': _uploadVideoCodecEnabled,
         });
-        _snapshot = _snapshot.copyWith(deviceName: assignedDisplayName);
+        _snapshot = _snapshot.copyWith(
+          deviceName: nextDeviceName,
+          endpoint: computerNameChanged
+              ? LanBackupEndpoint(
+                  baseUri: endpoint.baseUri,
+                  accessKey: endpoint.accessKey,
+                  computerId: endpoint.computerId,
+                  computerName: nextComputerName,
+                  lastConnectedAt: endpoint.lastConnectedAt,
+                )
+              : null,
+        );
         notifyListeners();
       }
 
@@ -1997,6 +2021,20 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     } on Object {
       // Invalid or newer policy formats are ignored for forward compatibility.
     }
+  }
+
+  /// 写回连接信息时要用的电脑名。
+  ///
+  /// 等待网络期间心跳可能已经改过名字：这里取内存里最新的名字，避免把旧名字
+  /// 覆盖回磁盘，让下一次心跳看不出差异。
+  String _latestComputerName(LanBackupEndpoint endpoint) {
+    final LanBackupEndpoint? current = _snapshot.endpoint;
+    if (current != null &&
+        current.computerId == endpoint.computerId &&
+        current.computerName.trim().isNotEmpty) {
+      return current.computerName;
+    }
+    return endpoint.computerName;
   }
 
   void _applyNativeSummary(BackupSummaryDto value) {
