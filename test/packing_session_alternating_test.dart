@@ -617,14 +617,22 @@ void main() {
       ),
     ]);
     expect(controller.candidateCode, isEmpty);
-    final ({String kind, Map<String, Object?> extra}) rejectedEvent = runtimeLog
+    // 二维码在工作识别中完全静默：不弹提示、不出声，只留诊断日志。
+    expect(
+      runtimeLog.events.where((event) => event.kind == 'barcode_rejected'),
+      isEmpty,
+      reason: '静默码制不得产生任何用户提示',
+    );
+    final ({String kind, Map<String, Object?> extra}) silentEvent = runtimeLog
         .events
-        .singleWhere((event) => event.kind == 'barcode_rejected');
-    expect(rejectedEvent.extra, <String, Object?>{
+        .singleWhere((event) => event.kind == 'barcode_silent');
+    expect(silentEvent.extra, <String, Object?>{
       'code': 'QR12345678901',
       'format': 'qr',
       'reason': 'unsupportedFormat',
+      'count': 1,
     });
+    expect(controller.rejectedBarcodeMessage, isNull);
 
     controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
       const NativeBarcodeCandidate(

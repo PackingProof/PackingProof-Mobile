@@ -25,7 +25,7 @@ void main() {
     expect(decision, isNull);
   });
 
-  test('仅被过滤码时选择最大候选并生成长度提示', () {
+  test('商品码静默，不参与提示竞争，面积更大的一维码也不被顶掉', () {
     final RejectedBarcodeDecision? decision = RejectedBarcodePolicy.decide(
       candidates: const <RejectedBarcodeCandidate>[
         RejectedBarcodeCandidate(
@@ -43,9 +43,10 @@ void main() {
       now: now,
     );
 
+    // 商品码属静默码制直接剔除，剩下的一维码照常给出长度提示。
     expect(decision, isNotNull);
-    expect(decision!.code, '6901234567890');
-    expect(decision.message, contains('识别到非面单条码'));
+    expect(decision!.code, '1234567890');
+    expect(decision.message, contains('条码长度不符'));
   });
 
   test('长度不足生成实际/期望长度文案', () {
