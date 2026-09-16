@@ -631,6 +631,7 @@ void main() {
       'format': 'qr',
       'reason': 'unsupportedFormat',
       'count': 1,
+      'frames': 1,
     });
     expect(controller.rejectedBarcodeMessage, isNull);
 
@@ -647,6 +648,45 @@ void main() {
       ),
     ]);
     expect(controller.candidateCode, 'YT123456789012');
+  });
+
+  test('二维码停留画面时静默日志按码节流并累计帧数', () async {
+    await controller.initialize();
+    await controller.startWork();
+
+    // 面单二维码会一直停在画面里等条形码：逐帧写盘会在十几秒内挤掉整个诊断环。
+    for (int i = 0; i < 30; i++) {
+      controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+        const NativeBarcodeCandidate(
+          value: 'QR12345678901',
+          area: 300,
+          format: 'qr',
+        ),
+      ]);
+    }
+    expect(
+      runtimeLog.events.where((event) => event.kind == 'barcode_silent'),
+      hasLength(1),
+      reason: '同一个二维码 3 秒内只写一条诊断',
+    );
+
+    // 换成另一个静默码立即写盘，并把节流掉的帧数一起带出去。
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(
+        value: '6901234567890',
+        area: 300,
+        format: 'ean13',
+      ),
+    ]);
+    final List<({String kind, Map<String, Object?> extra})> silentEvents =
+        runtimeLog.events
+            .where((event) => event.kind == 'barcode_silent')
+            .toList();
+    expect(silentEvents, hasLength(2));
+    expect(silentEvents.last.extra['code'], '6901234567890');
+    expect(silentEvents.last.extra['format'], 'ean13');
+    // 首帧写了 1 条，其余 29 帧被节流，加上本帧共 30。
+    expect(silentEvents.last.extra['frames'], 30);
   });
 
   test('京东同帧裸号面积更大时仍选对应多包裹号', () async {
