@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/models/order_info.dart';
+import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
@@ -656,13 +657,15 @@ void main() {
 
     // 面单二维码会一直停在画面里等条形码：逐帧写盘会在十几秒内挤掉整个诊断环。
     for (int i = 0; i < 30; i++) {
-      controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
-        const NativeBarcodeCandidate(
-          value: 'QR12345678901',
-          area: 300,
-          format: 'qr',
-        ),
-      ]);
+      controller.handleNativeBarcodeFrameForTesting(
+        <NativeBarcodeCandidate>[
+          const NativeBarcodeCandidate(
+            value: 'QR12345678901',
+            area: 300,
+            format: 'qr',
+          ),
+        ],
+      );
     }
     expect(
       runtimeLog.events.where((event) => event.kind == 'barcode_silent'),
@@ -687,6 +690,50 @@ void main() {
     expect(silentEvents.last.extra['format'], 'ean13');
     // 首帧写了 1 条，其余 29 帧被节流，加上本帧共 30。
     expect(silentEvents.last.extra['frames'], 30);
+  });
+
+  test('配对时同帧有面单条码也优先试电脑二维码', () async {
+    await controller.initialize();
+    controller.beginComputerPairing();
+
+    // 运单码排在前面时，只试第一个候选会让这一帧被运单码占住。
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(
+        value: 'YT123456789012',
+        area: 5000,
+        format: 'code128',
+      ),
+      const NativeBarcodeCandidate(
+        value: 'http://192.168.1.20:5280/pair?token=abc',
+        area: 100,
+        format: 'qr',
+      ),
+    ]);
+
+    expect(controller.pairingMessage, '已识别电脑二维码，正在连接…');
+    controller.cancelComputerPairing();
+    await Future<void>.delayed(Duration.zero);
+  });
+
+  test('同帧二维码排在指令码前面时指令码仍然生效', () async {
+    await controller.initialize();
+
+    // 指令码贴在面单旁边很常见：只看第一个候选会让二维码挡住指令码。
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(
+        value: 'https://example.com/label',
+        area: 5000,
+        format: 'qr',
+      ),
+      const NativeBarcodeCandidate(
+        value: 'BACK',
+        area: 100,
+        format: 'code128',
+      ),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.operationMode, RecordingOperationMode.returnGoods);
   });
 
   test('京东同帧裸号面积更大时仍选对应多包裹号', () async {

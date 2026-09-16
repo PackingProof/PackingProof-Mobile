@@ -153,37 +153,40 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         ),
       );
     }
-    String? visibleCode;
+    // 指令码要在整帧里找：面单二维码、商品码或运单条码可能排在指令码前面，
+    // 只看第一个候选会让指令码被同帧的其他码挡住，表现为"指令码扫不动"。
+    String? commandCode;
+    MobileBarcodeCommand? command;
     for (final NativeBarcodeCandidate candidate in candidates) {
       final String normalized = BarcodeCandidatePolicy.normalize(
         candidate.value,
       );
-      if (normalized.isNotEmpty) {
-        visibleCode = normalized;
+      if (normalized.isEmpty) {
+        continue;
+      }
+      final MobileBarcodeCommand? found = BarcodeCandidatePolicy
+          .mobileCommandFor(normalized);
+      if (found != null) {
+        commandCode = normalized;
+        command = found;
         break;
       }
     }
-    if (visibleCode != null) {
-      final MobileBarcodeCommand? command =
-          BarcodeCandidatePolicy.mobileCommandFor(visibleCode);
-      if (command != null) {
-        if (!_historyScanActive &&
-            !_pairingScanActive &&
-            !_handlingBarcode &&
-            visibleCode != _lastTriggeredCommandCode) {
-          _lastTriggeredCommandCode = visibleCode;
-          _handlingBarcode = true;
-          _runInBackground(
-            _handleMobileBarcodeCommand(command).whenComplete(() {
-              _handlingBarcode = false;
-            }),
-          );
-        }
-      } else if (_lastTriggeredCommandCode != null) {
-        // 画面换成普通码后，允许同一条指令再次触发。
-        _lastTriggeredCommandCode = null;
+    if (command != null && commandCode != null) {
+      if (!_historyScanActive &&
+          !_pairingScanActive &&
+          !_handlingBarcode &&
+          commandCode != _lastTriggeredCommandCode) {
+        _lastTriggeredCommandCode = commandCode;
+        _handlingBarcode = true;
+        _runInBackground(
+          _handleMobileBarcodeCommand(command).whenComplete(() {
+            _handlingBarcode = false;
+          }),
+        );
       }
-    } else {
+    } else if (_lastTriggeredCommandCode != null) {
+      // 整帧都没有指令码（空帧或只剩普通码）后，允许同一条指令再次触发。
       _lastTriggeredCommandCode = null;
     }
     if (_historyScanActive) {
@@ -207,9 +210,21 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     }
     if (_pairingScanActive) {
       if (!_pairingBusy) {
+        // 配对时画面里常常同时有面单条码：取第一个像电脑配对二维码的候选，
+        // 否则运单码会先占住这一帧（配对尝试期间 _pairingBusy 为真），
+        // 表现为"二维码怎么都连不上电脑"。都不像时保持原行为，试第一个候选。
+        String? pairingValue;
         for (final NativeBarcodeCandidate candidate in candidates) {
-          unawaited(_tryPairComputer(candidate.value));
-          break;
+          if (_looksLikeComputerPairingQr(candidate.value)) {
+            pairingValue = candidate.value;
+            break;
+          }
+        }
+        if (pairingValue == null && candidates.isNotEmpty) {
+          pairingValue = candidates.first.value;
+        }
+        if (pairingValue != null) {
+          unawaited(_tryPairComputer(pairingValue));
         }
       }
       return;
