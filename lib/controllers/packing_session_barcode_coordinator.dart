@@ -57,6 +57,9 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   DateTime? _alternatingNoCodeSince;
   String _lastRejectedBarcodeCode = '';
   DateTime? _lastRejectedBarcodeAt;
+  String? _lastSilentBarcodeCode;
+  DateTime? _lastSilentBarcodeAt;
+  int _silentBarcodeFrames = 0;
   String? _lastTriggeredCommandCode;
   bool _processingFrame = false;
   bool _handlingBarcode = false;
@@ -78,7 +81,14 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
 
   /// 静默码制（面单二维码、商品码）不打扰操作员，但必须能在导出日志里查到，
   /// 否则"二维码扫不动条形码"这类现场问题将没有任何痕迹。
-  void _logSilentBarcodeFrame(List<RejectedBarcodeCandidate> candidates) {
+  ///
+  /// 与被拒提示一样按码节流（[RejectedBarcodePolicy.perCodeThrottle]）：面单
+  /// 二维码会一直停在画面里等条形码，逐帧写盘会在十几秒内把 500 条诊断环全部
+  /// 挤掉，还要在录像期间持续做文件追加。节流期间只累计帧数，下次写盘带出去。
+  void _logSilentBarcodeFrame(
+    List<RejectedBarcodeCandidate> candidates,
+    DateTime now,
+  ) {
     if (candidates.isEmpty) return;
     final bool allSilent = candidates.every(
       (RejectedBarcodeCandidate candidate) =>
@@ -89,11 +99,23 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       (RejectedBarcodeCandidate a, RejectedBarcodeCandidate b) =>
           b.area > a.area ? b : a,
     );
+    final String code = BarcodeCandidatePolicy.normalize(largest.value);
+    _silentBarcodeFrames++;
+    if (code == _lastSilentBarcodeCode &&
+        _lastSilentBarcodeAt != null &&
+        now.difference(_lastSilentBarcodeAt!) <
+            RejectedBarcodePolicy.perCodeThrottle) {
+      return;
+    }
+    final int frames = _silentBarcodeFrames;
+    _silentBarcodeFrames = 0;
+    _lastSilentBarcodeCode = code;
+    _lastSilentBarcodeAt = now;
     unawaited(
       _runtimeLog.log(
         kind: 'barcode_silent',
         extra: <String, Object?>{
-          'code': BarcodeCandidatePolicy.normalize(largest.value),
+          'code': code,
           'format': largest.format,
           'reason': BarcodeCandidatePolicy.rejectionForWorkScan(
             largest.value,
@@ -101,6 +123,8 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
             minimumLength: _minimumBarcodeLength,
           )?.name,
           'count': candidates.length,
+          // 上次写盘以来（含本帧）被静默忽略的帧数，节流掉的帧不会凭空消失。
+          'frames': frames,
         },
       ),
     );
@@ -228,7 +252,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       _logRejectedBarcode(rejected);
       _showRejectedBarcodeNotice(rejected, now);
     } else {
-      _logSilentBarcodeFrame(rejectedCandidates);
+      _logSilentBarcodeFrame(rejectedCandidates, now);
     }
     final BarcodeObservation observation = _stabilityTracker.observe(
       validCode,
@@ -338,7 +362,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         _logRejectedBarcode(rejected);
         _showRejectedBarcodeNotice(rejected, now);
       } else {
-        _logSilentBarcodeFrame(rejectedCandidates);
+        _logSilentBarcodeFrame(rejectedCandidates, now);
       }
       final BarcodeObservation observation = _stabilityTracker.observe(
         validCode,
