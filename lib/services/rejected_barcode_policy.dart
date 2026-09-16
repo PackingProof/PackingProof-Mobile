@@ -28,6 +28,11 @@ class RejectedBarcodeDecision {
 }
 
 /// 工作识别被过滤条码的轻提示决策：仅整帧无有效面单码时提示，并按码节流。
+///
+/// 二维码与商品码属于静默码制（见
+/// [BarcodeCandidatePolicy.silentWorkScanFormats]）：它们不产生任何提示，
+/// 只由调用点写诊断日志。面单二维码会一直停在画面里等待条形码，
+/// 若每帧都提示就会淹没真正的错误提示。
 class RejectedBarcodePolicy {
   const RejectedBarcodePolicy._();
 
@@ -41,10 +46,17 @@ class RejectedBarcodePolicy {
     DateTime? lastShownAt,
     bool throttle = true,
   }) {
-    if (candidates.isEmpty) {
+    // 先剔除静默码制，避免二维码决定本帧的提示内容。
+    final List<RejectedBarcodeCandidate> visible = candidates
+        .where(
+          (RejectedBarcodeCandidate candidate) =>
+              BarcodeCandidatePolicy.acknowledgesScanFeedback(candidate.format),
+        )
+        .toList(growable: false);
+    if (visible.isEmpty) {
       return null;
     }
-    final bool hasValid = candidates.any(
+    final bool hasValid = visible.any(
       (RejectedBarcodeCandidate candidate) =>
           BarcodeCandidatePolicy.mobileCommandFor(candidate.value) != null ||
           BarcodeCandidatePolicy.isValidForWorkScan(
@@ -58,7 +70,7 @@ class RejectedBarcodePolicy {
     }
 
     RejectedBarcodeCandidate? largest;
-    for (final RejectedBarcodeCandidate candidate in candidates) {
+    for (final RejectedBarcodeCandidate candidate in visible) {
       if (largest == null || candidate.area > largest.area) {
         largest = candidate;
       }

@@ -80,7 +80,7 @@ void main() {
           'YT0066717686457',
           format: 'qr',
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         BarcodeCandidatePolicy.isValidForWorkScan(
@@ -195,7 +195,7 @@ void main() {
           'JT1234567890',
           format: 'qr',
         ),
-        isNull,
+        WorkScanRejection.unsupportedFormat,
       );
       expect(
         BarcodeCandidatePolicy.rejectionForWorkScan(
@@ -207,12 +207,12 @@ void main() {
     });
 
     test('国内常见承运商代表单号均可通过对应面单码制', () {
+      // 面单识别只认一维码制；二维码不参与，另有格式守卫测试锁死。
       const Map<String, String> examples = <String, String>{
         'SF6048285539252': 'code39', // 顺丰
         'YT0066717686457': 'code128', // 圆通
         'JT0025164133000': 'code93', // 极兔
         'JD0123456789012': 'code128', // 京东物流
-        'EA123456789CN': 'qr', // 中国邮政 EMS
         '785123456789': 'code128', // 中通数字单号
         '773123456789': 'code39', // 申通数字单号
         '4312345678901': 'code128', // 韵达数字单号

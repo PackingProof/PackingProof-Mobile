@@ -76,9 +76,44 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     );
   }
 
+  /// 静默码制（面单二维码、商品码）不打扰操作员，但必须能在导出日志里查到，
+  /// 否则"二维码扫不动条形码"这类现场问题将没有任何痕迹。
+  void _logSilentBarcodeFrame(List<RejectedBarcodeCandidate> candidates) {
+    if (candidates.isEmpty) return;
+    final bool allSilent = candidates.every(
+      (RejectedBarcodeCandidate candidate) =>
+          !BarcodeCandidatePolicy.acknowledgesScanFeedback(candidate.format),
+    );
+    if (!allSilent) return;
+    final RejectedBarcodeCandidate largest = candidates.reduce(
+      (RejectedBarcodeCandidate a, RejectedBarcodeCandidate b) =>
+          b.area > a.area ? b : a,
+    );
+    unawaited(
+      _runtimeLog.log(
+        kind: 'barcode_silent',
+        extra: <String, Object?>{
+          'code': BarcodeCandidatePolicy.normalize(largest.value),
+          'format': largest.format,
+          'reason': BarcodeCandidatePolicy.rejectionForWorkScan(
+            largest.value,
+            format: largest.format,
+            minimumLength: _minimumBarcodeLength,
+          )?.name,
+          'count': candidates.length,
+        },
+      ),
+    );
+  }
+
   void _processNativeBarcodeFrame(List<NativeBarcodeCandidate> candidates) {
     if (_recognizedBeepPolicy.shouldBeep(
-      candidates.map((NativeBarcodeCandidate candidate) => candidate.value),
+      candidates.map(
+        (NativeBarcodeCandidate candidate) =>
+            (value: candidate.value, format: candidate.format),
+      ),
+      // 除配对扫码外都不为二维码/商品码出声：它们不是可用单号。
+      skipSilentFormats: !_pairingScanActive,
     )) {
       _speechService.playShortBeep();
       unawaited(
@@ -192,6 +227,8 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     if (rejected != null) {
       _logRejectedBarcode(rejected);
       _showRejectedBarcodeNotice(rejected, now);
+    } else {
+      _logSilentBarcodeFrame(rejectedCandidates);
     }
     final BarcodeObservation observation = _stabilityTracker.observe(
       validCode,
@@ -300,6 +337,8 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       if (rejected != null) {
         _logRejectedBarcode(rejected);
         _showRejectedBarcodeNotice(rejected, now);
+      } else {
+        _logSilentBarcodeFrame(rejectedCandidates);
       }
       final BarcodeObservation observation = _stabilityTracker.observe(
         validCode,

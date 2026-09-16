@@ -17,10 +17,27 @@ class BarcodeCandidatePolicy {
     'HTTP',
   ];
 
+  /// 面单识别**唯一**接受的码制集合：只有一维码。
+  ///
+  /// 与电脑端 `CameraBarcodeRecognitionService.AllowedFormats` 严格一致
+  /// （CODE_128 / CODE_39 / CODE_93 / CODABAR）。两端必须同时修改，
+  /// `barcode_scan_format_guard_test.dart` 会锁死这份清单。
+  ///
+  /// 二维码（qr / dataMatrix / pdf417 / aztec）一律不参与面单识别：
+  /// 面单上的二维码面积远大于条形码，一旦被当作有效单号就会先被确认并加锁，
+  /// 用户随后扫条形码只会命中同一个值而被静默忽略，表现为"扫不动"。
+  /// 手机端二维码只服务于扫码连接电脑（见 `packing_session_pairing_coordinator.dart`）。
+  static const Set<String> workScanFormats = <String>{
+    'code128',
+    'code39',
+    'code93',
+    'codabar',
+  };
+
   /// 商品零售条码码制：工作识别时忽略，避免把商品条码当成面单号。
   /// 这些是 Dart 与原生通道共用的内部稳定标识，不是界面文案；
   /// 后续切换英文界面时不需要修改这里。
-  static const Set<String> _productFormats = <String>{
+  static const Set<String> productFormats = <String>{
     'ean13',
     'ean8',
     'upca',
@@ -28,40 +45,28 @@ class BarcodeCandidatePolicy {
     'itf',
   };
 
-  /// 国内快递面单常用的一维码制。顺丰等面单不保证始终由系统识别为
-  /// Code 128，因此不能把码制当作承运商身份。
-  static const Set<String> _shippingLinearFormats = <String>{
-    'code128',
-    'code39',
-    'code93',
-    'codabar',
-  };
-
-  /// 二维码可能同时承载营销链接或内部路由数据；仅当内容具有明确的
-  /// 国内常见承运商单号形态时才作为运单号放行。
-  static const Set<String> _shippingMatrixFormats = <String>{
+  /// 工作识别中**完全静默**、不给任何用户反馈的码制。
+  ///
+  /// 面单二维码在等待条形码时一直停在画面里，每帧都提示会淹没真正的错误提示，
+  /// 因此二维码与商品码只写诊断日志，不弹提示、不出声、不播报。
+  /// 只有内容形态明显不对的一维码（长度不符等）才值得打扰操作员。
+  static const Set<String> silentWorkScanFormats = <String>{
     'qr',
     'dataMatrix',
     'pdf417',
     'aztec',
+    'ean13',
+    'ean8',
+    'upca',
+    'upce',
+    'itf',
   };
 
-  static const List<String> _knownCourierPrefixes = <String>[
-    'SF', // 顺丰
-    'YT', // 圆通
-    'JT', // 极兔
-    'JD', // 京东物流
-    'ZTO', // 中通
-    'STO', // 申通
-    'YD', // 韵达
-    'DB', // 德邦
-    'EMS', // 中国邮政 EMS
-    'ANE', // 安能
-    'KYE', // 跨越
-    'LP', // 菜鸟及跨境物流
-  ];
-
-  static final RegExp _internationalPostalNumber = RegExp(r'^[A-Z]{2}\d{9}CN$');
+  /// 这个码制是否需要给操作员可见/可听的反馈。
+  ///
+  /// [format] 为空表示调用点没有提供码制信息（例如手动输入），按需要反馈处理。
+  static bool acknowledgesScanFeedback(String? format) =>
+      format == null || !silentWorkScanFormats.contains(format);
 
   static String normalize(String? value) {
     return normalizeRaw(value);
@@ -145,7 +150,8 @@ class BarcodeCandidatePolicy {
     return !_blockedWords.any(normalized.contains);
   }
 
-  /// 工作识别接受国内快递常见的一维码制；商品零售码制仍严格拒绝。
+  /// 工作识别只接受 [workScanFormats] 里的一维码制；商品零售码制与二维码
+  /// 都严格拒绝，不受单号内容形态影响。
   static bool isValidForWorkScan(
     String? value, {
     String? format,
@@ -195,28 +201,13 @@ class BarcodeCandidatePolicy {
     if (normalized.length < minimumLength) {
       return WorkScanRejection.tooShort;
     }
-    if (_productFormats.contains(format)) {
+    if (productFormats.contains(format)) {
       return WorkScanRejection.productFormat;
     }
-    if (_shippingLinearFormats.contains(format)) {
-      return null;
-    }
-    if (_shippingMatrixFormats.contains(format) &&
-        _hasKnownCourierShape(normalized)) {
+    if (workScanFormats.contains(format)) {
       return null;
     }
     return WorkScanRejection.unsupportedFormat;
-  }
-
-  static bool _hasKnownCourierShape(String normalized) {
-    if (_internationalPostalNumber.hasMatch(normalized)) {
-      return true;
-    }
-    return _knownCourierPrefixes.any(
-      (String prefix) =>
-          normalized.startsWith(prefix) &&
-          normalized.length >= prefix.length + 8,
-    );
   }
 }
 
