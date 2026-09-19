@@ -53,7 +53,7 @@ PackingProof Mobile is the mobile client of PackingProof: an Android and iOS rec
 | Extension market and extension API | [PackingProof-Extensions](https://gitee.com/PackingProof/PackingProof-Extensions) | Extension registry, PPEXT package format, signed market index (ERP, userscripts, device adapters) |
 | KuaiDiZhuShou integration script | [PackingProof-KDZS](https://gitee.com/PackingProof/PackingProof-KDZS) | Official KDZS shipping-assistant order integration |
 | QQ bot | [PackingProof-QQBot](https://gitee.com/PackingProof/PackingProof-QQBot) | Look up footage by tracking number in QQ private chats or groups and send the video back |
-| Enterprise / partner adapters | via the extension API | Kuaimai ERP adapter, WeCom (企业微信) bot, China Unicom integrations, etc. |
+| Enterprise / partner adapters | via the extension API | Kuaimai ERP adapter, WeCom (企业微信) bot, etc. |
 
 **Search keywords**: PackingProof, parcel packing video evidence, barcode triggered recording app, scan to record, shipping label barcode, tracking number video lookup, packing station monitoring, logistics dispute evidence, multi-station recording, Android packing recorder, iOS packing recorder via TestFlight, open source.
 
