@@ -42,7 +42,7 @@ PackingProof Mobile is the mobile client of PackingProof: an Android and iOS rec
 - Watermark burned into the finished clip when recording stops; the watermark follows the codec actually used (including a fallback to H.265 / HEVC when the device rejects the preferred codec)
 - Lookup by tracking number with full-screen playback: the playback page shows business type, resolution and duration, and vertical clips keep their aspect ratio in the trim preview
 - Trim and export/share clips directly on the phone
-- Spoken order alerts: buyer message, seller memo, product info, refund status; refunds trigger a loud alert tone (system TTS and Edge TTS)
+- Spoken order alerts: buyer message, seller memo, product info, refund status; refunds trigger a loud alert tone
 - LAN auto-backup to a paired PC by scanning a QR code, using the v2 backup protocol; iOS does not poll cleanup in the background so the system does not kill the app for CPU overuse
 - Multi-station identity: registration and heartbeat carry the platform, the host assigns the device name, and a mismatch between pairing record and host identity prompts a reconnect
 - Source filter by device (no more lumping everything under "PC recordings"), remembering the selected device across pages
