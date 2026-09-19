@@ -4,7 +4,9 @@
 
 Give every package reviewable packing evidence.
 
-PackingProof Mobile is an Android and iOS recording tool for online sellers and packing stations. Mount a phone above the packing area, tap **Start Work** once, and the app continuously records, automatically recognizes shipping-label barcodes, and adds a marker when a tracking number is recognized. When an after-sales dispute occurs, operators can quickly locate the relevant footage by tracking number.
+PackingProof Mobile is the mobile client of PackingProof: an Android and iOS recording tool for online sellers and packing stations (the iOS build is distributed through TestFlight with the same feature set as Android). Mount a phone above the packing area, tap **Start Work** once, and the app continuously records, automatically recognizes shipping-label barcodes, and adds a marker when a tracking number is recognized. When an after-sales dispute occurs, operators can quickly locate the relevant footage by tracking number.
+
+**The mobile app runs standalone**: one phone alone can record, recognize labels and look footage up, with no PC required. Connecting it to a PC adds LAN auto-backup to the PackingProof host plus spoken order alerts (buyer message, seller memo, refund interception).
 
 [Download the latest Android release](https://github.com/PackingProof/PackingProof-Mobile/releases) · [Join the iOS TestFlight beta](https://testflight.apple.com/join/KR4qNs6t)
 
@@ -65,6 +67,18 @@ PackingProof Mobile is an Android and iOS recording tool for online sellers and 
 - **Automatic computer backup**: connects by scanning a QR code from the desktop app and backs up recordings over the local network
 - **Flexible recording cleanup**: uses separate retention policies for backed-up and unbacked recordings to balance evidence safety and phone storage
 - **Local first**: requires no account and does not depend on cloud storage; order and recording data remain under the operator's control
+
+## Install and First Run
+
+**Android**: download the signed ARM64 APK from [Releases](https://github.com/PackingProof/PackingProof-Mobile/releases) and install it; later versions can be installed over it directly.
+
+**iOS**: install TestFlight from the App Store, then open the [beta invite link](https://testflight.apple.com/join/KR4qNs6t) to join and install PackingProof Mobile. The TestFlight build matches the Android feature set, and updates arrive through TestFlight.
+
+Both platforms ask for camera and microphone permission on first launch; all recording and recognition happen locally on the phone.
+
+## Working with the Desktop App
+
+PackingProof Mobile is one of the multi-station sources for [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) on Windows: within the same LAN the host stores and plays back mobile footage, and the phone appears under the device name assigned by the host. The wider system also includes the [extension market and extension API](https://gitee.com/PackingProof/PackingProof-Extensions), the [KDZS shipping-assistant integration script](https://gitee.com/PackingProof/PackingProof-KDZS) and the [QQ bot](https://gitee.com/PackingProof/PackingProof-QQBot).
 
 ## How to Use
 

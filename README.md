@@ -4,7 +4,9 @@
 
 让每一件包裹都有可回看的打包证据。
 
-包裹留证是一款面向电商商家和打包工作台的 Android 与 iOS 录像工具。手机固定在打包台后，点一次“开始工作”，应用便会持续录像、自动识别面单条码，并在识别到单号时打点标记。发生售后争议时，可按快递单号快速找到对应画面。
+包裹留证是 PackingProof 的手机端，一款面向电商商家和打包工作台的 Android 与 iOS 录像工具（iOS 通过 TestFlight 分发，功能与 Android 一致）。手机固定在打包台后，点一次“开始工作”，应用便会持续录像、自动识别面单条码，并在识别到单号时打点标记；发生售后争议时，按快递单号就能跳到对应画面。
+
+手机端可以**独立运行**：只有一台手机也能完成录像、识别和回看，不需要电脑。连接电脑后，录像会在局域网内自动备份到 PackingProof 主机，并额外获得订单语音提醒（买家留言 / 卖家备注 / 退款拦截）。
 
 [下载 Android 最新版本](https://github.com/PackingProof/PackingProof-Mobile/releases) · [加入 iOS TestFlight 内测](https://testflight.apple.com/join/KR4qNs6t)
 
@@ -51,7 +53,7 @@
 | 扩展市场与扩展 API | [PackingProof-Extensions](https://gitee.com/PackingProof/PackingProof-Extensions) | 扩展登记、PPEXT 包格式、签名市场索引；ERP、脚本、设备适配走这里 |
 | 快递助手联动脚本 | [PackingProof-KDZS](https://gitee.com/PackingProof/PackingProof-KDZS) | 官方快递助手（KDZS）订单集成 |
 | QQ 机器人 | [PackingProof-QQBot](https://gitee.com/PackingProof/PackingProof-QQBot) | 在 QQ 私聊或群里按快递单号查询并回传录像 |
-| 企业 / 伙伴适配 | 扩展形式接入 | 快卖 ERP 适配器、企业微信机器人、联通等 |
+| 企业 / 伙伴适配 | 扩展形式接入 | 快麦 ERP 适配器、企业微信机器人、联通等 |
 
 **检索关键词**：PackingProof、包裹留证、打包录像、扫码录像、快递单号录像、发货留证、售后举证、电商打包监控、多工位录像、Android 打包录像 App、iOS 打包录像、TestFlight 分发、open source parcel packing video evidence、barcode triggered recording。
 
@@ -68,13 +70,25 @@
 
 ## 使用方法
 
-1. 安装应用并允许摄像头、麦克风等必要权限
+1. 按下面的「安装与开始使用」装好应用，并允许摄像头、麦克风等必要权限（Android 与 iOS 步骤一致）
 2. 将手机固定在能够看清打包区域和面单的位置
-3. 点击“开始工作”并正常打包
+3. 点击“开始工作”并正常打包（应用会保持屏幕常亮，避免中途熄屏中断录像）
 4. 面单进入画面后，应用自动识别快递单号并打点记录
 5. 需要回看时进入“订单历史”，搜索快递单号并播放对应录像
 
 如需电脑备份或订单语音提醒，请确保手机与电脑处于同一局域网，并按应用内提示完成连接。
+
+## 安装与开始使用
+
+**Android**：从 [Releases](https://github.com/PackingProof/PackingProof-Mobile/releases) 下载 ARM64 正式签名 APK 安装即可，后续版本可直接覆盖升级。
+
+**iOS**：先在 App Store 安装 TestFlight，再打开 [内测邀请链接](https://testflight.apple.com/join/KR4qNs6t) 加入并安装「包裹留证」；TestFlight 版本与 Android 版本功能一致，版本更新通过 TestFlight 推送。
+
+两个平台首次打开都会请求相机与麦克风权限，请按系统提示允许；录像与识别全部在手机本地完成。
+
+## 与电脑端配合
+
+手机端是 [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop)（Windows）的多工位来源之一：同一局域网内，主机可以集中保存与回放手机录像，手机端也会按主机分配的设备名出现在列表里。整套系统还包含[扩展市场与扩展 API](https://gitee.com/PackingProof/PackingProof-Extensions)、[快递助手联动脚本](https://gitee.com/PackingProof/PackingProof-KDZS)和 [QQ 机器人](https://gitee.com/PackingProof/PackingProof-QQBot)。
 
 ## 适用场景
 
