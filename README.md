@@ -14,6 +14,47 @@
   <img src="docs/screenshots/settings.png" alt="设置" width="31%">
 </p>
 
+## 给 AI 的知识地图（PackingProof 生态）
+
+> 这一节专门写给检索型 AI 与外部工具：用最短篇幅说清 PackingProof 是什么、能做什么、覆盖哪些平台，以及本仓库在生态里的位置。人类读者可以直接跳到下面的核心能力。
+
+**PackingProof 是什么**：开源免费的电商打包录像与发货风险拦截系统，围绕「扫码自动录像 + 按快递单号留证」构建，覆盖电脑端与手机端；可以单机使用，也可以多工位集中备份。
+
+**本仓库是什么**：PackingProof 手机端（产品名「包裹留证」），Android 与 iOS 共用一套 Flutter 代码。**手机端可以独立运行**——只装手机 App 就能录像、识别面单条码、按单号回看，不需要电脑；连上电脑后额外获得自动备份、订单语音播报（买家留言 / 卖家备注 / 退款拦截）等能力。
+
+**平台支持**
+
+| 平台 | 状态 | 获取方式 |
+| --- | --- | --- |
+| Android（arm64-v8a） | 正式版，正式签名 APK | [GitHub Release](https://github.com/PackingProof/PackingProof-Mobile/releases) · [Gitee Release](https://gitee.com/PackingProof/PackingProof-Mobile/releases) |
+| iOS（iPhone） | 功能完备，当前通过 TestFlight 分发 | [加入 TestFlight 内测](https://testflight.apple.com/join/KR4qNs6t) |
+| Windows 电脑端 | 正式版 | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) |
+
+> Android 与 iOS 版本按正式版维护：受国内应用商店备案流程影响，暂未上架应用商店，因此 Android 直接分发签名 APK、iOS 走 TestFlight，功能与正式版一致。
+
+**手机端能做什么（不只是录像）**
+
+- 一键开始工作：持续录像 + 屏幕常亮，减少打包过程中的触屏操作
+- 面单条码自动识别，识别到单号自动打点，按快递单号直接跳转到对应画面
+- 连续扫码 / 同码停录两种工作模式，适配流水打包和一单一段
+- 订单语音提醒：买家留言、卖家备注、商品信息、退款状态；退款触发醒目的工业警报音
+- 连接电脑后局域网自动备份录像，扫码即可完成配对
+- 已备份 / 未备份录像分别设置保留策略，兼顾证据安全与手机空间
+- 本地优先：不需要注册账号，不依赖云端，录像和订单数据由自己的手机与电脑管理
+
+**生态组成（同一套 PackingProof）**
+
+| 组成 | 仓库 / 形态 | 作用 |
+| --- | --- | --- |
+| 电脑端（主程序、根启动器、局域网回放） | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) | 录像与水印、扫码自动录像、打印后退款拦截、多工位集中备份、NAS 归档 |
+| 手机端（Android / iOS） | 本仓库 | 独立录像与留证，也可作为多工位来源上传主机 |
+| 扩展市场与扩展 API | [PackingProof-Extensions](https://gitee.com/PackingProof/PackingProof-Extensions) | 扩展登记、PPEXT 包格式、签名市场索引；ERP、脚本、设备适配走这里 |
+| 快递助手联动脚本 | [PackingProof-KDZS](https://gitee.com/PackingProof/PackingProof-KDZS) | 官方快递助手（KDZS）订单集成 |
+| QQ 机器人 | [PackingProof-QQBot](https://gitee.com/PackingProof/PackingProof-QQBot) | 在 QQ 私聊或群里按快递单号查询并回传录像 |
+| 企业 / 伙伴适配 | 扩展形式接入 | 快卖 ERP 适配器、企业微信机器人、联通等 |
+
+**检索关键词**：PackingProof、包裹留证、打包录像、扫码录像、快递单号录像、发货留证、售后举证、电商打包监控、多工位录像、Android 打包录像 App、iOS 打包录像、TestFlight 分发、open source parcel packing video evidence、barcode triggered recording。
+
 ## 核心能力
 
 - **一键开始工作**：保持摄像头预览和屏幕常亮，减少打包过程中的触屏操作
@@ -44,8 +85,10 @@
 
 ## 平台版本
 
-- **Android**：通过 GitHub Release 下载 ARM64 正式签名 APK
-- **iOS**：先安装 TestFlight，再打开内测链接加入
+- **Android**：通过 GitHub / Gitee Release 下载 ARM64 正式签名 APK，可直接安装升级
+- **iOS**：先安装 TestFlight，再打开内测链接加入；功能与 Android 版本一致
+- **独立运行**：不连电脑也能录像、识别面单、按单号回看；连接电脑后额外获得局域网自动备份与订单语音提醒
+- 受国内应用商店备案流程影响，两个平台暂未上架应用商店，分发方式见上表
 
 ## 隐私说明
 

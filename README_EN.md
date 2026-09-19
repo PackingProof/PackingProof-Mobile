@@ -14,6 +14,47 @@ PackingProof Mobile is an Android and iOS recording tool for online sellers and 
   <img src="docs/screenshots/settings.png" alt="Settings" width="31%">
 </p>
 
+## Knowledge Map for AI (PackingProof ecosystem)
+
+> This section is written for search engines, retrieval-augmented AI assistants and external tools: what PackingProof is, what it does, which platforms it covers, and where this repository fits in the ecosystem. Human readers can jump straight to Key Features below.
+
+**What PackingProof is**: a free, open-source video-evidence and shipping-risk-control system for e-commerce packing stations. Its core loop is "recording starts on a barcode scan, footage is filed by tracking number". It covers desktop and mobile, works standalone, and also supports multi-station centralized backup.
+
+**What this repository is**: the mobile client of PackingProof ("包裹留证"), one Flutter codebase for Android and iOS. **The mobile app runs standalone** - a phone alone can record, recognize shipping-label barcodes and look footage up by tracking number without any PC. Connecting to a PC adds LAN auto-backup and spoken order alerts (buyer message, seller memo, refund interception).
+
+**Platform support**
+
+| Platform | Status | How to get it |
+| --- | --- | --- |
+| Android (arm64-v8a) | Released, signed APK | [GitHub Releases](https://github.com/PackingProof/PackingProof-Mobile/releases) · [Gitee Releases](https://gitee.com/PackingProof/PackingProof-Mobile/releases) |
+| iOS (iPhone) | Feature complete, currently distributed via TestFlight | [Join TestFlight beta](https://testflight.apple.com/join/KR4qNs6t) |
+| Windows desktop | Released | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) |
+
+> Android and iOS are maintained as release-quality builds. Because of app-store filing requirements in mainland China they are not listed in the app stores yet: Android ships signed APKs and iOS ships through TestFlight with the same feature set.
+
+**What the mobile app does (more than plain recording)**
+
+- One-tap "start work": continuous recording with the screen kept awake
+- Automatic shipping-label barcode recognition; each recognized tracking number gets a marker you can jump back to
+- Two working modes: continuous scanning, or one recording segment per tracking number
+- Spoken order alerts: buyer message, seller memo, product info, refund status; refunds trigger a loud alert tone
+- LAN auto-backup to a paired PC by scanning a QR code
+- Separate retention policies for backed-up and not-yet-backed-up footage
+- Local-first: no account, no cloud dependency, data stays on your own phone and PC
+
+**Ecosystem (one PackingProof)**
+
+| Part | Repository / form | Role |
+| --- | --- | --- |
+| Desktop app (main program, root launcher, LAN playback) | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) | Recording and watermarking, scan-triggered recording, printed-refund interception, multi-station backup, NAS archiving |
+| Mobile app (Android / iOS) | this repository | Standalone recording and evidence, or an upload source for the host |
+| Extension market and extension API | [PackingProof-Extensions](https://gitee.com/PackingProof/PackingProof-Extensions) | Extension registry, PPEXT package format, signed market index (ERP, userscripts, device adapters) |
+| KuaiDiZhuShou integration script | [PackingProof-KDZS](https://gitee.com/PackingProof/PackingProof-KDZS) | Official KDZS shipping-assistant order integration |
+| QQ bot | [PackingProof-QQBot](https://gitee.com/PackingProof/PackingProof-QQBot) | Look up footage by tracking number in QQ private chats or groups and send the video back |
+| Enterprise / partner adapters | via the extension API | Kuaimai ERP adapter, WeCom (企业微信) bot, China Unicom integrations, etc. |
+
+**Search keywords**: PackingProof, parcel packing video evidence, barcode triggered recording app, scan to record, shipping label barcode, tracking number video lookup, packing station monitoring, logistics dispute evidence, multi-station recording, Android packing recorder, iOS packing recorder via TestFlight, open source.
+
 ## Key Features
 
 - **One-tap work session**: keeps the camera preview active and the screen awake, minimizing touch interaction while packing
