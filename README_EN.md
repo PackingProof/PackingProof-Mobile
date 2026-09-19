@@ -37,15 +37,15 @@ PackingProof Mobile is the mobile client of PackingProof: an Android and iOS rec
 **What the mobile app does (more than plain recording)**
 
 - One-tap "start work": continuous recording with the screen kept awake
-- Shipping-label barcode recognition for 1D logistics barcodes; QR codes and command barcodes never crowd out the label, multiple codes in one frame are handled by business priority, and JD-style tracking-number rules are built in
+- Shipping-label barcode recognition: point at the label and the app reads the 1D logistics barcode and files the tracking number, with JD-style rules built in
 - Two working modes: continuous scanning, or one recording segment per tracking number
-- Watermark burned into the finished clip when recording stops; the watermark follows the codec actually used (including a fallback to H.265 / HEVC when the device rejects the preferred codec)
-- Lookup by tracking number with full-screen playback: the playback page shows business type, resolution and duration, and vertical clips keep their aspect ratio in the trim preview
+- Watermark burned into the finished clip automatically when recording stops, so the evidence is complete and ready to hand over
+- Lookup by tracking number with full-screen playback: search the history by tracking number and jump to the moment; the playback page shows business type, resolution and duration
 - Trim and export/share clips directly on the phone
 - Spoken order alerts: buyer message, seller memo, product info, refund status; refunds trigger a loud alert tone
-- LAN auto-backup to a paired PC by scanning a QR code, using the v2 backup protocol; iOS does not poll cleanup in the background so the system does not kill the app for CPU overuse
-- Multi-station identity: registration and heartbeat carry the platform, the host assigns the device name, and a mismatch between pairing record and host identity prompts a reconnect
-- Source filter by device (no more lumping everything under "PC recordings"), remembering the selected device across pages
+- Auto-backup to a PC: pair by scanning the desktop QR code and footage is uploaded to the host over the LAN automatically
+- Multi-station identity: the host assigns a name to every device, so phone and PC footage are easy to tell apart, and a connection problem prompts re-pairing
+- Source filter: filter footage by device and keep the selection while paging
 - Separate retention policies for backed-up and not-yet-backed-up footage
 - Local-first: no account, no cloud dependency, data stays on your own phone and PC
 
