@@ -485,6 +485,34 @@ private actor IosBackupMaintenanceGate {
   }
 }
 
+/// 录像存储与电脑确认策略。
+///
+/// 数值由 Dart 端 `lib/models/backup_storage_policy.dart` 在启动时下发，这里只负责
+/// 保存与读取。[fallback] 仅在下发前使用，必须与 Dart 端保持一致，由
+/// `test/backup_storage_policy_contract_test.dart` 守门。
+struct BackupStoragePolicy: Equatable {
+  let minimumBytes: Int64
+  let warningBytes: Int64
+  let targetBytes: Int64
+  /// 目前只有 Android 复用它（本地校验过签名后可跳过重复确认）；iOS 每次删除前
+  /// 都重新向电脑确认，这里保留数值只为了两端策略一致。
+  let attestationFreshnessMs: Int64
+  let confirmationLimit: Int
+  let confirmationGraceMs: Int64
+
+  var confirmationGrace: TimeInterval { TimeInterval(confirmationGraceMs) / 1000 }
+
+  /// 仅用于下发前，必须与 Dart 端 BackupStoragePolicy 的数值一致。
+  static let fallback = BackupStoragePolicy(
+    minimumBytes: 2 * 1024 * 1024 * 1024,
+    warningBytes: 3 * 1024 * 1024 * 1024,
+    targetBytes: 3 * 1024 * 1024 * 1024,
+    attestationFreshnessMs: 5 * 60 * 1000,
+    confirmationLimit: 16,
+    confirmationGraceMs: 24 * 60 * 60 * 1000
+  )
+}
+
 final class IosBackupHostApi: BackupNativeHostApi {
   private struct ActiveUpload {
     let identity: IosBackupUploadIdentity
@@ -499,7 +527,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private let availableStorageBytesOverride: (() -> Int64)?
   private let storageAttestationOverride:
     (([String: Any], String, Int64) async -> String?)?
-  private let storageReclaimConfirmationLimit: Int
+  private let storageReclaimConfirmationLimitOverride: Int?
   private let uploadFailureUpdateOverride: ((String, String) throws -> Bool)?
   private let uploadPersistenceFailureReporter: ((String, String, Error) -> Void)?
   private let uploadOperationOverride:
@@ -558,14 +586,11 @@ final class IosBackupHostApi: BackupNativeHostApi {
     deviceName: "ios_backup_device_name",
     connection: "ios_backup_connection",
     jobs: "ios_backup_jobs",
-    retention: "ios_backup_retention"
+    retention: "ios_backup_retention",
+    storagePolicy: "ios_backup_storage_policy"
   )
 
   private static let verificationVersion = 3
-  private static let retentionConfirmationGrace: TimeInterval = 24 * 60 * 60
-  /// 一次空间回收里最多向电脑重新确认的录像数量。局域网确认很快，给足次数才能一次
-  /// 检查腾出目标空间；电脑不可达时不再继续确认，不会长时间阻塞开始录像。
-  private static let storageReclaimConfirmationLimit = 16
   private static let cleanupThrottle: TimeInterval = 60
   private static let cleanupRetryDelaysNanoseconds: [UInt64] = [
     1, 2, 4, 8, 16,
@@ -639,8 +664,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
     self.recordingsRoot = recordingsRoot
     self.availableStorageBytesOverride = availableStorageBytesOverride
     self.storageAttestationOverride = storageAttestationOverride
-    self.storageReclaimConfirmationLimit =
-      storageReclaimConfirmationLimitOverride ?? Self.storageReclaimConfirmationLimit
+    self.storageReclaimConfirmationLimitOverride = storageReclaimConfirmationLimitOverride
     self.uploadFailureUpdateOverride = uploadFailureUpdateOverride
     self.uploadPersistenceFailureReporter = uploadPersistenceFailureReporter
     self.uploadOperationOverride = uploadOperationOverride
@@ -706,6 +730,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
         returnUnbacked: (request["returnUnbackedRetentionDays"] as? Int) ?? 3,
         returnBacked: (request["returnBackedRetentionDays"] as? Int) ?? 1
       )
+      saveStoragePolicy(request)
       triggerCleanup()
       try applyAutoEnabled(request["autoEnabled"] as? Bool ?? false)
       completion(.success(try currentSummary()))
@@ -1066,6 +1091,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   private func performStorageReclaimUncoordinated() async throws -> [String?: Any?] {
+    let policy = storagePolicy()
+    let confirmationLimit = storageReclaimConfirmationLimitOverride ?? policy.confirmationLimit
     let recovery = try recoverCleanupIntentsSlice()
     if recovery.processedAny {
       triggerCleanup()
@@ -1073,12 +1100,12 @@ final class IosBackupHostApi: BackupNativeHostApi {
       return [
         "availableBytes": available, "availableBytesBefore": available,
         "freedBytes": Int64(0), "deletedCount": 0,
-        "warning": available < 3 * 1024 * 1024 * 1024,
-        "insufficient": available < 2 * 1024 * 1024 * 1024,
+        "warning": available < policy.warningBytes,
+        "insufficient": available < policy.minimumBytes,
       ]
     }
-    let minimumBytes: Int64 = 2 * 1024 * 1024 * 1024
-    let targetBytes: Int64 = 3 * 1024 * 1024 * 1024
+    let minimumBytes = policy.minimumBytes
+    let targetBytes = policy.targetBytes
     let before = availableStorageBytes()
     var current = before
     var deletedCount = 0
@@ -1129,7 +1156,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
         }
         // 电脑确认会过期。过期后必须补一次确认，否则空间不足时永远没有可回收的
         // 录像，只能停止录像或拒绝开始录像。
-        if remoteUnreachable || remoteConfirmations >= storageReclaimConfirmationLimit {
+        if remoteUnreachable || remoteConfirmations >= confirmationLimit {
           continue
         }
         remoteConfirmations += 1
@@ -2649,7 +2676,59 @@ final class IosBackupHostApi: BackupNativeHostApi {
           let attested = Self.isoFormatter.date(from: lastAttestedAt) else {
       return false
     }
-    return now.timeIntervalSince(attested) <= Self.retentionConfirmationGrace
+    return now.timeIntervalSince(attested) <= storagePolicy().confirmationGrace
+  }
+
+  /// 存储策略由 Dart 端下发，字段缺失时保留既有值；从未下发过才使用兜底值。
+  private func saveStoragePolicy(_ request: [String?: Any?]) {
+    let current = storagePolicy()
+    let next = BackupStoragePolicy(
+      minimumBytes: int64Number(request["storageMinimumBytes"]) ?? current.minimumBytes,
+      warningBytes: int64Number(request["storageWarningBytes"]) ?? current.warningBytes,
+      targetBytes: int64Number(request["storageTargetBytes"]) ?? current.targetBytes,
+      attestationFreshnessMs: int64Number(request["storageAttestationFreshnessMs"])
+        ?? current.attestationFreshnessMs,
+      confirmationLimit: intNumber(request["storageConfirmationLimit"])
+        ?? current.confirmationLimit,
+      confirmationGraceMs: int64Number(request["storageConfirmationGraceMs"])
+        ?? current.confirmationGraceMs
+    )
+    guard next != current else { return }
+    defaults.set(
+      [
+        "minimumBytes": next.minimumBytes,
+        "warningBytes": next.warningBytes,
+        "targetBytes": next.targetBytes,
+        "attestationFreshnessMs": next.attestationFreshnessMs,
+        "confirmationLimit": next.confirmationLimit,
+        "confirmationGraceMs": next.confirmationGraceMs,
+      ],
+      forKey: keys.storagePolicy
+    )
+  }
+
+  private func storagePolicy() -> BackupStoragePolicy {
+    let values = defaults.dictionary(forKey: keys.storagePolicy)
+    let fallback = BackupStoragePolicy.fallback
+    return BackupStoragePolicy(
+      minimumBytes: int64Number(values?["minimumBytes"]) ?? fallback.minimumBytes,
+      warningBytes: int64Number(values?["warningBytes"]) ?? fallback.warningBytes,
+      targetBytes: int64Number(values?["targetBytes"]) ?? fallback.targetBytes,
+      attestationFreshnessMs: int64Number(values?["attestationFreshnessMs"])
+        ?? fallback.attestationFreshnessMs,
+      confirmationLimit: intNumber(values?["confirmationLimit"])
+        ?? fallback.confirmationLimit,
+      confirmationGraceMs: int64Number(values?["confirmationGraceMs"])
+        ?? fallback.confirmationGraceMs
+    )
+  }
+
+  private func int64Number(_ value: Any?) -> Int64? {
+    (value as? NSNumber)?.int64Value
+  }
+
+  private func intNumber(_ value: Any?) -> Int? {
+    (value as? NSNumber)?.intValue
   }
 
   private func withMaintenanceSlot<T>(
