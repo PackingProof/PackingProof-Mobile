@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:packing_proof_mobile/models/barcode_marker.dart';
 import 'package:packing_proof_mobile/models/backup_retention_policy.dart';
+import 'package:packing_proof_mobile/models/backup_storage_policy.dart';
 import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/order_info.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
@@ -1075,6 +1076,52 @@ void main() {
 
     expect(platform.snapshotCalls, 0);
     await service.dispose();
+  });
+
+  test('启动时把存储策略下发给原生平台', () async {
+    final _TrackingBackupPlatform platform = _TrackingBackupPlatform();
+    final LanBackupService service = _testBackupService(platform);
+    addTearDown(service.dispose);
+
+    await service.initialize(
+      autoEnabled: true,
+      unbackedRetention: UnbackedRetentionPolicy.days30,
+      backedRetention: BackedRetentionPolicy.days7,
+    );
+
+    expect(
+      platform.lastInitializeRequest,
+      containsPair('storageMinimumBytes', BackupStoragePolicy.minimumBytes),
+    );
+    expect(
+      platform.lastInitializeRequest,
+      containsPair('storageWarningBytes', BackupStoragePolicy.warningBytes),
+    );
+    expect(
+      platform.lastInitializeRequest,
+      containsPair('storageTargetBytes', BackupStoragePolicy.targetBytes),
+    );
+    expect(
+      platform.lastInitializeRequest,
+      containsPair(
+        'storageAttestationFreshnessMs',
+        BackupStoragePolicy.attestationFreshness.inMilliseconds,
+      ),
+    );
+    expect(
+      platform.lastInitializeRequest,
+      containsPair(
+        'storageConfirmationLimit',
+        BackupStoragePolicy.confirmationLimit,
+      ),
+    );
+    expect(
+      platform.lastInitializeRequest,
+      containsPair(
+        'storageConfirmationGraceMs',
+        BackupStoragePolicy.confirmationGrace.inMilliseconds,
+      ),
+    );
   });
 
   test('存储检查依赖原生变更事件而不主动读取全量任务', () async {
@@ -2450,6 +2497,7 @@ class _TrackingBackupPlatform extends Fake implements BackupNativePlatform {
       <Map<Object?, Object?>>[];
   final List<List<Map<Object?, Object?>>> enqueuedBatches =
       <List<Map<Object?, Object?>>>[];
+  Map<Object?, Object?>? lastInitializeRequest;
 
   @override
   Future<void> enqueueJobs(List<Map<Object?, Object?>> requests) async {
@@ -2475,8 +2523,10 @@ class _TrackingBackupPlatform extends Fake implements BackupNativePlatform {
   }
 
   @override
-  Future<BackupSummaryDto> initialize(Map<Object?, Object?> request) async =>
-      _backupSnapshot(deviceName: '初始化');
+  Future<BackupSummaryDto> initialize(Map<Object?, Object?> request) async {
+    lastInitializeRequest = request;
+    return _backupSnapshot(deviceName: '初始化');
+  }
 
   @override
   Future<void> setAutoEnabled(bool enabled) async {}

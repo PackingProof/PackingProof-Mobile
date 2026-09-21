@@ -12,6 +12,7 @@ import '../models/lan_backup.dart';
 import '../models/recording_operation_mode.dart';
 import '../models/recording_session.dart';
 import '../models/backup_retention_policy.dart';
+import '../models/backup_storage_policy.dart';
 import '../platform/adapters/pigeon_backup_platform.dart';
 import '../platform/contracts/backup_platform.dart';
 import '../platform/device_platform.dart';
@@ -351,6 +352,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
             'backedRetentionDays': backedRetention.days,
             'returnUnbackedRetentionDays': returnUnbackedRetention.days,
             'returnBackedRetentionDays': returnBackedRetention.days,
+            ...BackupStoragePolicy.toNativeRequest(),
           });
       _accessKey = await _platform.loadAccessKey() ?? '';
       _applyNativeSummary(summary);

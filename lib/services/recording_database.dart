@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/recording_session.dart';
+import '../models/backup_storage_policy.dart';
 import '../models/recording_operation_mode.dart';
 import '../models/recording_orientation.dart';
 
@@ -172,7 +173,6 @@ class RecordingDatabase {
   static const String _recordingFileOwnersTable = 'recording_file_owners';
   static const int _sharedFileMigrationBatchSize = 1;
   static const int _sharedFileCopyChunkSize = 1024 * 1024;
-  static const int _minimumRecordingFreeBytes = 2 * 1024 * 1024 * 1024;
   static const String _backupCursorIndex = 'idx_recording_backup_cursor';
   static const String _pendingWatermarkIndex =
       'idx_recording_pending_watermark';
@@ -2377,7 +2377,7 @@ class RecordingDatabase {
       if (available == null) return false;
       final int availableBytes = available;
       if (availableBytes < 0) return false;
-      return availableBytes >= sourceSize + _minimumRecordingFreeBytes;
+      return availableBytes >= sourceSize + BackupStoragePolicy.minimumBytes;
     } on Object {
       // broad-catch: 无法确认剩余空间时安全拒绝复制，不触碰源录像
       return false;

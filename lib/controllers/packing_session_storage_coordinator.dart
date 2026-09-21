@@ -59,7 +59,7 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
       if (result.deletedCount > 0) {
         final String message =
             '存储空间不足，已提前清理 ${result.deletedCount} 个已备份录像，'
-            '释放 ${_formatStorageBytes(result.freedBytes)}。建议缩短本机保留时间';
+            '释放 ${BackupStoragePolicy.label(result.freedBytes)}。建议缩短本机保留时间';
         await _queueStorageNotice(
           StorageNotice(
             severity: StorageNoticeSeverity.reclaimed,
@@ -69,12 +69,14 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
         _storageWarningMessage = '空间不足，已清理已备份录像';
       } else if (result.warning) {
         await _queueStorageNotice(
-          const StorageNotice(
+          StorageNotice(
             severity: StorageNoticeSeverity.warning,
-            message: '手机剩余空间不足 3GB，建议连接电脑备份或缩短本机录像保留时间',
+            message:
+                '手机剩余空间不足 ${BackupStoragePolicy.warningLabel}，'
+                '建议连接电脑备份或缩短本机录像保留时间',
           ),
         );
-        _storageWarningMessage = '手机存储空间不足 3GB';
+        _storageWarningMessage = '手机存储空间不足 ${BackupStoragePolicy.warningLabel}';
       }
       if (result.insufficient) {
         await _queueStorageNotice(
@@ -83,7 +85,8 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
             message: '已备份录像不足以释放空间，录像已停止。请清理手机空间或连接电脑完成备份',
           ),
         );
-        _storageWarningMessage = '存储空间不足 2GB，正在停止录像';
+        _storageWarningMessage =
+            '存储空间不足 ${BackupStoragePolicy.minimumLabel}，正在停止录像';
         notifyListeners();
         if (allowStop && isWorking) {
           _runInBackground(_requestStorageStopWhenIdle());
@@ -167,10 +170,4 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
   @visibleForTesting
   Future<StorageSpaceResult> checkStorageForTesting() =>
       _checkAndHandleStorage(allowStop: false);
-
-  static String _formatStorageBytes(int bytes) {
-    final double gigabytes = bytes / (1024 * 1024 * 1024);
-    if (gigabytes >= 1) return '${gigabytes.toStringAsFixed(1)}GB';
-    return '${(bytes / (1024 * 1024)).round()}MB';
-  }
 }
