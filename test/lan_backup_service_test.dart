@@ -1121,6 +1121,30 @@ void main() {
         BackupStoragePolicy.confirmationGrace.inMilliseconds,
       ),
     );
+    expect(
+      platform.lastInitializeRequest,
+      containsPair(
+        'storageDeleteUnbackedOnPressure',
+        BackupStoragePolicy.toNativeRequest()['storageDeleteUnbackedOnPressure'],
+      ),
+    );
+  });
+
+  test('修改空间不足策略会下发给原生平台', () async {
+    final _TrackingBackupPlatform platform = _TrackingBackupPlatform();
+    final LanBackupService service = _testBackupService(platform);
+    addTearDown(service.dispose);
+
+    await service.setRetentionPolicies(
+      unbacked: UnbackedRetentionPolicy.days30,
+      backed: BackedRetentionPolicy.days7,
+      storagePressurePolicy: StoragePressurePolicy.preserveRecording,
+    );
+
+    expect(
+      platform.lastRetentionScheduleRequest,
+      containsPair('storageDeleteUnbackedOnPressure', true),
+    );
   });
 
   test('存储检查依赖原生变更事件而不主动读取全量任务', () async {
@@ -2497,6 +2521,12 @@ class _TrackingBackupPlatform extends Fake implements BackupNativePlatform {
   final List<List<Map<Object?, Object?>>> enqueuedBatches =
       <List<Map<Object?, Object?>>>[];
   Map<Object?, Object?>? lastInitializeRequest;
+  Map<Object?, Object?>? lastRetentionScheduleRequest;
+
+  @override
+  Future<void> updateRetentionSchedule(Map<Object?, Object?> request) async {
+    lastRetentionScheduleRequest = request;
+  }
 
   @override
   Future<void> enqueueJobs(List<Map<Object?, Object?>> requests) async {

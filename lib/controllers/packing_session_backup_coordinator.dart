@@ -15,6 +15,9 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
   set _returnBackedRetention(BackedRetentionPolicy value);
   bool get _disposed;
 
+  /// 空间不足时的取舍策略（设置项，默认优先保留录像）。
+  StoragePressurePolicy _storagePressurePolicy =
+      StoragePressurePolicy.preserveFootage;
   bool _cleanupDrainRunning = false;
   bool _cleanupCursorLoaded = false;
   int _cleanupAfterRevision = 0;
@@ -46,24 +49,54 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
     required BackedRetentionPolicy backed,
     required UnbackedRetentionPolicy returnUnbacked,
     required BackedRetentionPolicy returnBacked,
+    StoragePressurePolicy storagePressurePolicy =
+        StoragePressurePolicy.preserveFootage,
   }) async {
     _unbackedRetention = unbacked;
     _backedRetention = backed;
     _returnUnbackedRetention = returnUnbacked;
     _returnBackedRetention = returnBacked;
+    _storagePressurePolicy = storagePressurePolicy;
     notifyListeners();
     await _lanBackupService.setRetentionPolicies(
       unbacked: unbacked,
       backed: backed,
       returnUnbacked: returnUnbacked,
       returnBacked: returnBacked,
+      storagePressurePolicy: storagePressurePolicy,
     );
     await _repository.saveBackupRetention(
       unbacked: unbacked,
       backed: backed,
       returnUnbacked: returnUnbacked,
       returnBacked: returnBacked,
+      storagePressurePolicy: storagePressurePolicy,
     );
+  }
+
+  /// 初始化备份服务并下发保留与存储策略；控制器已释放时返回 false。
+  Future<bool> _initializeBackupService(AppSettings settings) async {
+    try {
+      await _lanBackupService
+          .initialize(
+            autoEnabled: settings.lanBackupAutoEnabled,
+            unbackedRetention: settings.unbackedRetention,
+            backedRetention: settings.backedRetention,
+            returnUnbackedRetention: settings.returnUnbackedRetention,
+            returnBackedRetention: settings.returnBackedRetention,
+            storagePressurePolicy: _storagePressurePolicy,
+          )
+          .timeout(const Duration(seconds: 8));
+    } on Object catch (error) {
+      // 备份服务初始化失败不影响摄像头；记录原因，服务侧看门狗会自愈重试。
+      unawaited(
+        _runtimeLog.log(
+          kind: 'backup_service_init_failed',
+          extra: <String, Object?>{'error': error.toString()},
+        ),
+      );
+    }
+    return !_disposed;
   }
 
   Future<void> backupAllSessions() =>

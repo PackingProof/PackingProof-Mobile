@@ -183,6 +183,7 @@ class RecordingsScreen extends StatefulWidget {
     this.backedRetention = BackedRetentionPolicy.days7,
     this.returnUnbackedRetention = UnbackedRetentionPolicy.days3,
     this.returnBackedRetention = BackedRetentionPolicy.days1,
+    this.storagePressurePolicy = StoragePressurePolicy.preserveFootage,
     this.onBackupRetentionChanged,
     this.onLoadRemoteRecordings,
     this.onLoadLocalRecordings,
@@ -264,11 +265,13 @@ class RecordingsScreen extends StatefulWidget {
   final BackedRetentionPolicy backedRetention;
   final UnbackedRetentionPolicy returnUnbackedRetention;
   final BackedRetentionPolicy returnBackedRetention;
+  final StoragePressurePolicy storagePressurePolicy;
   final Future<void> Function({
     required UnbackedRetentionPolicy unbacked,
     required BackedRetentionPolicy backed,
     required UnbackedRetentionPolicy returnUnbacked,
     required BackedRetentionPolicy returnBacked,
+    required StoragePressurePolicy storagePressurePolicy,
   })?
   onBackupRetentionChanged;
   final Future<RemoteRecordingPage> Function({
@@ -361,6 +364,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
   late BackedRetentionPolicy _backedRetention;
   late UnbackedRetentionPolicy _returnUnbackedRetention;
   late BackedRetentionPolicy _returnBackedRetention;
+  late StoragePressurePolicy _storagePressurePolicy;
   late Set<int> _hiddenRemoteIds;
   Timer? _remoteSearchTimer;
   final TextEditingController _searchController = TextEditingController();
@@ -434,6 +438,8 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _backedRetention = widget.backedRetention;
     _returnUnbackedRetention = widget.returnUnbackedRetention;
     _returnBackedRetention = widget.returnBackedRetention;
+    _storagePressurePolicy = widget.storagePressurePolicy;
+    _storagePressurePolicy = widget.storagePressurePolicy;
     _hiddenRemoteIds = Set<int>.of(widget.hiddenRemoteRecordingIds);
     _applyExternalSearch(widget.externalSearchQuery);
     _attachBackupSnapshotListener();
@@ -715,13 +721,18 @@ class _RecordingsScreenState extends State<RecordingsScreen>
 
   Future<void> _setUnbackedRetention(UnbackedRetentionPolicy value) async {
     setState(() => _unbackedRetention = value);
-    await widget.onBackupRetentionChanged?.call(
-      unbacked: value,
-      backed: _backedRetention,
-      returnUnbacked: _returnUnbackedRetention,
-      returnBacked: _returnBackedRetention,
-    );
+    await _applyBackupRetention();
   }
+
+  /// 四个保留期与空间不足策略共用一次下发，避免各写一遍参数。
+  Future<void> _applyBackupRetention() async =>
+      widget.onBackupRetentionChanged?.call(
+        unbacked: _unbackedRetention,
+        backed: _backedRetention,
+        returnUnbacked: _returnUnbackedRetention,
+        returnBacked: _returnBackedRetention,
+        storagePressurePolicy: _storagePressurePolicy,
+      );
 
   Future<void> _setBackedRetention(BackedRetentionPolicy value) async {
     if (value == BackedRetentionPolicy.immediately) {
@@ -737,34 +748,24 @@ class _RecordingsScreenState extends State<RecordingsScreen>
       if (confirmed != true || !mounted) return;
     }
     setState(() => _backedRetention = value);
-    await widget.onBackupRetentionChanged?.call(
-      unbacked: _unbackedRetention,
-      backed: value,
-      returnUnbacked: _returnUnbackedRetention,
-      returnBacked: _returnBackedRetention,
-    );
+    await _applyBackupRetention();
   }
 
   Future<void> _setReturnUnbackedRetention(
     UnbackedRetentionPolicy value,
   ) async {
     setState(() => _returnUnbackedRetention = value);
-    await widget.onBackupRetentionChanged?.call(
-      unbacked: _unbackedRetention,
-      backed: _backedRetention,
-      returnUnbacked: value,
-      returnBacked: _returnBackedRetention,
-    );
+    await _applyBackupRetention();
   }
 
   Future<void> _setReturnBackedRetention(BackedRetentionPolicy value) async {
     setState(() => _returnBackedRetention = value);
-    await widget.onBackupRetentionChanged?.call(
-      unbacked: _unbackedRetention,
-      backed: _backedRetention,
-      returnUnbacked: _returnUnbackedRetention,
-      returnBacked: value,
-    );
+    await _applyBackupRetention();
+  }
+
+  Future<void> _setStoragePressurePolicy(StoragePressurePolicy value) async {
+    setState(() => _storagePressurePolicy = value);
+    await _applyBackupRetention();
   }
 
   Future<void> _updateSession(RecordingSession updated) async {

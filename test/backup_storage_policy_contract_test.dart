@@ -24,8 +24,17 @@ void main() {
       'storageAttestationFreshnessMs': expected['attestationFreshnessMs'],
       'storageConfirmationLimit': expected['confirmationLimit'],
       'storageConfirmationGraceMs': expected['confirmationGraceMs'],
+      'storageDeleteUnbackedOnPressure': false,
     });
     expect(BackupStoragePolicy.targetBytes, BackupStoragePolicy.warningBytes);
+    // 只有“优先继续录制”才允许删除未备份录像。
+    expect(
+      BackupStoragePolicy.toNativeRequest(
+        pressurePolicy: StoragePressurePolicy.preserveRecording,
+      )['storageDeleteUnbackedOnPressure'],
+      isTrue,
+    );
+    expect(StoragePressurePolicy.preserveFootage.deletesUnbacked, isFalse);
   });
 
   test('字节数文案保持整 GB 不带小数', () {
@@ -63,6 +72,30 @@ void main() {
       _storedValues(block!.group(1)!, separator: ':'),
       expected,
       reason: '请把 IosBackupPlatform.swift 的兜底值改成与 Dart 策略一致',
+    );
+  });
+
+  test('两端兜底的未备份删除开关默认关闭', () {
+    final String kotlin = File(
+      'android/app/src/main/kotlin/app/packingproof/mobile/BackupStoragePolicy.kt',
+    ).readAsStringSync();
+    final String swift = File(
+      'ios/Runner/IosBackupPlatform.swift',
+    ).readAsStringSync();
+
+    expect(
+      RegExp(
+        r'deleteUnbackedOnPressure = (true|false)',
+      ).firstMatch(kotlin)?.group(1),
+      'false',
+      reason: 'BackupStoragePolicy.kt 的兜底值应为优先保留录像',
+    );
+    expect(
+      RegExp(
+        r'deleteUnbackedOnPressure: (true|false)',
+      ).firstMatch(swift)?.group(1),
+      'false',
+      reason: 'IosBackupPlatform.swift 的兜底值应为优先保留录像',
     );
   });
 }

@@ -10,6 +10,8 @@ class _RetentionSettings extends StatelessWidget {
     required this.returnBackedRetention,
     required this.onReturnUnbackedRetentionChanged,
     required this.onReturnBackedRetentionChanged,
+    required this.storagePressurePolicy,
+    required this.onStoragePressurePolicyChanged,
   });
 
   final UnbackedRetentionPolicy unbackedRetention;
@@ -20,11 +22,15 @@ class _RetentionSettings extends StatelessWidget {
   final BackedRetentionPolicy returnBackedRetention;
   final ValueChanged<UnbackedRetentionPolicy> onReturnUnbackedRetentionChanged;
   final ValueChanged<BackedRetentionPolicy> onReturnBackedRetentionChanged;
+  final StoragePressurePolicy storagePressurePolicy;
+  final ValueChanged<StoragePressurePolicy> onStoragePressurePolicyChanged;
 
   static const String _retentionDescription =
       '每组录像分别设置未备份和备份后的保留时间，选择“不清除”则一直保留。\n'
       '已备份录像清理前会向电脑确认，电脑离线或校验未完成时会暂时保留。\n'
-      '空间不足时优先清理最老的、已完成电脑校验的备份录像，不会删除未备份录像。\n'
+      '空间不足时优先清理最老的、已完成电脑校验的备份录像。\n'
+      '“优先保留录像”只清理已确认的备份，腾不出空间就停止录制。\n'
+      '“优先继续录制”不判断电脑在不在，按最老优先删除，可能删除未备份录像且无法恢复。\n'
       '正在上传或等待备份的录像会延后清理';
 
   @override
@@ -74,6 +80,11 @@ class _RetentionSettings extends StatelessWidget {
             onUnbackedRetentionChanged: onReturnUnbackedRetentionChanged,
             onBackedRetentionChanged: onReturnBackedRetentionChanged,
           ),
+          const SizedBox(height: 12),
+          _StoragePressureSettings(
+            policy: storagePressurePolicy,
+            onChanged: onStoragePressurePolicyChanged,
+          ),
         ],
       ),
     );
@@ -89,6 +100,90 @@ class _RetentionSettings extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 空间不足时的取舍：默认优先保留录像，需要 24 小时连录时可切到优先继续录制。
+class _StoragePressureSettings extends StatelessWidget {
+  const _StoragePressureSettings({
+    required this.policy,
+    required this.onChanged,
+  });
+
+  final StoragePressurePolicy policy;
+  final ValueChanged<StoragePressurePolicy> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Padding(
+      key: const Key('storage-pressure-settings'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            '空间不足时',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            '“优先继续录制”可能删除未备份录像，删除后无法恢复',
+            style: TextStyle(color: colors.error, fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 4),
+          RadioGroup<StoragePressurePolicy>(
+            groupValue: policy,
+            onChanged: (StoragePressurePolicy? selected) {
+              if (selected != null) onChanged(selected);
+            },
+            child: Column(
+              children: <Widget>[
+                for (final StoragePressurePolicy value
+                    in StoragePressurePolicy.values)
+                  InkWell(
+                    key: Key('storage-pressure-${value.storageValue}'),
+                    onTap: () => onChanged(value),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: <Widget>[
+                          Radio<StoragePressurePolicy>(value: value),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  value.label,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  value == StoragePressurePolicy.preserveFootage
+                                      ? '只清理电脑确认过的备份，腾不出空间就停止录制'
+                                      : '电脑可有可无，按最老优先删除，保证继续录制',
+                                  style: TextStyle(
+                                    color: colors.onSurfaceVariant,
+                                    fontSize: 13,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),
@@ -806,6 +901,8 @@ extension _RecordingsSettingsView on _RecordingsScreenState {
             returnBackedRetention: _returnBackedRetention,
             onReturnUnbackedRetentionChanged: _setReturnUnbackedRetention,
             onReturnBackedRetentionChanged: _setReturnBackedRetention,
+            storagePressurePolicy: _storagePressurePolicy,
+            onStoragePressurePolicyChanged: _setStoragePressurePolicy,
           ),
           Divider(height: 1, thickness: 1, color: colors.outlineVariant),
           _VideoCodecSettings(

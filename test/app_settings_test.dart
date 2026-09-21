@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/backup_retention_policy.dart';
+import 'package:packing_proof_mobile/models/backup_storage_policy.dart';
 import 'package:packing_proof_mobile/models/app_settings.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/recording_spec.dart';
@@ -44,6 +45,10 @@ void main() {
     expect(settings.backedRetention, BackedRetentionPolicy.days7);
     expect(settings.returnUnbackedRetention, UnbackedRetentionPolicy.days3);
     expect(settings.returnBackedRetention, BackedRetentionPolicy.days1);
+    expect(
+      settings.storagePressurePolicy,
+      StoragePressurePolicy.preserveFootage,
+    );
     expect(settings.minimumBarcodeLength, 11);
     expect(settings.operationMode, RecordingOperationMode.shipping);
 
@@ -333,6 +338,23 @@ void main() {
     expect(settings.unbackedRetention, UnbackedRetentionPolicy.keepForever);
     expect(settings.backedRetention, BackedRetentionPolicy.keepForever);
     expect(settings.speechEnabled, isFalse);
+  });
+
+  test('空间不足策略可持久化并默认优先保留录像', () async {
+    final SessionRepository repository = testRepository(root);
+
+    await repository.saveBackupRetention(
+      unbacked: UnbackedRetentionPolicy.days30,
+      backed: BackedRetentionPolicy.days7,
+      storagePressurePolicy: StoragePressurePolicy.preserveRecording,
+    );
+    final settings = await repository.loadSettings();
+
+    expect(
+      settings.storagePressurePolicy,
+      StoragePressurePolicy.preserveRecording,
+    );
+    expect(settings.unbackedRetention, UnbackedRetentionPolicy.days30);
   });
 
   test('设置索引损坏且无法恢复时禁用自动录像清理', () async {

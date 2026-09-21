@@ -86,6 +86,7 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
   BackedRetentionPolicy get _backedRetention;
   UnbackedRetentionPolicy get _returnUnbackedRetention;
   BackedRetentionPolicy get _returnBackedRetention;
+  StoragePressurePolicy get _storagePressurePolicy;
   bool get _recordAudioEnabled;
   RecordingVideoCodec get _preferredVideoCodec;
   RecordingSpecPreset get _recordingSpec;
@@ -143,6 +144,7 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
   UnbackedRetentionPolicy get returnUnbackedRetention =>
       _returnUnbackedRetention;
   BackedRetentionPolicy get returnBackedRetention => _returnBackedRetention;
+  StoragePressurePolicy get storagePressurePolicy => _storagePressurePolicy;
   bool get recordAudioEnabled => _recordAudioEnabled;
   RecordingVideoCodec get preferredVideoCodec => _preferredVideoCodec;
   RecordingSpecPreset get recordingSpec => _recordingSpec;

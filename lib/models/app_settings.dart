@@ -1,4 +1,5 @@
 import 'backup_retention_policy.dart';
+import 'backup_storage_policy.dart';
 import 'work_mode.dart';
 import 'storage_notice.dart';
 import 'recording_video_codec.dart';
@@ -37,6 +38,7 @@ class AppSettings {
     this.backedRetention = BackedRetentionPolicy.days7,
     this.returnUnbackedRetention = UnbackedRetentionPolicy.days3,
     this.returnBackedRetention = BackedRetentionPolicy.days1,
+    this.storagePressurePolicy = StoragePressurePolicy.preserveFootage,
     this.hiddenRemoteRecordingIds = const <int>{},
     this.storageNoticeState = const StorageNoticeState(),
     this.minimumBarcodeLength = defaultMinimumBarcodeLength,
@@ -68,6 +70,7 @@ class AppSettings {
       ..remove('backedRetention');
     extraValues.remove('returnUnbackedRetention');
     extraValues.remove('returnBackedRetention');
+    extraValues.remove('storagePressurePolicy');
     extraValues.remove('storageNoticeState');
     extraValues.remove('minimumBarcodeLength');
     extraValues.remove('historyPageSize');
@@ -143,6 +146,9 @@ class AppSettings {
       returnBackedRetention: json.containsKey('returnBackedRetention')
           ? backedRetentionFromStorage(json['returnBackedRetention'])
           : BackedRetentionPolicy.days1,
+      storagePressurePolicy: storagePressurePolicyFromStorage(
+        json['storagePressurePolicy'],
+      ),
       hiddenRemoteRecordingIds: hiddenRemoteRecordingIds,
       storageNoticeState: StorageNoticeState.fromJson(
         json['storageNoticeState'],
@@ -203,6 +209,7 @@ class AppSettings {
   final BackedRetentionPolicy backedRetention;
   final UnbackedRetentionPolicy returnUnbackedRetention;
   final BackedRetentionPolicy returnBackedRetention;
+  final StoragePressurePolicy storagePressurePolicy;
   final Set<int> hiddenRemoteRecordingIds;
   final StorageNoticeState storageNoticeState;
   final int minimumBarcodeLength;
@@ -233,6 +240,7 @@ class AppSettings {
     BackedRetentionPolicy? backedRetention,
     UnbackedRetentionPolicy? returnUnbackedRetention,
     BackedRetentionPolicy? returnBackedRetention,
+    StoragePressurePolicy? storagePressurePolicy,
     Set<int>? hiddenRemoteRecordingIds,
     StorageNoticeState? storageNoticeState,
     int? minimumBarcodeLength,
@@ -272,6 +280,8 @@ class AppSettings {
           returnUnbackedRetention ?? this.returnUnbackedRetention,
       returnBackedRetention:
           returnBackedRetention ?? this.returnBackedRetention,
+      storagePressurePolicy:
+          storagePressurePolicy ?? this.storagePressurePolicy,
       hiddenRemoteRecordingIds:
           hiddenRemoteRecordingIds ?? this.hiddenRemoteRecordingIds,
       storageNoticeState: storageNoticeState ?? this.storageNoticeState,
@@ -306,6 +316,7 @@ class AppSettings {
     'backedRetention': backedRetention.storageValue,
     'returnUnbackedRetention': returnUnbackedRetention.storageValue,
     'returnBackedRetention': returnBackedRetention.storageValue,
+    'storagePressurePolicy': storagePressurePolicy.storageValue,
     'hiddenRemoteRecordingIds': hiddenRemoteRecordingIds.toList()..sort(),
     'storageNoticeState': storageNoticeState.toJson(),
     'minimumBarcodeLength': minimumBarcodeLength,

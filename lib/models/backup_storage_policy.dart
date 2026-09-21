@@ -1,3 +1,27 @@
+/// 空间不足时的取舍策略。
+enum StoragePressurePolicy {
+  /// 优先保留录像：只清理电脑确认过的备份，腾不出空间就停止录制。
+  preserveFootage,
+
+  /// 优先继续录制：电脑可有可无，空间不足时按最老优先删除，可能删除未备份录像。
+  preserveRecording;
+
+  bool get deletesUnbacked => this == StoragePressurePolicy.preserveRecording;
+
+  String get storageValue => name;
+
+  String get label => switch (this) {
+    StoragePressurePolicy.preserveFootage => '优先保留录像',
+    StoragePressurePolicy.preserveRecording => '优先继续录制',
+  };
+}
+
+StoragePressurePolicy storagePressurePolicyFromStorage(Object? value) =>
+    StoragePressurePolicy.values.firstWhere(
+      (StoragePressurePolicy item) => item.name == value,
+      orElse: () => StoragePressurePolicy.preserveFootage,
+    );
+
 /// 录像存储与电脑确认规则的唯一来源。
 ///
 /// 阈值、确认时效、单次回收上限都只在这里维护，启动时通过 [toNativeRequest]
@@ -23,13 +47,17 @@ class BackupStoragePolicy {
   /// 到期清理可以复用的电脑确认有效期。
   static const Duration confirmationGrace = Duration(hours: 24);
 
-  static Map<String, Object?> toNativeRequest() => <String, Object?>{
+  static Map<String, Object?> toNativeRequest({
+    StoragePressurePolicy pressurePolicy =
+        StoragePressurePolicy.preserveFootage,
+  }) => <String, Object?>{
     'storageMinimumBytes': minimumBytes,
     'storageWarningBytes': warningBytes,
     'storageTargetBytes': targetBytes,
     'storageAttestationFreshnessMs': attestationFreshness.inMilliseconds,
     'storageConfirmationLimit': confirmationLimit,
     'storageConfirmationGraceMs': confirmationGrace.inMilliseconds,
+    'storageDeleteUnbackedOnPressure': pressurePolicy.deletesUnbacked,
   };
 
   static String get minimumLabel => label(minimumBytes);

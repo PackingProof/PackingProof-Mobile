@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/app_settings.dart';
 import '../models/backup_retention_policy.dart';
+import '../models/backup_storage_policy.dart';
 import '../models/recording_session.dart';
 import '../models/recording_operation_mode.dart';
 import '../models/recording_spec.dart';
@@ -1113,12 +1114,15 @@ class SessionRepository {
     required BackedRetentionPolicy backed,
     UnbackedRetentionPolicy returnUnbacked = UnbackedRetentionPolicy.days3,
     BackedRetentionPolicy returnBacked = BackedRetentionPolicy.days1,
+    StoragePressurePolicy storagePressurePolicy =
+        StoragePressurePolicy.preserveFootage,
   }) => _updateSettings(
     (AppSettings value) => value.copyWith(
       unbackedRetention: unbacked,
       backedRetention: backed,
       returnUnbackedRetention: returnUnbacked,
       returnBackedRetention: returnBacked,
+      storagePressurePolicy: storagePressurePolicy,
     ),
   );
 
