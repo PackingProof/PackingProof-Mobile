@@ -28,6 +28,13 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
   int _automaticBackupGeneration = 0;
   String _automaticFullBackupReason = 'automatic';
   String _automaticIncrementalBackupReason = 'app_start';
+  bool _autoRetrySweepRunning = false;
+  DateTime? _lastAutoRetrySweepAt;
+
+  /// 自动重传扫描的节流与单轮上限：暂停任务重新排队后会变成待上传，
+  /// 下一轮自然处理后面的任务。
+  static const Duration _autoRetrySweepInterval = Duration(seconds: 30);
+  static const int _autoRetrySweepLimit = 20;
 
   void _runInBackground(Future<void> task);
   Future<void> _refreshLocalStatistics();
@@ -240,9 +247,80 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
         !_cleanupDrainRunning) {
       _runInBackground(_drainCleanupEvents());
     }
+    _scheduleAutoRetrySweep();
     if (!_disposed) {
       notifyListeners();
     }
+  }
+
+  void _scheduleAutoRetrySweep() {
+    if (_disposed || _autoRetrySweepRunning) return;
+    final LanBackupSnapshot snapshot = _lanBackupService.snapshot;
+    if (!snapshot.autoEnabled ||
+        snapshot.connectionStatus != LanConnectionStatus.connected) {
+      return;
+    }
+    final DateTime now = DateTime.now();
+    final DateTime? last = _lastAutoRetrySweepAt;
+    if (last != null && now.difference(last) < _autoRetrySweepInterval) return;
+    _lastAutoRetrySweepAt = now;
+    _autoRetrySweepRunning = true;
+    _runInBackground(
+      _retryAutoRecoverableBackupFailures().whenComplete(() {
+        _autoRetrySweepRunning = false;
+      }),
+    );
+  }
+
+  /// Android 由 WorkManager 自动重试暂时性失败；iOS 失败后只停在暂停态，所以这里在
+  /// 电脑连上时把可自动恢复的暂停任务重新排队，避免老视频永远不再上传。
+  Future<void> _retryAutoRecoverableBackupFailures() async {
+    int retried = 0;
+    try {
+      await _forEachRepositoryBackupBatch((
+        List<RecordingSession> sessions,
+      ) async {
+        if (retried >= _autoRetrySweepLimit) return;
+        final LanBackupJobsByPaths result = await _lanBackupService
+            .jobsForPaths(
+              sessions.map((RecordingSession session) => session.filePath),
+            );
+        for (final LanBackupJob job in result.jobs) {
+          if (retried >= _autoRetrySweepLimit) break;
+          if (!_shouldAutoRetryBackupJob(job)) continue;
+          retried++;
+          await _lanBackupService.retry(job.id);
+        }
+      }, shouldContinue: () => !_disposed);
+    } on Object catch (error) {
+      // broad-catch: 自动重传是尽力而为，失败不能影响预览、录像或手动备份。
+      unawaited(
+        _runtimeLog.log(
+          kind: 'backup_auto_retry_failed',
+          extra: <String, Object?>{'error': error.toString()},
+        ),
+      );
+    }
+    if (retried > 0) {
+      unawaited(
+        _runtimeLog.log(
+          kind: 'backup_auto_retry',
+          extra: <String, Object?>{'count': retried},
+        ),
+      );
+    }
+  }
+
+  bool _shouldAutoRetryBackupJob(LanBackupJob job) {
+    if (job.localDeletedAt != null) return false;
+    if (job.state != LanBackupJobState.paused &&
+        job.state != LanBackupJobState.failed) {
+      return false;
+    }
+    final LanBackupFailureKind? kind = job.failureKind;
+    // 没有失败原因的暂停任务来自旧版本「仅登记也写成 paused」的问题（或自动备份关闭时
+    // 登记的任务）：自动备份已经开启时应当恢复上传。
+    return kind == null || kind.autoRetryable;
   }
 
   Future<void> _drainCleanupEvents() async {

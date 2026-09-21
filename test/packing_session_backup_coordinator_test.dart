@@ -85,6 +85,155 @@ void main() {
     );
   });
 
+  test('电脑连上后自动重排可恢复的暂停上传任务', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-backup-auto-retry-',
+    );
+    final SessionRepository repository = testRepository(root);
+    await repository.initialize();
+    final DateTime startedAt = DateTime.utc(2026, 8, 23, 12);
+    final File video = File('${root.path}/retry.mp4');
+    await video.writeAsBytes(<int>[1]);
+    await repository.addSession(
+      RecordingSession(
+        id: 'retry',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <Never>[],
+      ),
+    );
+    await repository.resumeSharedFileMigration();
+    final _RecordingLanBackupSink backup = _RecordingLanBackupSink()
+      ..jobsByPath[video.path] = LanBackupJob(
+        id: 'job-offline',
+        filePath: video.path,
+        state: LanBackupJobState.paused,
+        uploadedBytes: 0,
+        totalBytes: 1,
+        failureKind: LanBackupFailureKind.offlineOrTimeout,
+      )
+      // 旧版本「仅登记也写 paused」留下的任务没有失败原因，同样要恢复。
+      ..jobsByPath['${video.path}.legacy'] = LanBackupJob(
+        id: 'job-legacy-paused',
+        filePath: '${video.path}.legacy',
+        state: LanBackupJobState.paused,
+        uploadedBytes: 0,
+        totalBytes: 1,
+      );
+    await File('${video.path}.legacy').writeAsBytes(<int>[1]);
+    await repository.addSession(
+      RecordingSession(
+        id: 'retry-legacy',
+        filePath: '${video.path}.legacy',
+        startedAt: startedAt.add(const Duration(seconds: 2)),
+        endedAt: startedAt.add(const Duration(seconds: 3)),
+        markers: const <Never>[],
+      ),
+    );
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _NoopSpeechSink(),
+      lanBackupService: backup,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.lanBackup,
+      }),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    await controller.initialize();
+
+    // 没开自动备份时不重排。
+    backup.emitSnapshot(
+      autoEnabled: false,
+      connectionStatus: LanConnectionStatus.connected,
+    );
+    await _waitForAutoRetrySweep();
+    expect(backup.retriedJobIds, isEmpty);
+
+    // 打开自动备份但电脑离线时也不重排。
+    backup.emitSnapshot(
+      autoEnabled: true,
+      connectionStatus: LanConnectionStatus.offline,
+    );
+    await _waitForAutoRetrySweep();
+    expect(backup.retriedJobIds, isEmpty);
+
+    // 电脑连上后，暂时性失败的任务重新排队。
+    backup.emitSnapshot(
+      autoEnabled: true,
+      connectionStatus: LanConnectionStatus.connected,
+    );
+    for (
+      int attempt = 0;
+      attempt < 100 && backup.retriedJobIds.isEmpty;
+      attempt++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(backup.retriedJobIds.toSet(), <String>{
+      'job-offline',
+      'job-legacy-paused',
+    });
+  });
+
+  test('凭据失效等需要人工处理的失败不会自动重排', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-backup-auto-retry-skip-',
+    );
+    final SessionRepository repository = testRepository(root);
+    await repository.initialize();
+    final DateTime startedAt = DateTime.utc(2026, 8, 23, 12);
+    final File video = File('${root.path}/manual.mp4');
+    await video.writeAsBytes(<int>[1]);
+    await repository.addSession(
+      RecordingSession(
+        id: 'manual',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <Never>[],
+      ),
+    );
+    await repository.resumeSharedFileMigration();
+    final _RecordingLanBackupSink backup = _RecordingLanBackupSink()
+      ..jobsByPath[video.path] = LanBackupJob(
+        id: 'job-credential',
+        filePath: video.path,
+        state: LanBackupJobState.paused,
+        uploadedBytes: 0,
+        totalBytes: 1,
+        failureKind: LanBackupFailureKind.credentialInvalid,
+      );
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _NoopSpeechSink(),
+      lanBackupService: backup,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.lanBackup,
+      }),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    await controller.initialize();
+    backup.emitSnapshot(
+      autoEnabled: true,
+      connectionStatus: LanConnectionStatus.connected,
+    );
+
+    await _waitForAutoRetrySweep();
+
+    expect(backup.retriedJobIds, isEmpty);
+  });
+
   test('自动备份触发立即返回且多个触发只由一个 runner 串行处理', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing-proof-backup-runner-',
@@ -733,6 +882,13 @@ class _PagedBackupRepository extends SessionRepository {
   }
 }
 
+/// 给自动重排扫描留出调度时间；扫描本身是后台任务，无法直接 await。
+Future<void> _waitForAutoRetrySweep() async {
+  for (int attempt = 0; attempt < 20; attempt++) {
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+}
+
 class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
   LanBackupSnapshot _snapshot = const LanBackupSnapshot(autoEnabled: false);
   final List<_BackupCall> backupCalls = <_BackupCall>[];
@@ -741,6 +897,8 @@ class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
       <List<RecordingSession>>[];
   final List<LanBackupCleanupPage> cleanupPages = <LanBackupCleanupPage>[];
   final List<int> acknowledgedCleanupRevisions = <int>[];
+  final Map<String, LanBackupJob> jobsByPath = <String, LanBackupJob>{};
+  final List<String> retriedJobIds = <String>[];
   bool failNextCleanupAcknowledgement = false;
   int initializeCalls = 0;
   bool retryConnectionResult = false;
@@ -854,18 +1012,38 @@ class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
   Future<void> disconnect() async {}
 
   @override
-  Future<void> retry(String jobId) async {}
+  Future<void> retry(String jobId) async {
+    retriedJobIds.add(jobId);
+  }
 
   @override
   Future<void> cancel(String jobId) async {}
 
   @override
-  Future<LanBackupJobsByPaths> jobsForPaths(Iterable<String> paths) async =>
-      LanBackupJobsByPaths(
-        revision: _snapshot.summary.revision,
-        jobs: const <LanBackupJob>[],
-        missingPaths: paths.toSet(),
-      );
+  Future<LanBackupJobsByPaths> jobsForPaths(Iterable<String> paths) async {
+    final List<LanBackupJob> jobs = paths
+        .map((String path) => jobsByPath[path])
+        .whereType<LanBackupJob>()
+        .toList(growable: false);
+    return LanBackupJobsByPaths(
+      revision: _snapshot.summary.revision,
+      jobs: jobs,
+      missingPaths: paths.toSet()
+        ..removeAll(jobs.map((LanBackupJob job) => job.filePath)),
+    );
+  }
+
+  /// 模拟原生快照变化（连接状态、自动备份开关）。
+  void emitSnapshot({
+    bool? autoEnabled,
+    LanConnectionStatus? connectionStatus,
+  }) {
+    _snapshot = _snapshot.copyWith(
+      autoEnabled: autoEnabled,
+      connectionStatus: connectionStatus,
+    );
+    notifyListeners();
+  }
 
   @override
   Future<LanBackupCleanupPage> cleanupEvents({

@@ -56,6 +56,15 @@ extension LanBackupFailureRecovery on LanBackupFailureKind {
     _ => LanBackupRecoveryAction.retryBackup,
   };
 
+  /// 与 Android `LanBackupFailurePolicy.shouldAutoRetry` 一致的暂时性失败集合：
+  /// 电脑或网络恢复后应当自动重新排队，不需要操作员手动点重试。
+  bool get autoRetryable => switch (this) {
+    LanBackupFailureKind.offlineOrTimeout ||
+    LanBackupFailureKind.temporaryService ||
+    LanBackupFailureKind.storageUnavailable => true,
+    _ => false,
+  };
+
   String get recoveryLabel => switch (this) {
     LanBackupFailureKind.credentialInvalid => '重新申请',
     LanBackupFailureKind.offlineOrTimeout => '重试连接',
