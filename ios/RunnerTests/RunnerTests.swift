@@ -86,6 +86,48 @@ private final class LockedTestCounter: @unchecked Sendable {
 
 class RunnerTests: XCTestCase {
 
+  func testVisionFallbackIsNotSuppressedByQRCodeDuringWorkScan() throws {
+    // 面单二维码停在画面里时不能算「近期候选」，否则条形码的 Vision 兜底被压住。
+    XCTAssertFalse(
+      IosBarcodeVisionFallbackPolicy.hasUsableCandidate(
+        formats: ["qr"], pairingScan: false, workScan: true
+      )
+    )
+    XCTAssertTrue(
+      IosBarcodeVisionFallbackPolicy.hasUsableCandidate(
+        formats: ["code128"], pairingScan: false, workScan: true
+      )
+    )
+    XCTAssertTrue(
+      IosBarcodeVisionFallbackPolicy.hasUsableCandidate(
+        formats: ["qr", "code128"], pairingScan: false, workScan: true
+      )
+    )
+    XCTAssertFalse(
+      IosBarcodeVisionFallbackPolicy.hasUsableCandidate(
+        formats: ["dataMatrix", "ean13"], pairingScan: false, workScan: true
+      )
+    )
+    // 配对扫码认二维码，不认面单条形码。
+    XCTAssertTrue(
+      IosBarcodeVisionFallbackPolicy.hasUsableCandidate(
+        formats: ["qr"], pairingScan: true, workScan: false
+      )
+    )
+    XCTAssertFalse(
+      IosBarcodeVisionFallbackPolicy.hasUsableCandidate(
+        formats: ["code128"], pairingScan: true, workScan: false
+      )
+    )
+  }
+
+  func testWorkScanFormatsMatchDartAndDesktopContract() throws {
+    XCTAssertEqual(
+      IosBarcodeVisionFallbackPolicy.workScanFormats,
+      ["code128", "code39", "code93", "codabar"]
+    )
+  }
+
   func testEndingMaxVolumeKeepsRunningCameraAudioSessionActive() throws {
     let session = FakeIosAudioSession()
     let coordinator = IosSharedAudioSessionCoordinator(session: session)

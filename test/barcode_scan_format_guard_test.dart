@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/services/barcode_candidate_policy.dart';
 import 'package:packing_proof_mobile/services/barcode_recognized_beep_policy.dart';
@@ -71,6 +73,26 @@ void main() {
       }
     });
 
+    test('iOS Vision 兜底用同一份一维码制清单', () {
+      final String source = File(
+        'ios/Runner/IosCameraPlatform.swift',
+      ).readAsStringSync();
+      final RegExpMatch? block = RegExp(
+        r'workScanFormats: Set<String> = \[([\s\S]*?)\]',
+      ).firstMatch(source);
+      expect(block, isNotNull, reason: 'iOS 码制清单声明格式被修改，请同步本测试');
+      final Set<String> formats = RegExp('"([^"]+)"')
+          .allMatches(block!.group(1)!)
+          .map((RegExpMatch match) => match.group(1)!)
+          .toSet();
+
+      expect(
+        formats,
+        pcAllowedFormats,
+        reason: 'iOS 抑制 Vision 兜底用的码制必须与面单识别放行清单一致',
+      );
+    });
+
     test('静默码制清单覆盖二维码与商品码，且不含任何一维面单码制', () {
       for (final String format in <String>[
         ...matrixFormats,
@@ -117,25 +139,14 @@ void main() {
         );
         final bool silent = BarcodeCandidatePolicy.silentWorkScanFormats
             .contains(format);
-        expect(
-          allowed || silent,
-          isTrue,
-          reason: '$format 既不放行也不静默，会退回弹提示分支',
-        );
-        expect(
-          allowed && silent,
-          isFalse,
-          reason: '$format 不能既放行又静默',
-        );
+        expect(allowed || silent, isTrue, reason: '$format 既不放行也不静默，会退回弹提示分支');
+        expect(allowed && silent, isFalse, reason: '$format 不能既放行又静默');
       }
       // 反向：Dart 认得的码制名不能超出原生会上报的范围。
-      expect(
-        <String>{
-          ...BarcodeCandidatePolicy.workScanFormats,
-          ...BarcodeCandidatePolicy.silentWorkScanFormats,
-        },
-        nativeReportedNames,
-      );
+      expect(<String>{
+        ...BarcodeCandidatePolicy.workScanFormats,
+        ...BarcodeCandidatePolicy.silentWorkScanFormats,
+      }, nativeReportedNames);
     });
 
     test('放行清单里的每一种码制都能通过识别并需要反馈', () {
@@ -240,24 +251,18 @@ void main() {
       // 面单二维码连续停在画面里，一声都不该响。
       for (int i = 0; i < 5; i++) {
         expect(
-          policy.shouldBeep(
-            const <({String value, String? format})>[
-              (value: 'JD0123456789012', format: 'qr'),
-            ],
-            skipSilentFormats: true,
-          ),
+          policy.shouldBeep(const <({String value, String? format})>[
+            (value: 'JD0123456789012', format: 'qr'),
+          ], skipSilentFormats: true),
           isFalse,
           reason: '第 $i 帧二维码不得出声',
         );
       }
       // 条形码进入画面立刻响一声。
       expect(
-        policy.shouldBeep(
-          const <({String value, String? format})>[
-            (value: 'JD0123456789012', format: 'code128'),
-          ],
-          skipSilentFormats: true,
-        ),
+        policy.shouldBeep(const <({String value, String? format})>[
+          (value: 'JD0123456789012', format: 'code128'),
+        ], skipSilentFormats: true),
         isTrue,
       );
     });
@@ -265,11 +270,9 @@ void main() {
     test('配对扫码仍需为二维码出声', () {
       final BarcodeRecognizedBeepPolicy policy = BarcodeRecognizedBeepPolicy();
       expect(
-        policy.shouldBeep(
-          const <({String value, String? format})>[
-            (value: 'HTTP://192.168.31.250:5280/PAIR?K=ABC', format: 'qr'),
-          ],
-        ),
+        policy.shouldBeep(const <({String value, String? format})>[
+          (value: 'HTTP://192.168.31.250:5280/PAIR?K=ABC', format: 'qr'),
+        ]),
         isTrue,
         reason: '配对二维码必须响，否则用户不知道扫到了',
       );
@@ -327,11 +330,7 @@ void main() {
           break;
         }
       }
-      expect(
-        confirmed,
-        'JD0123456789012',
-        reason: '同帧有条形码时必须能确认，二维码不得拦截',
-      );
+      expect(confirmed, 'JD0123456789012', reason: '同帧有条形码时必须能确认，二维码不得拦截');
     });
 
     test('只有二维码时锁一直为空，不会堵住之后的条形码', () {

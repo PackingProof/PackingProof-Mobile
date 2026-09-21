@@ -335,6 +335,36 @@ enum IosBarcodeVisionFallbackPolicy {
   static let minimumInterval: TimeInterval = 0.25
   static let recentCandidateWindow: TimeInterval = 0.8
 
+  /// 面单识别与历史扫码只认一维码，与 Dart 端 `BarcodeCandidatePolicy.workScanFormats`
+  /// 和电脑端 `AllowedFormats` 一致；二维码只服务于扫码连接电脑。
+  static let workScanFormats: Set<String> = [
+    "code128",
+    "code39",
+    "code93",
+    "codabar",
+  ]
+  static let pairingScanFormats: Set<String> = ["qr"]
+
+  /// 当前扫码用途能否用上这批候选。
+  ///
+  /// 只有能用的码才允许刷新「近期候选」窗口：面单上的二维码一直停在画面里，如果它
+  /// 也算近期候选，Vision 兜底会被持续抑制，条形码只能靠 AVFoundation metadata 识别，
+  /// 表现为「有二维码就扫不动、遮住二维码就很快」。
+  static func hasUsableCandidate(
+    formats: [String?],
+    pairingScan: Bool,
+    workScan: Bool
+  ) -> Bool {
+    var allowed = Set<String>()
+    if pairingScan { allowed.formUnion(pairingScanFormats) }
+    if workScan { allowed.formUnion(workScanFormats) }
+    guard !allowed.isEmpty else { return true }
+    return formats.contains { format in
+      guard let format, !format.isEmpty else { return false }
+      return allowed.contains(format)
+    }
+  }
+
   static func shouldSchedule(
     now: TimeInterval,
     lastCandidateAt: TimeInterval?,
@@ -1973,7 +2003,15 @@ final class IosCameraHostApi:
       }
       metadataCandidateCount += Int64(candidates.count)
       metadataLastCandidateAt = now
-      markVisionCandidate(at: now)
+      // 只有本次扫码用得上的码才刷新近期候选，避免面单二维码把条形码的
+      // Vision 兜底压住。
+      if IosBarcodeVisionFallbackPolicy.hasUsableCandidate(
+        formats: candidates.map(\.format),
+        pairingScan: pairingScanEnabled,
+        workScan: workScanEnabled
+      ) {
+        markVisionCandidate(at: now)
+      }
     }
     // Empty observations let Dart rearm a previously confirmed barcode after
     // the label leaves the frame, including same-code stop recording.
@@ -1988,9 +2026,10 @@ final class IosCameraHostApi:
   private func scheduleVisionFallback(for pixelBuffer: CVPixelBuffer) {
     guard !isDisposed else { return }
     guard scanEngine != .metadata else { return }
-    let scanningEnabled = metadataQueue.sync {
-      pairingScanEnabled || workScanEnabled
+    let (pairingScan, workScan) = metadataQueue.sync {
+      (pairingScanEnabled, workScanEnabled)
     }
+    let scanningEnabled = pairingScan || workScan
     guard scanningEnabled else { return }
     let now = ProcessInfo.processInfo.systemUptime
     let benchmarkMinimumInterval =
@@ -2020,7 +2059,9 @@ final class IosCameraHostApi:
       self.runVisionFallback(
         on: pixelBuffer,
         orientation: orientation,
-        submittedAt: now
+        submittedAt: now,
+        pairingScan: pairingScan,
+        workScan: workScan
       )
     }
   }
@@ -2028,7 +2069,9 @@ final class IosCameraHostApi:
   private func runVisionFallback(
     on pixelBuffer: CVPixelBuffer,
     orientation: CGImagePropertyOrientation,
-    submittedAt: TimeInterval
+    submittedAt: TimeInterval,
+    pairingScan: Bool,
+    workScan: Bool
   ) {
     let request = VNDetectBarcodesRequest()
     request.symbologies = Self.visionSymbologies
@@ -2068,7 +2111,13 @@ final class IosCameraHostApi:
       visionLastError = nil
       if !candidates.isEmpty {
         visionCandidateCount += Int64(candidates.count)
-        visionLastCandidateAt = ProcessInfo.processInfo.systemUptime
+        if IosBarcodeVisionFallbackPolicy.hasUsableCandidate(
+          formats: candidates.map(\.format),
+          pairingScan: pairingScan,
+          workScan: workScan
+        ) {
+          visionLastCandidateAt = ProcessInfo.processInfo.systemUptime
+        }
       }
       visionScanInFlight = false
       visionStateLock.unlock()
@@ -2079,7 +2128,11 @@ final class IosCameraHostApi:
             "latency_ms=\(durationMs) candidate_count=\(candidates.count)"
         )
       }
-      if !candidates.isEmpty {
+      if IosBarcodeVisionFallbackPolicy.hasUsableCandidate(
+        formats: candidates.map(\.format),
+        pairingScan: pairingScan,
+        workScan: workScan
+      ) {
         markVisionCandidate(at: ProcessInfo.processInfo.systemUptime)
       }
       metadataQueue.async { [weak self] in
