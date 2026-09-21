@@ -519,7 +519,7 @@ class PackingSessionController extends ChangeNotifier
       _storageWarningMessage = null;
       final StorageSpaceResult storage = await timing.measure(
         'storageReclaim',
-        () => _checkAndHandleStorage(allowStop: false),
+        _reclaimStorageBeforeStart,
       );
       if (storage.insufficient) {
         timingOutcome = 'insufficient_storage';

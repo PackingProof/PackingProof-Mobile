@@ -271,6 +271,7 @@ class _TrackingDiagnosticsLogService extends DiagnosticsLogService {
 class _FakeBackupPlatform implements BackupNativePlatform {
   int storageCheckCalls = 0;
   Completer<Map<Object?, Object?>?>? pendingStorageCheck;
+  final List<Map<Object?, Object?>> reclaimResults = <Map<Object?, Object?>>[];
 
   @override
   Future<int?> availableRecordingStorageBytes() async => 1 << 50;
@@ -362,6 +363,7 @@ class _FakeBackupPlatform implements BackupNativePlatform {
   @override
   Future<Map<Object?, Object?>?> reclaimStorageIfNeeded() async {
     storageCheckCalls++;
+    if (reclaimResults.isNotEmpty) return reclaimResults.removeAt(0);
     final Completer<Map<Object?, Object?>?>? pending = pendingStorageCheck;
     if (pending != null) return pending.future;
     return <Object?, Object?>{
@@ -606,6 +608,40 @@ void main() {
     expect(camera.diagnosticsCalls, 1);
   });
 
+  test('开始工作前空间不够会继续回收到够用再开录', () async {
+    backupPlatform.reclaimResults.addAll(<Map<Object?, Object?>>[
+      <Object?, Object?>{
+        'availableBytes': 1 << 30,
+        'availableBytesBefore': 1 << 30,
+        'freedBytes': 8 << 20,
+        'deletedCount': 3,
+        'warning': true,
+        'insufficient': true,
+      },
+      <Object?, Object?>{
+        'availableBytes': 4 << 30,
+        'availableBytesBefore': 1 << 30,
+        'freedBytes': 3 << 30,
+        'deletedCount': 5,
+        'warning': false,
+        'insufficient': false,
+      },
+    ]);
+
+    await controller.initialize();
+    await controller.startWork();
+
+    expect(backupPlatform.storageCheckCalls, 2);
+    expect(controller.isWorking, isTrue);
+    expect(controller.errorMessage, isNull);
+    expect(
+      runtimeLog.events
+          .lastWhere((event) => event.kind == 'start_work_stage_timing')
+          .extra['outcome'],
+      'success',
+    );
+  });
+
   test('开始工作后忽略二维码并从同帧选择 Code128', () async {
     await controller.initialize();
     await controller.startWork();
@@ -657,15 +693,13 @@ void main() {
 
     // 面单二维码会一直停在画面里等条形码：逐帧写盘会在十几秒内挤掉整个诊断环。
     for (int i = 0; i < 30; i++) {
-      controller.handleNativeBarcodeFrameForTesting(
-        <NativeBarcodeCandidate>[
-          const NativeBarcodeCandidate(
-            value: 'QR12345678901',
-            area: 300,
-            format: 'qr',
-          ),
-        ],
-      );
+      controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+        const NativeBarcodeCandidate(
+          value: 'QR12345678901',
+          area: 300,
+          format: 'qr',
+        ),
+      ]);
     }
     expect(
       runtimeLog.events.where((event) => event.kind == 'barcode_silent'),
@@ -725,11 +759,7 @@ void main() {
         area: 5000,
         format: 'qr',
       ),
-      const NativeBarcodeCandidate(
-        value: 'BACK',
-        area: 100,
-        format: 'code128',
-      ),
+      const NativeBarcodeCandidate(value: 'BACK', area: 100, format: 'code128'),
     ]);
     await Future<void>.delayed(Duration.zero);
 

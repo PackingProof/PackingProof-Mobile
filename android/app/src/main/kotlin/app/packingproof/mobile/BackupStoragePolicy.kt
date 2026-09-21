@@ -28,7 +28,7 @@ internal data class BackupStoragePolicy(
             warningBytes = 3L * 1024 * 1024 * 1024,
             targetBytes = 3L * 1024 * 1024 * 1024,
             attestationFreshnessMs = 5L * 60 * 1000,
-            confirmationLimit = 16,
+            confirmationLimit = 64,
             confirmationGraceMs = 24L * 60 * 60 * 1000,
         )
     }

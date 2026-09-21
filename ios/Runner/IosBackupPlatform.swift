@@ -508,7 +508,7 @@ struct BackupStoragePolicy: Equatable {
     warningBytes: 3 * 1024 * 1024 * 1024,
     targetBytes: 3 * 1024 * 1024 * 1024,
     attestationFreshnessMs: 5 * 60 * 1000,
-    confirmationLimit: 16,
+    confirmationLimit: 64,
     confirmationGraceMs: 24 * 60 * 60 * 1000
   )
 }

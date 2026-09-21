@@ -38,6 +38,17 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
     _storageMonitorTimer = null;
   }
 
+  /// 开始录像前的空间回收：一次没清够就继续清，直到够用、没有进展或达到轮次上限。
+  /// 录像普遍只有几十兆，单次回收常常只能腾出一部分空间。
+  Future<StorageSpaceResult> _reclaimStorageBeforeStart() async {
+    StorageSpaceResult result = await _checkAndHandleStorage(allowStop: false);
+    for (int round = 1; round < 3; round++) {
+      if (!result.insufficient || result.deletedCount == 0) break;
+      result = await _checkAndHandleStorage(allowStop: false);
+    }
+    return result;
+  }
+
   Future<StorageSpaceResult> _checkAndHandleStorage({
     required bool allowStop,
   }) async {

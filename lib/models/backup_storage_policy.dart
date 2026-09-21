@@ -16,8 +16,9 @@ class BackupStoragePolicy {
   /// “刚向电脑确认过”的有效期，超期必须重新向电脑确认才能删除录像。
   static const Duration attestationFreshness = Duration(minutes: 5);
 
-  /// 单次空间回收最多向电脑重新确认的录像数量。
-  static const int confirmationLimit = 16;
+  /// 单次空间回收最多向电脑重新确认的录像数量。录像普遍只有几十兆，一次回收往往
+  /// 需要清掉几十条才能腾出目标余量；局域网确认很快，电脑不可达时会立即停止。
+  static const int confirmationLimit = 64;
 
   /// 到期清理可以复用的电脑确认有效期。
   static const Duration confirmationGrace = Duration(hours: 24);
