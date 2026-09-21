@@ -33,7 +33,7 @@ PackingProof-Mobile is a Flutter app for continuous package-recording and shippi
 - Recording records, tracking numbers, and video files are strictly one-to-one: one tracking number maps to one independent video file and one recording record. Do not describe, create, or preserve a master-video/sub-video, shared-file, or one-file-to-multiple-records model in product behavior, protocol documentation, developer documentation, or tests.
 - Keep LAN backup and remote-recording cleanup semantics distinct from deleting local source recordings.
 - Keep the LAN backup device ID derived anonymously from Android ID so the same formally signed app can identify the physical phone again after uninstall/reinstall. Do not expose the raw Android ID.
-- Keep at least 2 GB free for recording. Storage-pressure cleanup may remove only computer-verified backups, must reuse guarded file deletion, and must never remove unbacked recordings. Storage notices remain silent and modal reminders are deferred until work ends, at most twice per local day.
+- Keep at least 2 GB free for recording. Storage-pressure cleanup must reuse guarded file deletion. The default 「优先保留录像」 strategy may remove only computer-verified backups and must never remove unbacked recordings; the explicit 「优先继续录制」 strategy may also delete the oldest unbacked recordings so recording can continue, and must record a cleanup reason for every deletion. Storage notices remain silent and modal reminders are deferred until work ends, at most twice per local day.
 - 用户可见文案整段结尾不使用句号（。）；多句提示内部可保留句号分隔。
 
 ## 平台能力与实现纪律
