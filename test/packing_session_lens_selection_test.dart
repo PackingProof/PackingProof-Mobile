@@ -343,19 +343,23 @@ void main() {
     }
   });
 
-  test('初始化后镜头列表隐藏超广角，只保留 1x 与长焦', () async {
+  test('初始化后镜头列表保留超广角档位', () async {
     await controller.initialize();
     expect(controller.phase, PackingSessionPhase.ready);
     expect(
       controller.backCameraLenses.map((NativeCameraLens lens) => lens.cameraId),
-      <String>['wide', 'tele'],
+      <String>['ultra', 'wide', 'tele'],
     );
-    expect(
-      controller.backCameraLenses.any(
-        (NativeCameraLens lens) => lens.zoomRatio < 1.0,
-      ),
-      isFalse,
-    );
+  });
+
+  test('可以切到超广角档位并保持选中', () async {
+    await controller.initialize();
+
+    await controller.switchToCamera('ultra');
+
+    expect(camera.switchToCameraCalls, 1);
+    expect(controller.activeCameraId, 'ultra');
+    expect(controller.backCameraLenses.length, 3);
   });
 
   test('手电筒可以连续开关且不触发语音', () async {

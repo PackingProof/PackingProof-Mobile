@@ -95,6 +95,54 @@ class StreamConfigPolicyTest {
     }
 
     @Test
+    fun `超广角档位优先1080p识别流并保留降级候选`() {
+        val sizes = listOf(
+            StreamSize(320, 240),
+            StreamSize(640, 480),
+            StreamSize(960, 540),
+            StreamSize(1280, 720),
+            StreamSize(1920, 1080),
+        )
+        assertEquals(
+            listOf(
+                StreamSize(1920, 1080),
+                StreamSize(1280, 720),
+                StreamSize(960, 540),
+                StreamSize(640, 480),
+                StreamSize(320, 240),
+            ),
+            policy.analysisCandidates(sizes, lensZoomRatio = 0.7),
+        )
+    }
+
+    @Test
+    fun `超广角缺少1080p支持时回退到轻量识别流`() {
+        val sizes = listOf(
+            StreamSize(640, 480),
+            StreamSize(960, 540),
+        )
+        assertEquals(
+            listOf(StreamSize(960, 540), StreamSize(640, 480)),
+            policy.analysisCandidates(sizes, lensZoomRatio = 0.5),
+        )
+    }
+
+    @Test
+    fun `主摄与长焦档位保持轻量识别流`() {
+        val sizes = listOf(
+            StreamSize(640, 480),
+            StreamSize(960, 540),
+            StreamSize(1920, 1080),
+        )
+        for (zoomRatio in listOf(1.0, 2.0, 5.0)) {
+            assertEquals(
+                listOf(StreamSize(960, 540), StreamSize(640, 480)),
+                policy.analysisCandidates(sizes, lensZoomRatio = zoomRatio),
+            )
+        }
+    }
+
+    @Test
     fun `录像候选包含全部三路组合且按视频优先排序`() {
         val candidates = policy.threeSurfaceCandidates(
             videoSizes = listOf(StreamSize(1920, 1080), StreamSize(1280, 720)),

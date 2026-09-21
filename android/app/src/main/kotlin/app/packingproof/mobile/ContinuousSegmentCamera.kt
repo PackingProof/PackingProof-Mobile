@@ -944,7 +944,7 @@ class ContinuousSegmentCamera(
             videoSizes.map { StreamSize(it.width, it.height) },
         ).map { Size(it.width, it.height) }
         analysisCandidates = streamConfigPolicy.analysisCandidates(
-            analysisSizes.map { StreamSize(it.width, it.height) },
+            analysisSizes.map { StreamSize(it.width, it.height) }, lensZoomRatio = selectedZoomRatio,
         ).map { Size(it.width, it.height) }
         videoSize = videoCandidates.first()
         analysisSize = analysisCandidates.first()

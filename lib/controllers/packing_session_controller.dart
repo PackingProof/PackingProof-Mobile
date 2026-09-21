@@ -34,7 +34,6 @@ import '../services/barcode_stability_tracker.dart';
 import '../services/barcode_work_mode_policy.dart';
 import '../services/camera_diagnostics_service.dart';
 import '../services/camera_capability_policy.dart';
-import '../services/camera_lens_policy.dart';
 import '../services/continuous_camera_service.dart';
 import '../services/diagnostics_log_service.dart';
 import '../services/initial_recording_prompt_policy.dart';

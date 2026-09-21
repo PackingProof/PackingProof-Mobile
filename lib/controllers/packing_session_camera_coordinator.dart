@@ -813,8 +813,9 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
     final ContinuousCameraService? nativeCamera = _nativeCamera;
     if (nativeCamera == null) return;
     try {
-      final List<NativeCameraLens> lenses = await nativeCamera.listCameras();
-      _backCameraLenses = scannableBackLenses(lenses);
+      // 超广角（0.7x/0.5x）档位保持可选：安卓侧在该档位改用 1080p 识别流
+      // 补回条码像素密度，不再靠隐藏档位规避「扫不上」。
+      _backCameraLenses = await nativeCamera.listCameras();
     } on Object {
       // broad-catch: Failed lens enumeration hides optional switch targets;
       // the already initialized default camera remains usable.

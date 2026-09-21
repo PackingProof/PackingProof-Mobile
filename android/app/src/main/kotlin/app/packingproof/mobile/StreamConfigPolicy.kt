@@ -96,6 +96,29 @@ internal class StreamConfigPolicy(
         return candidates
     }
 
+    /**
+     * 带镜头档位的识别流候选：档位小于 1 倍（超广角）时改用 1080p 级识别流。
+     *
+     * 同一距离下超广角画面宽度约为主摄的 2.5 倍，条码在识别帧里只剩约 1/2.5 的
+     * 像素宽度，720x480 下码元不足 1 像素，ML Kit 一维码会完全读不出来。
+     * 主摄与长焦仍用轻量识别流，避免白白多付识别功耗。
+     */
+    fun analysisCandidates(
+        supportedSizes: List<StreamSize>,
+        lensZoomRatio: Double,
+    ): List<StreamSize> {
+        if (lensZoomRatio >= 1.0) return analysisCandidates(supportedSizes)
+        val candidates = mutableListOf<StreamSize>()
+        for ((width, height) in listOf(1920 to 1080, 1280 to 720)) {
+            supportedSizes.firstOrNull { it.width == width && it.height == height }
+                ?.let { candidates.add(it) }
+        }
+        for (candidate in analysisCandidates(supportedSizes)) {
+            if (candidate !in candidates) candidates.add(candidate)
+        }
+        return candidates
+    }
+
     /** 录像会话候选：始终包含编码器，按画质逐级降级。 */
     fun threeSurfaceCandidates(
         videoSizes: List<StreamSize>,
