@@ -531,7 +531,7 @@ class PackingSessionController extends ChangeNotifier
 
       await timing.measure('wakelock', WakelockPlus.enable);
       await timing.measure('preview', () => setPreviewActive(true));
-      await timing.measure('workScan', () => _setNativeWorkScanEnabled(true));
+      await timing.measure('workScan', () => _syncWorkScanForCamera());
       unawaited(_captureCameraDiagnosticsSnapshot('start_work'));
       _workActive = true;
       _startStorageMonitor();
@@ -561,7 +561,7 @@ class PackingSessionController extends ChangeNotifier
           },
         ),
       );
-      await _setNativeWorkScanEnabled(false);
+      await _disableWorkScan();
       _cancelInitialPromptFlow();
       _workActive = false;
       _stopStorageMonitor();
@@ -583,7 +583,7 @@ class PackingSessionController extends ChangeNotifier
           },
         ),
       );
-      await _setNativeWorkScanEnabled(false);
+      await _disableWorkScan();
       _cancelInitialPromptFlow();
       _workActive = false;
       _stopStorageMonitor();
@@ -638,7 +638,7 @@ class PackingSessionController extends ChangeNotifier
         ),
       );
       _cancelInitialPromptFlow();
-      await _setNativeWorkScanEnabled(false);
+      await _disableWorkScan();
       _workActive = false;
       _stopStorageMonitor();
       _candidateCode = '';
@@ -664,7 +664,7 @@ class PackingSessionController extends ChangeNotifier
       return null;
     }
     _cancelInitialPromptFlow();
-    await _setNativeWorkScanEnabled(false);
+    await _disableWorkScan();
 
     _setPhase(PackingSessionPhase.saving);
     await WidgetsBinding.instance.endOfFrame;

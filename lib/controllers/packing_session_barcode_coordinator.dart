@@ -2,7 +2,9 @@ part of 'packing_session_controller.dart';
 
 /// 统一原生与 ML Kit 条码观察、稳定判定及工作模式动作。
 mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
+  bool get isCameraReady;
   SpeechPromptSink get _speechService;
+  Future<void> _setNativeWorkScanEnabled(bool enabled);
   ContinuousCameraService? get _nativeCamera;
   CameraCapabilityMode get _capabilityMode;
   CameraController? get _cameraController;
@@ -65,6 +67,40 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   bool _handlingBarcode = false;
   bool _historyScanActive = false;
   String? _historyScanResult;
+  bool _idleAutoStartRunning = false;
+  ContinuousCameraService? _workScanOwner;
+  bool _workScanEnabled = false;
+
+  /// 摄像头就绪后始终保持原生面单识别：待机时扫到面单直接开始工作，工作中正常扫码。
+  @override
+  Future<void> _syncWorkScanForCamera() async {
+    if (!_supportsNativeCamera) return;
+    final bool enabled = isCameraReady;
+    final ContinuousCameraService? camera = _nativeCamera;
+    if (camera == null) return;
+    // 摄像头实例重建后原生识别状态归零，缓存按实例失效。
+    if (identical(_workScanOwner, camera) && enabled == _workScanEnabled) {
+      return;
+    }
+    try {
+      await _setNativeWorkScanEnabled(enabled);
+      _workScanOwner = camera;
+      _workScanEnabled = enabled;
+    } on Object {
+      if (enabled) rethrow;
+    }
+  }
+
+  /// 关闭原生面单识别并同步缓存，避免停止或重建设备后状态不一致。
+  Future<void> _disableWorkScan() async {
+    _workScanOwner = _nativeCamera;
+    _workScanEnabled = false;
+    try {
+      await _setNativeWorkScanEnabled(false);
+    } on Object {
+      // 关闭失败不影响录像主流程，下一次就绪同步会纠正。
+    }
+  }
 
   void _logRejectedBarcode(RejectedBarcodeDecision decision) {
     unawaited(
@@ -164,8 +200,8 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       if (normalized.isEmpty) {
         continue;
       }
-      final MobileBarcodeCommand? found = BarcodeCandidatePolicy
-          .mobileCommandFor(normalized);
+      final MobileBarcodeCommand? found =
+          BarcodeCandidatePolicy.mobileCommandFor(normalized);
       if (found != null) {
         commandCode = normalized;
         command = found;
@@ -229,7 +265,13 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       }
       return;
     }
-    if (!isWorking || isBusy || _handlingBarcode) {
+    // 还没开始工作时也允许扫码：扫到面单直接开始工作并开始录像，
+    // 这样操作员不用先点一次「开始工作」。
+    if (!isWorking) {
+      _handleIdleWorkScanFrame(candidates);
+      return;
+    }
+    if (isBusy || _handlingBarcode) {
       return;
     }
     final List<RejectedBarcodeCandidate> rejectedCandidates = candidates
@@ -309,6 +351,67 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     List<NativeBarcodeCandidate> candidates,
   ) {
     _processNativeBarcodeFrame(candidates);
+  }
+
+  /// 未开始工作时的扫码处理：确认一个面单条码后自动开始工作。
+  ///
+  /// 指令码仍然走上方的指令处理分支，这里只处理普通面单条码。
+  void _handleIdleWorkScanFrame(List<NativeBarcodeCandidate> candidates) {
+    final String? validCode = BarcodeCandidatePolicy.selectForWorkScan(
+      candidates.map(
+        (NativeBarcodeCandidate candidate) => (
+          value: candidate.value,
+          area: candidate.area.toDouble(),
+          format: candidate.format,
+        ),
+      ),
+      minimumLength: _minimumBarcodeLength,
+    );
+    if (validCode != null &&
+        BarcodeCandidatePolicy.mobileCommandFor(validCode) != null) {
+      return;
+    }
+    final DateTime now = DateTime.now();
+    final BarcodeObservation observation = _stabilityTracker.observe(
+      validCode,
+      now,
+    );
+    if (observation.confirmedCode.isNotEmpty &&
+        !_idleAutoStartRunning &&
+        !isBusy) {
+      _idleAutoStartRunning = true;
+      _runInBackground(
+        _startWorkFromIdleScan(observation.confirmedCode, now).whenComplete(() {
+          _idleAutoStartRunning = false;
+        }),
+      );
+      return;
+    }
+    if (observation.candidateCode != _candidateCode) {
+      _candidateCode = observation.candidateCode;
+      notifyListeners();
+    }
+  }
+
+  /// 扫到面单就直接开始工作，并把该单号作为第一段录像的单号。
+  Future<void> _startWorkFromIdleScan(String code, DateTime now) async {
+    if (_disposed || isWorking) return;
+    unawaited(
+      _runtimeLog.log(
+        kind: 'idle_scan_start_work',
+        extra: <String, Object?>{'code': code},
+      ),
+    );
+    await startWork();
+    if (_disposed) return;
+    if (!isWorking) {
+      // 自动开始失败（例如空间不足）时恢复待机扫码，操作员可以直接重扫。
+      await _syncWorkScanForCamera();
+      return;
+    }
+    // 开始工作会重置跟踪器；补回锁定，避免同一张面单被立刻当成第二段。
+    _stabilityTracker.lockConfirmed(code);
+    await _handleConfirmedBarcode(code, now);
   }
 
   Future<void> _processFrame(CameraImage image) async {

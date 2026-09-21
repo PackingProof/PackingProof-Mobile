@@ -639,8 +639,11 @@ void main() {
       'initialize',
       'work:true',
       'work:false',
+      // 结束工作回到待机后重新开启面单识别；新建摄像头实例后再开启一次。
+      'work:true',
       'dispose',
       'initialize',
+      'work:true',
     ]);
   });
 
@@ -657,7 +660,10 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
 
     expect(startCompleted, isFalse);
-    expect(camera.scanStateEvents, <String>['preview:false:start']);
+    expect(camera.scanStateEvents, <String>[
+      'work:true',
+      'preview:false:start',
+    ]);
 
     camera.previewDeactivationBlocker!.complete();
     await deactivation;
@@ -665,11 +671,12 @@ void main() {
 
     expect(controller.isWorking, isTrue);
     expect(camera.scanStateEvents, <String>[
+      // 待机也会开启面单识别：扫到面单直接开始工作。
+      'work:true',
       'preview:false:start',
       'preview:false:end',
       'preview:true:start',
       'preview:true:end',
-      'work:true',
     ]);
   });
 }

@@ -10,6 +10,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   set _nativeInitialization(ContinuousCameraInitialization? value);
   set _cameraController(CameraController? value);
   bool get _supportsCameraCapabilityNegotiation;
+  @override
   bool get isCameraReady;
   @override
   bool get isWorking;
@@ -207,6 +208,8 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
         }
         _speechService.resetIncidents();
         _setPhase(PackingSessionPhase.ready);
+        // 待机状态也保持面单识别：扫到面单直接开始工作。
+        unawaited(_syncWorkScanForCamera());
         return;
       }
       final List<CameraDescription> cameras = await availableCameras();

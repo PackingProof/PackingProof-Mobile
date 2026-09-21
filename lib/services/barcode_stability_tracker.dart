@@ -84,6 +84,27 @@ class BarcodeStabilityTracker {
     return BarcodeObservation(confirmedCode: normalized);
   }
 
+  /// 直接把一个已经确认过的单号加锁。
+  ///
+  /// 未开始工作时扫到面单会自动开始录像，而开始录像会重置跟踪器；这里补回锁定，
+  /// 避免同一张停在画面里的面单被立刻当成第二段重新确认。
+  void lockConfirmed(String code) {
+    final String normalized = BarcodeCandidatePolicy.normalize(code);
+    if (normalized.isEmpty) return;
+    final String? alias = _findLockedAlias(normalized);
+    if (alias != null) {
+      final String specific = JdBarcodePolicy.preferSpecific(alias, normalized);
+      if (specific != normalized) _lockedCodes.add(normalized);
+      _lockedCodes.add(specific);
+    } else {
+      _lockedCodes.add(normalized);
+    }
+    final String waybill = JdBarcodePolicy.waybill(normalized);
+    if (waybill != normalized) _lockedCodes.add(waybill);
+    _missingLockedSince.clear();
+    _clearCandidate();
+  }
+
   void _rearmLockedCode(String normalized, DateTime now) {
     for (final String code in _lockedCodes.toList(growable: false)) {
       if (JdBarcodePolicy.sameRecordingCode(code, normalized)) {

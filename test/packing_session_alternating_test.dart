@@ -32,6 +32,7 @@ class _FakeCameraPlatform implements CameraPlatform {
   bool fullSupported = false;
   int startWorkCalls = 0;
   int splitCalls = 0;
+  bool workScanEnabled = false;
   int storageLowSplitsRemaining = 0;
   int stopWorkCalls = 0;
   Completer<NativeRecordingStop>? pendingStop;
@@ -206,7 +207,10 @@ class _FakeCameraPlatform implements CameraPlatform {
   @override
   Future<void> setPairingScanEnabled(bool enabled) async {}
   @override
-  Future<void> setWorkScanEnabled(bool enabled) async {}
+  Future<void> setWorkScanEnabled(bool enabled) async {
+    workScanEnabled = enabled;
+  }
+
   @override
   Future<void> setPreviewActive(bool active) async {}
   @override
@@ -647,6 +651,43 @@ void main() {
           .extra['outcome'],
       'success',
     );
+  });
+
+  testWidgets('未开始工作时扫到面单直接开始工作并录像', (WidgetTester tester) async {
+    try {
+      await tester.runAsync(() async {
+        await controller.initialize();
+        await controller.retryCapabilityProbe();
+      });
+      expect(controller.isWorking, isFalse);
+      // 待机状态保持面单识别开启。
+      expect(camera.workScanEnabled, isTrue);
+
+      // 同码连续两帧确认后自动开始工作。
+      for (int i = 0; i < 2; i++) {
+        controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+          const NativeBarcodeCandidate(
+            value: 'YT123456789099',
+            area: 200,
+            format: 'code128',
+          ),
+        ]);
+        await tester.pump();
+      }
+      await _waitUntil(
+        tester,
+        () => camera.startWorkCalls == 1,
+        reason: '扫到面单后应自动开始录像',
+      );
+
+      expect(controller.isWorking, isTrue);
+      expect(camera.startWorkCalls, 1);
+      expect(controller.currentCode, 'YT123456789099');
+      expect(controller.phase, PackingSessionPhase.recording);
+    } finally {
+      await _stopWorkIfNeeded(tester, controller);
+      await tester.pump(const Duration(seconds: 4));
+    }
   });
 
   test('开始工作后忽略二维码并从同帧选择 Code128', () async {

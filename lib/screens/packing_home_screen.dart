@@ -1401,6 +1401,7 @@ class PackingHomeView extends StatelessWidget {
       ),
     );
   }
+
   double get _portraitPreviewAspectRatio {
     final Size? sourceSize =
         nativePreviewSize ??
@@ -2474,8 +2475,8 @@ class _ControlPanel extends StatelessWidget {
                         ? '正在连接电脑'
                         : isError
                         ? (view.errorMessage ?? '请重新检查摄像头权限')
-                        // 这条提示只在未开始工作时出现，先说清要先点开始工作。
-                        : '点击开始工作后，对准条码',
+                        // 待机时也能直接扫码：扫到面单会自动开始工作。
+                        : '对准条码',
                     maxLines: 1,
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,

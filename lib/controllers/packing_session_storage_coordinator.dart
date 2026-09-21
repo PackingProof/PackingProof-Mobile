@@ -5,6 +5,7 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
   bool get isBusy;
   CameraDiagnosticsService get _cameraDiagnostics;
   Future<RecordingSession?> stopWork();
+  Future<void> _syncWorkScanForCamera();
 
   Timer? _storageMonitorTimer;
   String? _storageWarningMessage;
@@ -202,6 +203,8 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
   }
 
   Future<void> _releaseStorageNoticeAfterWork() async {
+    // 结束工作回到待机后重新开启空闲扫码：扫到下一张面单直接开始工作。
+    unawaited(_syncWorkScanForCamera());
     final StorageNotice? notice = await _repository.takeStorageNoticeAfterWork(
       DateTime.now(),
     );
