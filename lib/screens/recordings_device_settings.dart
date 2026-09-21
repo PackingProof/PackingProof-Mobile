@@ -10,8 +10,6 @@ class _RetentionSettings extends StatelessWidget {
     required this.returnBackedRetention,
     required this.onReturnUnbackedRetentionChanged,
     required this.onReturnBackedRetentionChanged,
-    required this.storagePressurePolicy,
-    required this.onStoragePressurePolicyChanged,
   });
 
   final UnbackedRetentionPolicy unbackedRetention;
@@ -22,16 +20,6 @@ class _RetentionSettings extends StatelessWidget {
   final BackedRetentionPolicy returnBackedRetention;
   final ValueChanged<UnbackedRetentionPolicy> onReturnUnbackedRetentionChanged;
   final ValueChanged<BackedRetentionPolicy> onReturnBackedRetentionChanged;
-  final StoragePressurePolicy storagePressurePolicy;
-  final ValueChanged<StoragePressurePolicy> onStoragePressurePolicyChanged;
-
-  static const String _retentionDescription =
-      '每组录像分别设置未备份和备份后的保留时间，选择“不清除”则一直保留。\n'
-      '已备份录像清理前会向电脑确认，电脑离线或校验未完成时会暂时保留。\n'
-      '空间不足时优先清理最老的、已完成电脑校验的备份录像。\n'
-      '“优先保留录像”只清理已确认的备份，腾不出空间就停止录制。\n'
-      '“优先继续录制”不判断电脑在不在，按最老优先删除，可能删除未备份录像且无法恢复。\n'
-      '正在上传或等待备份的录像会延后清理';
 
   @override
   Widget build(BuildContext context) {
@@ -40,24 +28,9 @@ class _RetentionSettings extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Text(
-                '发货录像清理',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-              ),
-              const Spacer(),
-              IconButton(
-                key: const Key('retention-info-button'),
-                tooltip: '录像清理说明',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                iconSize: 20,
-                icon: const Icon(Icons.help_outline_rounded),
-                onPressed: () => _showRetentionInfo(context),
-              ),
-            ],
+          const Text(
+            '发货录像清理',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
           _RetentionDropdowns(
@@ -66,6 +39,12 @@ class _RetentionSettings extends StatelessWidget {
             backedRetention: backedRetention,
             onUnbackedRetentionChanged: onUnbackedRetentionChanged,
             onBackedRetentionChanged: onBackedRetentionChanged,
+          ),
+          const SizedBox(height: 4),
+          Divider(
+            height: 1,
+            thickness: 1,
+            color: Theme.of(context).colorScheme.outlineVariant,
           ),
           const SizedBox(height: 12),
           const Text(
@@ -80,34 +59,65 @@ class _RetentionSettings extends StatelessWidget {
             onUnbackedRetentionChanged: onReturnUnbackedRetentionChanged,
             onBackedRetentionChanged: onReturnBackedRetentionChanged,
           ),
-          const SizedBox(height: 12),
-          _StoragePressureSettings(
-            policy: storagePressurePolicy,
-            onChanged: onStoragePressurePolicyChanged,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showRetentionInfo(BuildContext context) {
-    return showDialog<void>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('录像清理说明'),
-        content: const Text(_retentionDescription),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('知道了'),
-          ),
         ],
       ),
     );
   }
 }
 
-/// 空间不足时的取舍：默认优先保留录像，需要 24 小时连录时可切到优先继续录制。
+/// 清理策略的胶囊选择器：选中项下方显示该策略说明，会删未备份录像的策略用红字。
+class _StoragePressureSelector extends StatelessWidget {
+  const _StoragePressureSelector({
+    required this.policy,
+    required this.onChanged,
+  });
+
+  final StoragePressurePolicy policy;
+  final ValueChanged<StoragePressurePolicy> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<StoragePressurePolicy>(
+            showSelectedIcon: false,
+            segments: StoragePressurePolicy.values
+                .map(
+                  (StoragePressurePolicy value) =>
+                      ButtonSegment<StoragePressurePolicy>(
+                        value: value,
+                        label: Text(value.label),
+                      ),
+                )
+                .toList(growable: false),
+            selected: <StoragePressurePolicy>{policy},
+            onSelectionChanged: (Set<StoragePressurePolicy> values) {
+              onChanged(values.single);
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          policy.description,
+          style: TextStyle(
+            // 会删除未备份录像的策略直接用红字说明，不再单列一行警告。
+            color: policy.deletesUnbacked
+                ? colors.error
+                : colors.onSurfaceVariant,
+            fontSize: 13,
+            height: 1.5,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 录像清理策略：胶囊选择 + 选中项说明，直接放在「录像清理」二级页里。
 class _StoragePressureSettings extends StatelessWidget {
   const _StoragePressureSettings({
     required this.policy,
@@ -119,74 +129,525 @@ class _StoragePressureSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
     return Padding(
       key: const Key('storage-pressure-settings'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           const Text(
-            '空间不足时',
+            '录像清理策略',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
           ),
-          const SizedBox(height: 5),
-          Text(
-            '“优先继续录制”可能删除未备份录像，删除后无法恢复',
-            style: TextStyle(color: colors.error, fontSize: 13, height: 1.4),
-          ),
-          const SizedBox(height: 4),
-          RadioGroup<StoragePressurePolicy>(
-            groupValue: policy,
-            onChanged: (StoragePressurePolicy? selected) {
-              if (selected != null) onChanged(selected);
-            },
-            child: Column(
-              children: <Widget>[
-                for (final StoragePressurePolicy value
-                    in StoragePressurePolicy.values)
-                  InkWell(
-                    key: Key('storage-pressure-${value.storageValue}'),
-                    onTap: () => onChanged(value),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Row(
-                        children: <Widget>[
-                          Radio<StoragePressurePolicy>(value: value),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  value.label,
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                Text(
-                                  value == StoragePressurePolicy.preserveFootage
-                                      ? '只清理电脑确认过的备份，腾不出空间就停止录制'
-                                      : '电脑可有可无，按最老优先删除，保证继续录制',
-                                  style: TextStyle(
-                                    color: colors.onSurfaceVariant,
-                                    fontSize: 13,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+          const SizedBox(height: 12),
+          _StoragePressureSelector(policy: policy, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
+}
+
+/// 二级页：扫码与声音。扫码卡片与声音卡片各占一张小卡片。
+class _ScanSettingsScreen extends StatefulWidget {
+  const _ScanSettingsScreen({
+    required this.workMode,
+    required this.onWorkModeChanged,
+    required this.minimumBarcodeLength,
+    required this.speechEnabled,
+    required this.onSpeechEnabledChanged,
+    required this.onSpeechPreview,
+    required this.maxVolumeEnabled,
+    required this.maxVolumeSupported,
+    required this.onMaxVolumeEnabledChanged,
+    this.onMinimumBarcodeLengthChanged,
+  });
+
+  final WorkMode workMode;
+  final ValueChanged<WorkMode> onWorkModeChanged;
+  final int minimumBarcodeLength;
+  final ValueChanged<int>? onMinimumBarcodeLengthChanged;
+  final bool speechEnabled;
+  final ValueChanged<bool> onSpeechEnabledChanged;
+  final Future<void> Function() onSpeechPreview;
+  final bool maxVolumeEnabled;
+  final bool maxVolumeSupported;
+  final ValueChanged<bool> onMaxVolumeEnabledChanged;
+
+  @override
+  State<_ScanSettingsScreen> createState() => _ScanSettingsScreenState();
+}
+
+class _ScanSettingsScreenState extends State<_ScanSettingsScreen> {
+  late WorkMode _workMode = widget.workMode;
+  late int _minimumBarcodeLength = widget.minimumBarcodeLength;
+  late bool _speechEnabled = widget.speechEnabled;
+  late bool _maxVolumeEnabled = widget.maxVolumeEnabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('扫码与声音')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+        children: <Widget>[
+          // 扫码卡片。
+          _SettingsCard(
+            key: const Key('scan-settings-card-body'),
+            children: <Widget>[
+              _WorkModeSettings(
+                workMode: _workMode,
+                onChanged: (WorkMode value) {
+                  setState(() => _workMode = value);
+                  widget.onWorkModeChanged(value);
+                },
+              ),
+              if (widget.onMinimumBarcodeLengthChanged != null) ...<Widget>[
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                _MinimumBarcodeLengthSettings(
+                  value: _minimumBarcodeLength,
+                  onChanged: (int value) {
+                    setState(() => _minimumBarcodeLength = value);
+                    widget.onMinimumBarcodeLengthChanged!(value);
+                  },
+                ),
               ],
-            ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // 声音卡片。
+          _SettingsCard(
+            key: const Key('voice-settings-card'),
+            children: <Widget>[
+              _SpeechPromptSettings(
+                enabled: _speechEnabled,
+                onChanged: (bool value) {
+                  setState(() => _speechEnabled = value);
+                  widget.onSpeechEnabledChanged(value);
+                },
+                onPreview: widget.onSpeechPreview,
+              ),
+              if (widget.maxVolumeSupported) ...<Widget>[
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                _MaxVolumeSettings(
+                  enabled: _maxVolumeEnabled,
+                  onChanged: (bool value) {
+                    setState(() => _maxVolumeEnabled = value);
+                    widget.onMaxVolumeEnabledChanged(value);
+                  },
+                ),
+              ],
+            ],
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 一级入口卡片：左侧图标 + 标题 + 副标题 + 右箭头，风格与「关于」一致。
+class _SettingsEntryCard extends StatelessWidget {
+  const _SettingsEntryCard({
+    super.key,
+    required this.tileKey,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onOpen,
+  });
+
+  final Key tileKey;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surfaceContainer,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        key: tileKey,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        leading: Icon(icon),
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: onOpen,
+      ),
+    );
+  }
+}
+
+/// 二级页：订单接收。接收地址与状态要跟着后台服务刷新。
+class _OrderReceiverScreen extends StatefulWidget {
+  const _OrderReceiverScreen({
+    required this.snapshotProvider,
+    required this.speechEnabled,
+    required this.speechMasterEnabled,
+    required this.onSpeechChanged,
+    this.listenable,
+    this.onRetry,
+  });
+
+  final OrderInfoReceiverSnapshot Function() snapshotProvider;
+  final bool speechEnabled;
+  final bool speechMasterEnabled;
+  final ValueChanged<bool> onSpeechChanged;
+  final Listenable? listenable;
+  final Future<void> Function()? onRetry;
+
+  @override
+  State<_OrderReceiverScreen> createState() => _OrderReceiverScreenState();
+}
+
+class _OrderReceiverScreenState extends State<_OrderReceiverScreen> {
+  late bool _speechEnabled = widget.speechEnabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final Listenable? listenable = widget.listenable;
+    return Scaffold(
+      appBar: AppBar(title: const Text('订单接收')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+        children: <Widget>[
+          // 接收服务在后台启停，这里跟着控制器通知刷新状态。
+          if (listenable == null)
+            _buildSettings()
+          else
+            ListenableBuilder(
+              listenable: listenable,
+              builder: (_, _) => _buildSettings(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettings() {
+    return _OrderReceiverSettings(
+      snapshot: widget.snapshotProvider(),
+      onRetry: widget.onRetry,
+      speechEnabled: _speechEnabled,
+      speechMasterEnabled: widget.speechMasterEnabled,
+      onSpeechChanged: (bool value) {
+        setState(() => _speechEnabled = value);
+        widget.onSpeechChanged(value);
+      },
+    );
+  }
+}
+
+/// 二级页：录像设置。
+class _RecordingSettingsScreen extends StatefulWidget {
+  const _RecordingSettingsScreen({
+    required this.codec,
+    required this.hevcEnabled,
+    required this.hevcWarning,
+    required this.onCodecChanged,
+    required this.spec,
+    required this.availableSpecs,
+    required this.showUhd4kOption,
+    required this.onSpecChanged,
+    required this.orientation,
+    required this.onOrientationChanged,
+    required this.recordAudio,
+    required this.onRecordAudioChanged,
+  });
+
+  final RecordingVideoCodec codec;
+  final bool hevcEnabled;
+  final String? hevcWarning;
+  final ValueChanged<RecordingVideoCodec> onCodecChanged;
+  final RecordingSpecPreset spec;
+  final List<RecordingSpecPreset> availableSpecs;
+  final bool showUhd4kOption;
+  final ValueChanged<RecordingSpecPreset> onSpecChanged;
+  final RecordingOrientation orientation;
+  final ValueChanged<RecordingOrientation> onOrientationChanged;
+  final bool recordAudio;
+  final ValueChanged<bool> onRecordAudioChanged;
+
+  @override
+  State<_RecordingSettingsScreen> createState() =>
+      _RecordingSettingsScreenState();
+}
+
+/// 页内改动立即在页内生效，同时同步回设置页。
+class _RecordingSettingsScreenState extends State<_RecordingSettingsScreen> {
+  late RecordingVideoCodec _codec = widget.codec;
+  late RecordingSpecPreset _spec = widget.spec;
+  late RecordingOrientation _orientation = widget.orientation;
+  late bool _recordAudio = widget.recordAudio;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('录像设置')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+        children: <Widget>[
+          _SettingsCard(
+            children: <Widget>[
+              _VideoCodecSettings(
+                codec: _codec,
+                hevcEnabled: widget.hevcEnabled,
+                hevcWarning: widget.hevcWarning,
+                onChanged: (RecordingVideoCodec value) {
+                  setState(() => _codec = value);
+                  widget.onCodecChanged(value);
+                },
+              ),
+              Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+              _RecordingSpecSettings(
+                spec: _spec,
+                availableSpecs: widget.availableSpecs,
+                showUhd4kOption: widget.showUhd4kOption,
+                onChanged: (RecordingSpecPreset value) {
+                  // 设置页会拒绝当前镜头不支持的分辨率（并给出提示），本地只在被接受时更新。
+                  widget.onSpecChanged(value);
+                  if (widget.availableSpecs.contains(value)) {
+                    setState(() => _spec = value);
+                  }
+                },
+              ),
+              Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+              _RecordingOrientationSettings(
+                orientation: _orientation,
+                onChanged: (RecordingOrientation value) {
+                  setState(() => _orientation = value);
+                  widget.onOrientationChanged(value);
+                },
+              ),
+              Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+              _RecordAudioSettings(
+                enabled: _recordAudio,
+                onChanged: (bool value) {
+                  setState(() => _recordAudio = value);
+                  widget.onRecordAudioChanged(value);
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 二级页：录像清理。保留时间、清理策略与清理说明都收在这里。
+class _CleanupSettingsScreen extends StatefulWidget {
+  const _CleanupSettingsScreen({
+    required this.unbackedRetention,
+    required this.backedRetention,
+    required this.onUnbackedRetentionChanged,
+    required this.onBackedRetentionChanged,
+    required this.returnUnbackedRetention,
+    required this.returnBackedRetention,
+    required this.onReturnUnbackedRetentionChanged,
+    required this.onReturnBackedRetentionChanged,
+    required this.storagePressurePolicy,
+    required this.onStoragePressurePolicyChanged,
+  });
+
+  final UnbackedRetentionPolicy unbackedRetention;
+  final BackedRetentionPolicy backedRetention;
+  final Future<bool> Function(UnbackedRetentionPolicy)
+  onUnbackedRetentionChanged;
+  final Future<bool> Function(BackedRetentionPolicy) onBackedRetentionChanged;
+  final UnbackedRetentionPolicy returnUnbackedRetention;
+  final BackedRetentionPolicy returnBackedRetention;
+  final Future<bool> Function(UnbackedRetentionPolicy)
+  onReturnUnbackedRetentionChanged;
+  final Future<bool> Function(BackedRetentionPolicy)
+  onReturnBackedRetentionChanged;
+  final StoragePressurePolicy storagePressurePolicy;
+  final ValueChanged<StoragePressurePolicy> onStoragePressurePolicyChanged;
+
+  @override
+  State<_CleanupSettingsScreen> createState() => _CleanupSettingsScreenState();
+}
+
+/// 页内改动立即在页内生效，同时同步回设置页；被上层拒绝时不改本地选择。
+class _CleanupSettingsScreenState extends State<_CleanupSettingsScreen> {
+  late UnbackedRetentionPolicy _unbacked = widget.unbackedRetention;
+  late BackedRetentionPolicy _backed = widget.backedRetention;
+  late UnbackedRetentionPolicy _returnUnbacked = widget.returnUnbackedRetention;
+  late BackedRetentionPolicy _returnBacked = widget.returnBackedRetention;
+  late StoragePressurePolicy _policy = widget.storagePressurePolicy;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('录像清理')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+        children: <Widget>[
+          _SettingsCard(
+            key: const Key('cleanup-settings-detail-card'),
+            children: <Widget>[
+              _RetentionSettings(
+                unbackedRetention: _unbacked,
+                backedRetention: _backed,
+                onUnbackedRetentionChanged:
+                    (UnbackedRetentionPolicy value) async {
+                      if (await widget.onUnbackedRetentionChanged(value)) {
+                        setState(() => _unbacked = value);
+                      }
+                    },
+                onBackedRetentionChanged: (BackedRetentionPolicy value) async {
+                  if (await widget.onBackedRetentionChanged(value)) {
+                    setState(() => _backed = value);
+                  }
+                },
+                returnUnbackedRetention: _returnUnbacked,
+                returnBackedRetention: _returnBacked,
+                onReturnUnbackedRetentionChanged:
+                    (UnbackedRetentionPolicy value) async {
+                      if (await widget.onReturnUnbackedRetentionChanged(
+                        value,
+                      )) {
+                        setState(() => _returnUnbacked = value);
+                      }
+                    },
+                onReturnBackedRetentionChanged:
+                    (BackedRetentionPolicy value) async {
+                      if (await widget.onReturnBackedRetentionChanged(value)) {
+                        setState(() => _returnBacked = value);
+                      }
+                    },
+              ),
+              Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+              _StoragePressureSettings(
+                policy: _policy,
+                onChanged: (StoragePressurePolicy value) {
+                  setState(() => _policy = value);
+                  widget.onStoragePressurePolicyChanged(value);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _CleanupNotes(
+            unbackedRetention: _unbacked,
+            backedRetention: _backed,
+            returnUnbackedRetention: _returnUnbacked,
+            returnBackedRetention: _returnBacked,
+            pressurePolicy: _policy,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 清理说明单独成卡并带标题，直接展示在卡片里，不再藏进弹窗。
+class _CleanupNotes extends StatelessWidget {
+  const _CleanupNotes({
+    required this.unbackedRetention,
+    required this.backedRetention,
+    required this.returnUnbackedRetention,
+    required this.returnBackedRetention,
+    required this.pressurePolicy,
+  });
+
+  final UnbackedRetentionPolicy unbackedRetention;
+  final BackedRetentionPolicy backedRetention;
+  final UnbackedRetentionPolicy returnUnbackedRetention;
+  final BackedRetentionPolicy returnBackedRetention;
+  final StoragePressurePolicy pressurePolicy;
+
+  /// 说明随当前选择变化：发货/退货分组、保留时间与空间不足策略各给一句。
+  List<String> get _lines {
+    final bool returnDiffers =
+        returnUnbackedRetention != unbackedRetention ||
+        returnBackedRetention != backedRetention;
+    return <String>[
+      if (!returnDiffers) ...<String>[
+        _unbackedLine('', unbackedRetention),
+        _backedLine('', backedRetention),
+      ] else ...<String>[
+        _unbackedLine('发货', unbackedRetention),
+        _backedLine('发货', backedRetention),
+        _unbackedLine('退货', returnUnbackedRetention),
+        _backedLine('退货', returnBackedRetention),
+      ],
+      pressurePolicy.deletesUnbacked
+          ? '空间不足时按最老的优先删除（含未备份录像），保证一直录下去；'
+                '删掉的未备份录像无法恢复'
+          : '空间不足时只清理电脑确认过的备份，腾不出空间就停止录制',
+      '正在上传的录像不会清理',
+    ];
+  }
+
+  String _unbackedLine(String scope, UnbackedRetentionPolicy policy) {
+    final int? days = policy.days;
+    if (days == null) {
+      return scope.isEmpty ? '未备份的录像不会自动清理' : '$scope录像：未备份的不会自动清理';
+    }
+    return scope.isEmpty
+        ? '未备份的录像满 $days 天后从本机删除'
+        : '$scope录像：未备份满 $days 天后从本机删除';
+  }
+
+  String _backedLine(String scope, BackedRetentionPolicy policy) {
+    final int? days = policy.days;
+    if (days == null) {
+      return scope.isEmpty ? '已备份的录像不会自动清理' : '$scope录像：已备份的不会自动清理';
+    }
+    if (days == 0) {
+      return scope.isEmpty
+          ? '电脑校验完成后立即从本机删除，删除前会向电脑确认'
+          : '$scope录像：电脑校验完成后立即从本机删除，删除前会向电脑确认';
+    }
+    return scope.isEmpty
+        ? '电脑校验完成的录像满 $days 天后删除，删除前会向电脑确认'
+        : '$scope录像：电脑校验完成后满 $days 天删除，删除前会向电脑确认';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final List<String> lines = _lines;
+    return _SettingsCard(
+      key: const Key('cleanup-notes-card'),
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text(
+                '清理说明',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              for (int index = 0; index < lines.length; index++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${index + 1}. ${lines[index]}',
+                    key: index == 0 ? const Key('cleanup-notes') : null,
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 13,
+                      height: 1.6,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -855,20 +1316,33 @@ class _MaxVolumeSettings extends StatelessWidget {
 
 extension _RecordingsSettingsView on _RecordingsScreenState {
   List<Widget> buildRecordingsSettingsChildren(BuildContext context) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
     return <Widget>[
-      _SettingsCard(
-        key: const Key('work-settings-card'),
-        children: <Widget>[
-          _WorkModeSettings(workMode: _workMode, onChanged: _setWorkMode),
-          if (widget.onMinimumBarcodeLengthChanged != null) ...<Widget>[
-            Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-            _MinimumBarcodeLengthSettings(
-              value: _minimumBarcodeLength,
-              onChanged: _setMinimumBarcodeLength,
+      // 扫码与声音（工作模式、条码长度、语音与音量）收进同名的二级页。
+      _SettingsEntryCard(
+        key: const Key('scan-settings-card'),
+        tileKey: const Key('scan-settings-open'),
+        icon: Icons.qr_code_scanner_rounded,
+        title: '扫码与声音',
+        subtitle: '工作模式、条码长度与提示音',
+        onOpen: () => Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => _ScanSettingsScreen(
+              workMode: _workMode,
+              onWorkModeChanged: _setWorkMode,
+              minimumBarcodeLength: _minimumBarcodeLength,
+              onMinimumBarcodeLengthChanged:
+                  widget.onMinimumBarcodeLengthChanged == null
+                  ? null
+                  : _setMinimumBarcodeLength,
+              speechEnabled: _speechEnabled,
+              onSpeechEnabledChanged: _setSpeechEnabled,
+              onSpeechPreview: widget.onSpeechPreview,
+              maxVolumeEnabled: _maxVolumeEnabled,
+              maxVolumeSupported: _maxVolumeSupported,
+              onMaxVolumeEnabledChanged: _setMaxVolumeEnabled,
             ),
-          ],
-        ],
+          ),
+        ),
       ),
       if (widget.showCameraCapabilityCard &&
           widget.capabilities?.supports(
@@ -889,79 +1363,100 @@ extension _RecordingsSettingsView on _RecordingsScreenState {
         ),
       ],
       const SizedBox(height: 12),
-      _SettingsCard(
-        key: const Key('recording-settings-card'),
-        children: <Widget>[
-          _RetentionSettings(
-            unbackedRetention: _unbackedRetention,
-            backedRetention: _backedRetention,
-            onUnbackedRetentionChanged: _setUnbackedRetention,
-            onBackedRetentionChanged: _setBackedRetention,
-            returnUnbackedRetention: _returnUnbackedRetention,
-            returnBackedRetention: _returnBackedRetention,
-            onReturnUnbackedRetentionChanged: _setReturnUnbackedRetention,
-            onReturnBackedRetentionChanged: _setReturnBackedRetention,
-            storagePressurePolicy: _storagePressurePolicy,
-            onStoragePressurePolicyChanged: _setStoragePressurePolicy,
+      // 清理相关（保留时间、清理策略与说明）收进「录像清理」二级页。
+      _SettingsEntryCard(
+        key: const Key('cleanup-settings-card'),
+        tileKey: const Key('cleanup-settings-open'),
+        icon: Icons.cleaning_services_rounded,
+        title: '录像清理',
+        subtitle: '保留时间、清理策略与说明',
+        onOpen: () => Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => _CleanupSettingsScreen(
+              unbackedRetention: _unbackedRetention,
+              backedRetention: _backedRetention,
+              onUnbackedRetentionChanged:
+                  (UnbackedRetentionPolicy value) async {
+                    await _setUnbackedRetention(value);
+                    return _unbackedRetention == value;
+                  },
+              // 「备份后立即清除」需要二次确认，被拒绝时保留原选择。
+              onBackedRetentionChanged: (BackedRetentionPolicy value) async {
+                await _setBackedRetention(value);
+                return _backedRetention == value;
+              },
+              returnUnbackedRetention: _returnUnbackedRetention,
+              returnBackedRetention: _returnBackedRetention,
+              onReturnUnbackedRetentionChanged:
+                  (UnbackedRetentionPolicy value) async {
+                    await _setReturnUnbackedRetention(value);
+                    return _returnUnbackedRetention == value;
+                  },
+              onReturnBackedRetentionChanged:
+                  (BackedRetentionPolicy value) async {
+                    await _setReturnBackedRetention(value);
+                    return _returnBackedRetention == value;
+                  },
+              storagePressurePolicy: _storagePressurePolicy,
+              onStoragePressurePolicyChanged: _setStoragePressurePolicy,
+            ),
           ),
-          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-          _VideoCodecSettings(
-            codec: _preferredVideoCodec,
-            hevcEnabled: _deviceDecodeSupport?.supportsHevcRecording ?? false,
-            hevcWarning: _deviceDecodeSupport == null
-                ? null
-                : (!_deviceDecodeSupport!.supportsHevcRecording
-                      ? '当前设备不支持完整的 H.265 录制与播放能力，已使用 H.264'
-                      : null),
-            onChanged: _setPreferredVideoCodec,
-          ),
-          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-          _RecordingSpecSettings(
-            spec: _recordingSpec,
-            availableSpecs: widget.availableRecordingSpecs,
-            showUhd4kOption: widget.showUhd4kOption,
-            onChanged: _setRecordingSpec,
-          ),
-          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-          _RecordingOrientationSettings(
-            orientation: _recordingOrientation,
-            onChanged: (value) {
-              unawaited(_setRecordingOrientation(value));
-            },
-          ),
-          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-          _RecordAudioSettings(
-            enabled: _recordAudioEnabled,
-            onChanged: _setRecordAudioEnabled,
-          ),
-        ],
+        ),
       ),
       const SizedBox(height: 12),
-      _SettingsCard(
-        key: const Key('voice-settings-card'),
-        children: <Widget>[
-          _SpeechPromptSettings(
-            enabled: _speechEnabled,
-            onChanged: _setSpeechEnabled,
-            onPreview: widget.onSpeechPreview,
-          ),
-          if (_maxVolumeSupported) ...<Widget>[
-            Divider(height: 1, thickness: 1, color: colors.outlineVariant),
-            _MaxVolumeSettings(
-              enabled: _maxVolumeEnabled,
-              onChanged: _setMaxVolumeEnabled,
+      // 录像相关（编码、规格方向、声音）收进二级页。
+      _SettingsEntryCard(
+        key: const Key('recording-settings-card'),
+        tileKey: const Key('recording-settings-open'),
+        icon: Icons.video_settings_rounded,
+        title: '录像设置',
+        subtitle: '编码、规格、方向与声音',
+        onOpen: () => Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => _RecordingSettingsScreen(
+              codec: _preferredVideoCodec,
+              hevcEnabled: _deviceDecodeSupport?.supportsHevcRecording ?? false,
+              hevcWarning: _deviceDecodeSupport == null
+                  ? null
+                  : (!_deviceDecodeSupport!.supportsHevcRecording
+                        ? '当前设备不支持完整的 H.265 录制与播放能力，已使用 H.264'
+                        : null),
+              onCodecChanged: _setPreferredVideoCodec,
+              spec: _recordingSpec,
+              availableSpecs: widget.availableRecordingSpecs,
+              showUhd4kOption: widget.showUhd4kOption,
+              onSpecChanged: _setRecordingSpec,
+              orientation: _recordingOrientation,
+              onOrientationChanged: (value) {
+                unawaited(_setRecordingOrientation(value));
+              },
+              recordAudio: _recordAudioEnabled,
+              onRecordAudioChanged: _setRecordAudioEnabled,
             ),
-          ],
-        ],
+          ),
+        ),
       ),
       if (_orderReceiverSupported) ...<Widget>[
         const SizedBox(height: 12),
-        _OrderReceiverSettings(
-          snapshot: widget.orderReceiverSnapshot,
-          onRetry: widget.onRetryOrderReceiver,
-          speechEnabled: _orderSpeechEnabled,
-          speechMasterEnabled: _speechEnabled,
-          onSpeechChanged: _setOrderSpeechEnabled,
+        // 订单接收与订单播报收进二级页。
+        _SettingsEntryCard(
+          key: const Key('order-receiver-settings'),
+          tileKey: const Key('order-receiver-open'),
+          icon: Icons.receipt_long_outlined,
+          title: '订单接收',
+          subtitle: '接收地址与订单播报',
+          onOpen: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => _OrderReceiverScreen(
+                snapshotProvider: () => widget.orderReceiverSnapshot,
+                onRetry: widget.onRetryOrderReceiver,
+                speechEnabled: _orderSpeechEnabled,
+                speechMasterEnabled: _speechEnabled,
+                onSpeechChanged: _setOrderSpeechEnabled,
+                listenable: widget.backupListenable,
+              ),
+            ),
+          ),
         ),
       ],
       const SizedBox(height: 12),

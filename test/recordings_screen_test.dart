@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/app/packing_proof_theme.dart';
 import 'package:packing_proof_mobile/models/barcode_marker.dart';
+import 'package:packing_proof_mobile/models/backup_retention_policy.dart';
 import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
@@ -257,39 +258,146 @@ void main() {
       ),
     );
 
-    final double workModeY = tester
-        .getTopLeft(find.byKey(const Key('work-mode-settings')))
+    final double scanEntryY = tester
+        .getTopLeft(find.byKey(const Key('scan-settings-open')))
         .dy;
-    final double retentionY = tester.getTopLeft(find.text('发货录像清理')).dy;
-    final double recordAudioY = tester
-        .getTopLeft(find.byKey(const Key('record-audio-settings')))
+    final double cleanupEntryY = tester
+        .getTopLeft(find.byKey(const Key('cleanup-settings-open')))
         .dy;
-    final double speechY = tester
-        .getTopLeft(find.byKey(const Key('speech-prompt-settings')))
+    final double recordingEntryY = tester
+        .getTopLeft(find.byKey(const Key('recording-settings-open')))
         .dy;
-    final double maxVolumeY = tester
-        .getTopLeft(find.byKey(const Key('max-volume-settings')))
-        .dy;
-    final double orderSpeechY = tester
-        .getTopLeft(find.byKey(const Key('order-speech-settings')))
+    final double orderEntryY = tester
+        .getTopLeft(find.byKey(const Key('order-receiver-open')))
         .dy;
 
-    expect(workModeY, lessThan(retentionY));
-    expect(retentionY, lessThan(speechY));
-    expect(retentionY, lessThan(recordAudioY));
-    expect(recordAudioY, lessThan(speechY));
-    expect(speechY, lessThan(maxVolumeY));
-    expect(maxVolumeY, lessThan(orderSpeechY));
+    // 一级只剩入口卡片：扫码与声音 → 录像清理 → 录像设置 → 订单接收。
+    expect(scanEntryY, lessThan(cleanupEntryY));
+    expect(cleanupEntryY, lessThan(recordingEntryY));
+    expect(recordingEntryY, lessThan(orderEntryY));
+    expect(find.byKey(const Key('speech-prompt-settings')), findsNothing);
+    expect(find.byKey(const Key('max-volume-settings')), findsNothing);
     expect(find.textContaining('不会自动删除未备份录像'), findsNothing);
-    expect(find.byKey(const Key('retention-info-button')), findsOneWidget);
+    expect(find.byKey(const Key('retention-info-button')), findsNothing);
+    expect(find.text('超过保留时间且仍未完成电脑备份的录像将从本机永久删除'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('retention-info-button')));
+    // 保留时间与清理说明都在二级页里；说明单独成卡并带标题。
+    await _openSettingsEntry(tester, 'cleanup-settings-open');
+    expect(find.text('发货录像清理'), findsOneWidget);
+    expect(find.text('退货录像清理'), findsOneWidget);
+    expect(find.byKey(const Key('cleanup-notes-card')), findsOneWidget);
+    expect(find.text('清理说明'), findsOneWidget);
+    // 发货与退货保留时间不同，说明按当前选择分别给出发货与退货提示。
+    expect(find.textContaining('1. 发货录像：未备份满 30 天后从本机删除'), findsOneWidget);
+    expect(
+      find.textContaining('2. 发货录像：电脑校验完成后满 7 天删除，删除前会向电脑确认'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('3. 退货录像：未备份满 3 天后从本机删除'), findsOneWidget);
+    expect(find.textContaining('5. 空间不足时只清理电脑确认过的备份'), findsOneWidget);
+    expect(find.textContaining('6. 正在上传的录像不会清理'), findsOneWidget);
+    // 发货与退货之间有一条分割线。
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('cleanup-settings-detail-card')),
+        matching: find.byType(Divider),
+      ),
+      findsNWidgets(2),
+    );
+
+    // 「扫码与声音」二级页含扫码卡片与声音卡片。
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await _openSettingsEntry(tester, 'scan-settings-open');
+    expect(find.text('扫码与声音'), findsWidgets);
+    expect(find.byKey(const Key('work-mode-settings')), findsOneWidget);
+    // 语音提示与最大音量在同一个二级页的另一张卡片里。
+    expect(find.byKey(const Key('speech-prompt-settings')), findsOneWidget);
+    expect(find.byKey(const Key('max-volume-settings')), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('work-mode-settings'))).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const Key('speech-prompt-settings'))).dy,
+      ),
+    );
+    // 未提供条码长度回调时不显示该项（本用例未开启该能力）。
+    expect(
+      find.byKey(const Key('minimum-barcode-length-settings')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('清理说明随保留时间与清理策略变化', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          sessions: const [],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await _openSettingsEntry(tester, 'cleanup-settings-open');
+
+    expect(find.textContaining('未备份满 30 天后从本机删除'), findsOneWidget);
+    expect(find.textContaining('5. 空间不足时只清理电脑确认过的备份'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('unbacked-retention-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('不清除').last);
     await tester.pumpAndSettle();
 
-    expect(find.text('录像清理说明'), findsOneWidget);
-    expect(find.textContaining('每组录像分别设置'), findsOneWidget);
-    expect(find.textContaining('最老的'), findsOneWidget);
-    expect(find.text('超过保留时间且仍未完成电脑备份的录像将从本机永久删除'), findsNothing);
+    expect(find.textContaining('发货录像：未备份的不会自动清理'), findsOneWidget);
+
+    await tester.tap(find.text('优先继续录制'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('删掉的未备份录像无法恢复'), findsOneWidget);
+  });
+
+  testWidgets('设置页保留标题栏', (WidgetTester tester) async {
+    Future<void> pump({required bool embedded}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RecordingsScreen(
+            mode: RecordingsScreenMode.settings,
+            embedded: embedded,
+            sessions: const [],
+            workMode: WorkMode.continuousScan,
+            speechEnabled: true,
+            maxVolumeEnabled: true,
+            onWorkModeChanged: (_) async {},
+            onSpeechEnabledChanged: (_) async {},
+            onMaxVolumeEnabledChanged: (_) async {},
+            onSpeechPreview: () async {},
+            onSessionUpdated: (_) async {},
+            onDeleteSessions: (_) async {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pump(embedded: true);
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.text('设置'), findsOneWidget);
+    expect(find.byKey(const Key('scan-settings-card')), findsOneWidget);
+
+    await pump(embedded: false);
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.text('设置'), findsOneWidget);
   });
 
   testWidgets('面单条码最短长度可调整', (WidgetTester tester) async {
@@ -320,31 +428,42 @@ void main() {
       ),
     );
 
-    final Finder workCard = find.byKey(const Key('work-settings-card'));
+    final Finder scanCard = find.byKey(const Key('scan-settings-card'));
+    // 工作模式与条码长度都收进「扫码设置」二级页，一级只留入口。
     expect(
       find.descendant(
-        of: workCard,
+        of: scanCard,
         matching: find.byKey(const Key('minimum-barcode-length-settings')),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: scanCard,
+        matching: find.byKey(const Key('work-mode-settings')),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: scanCard,
+        matching: find.byKey(const Key('scan-settings-open')),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
-        of: workCard,
+        of: scanCard,
         matching: find.byKey(const Key('video-codec-settings')),
       ),
       findsNothing,
     );
     expect(find.byKey(const Key('minimum-barcode-length-card')), findsNothing);
+    await _openSettingsEntry(tester, 'scan-settings-open');
+    expect(find.byKey(const Key('work-mode-settings')), findsOneWidget);
     expect(
-      tester.getTopLeft(find.byKey(const Key('work-mode-settings'))).dy,
-      lessThan(
-        tester
-            .getTopLeft(
-              find.byKey(const Key('minimum-barcode-length-settings')),
-            )
-            .dy,
-      ),
+      find.byKey(const Key('minimum-barcode-length-settings')),
+      findsOneWidget,
     );
     await tester.tap(find.byKey(const Key('minimum-barcode-length-dropdown')));
     await tester.pumpAndSettle();
@@ -381,9 +500,11 @@ void main() {
     );
 
     await tester.pumpWidget(build(running: false));
+    await _openSettingsEntry(tester, 'order-receiver-open');
     expect(find.text('重试'), findsOneWidget);
 
     await tester.pumpWidget(build(running: true));
+    await tester.pumpAndSettle();
     expect(find.text('重试'), findsNothing);
   });
 
@@ -410,36 +531,71 @@ void main() {
       ),
     );
 
-    final Finder workCard = find.byKey(const Key('work-settings-card'));
+    final Finder scanCard = find.byKey(const Key('scan-settings-card'));
+    final Finder cleanupCard = find.byKey(const Key('cleanup-settings-card'));
     final Finder recordingCard = find.byKey(
       const Key('recording-settings-card'),
     );
-    final Finder voiceCard = find.byKey(const Key('voice-settings-card'));
-    expect(workCard, findsOneWidget);
+    expect(scanCard, findsOneWidget);
+    expect(cleanupCard, findsOneWidget);
     expect(recordingCard, findsOneWidget);
-    expect(voiceCard, findsOneWidget);
+    // 语音与音量已并入「扫码与声音」二级页，一级不再有语音卡片。
+    expect(find.byKey(const Key('voice-settings-card')), findsNothing);
 
     expect(
       find.descendant(
-        of: workCard,
-        matching: find.byKey(const Key('work-mode-settings')),
+        of: scanCard,
+        matching: find.byKey(const Key('scan-settings-open')),
       ),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: workCard, matching: find.text('录像清理')),
+      find.descendant(of: scanCard, matching: find.text('录像清理')),
       findsNothing,
     );
+    // 一级菜单只留入口卡片；二级页才放具体设置。
     expect(
-      find.descendant(of: recordingCard, matching: find.text('录像清理')),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: recordingCard, matching: find.text('发货录像清理')),
+      find.descendant(
+        of: cleanupCard,
+        matching: find.byKey(const Key('cleanup-settings-open')),
+      ),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: recordingCard, matching: find.text('退货录像清理')),
+      find.descendant(of: cleanupCard, matching: find.text('发货录像清理')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: cleanupCard, matching: find.text('退货录像清理')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: cleanupCard,
+        matching: find.byKey(const Key('storage-pressure-settings')),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: cleanupCard,
+        matching: find.byKey(const Key('cleanup-notes')),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: recordingCard,
+        matching: find.byKey(const Key('storage-pressure-settings')),
+      ),
+      findsNothing,
+    );
+    // 录像设置收进二级页，卡片里只留入口。
+    expect(
+      find.descendant(
+        of: recordingCard,
+        matching: find.byKey(const Key('recording-settings-open')),
+      ),
       findsOneWidget,
     );
     expect(
@@ -447,46 +603,72 @@ void main() {
         of: recordingCard,
         matching: find.byKey(const Key('video-codec-settings')),
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.descendant(
         of: recordingCard,
         matching: find.byKey(const Key('recording-spec-settings')),
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.descendant(
         of: recordingCard,
         matching: find.byKey(const Key('record-audio-settings')),
       ),
-      findsOneWidget,
-    );
-
-    expect(
-      find.descendant(
-        of: voiceCard,
-        matching: find.byKey(const Key('speech-prompt-settings')),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: voiceCard,
-        matching: find.byKey(const Key('max-volume-settings')),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: voiceCard,
-        matching: find.byKey(const Key('order-speech-settings')),
-      ),
       findsNothing,
     );
 
-    // 订单播报并入订单接收卡片，订单接收与关于保持独立卡片。
+    // 进入二级页后四项设置齐全。
+    await tester.tap(find.byKey(const Key('recording-settings-open')));
+    await tester.pumpAndSettle();
+    expect(find.text('录像设置'), findsOneWidget);
+    expect(find.byKey(const Key('video-codec-settings')), findsOneWidget);
+    expect(find.byKey(const Key('recording-spec-settings')), findsOneWidget);
+    expect(find.byKey(const Key('record-audio-settings')), findsOneWidget);
+    expect(
+      find.byKey(const Key('recording-orientation-settings')),
+      findsOneWidget,
+    );
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // 清理二级页含保留时间、清理策略入口与独立的清理说明卡片。
+    await tester.tap(find.byKey(const Key('cleanup-settings-open')));
+    await tester.pumpAndSettle();
+    expect(find.text('发货录像清理'), findsOneWidget);
+    expect(find.text('退货录像清理'), findsOneWidget);
+    expect(find.byKey(const Key('cleanup-notes-card')), findsOneWidget);
+    expect(find.text('清理说明'), findsOneWidget);
+    // 清理策略就在这一层，不再有第三层入口。
+    expect(find.byKey(const Key('storage-pressure-settings')), findsOneWidget);
+    expect(find.text('录像清理策略'), findsOneWidget);
+    expect(find.byKey(const Key('cleanup-policy-entry')), findsNothing);
+
+    // 回到一级设置页，后面的卡片断言才在树里。
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // 扫码卡片只留入口；语音提示与最大音量同卡。
+    expect(
+      find.descendant(
+        of: scanCard,
+        matching: find.byKey(const Key('scan-settings-open')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: scanCard,
+        matching: find.byKey(const Key('work-mode-settings')),
+      ),
+      findsNothing,
+    );
+    expect(find.byKey(const Key('speech-prompt-settings')), findsNothing);
+    expect(find.byKey(const Key('max-volume-settings')), findsNothing);
+
+    // 订单接收与播报收进二级页，一级只留入口。
     final Finder orderReceiverCard = find.byKey(
       const Key('order-receiver-settings'),
     );
@@ -494,20 +676,20 @@ void main() {
     expect(
       find.descendant(
         of: orderReceiverCard,
-        matching: find.byKey(const Key('order-speech-settings')),
+        matching: find.byKey(const Key('order-receiver-open')),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
-        of: recordingCard,
-        matching: find.byKey(const Key('order-receiver-settings')),
+        of: orderReceiverCard,
+        matching: find.byKey(const Key('order-speech-settings')),
       ),
       findsNothing,
     );
     expect(
       find.descendant(
-        of: voiceCard,
+        of: recordingCard,
         matching: find.byKey(const Key('order-receiver-settings')),
       ),
       findsNothing,
@@ -520,6 +702,13 @@ void main() {
       ),
       findsNothing,
     );
+
+    // 进入订单接收二级页后，订单播报与接收地址都在里面。
+    await tester.tap(find.byKey(const Key('order-receiver-open')));
+    await tester.pumpAndSettle();
+    expect(find.text('订单接收'), findsWidgets);
+    expect(find.byKey(const Key('order-speech-settings')), findsOneWidget);
+    expect(find.byKey(const Key('order-receiver-address')), findsOneWidget);
   });
 
   testWidgets('录像方向胶囊按横左竖屏横右排列', (WidgetTester tester) async {
@@ -544,6 +733,9 @@ void main() {
         ),
       ),
     );
+
+    await tester.tap(find.byKey(const Key('recording-settings-open')));
+    await tester.pumpAndSettle();
 
     final SegmentedButton<RecordingOrientation> button = tester.widget(
       find.byType(SegmentedButton<RecordingOrientation>),
@@ -584,6 +776,8 @@ void main() {
       ),
     );
 
+    // 工作模式在「扫码设置」二级页里。
+    await _openSettingsEntry(tester, 'scan-settings-open');
     expect(find.byKey(const Key('work-mode-settings')), findsOneWidget);
     expect(find.text('连续扫码'), findsOneWidget);
     expect(find.text('同码停录'), findsOneWidget);
@@ -593,6 +787,63 @@ void main() {
 
     expect(selected, WorkMode.sameCodeStop);
     expect(find.textContaining('再次识别当前面单'), findsOneWidget);
+  });
+
+  testWidgets('清理策略使用胶囊选择并显示对应说明', (WidgetTester tester) async {
+    StoragePressurePolicy selected = StoragePressurePolicy.preserveFootage;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          sessions: const [],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+          onBackupRetentionChanged:
+              ({
+                required UnbackedRetentionPolicy unbacked,
+                required BackedRetentionPolicy backed,
+                required UnbackedRetentionPolicy returnUnbacked,
+                required BackedRetentionPolicy returnBacked,
+                required StoragePressurePolicy storagePressurePolicy,
+              }) async {
+                selected = storagePressurePolicy;
+              },
+        ),
+      ),
+    );
+
+    await _openSettingsEntry(tester, 'cleanup-settings-open');
+
+    final SegmentedButton<StoragePressurePolicy> button = tester.widget(
+      find.byType(SegmentedButton<StoragePressurePolicy>),
+    );
+    expect(
+      button.segments.map((segment) => (segment.label as Text).data),
+      <String>['优先保留录像', '优先继续录制'],
+    );
+    expect(button.selected, <StoragePressurePolicy>{
+      StoragePressurePolicy.preserveFootage,
+    });
+    expect(find.text('录像清理策略'), findsWidgets);
+    expect(find.byKey(const Key('storage-pressure-settings')), findsOneWidget);
+    expect(find.text('只清理电脑确认过的备份，腾不出空间就停止录制'), findsOneWidget);
+
+    await tester.tap(find.text('优先继续录制'));
+    await tester.pump();
+
+    expect(selected, StoragePressurePolicy.preserveRecording);
+    final Text description = tester.widget<Text>(find.text('电脑可有可无，可能删除未备份录像'));
+    expect(
+      description.style?.color,
+      Theme.of(tester.element(find.text('录像清理策略').first)).colorScheme.error,
+    );
   });
 
   testWidgets('语音设置可关闭并在开启时试听', (WidgetTester tester) async {
@@ -620,12 +871,8 @@ void main() {
       ),
     );
 
-    await tester.dragUntilVisible(
-      find.byKey(const Key('speech-prompt-settings')),
-      find.byType(ListView).first,
-      const Offset(0, -120),
-    );
-    await tester.pumpAndSettle();
+    // 语音提示在「扫码与声音」二级页里。
+    await _openSettingsEntry(tester, 'scan-settings-open');
     expect(find.byKey(const Key('speech-prompt-settings')), findsOneWidget);
     expect(find.text('离线自动使用系统语音'), findsOneWidget);
     await tester.tap(find.text('试听'));
@@ -665,12 +912,7 @@ void main() {
       ),
     );
 
-    await tester.dragUntilVisible(
-      find.byKey(const Key('max-volume-enabled-switch')),
-      find.byType(ListView).first,
-      const Offset(0, -120),
-    );
-    await tester.pumpAndSettle();
+    await _openSettingsEntry(tester, 'scan-settings-open');
     expect(find.text('最大音量'), findsOneWidget);
     expect(find.text('工作时自动提高媒体音量'), findsOneWidget);
     await tester.ensureVisible(
@@ -703,6 +945,7 @@ void main() {
         ),
       ),
     );
+    await _openSettingsEntry(tester, 'scan-settings-open');
     await tester.pump();
     expect(find.byKey(const Key('max-volume-settings')), findsNothing);
   });
@@ -852,6 +1095,7 @@ void main() {
       ),
     );
 
+    await _openSettingsEntry(tester, 'recording-settings-open');
     expect(find.text('录制声音'), findsOneWidget);
     expect(find.text('关闭后录像不带声音'), findsOneWidget);
     await tester.ensureVisible(
@@ -886,12 +1130,7 @@ void main() {
       ),
     );
 
-    await tester.dragUntilVisible(
-      find.text('H.264 兼容优先'),
-      find.byType(ListView).first,
-      const Offset(0, -120),
-    );
-    await tester.pumpAndSettle();
+    await _openSettingsEntry(tester, 'recording-settings-open');
     await tester.tap(find.text('H.264 兼容优先'));
     await tester.pumpAndSettle();
 
@@ -922,12 +1161,7 @@ void main() {
       ),
     );
 
-    await tester.dragUntilVisible(
-      find.text('720p'),
-      find.byType(ListView).first,
-      const Offset(0, -120),
-    );
-    await tester.pumpAndSettle();
+    await _openSettingsEntry(tester, 'recording-settings-open');
     expect(find.text('4K'), findsNothing);
     expect(find.text('1920 × 1080 · 30 帧 · 日常推荐'), findsOneWidget);
     await tester.tap(find.text('720p'));
@@ -963,12 +1197,7 @@ void main() {
       ),
     );
 
-    await tester.dragUntilVisible(
-      find.text('4K'),
-      find.byType(ListView).first,
-      const Offset(0, -120),
-    );
-    await tester.pumpAndSettle();
+    await _openSettingsEntry(tester, 'recording-settings-open');
     await tester.tap(find.text('4K'));
     await tester.pumpAndSettle();
 
@@ -1000,12 +1229,7 @@ void main() {
       ),
     );
 
-    await tester.dragUntilVisible(
-      find.text('4K'),
-      find.byType(ListView).first,
-      const Offset(0, -120),
-    );
-    await tester.pumpAndSettle();
+    await _openSettingsEntry(tester, 'recording-settings-open');
 
     expect(find.text('4K'), findsOneWidget);
     expect(find.text('1080p'), findsOneWidget);
@@ -6183,6 +6407,18 @@ LanBackupJobsByPaths _backupJobsForPaths({
     jobs: matchingJobs,
     missingPaths: requested.difference(foundPaths),
   );
+}
+
+/// 打开设置页里的二级页入口（录像设置 / 录像清理策略）。
+Future<void> _openSettingsEntry(WidgetTester tester, String key) async {
+  await tester.scrollUntilVisible(
+    find.byKey(Key(key)),
+    240,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(Key(key)));
+  await tester.pumpAndSettle();
 }
 
 class _FakeBackupHostDiscovery extends ChangeNotifier

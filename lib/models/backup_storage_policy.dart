@@ -1,9 +1,9 @@
-/// 空间不足时的取舍策略。
+/// 空间不足时的清理策略。
 enum StoragePressurePolicy {
   /// 优先保留录像：只清理电脑确认过的备份，腾不出空间就停止录制。
   preserveFootage,
 
-  /// 优先继续录制：电脑可有可无，空间不足时按最老优先删除，可能删除未备份录像。
+  /// 优先继续录制：电脑可有可无，可能删除未备份录像。
   preserveRecording;
 
   bool get deletesUnbacked => this == StoragePressurePolicy.preserveRecording;
@@ -13,6 +13,11 @@ enum StoragePressurePolicy {
   String get label => switch (this) {
     StoragePressurePolicy.preserveFootage => '优先保留录像',
     StoragePressurePolicy.preserveRecording => '优先继续录制',
+  };
+
+  String get description => switch (this) {
+    StoragePressurePolicy.preserveFootage => '只清理电脑确认过的备份，腾不出空间就停止录制',
+    StoragePressurePolicy.preserveRecording => '电脑可有可无，可能删除未备份录像',
   };
 }
 
