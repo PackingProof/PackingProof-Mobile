@@ -982,6 +982,59 @@ internal class LanBackupStateStore(
     }
 
     /**
+     * 「优先继续录制」策略下的兜底候选：没有电脑校验证明、但文件已落盘且不在上传中的
+     * 录像。按创建时间从早到晚返回，只在已确认备份都清完仍不够时使用。
+     */
+    fun storageFallbackJobsPage(
+        afterCreatedAtKey: String?,
+        afterId: String?,
+        limit: Int = 100,
+    ): LanBackupStorageJobPage = withJobLock {
+        require(limit in 1..100) { "空间回收单页数量必须为 1 到 100" }
+        require((afterCreatedAtKey == null) == (afterId == null)) { "空间回收游标必须完整" }
+        val createdAtExpression = "COALESCE(file_created_at, '9999-12-31T23:59:59Z')"
+        val selection = buildString {
+            append(
+                "state IN ('completed', 'failed', 'paused', 'pending') " +
+                    "AND local_deleted_at IS NULL AND file_path IS NOT NULL " +
+                    "AND file_path != '' AND total_bytes > 0 AND last_modified > 0",
+            )
+            if (afterCreatedAtKey != null) {
+                append(" AND ($createdAtExpression > ? OR ($createdAtExpression = ? AND id > ?))")
+            }
+        }
+        val args = mutableListOf<String>()
+        if (afterCreatedAtKey != null && afterId != null) {
+            args += afterCreatedAtKey
+            args += afterCreatedAtKey
+            args += afterId
+        }
+        val columns = LanBackupJobDatabase.COLUMNS
+        val jobs = db.query(
+            LanBackupJobDatabase.TABLE,
+            columns.toTypedArray(),
+            selection,
+            args.toTypedArray(),
+            null,
+            null,
+            "$createdAtExpression ASC, id ASC",
+            limit.toString(),
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    add(lanBackupRowToJob(cursor.toRowMap(columns)))
+                }
+            }
+        }
+        val last = jobs.lastOrNull()
+        LanBackupStorageJobPage(
+            jobs = jobs,
+            nextCreatedAtKey = last?.let(::storageCreatedAtKey),
+            nextId = last?.optString("id"),
+        )
+    }
+
+    /**
      * 空间回收候选读取与文件删除之间可能发生重新入队。这里在统一 job 锁内重读，
      * 并要求 generation、文件身份和完整远端证明仍与候选快照完全一致后才删除。
      */
@@ -1070,6 +1123,65 @@ internal class LanBackupStateStore(
         result = RecordingStorageReclaimResult.rejected,
         jobChanged = false,
     )
+
+    /**
+     * 「优先继续录制」策略下的兜底删除：没有回执也要能删，但仍然要求任务行与文件身份
+     * 完全一致，并且沿用同一套守卫式删除（原子改名 + 大小/修改时间/SHA256 校验）。
+     */
+    fun reclaimUnbackedRecording(
+        expected: RecordingStorageCandidate,
+        reason: String,
+    ): RecordingStorageReclaimOutcome = withJobLock {
+        val current = readJobUnlocked(expected.id) ?: return@withJobLock rejectedStorageReclaim()
+        val actual = recordingStorageCandidate(current)
+        if (actual != expected || !RecordingStoragePolicy.canReclaimWithoutProof(actual)) {
+            return@withJobLock rejectedStorageReclaim()
+        }
+        val file = File(actual.filePath)
+        val appDataRoot = context.dataDir.canonicalFile
+        val managed = runCatching {
+            file.canonicalFile.path.startsWith(appDataRoot.path + File.separator)
+        }.getOrDefault(false)
+        if (!managed) return@withJobLock rejectedStorageReclaim()
+
+        when (
+            val result = LanBackupFileCleanup.deleteExpected(
+                file = file,
+                expectedBytes = actual.totalBytes,
+                expectedLastModified = actual.lastModified,
+                expectedSha256 = actual.contentSha256,
+            )
+        ) {
+            LanBackupFileCleanupResult.deleted,
+            LanBackupFileCleanupResult.missing,
+            -> {
+                current.put("localDeletedAt", Instant.now().toString())
+                    .put("scheduledCleanupAt", JSONObject.NULL)
+                    .put("waitingCleanup", false)
+                    .put("cleanupReason", reason)
+                    .put("errorMessage", JSONObject.NULL)
+                writeJobUnlocked(current)
+                RecordingStorageReclaimOutcome(
+                    result = if (result == LanBackupFileCleanupResult.deleted) {
+                        RecordingStorageReclaimResult.deleted
+                    } else {
+                        RecordingStorageReclaimResult.missing
+                    },
+                    jobChanged = true,
+                )
+            }
+            LanBackupFileCleanupResult.stale -> updateStorageReclaimError(
+                current,
+                RecordingStorageReclaimResult.stale,
+                "录像文件已被替换，已取消空间清理",
+            )
+            LanBackupFileCleanupResult.failed -> updateStorageReclaimError(
+                current,
+                RecordingStorageReclaimResult.failed,
+                "空间清理失败，已保留本机录像",
+            )
+        }
+    }
 
     private fun updateStorageReclaimError(
         job: JSONObject,

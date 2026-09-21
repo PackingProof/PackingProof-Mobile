@@ -66,6 +66,98 @@ class RecordingStorageManagerTest {
     }
 
     @Test
+    fun unbackedRecordingIsKeptUnlessPriorityPolicyIsEnabled() {
+        val job = unbackedJob(source, "storage-manager-unbacked-session")
+
+        val defaultResult = manager().checkAndReclaim()
+
+        assertEquals(0, defaultResult.values["deletedCount"])
+        assertTrue(source.exists())
+        assertNull(
+            LanBackupCleanupScheduler.nullableText(
+                store.readJob(job.getString("id"))!!,
+                "localDeletedAt",
+            ),
+        )
+
+        BackupStoragePolicyStore.save(
+            context,
+            mapOf("storageDeleteUnbackedOnPressure" to true),
+        )
+        val priorityResult = manager().checkAndReclaim()
+        val deleted = store.readJob(job.getString("id"))!!
+
+        assertEquals(1, priorityResult.values["deletedCount"])
+        assertTrue(priorityResult.jobsChanged)
+        assertFalse(source.exists())
+        assertNotNull(LanBackupCleanupScheduler.nullableText(deleted, "localDeletedAt"))
+        assertEquals(
+            "空间不足删除未备份录像",
+            LanBackupCleanupScheduler.nullableText(deleted, "cleanupReason"),
+        )
+    }
+
+    @Test
+    fun uploadingRecordingIsNeverDeletedEvenInPriorityMode() {
+        val job = unbackedJob(source, "storage-manager-uploading-session", state = "uploading")
+        BackupStoragePolicyStore.save(
+            context,
+            mapOf("storageDeleteUnbackedOnPressure" to true),
+        )
+
+        val result = manager().checkAndReclaim()
+
+        assertEquals(0, result.values["deletedCount"])
+        assertTrue(source.exists())
+        assertNull(
+            LanBackupCleanupScheduler.nullableText(
+                store.readJob(job.getString("id"))!!,
+                "localDeletedAt",
+            ),
+        )
+    }
+
+    @Test
+    fun confirmedBackupIsReclaimedBeforeUnbackedRecording() {
+        val verified = verifiedJob()
+        val secondSource = File(context.cacheDir, "storage-manager-priority.mp4").apply {
+            writeText("priority-test-video", Charsets.UTF_8)
+        }
+        try {
+            val unbacked = unbackedJob(secondSource, "storage-manager-priority-session")
+            var available = 0L
+            val manager = RecordingStorageManager(
+                context,
+                store,
+                availableBytes = { available },
+                beforeGuardedDeleteForTesting = { snapshot ->
+                    if (snapshot.getString("id") == verified.getString("id")) {
+                        available = BackupStoragePolicy.FALLBACK.targetBytes
+                    }
+                },
+            )
+            BackupStoragePolicyStore.save(
+                context,
+                mapOf("storageDeleteUnbackedOnPressure" to true),
+            )
+
+            val result = manager.checkAndReclaim()
+
+            assertEquals(1, result.values["deletedCount"])
+            assertFalse(source.exists())
+            assertTrue(secondSource.exists())
+            assertNull(
+                LanBackupCleanupScheduler.nullableText(
+                    store.readJob(unbacked.getString("id"))!!,
+                    "localDeletedAt",
+                ),
+            )
+        } finally {
+            secondSource.delete()
+        }
+    }
+
+    @Test
     fun reclaimThresholdFollowsPolicyPushedFromDart() {
         val availableBytes = 1500L * 1024 * 1024
         val manager = RecordingStorageManager(
@@ -517,6 +609,21 @@ class RecordingStorageManagerTest {
     }
 
     private fun manager() = RecordingStorageManager(context, store, availableBytes = { 0 })
+
+    /** 未备份或未完成电脑校验的录像：没有回执，只有本地文件与任务行。 */
+    private fun unbackedJob(
+        file: File,
+        sessionId: String,
+        state: String = "failed",
+    ): JSONObject {
+        val job = store.upsertJob(file.path, sessions(sessionId)).job
+        return store.updateJob(job.getString("id"), job.getString("generation")) { current ->
+            current.put("state", state)
+                .put("totalBytes", file.length())
+                .put("lastModified", file.lastModified())
+            true
+        }!!
+    }
 
     private fun verifiedJob(
         receipt: (JSONObject) -> Any = ::signedReceipt,

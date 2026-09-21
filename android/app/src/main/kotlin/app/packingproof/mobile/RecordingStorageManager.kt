@@ -59,6 +59,23 @@ internal object RecordingStoragePolicy {
         hasCompleteProof(candidate) &&
             candidate.lastAttestedAt?.let { isFreshAttestation(it, policy) } == true
 
+    /**
+     * 「优先继续录制」兜底删除的准入条件：允许没有电脑回执，但只碰已经落盘、不在上传
+     * 或等待上传中的单会话录像，避免删掉正在写或正在传的文件。
+     */
+    fun canReclaimWithoutProof(candidate: RecordingStorageCandidate): Boolean =
+        candidate.generation.isNotBlank() &&
+            candidate.filePath.isNotBlank() &&
+            candidate.state in UNBACKED_RECLAIMABLE_STATES &&
+            candidate.sessionIds.size == 1 &&
+            candidate.sessionIds.single().isNotBlank() &&
+            candidate.totalBytes > 0 &&
+            candidate.lastModified > 0 &&
+            candidate.localDeletedAt == null
+
+    private val UNBACKED_RECLAIMABLE_STATES =
+        setOf("completed", "failed", "paused", "pending")
+
     fun verifiedCandidates(
         candidates: List<RecordingStorageCandidate>,
         policy: BackupStoragePolicy,
@@ -231,6 +248,49 @@ internal class RecordingStorageManager(
                 afterId = page.nextId
             } while (
                 current < policy.targetBytes && page.jobs.size == 100
+            )
+        }
+        if (policy.deleteUnbackedOnPressure &&
+            RecordingStoragePolicy.needsReclaim(current, policy)
+        ) {
+            var fallbackCreatedAtKey: String? = null
+            var fallbackId: String? = null
+            var fallbackPage: LanBackupStorageJobPage
+            do {
+                fallbackPage = store.storageFallbackJobsPage(
+                    fallbackCreatedAtKey,
+                    fallbackId,
+                )
+                for (job in fallbackPage.jobs) {
+                    if (current >= policy.targetBytes) break
+                    val expected = recordingStorageCandidate(job)
+                    if (!RecordingStoragePolicy.canReclaimWithoutProof(expected)) continue
+                    val outcome = store.reclaimUnbackedRecording(
+                        expected,
+                        reason = if (expected.backupCompletedAt != null) {
+                            "空间不足删除未确认备份"
+                        } else {
+                            "空间不足删除未备份录像"
+                        },
+                    )
+                    when (outcome.result) {
+                        RecordingStorageReclaimResult.deleted -> {
+                            deletedCount++
+                            freedBytes += expected.totalBytes
+                        }
+                        RecordingStorageReclaimResult.missing,
+                        RecordingStorageReclaimResult.stale,
+                        RecordingStorageReclaimResult.failed,
+                        RecordingStorageReclaimResult.rejected,
+                        -> Unit
+                    }
+                    jobsChanged = jobsChanged || outcome.jobChanged
+                    current = availableBytes()
+                }
+                fallbackCreatedAtKey = fallbackPage.nextCreatedAtKey
+                fallbackId = fallbackPage.nextId
+            } while (
+                current < policy.targetBytes && fallbackPage.jobs.size == 100
             )
         }
         return RecordingStorageCheckResult(

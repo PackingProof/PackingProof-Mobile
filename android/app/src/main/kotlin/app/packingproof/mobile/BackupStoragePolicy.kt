@@ -17,6 +17,7 @@ internal data class BackupStoragePolicy(
     val attestationFreshnessMs: Long,
     val confirmationLimit: Int,
     val confirmationGraceMs: Long,
+    val deleteUnbackedOnPressure: Boolean,
 ) {
     val attestationFreshness: Duration get() = Duration.ofMillis(attestationFreshnessMs)
     val confirmationGrace: Duration get() = Duration.ofMillis(confirmationGraceMs)
@@ -30,6 +31,7 @@ internal data class BackupStoragePolicy(
             attestationFreshnessMs = 5L * 60 * 1000,
             confirmationLimit = 64,
             confirmationGraceMs = 24L * 60 * 60 * 1000,
+            deleteUnbackedOnPressure = false,
         )
     }
 }
@@ -52,6 +54,8 @@ internal object BackupStoragePolicyStore {
                 ?: current.confirmationLimit,
             confirmationGraceMs = (request["storageConfirmationGraceMs"] as? Number)?.toLong()
                 ?: current.confirmationGraceMs,
+            deleteUnbackedOnPressure = (request["storageDeleteUnbackedOnPressure"] as? Boolean)
+                ?: current.deleteUnbackedOnPressure,
         )
         if (next == current) return
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -62,6 +66,7 @@ internal object BackupStoragePolicyStore {
             .putLong("attestationFreshnessMs", next.attestationFreshnessMs)
             .putInt("confirmationLimit", next.confirmationLimit)
             .putLong("confirmationGraceMs", next.confirmationGraceMs)
+            .putBoolean("deleteUnbackedOnPressure", next.deleteUnbackedOnPressure)
             .apply()
     }
 
@@ -80,6 +85,10 @@ internal object BackupStoragePolicyStore {
             confirmationGraceMs = prefs.getLong(
                 "confirmationGraceMs",
                 fallback.confirmationGraceMs,
+            ),
+            deleteUnbackedOnPressure = prefs.getBoolean(
+                "deleteUnbackedOnPressure",
+                fallback.deleteUnbackedOnPressure,
             ),
         )
     }

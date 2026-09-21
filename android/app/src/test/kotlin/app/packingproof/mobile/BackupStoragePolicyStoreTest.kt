@@ -39,6 +39,7 @@ class BackupStoragePolicyStoreTest {
                 "storageAttestationFreshnessMs" to 60L * 1000,
                 "storageConfirmationLimit" to 2,
                 "storageConfirmationGraceMs" to 60L * 60 * 1000,
+                "storageDeleteUnbackedOnPressure" to true,
             ),
         )
 
@@ -50,6 +51,7 @@ class BackupStoragePolicyStoreTest {
         assertEquals(60L * 1000, policy.attestationFreshnessMs)
         assertEquals(2, policy.confirmationLimit)
         assertEquals(60L * 60 * 1000, policy.confirmationGraceMs)
+        assertTrue(policy.deleteUnbackedOnPressure)
     }
 
     @Test

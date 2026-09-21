@@ -212,6 +212,7 @@ internal class LanBackupPlugin(
     }
 
     fun updateRetentionSchedule(request: Map<String?, Any?>) {
+        BackupStoragePolicyStore.save(context, request)
         val changed = store.saveRetentionPolicies(
             (request["unbackedRetentionDays"] as? Number)?.toInt(),
             (request["backedRetentionDays"] as? Number)?.toInt(),
