@@ -2583,6 +2583,75 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(remaining.count, 1)
   }
 
+  func testStorageReclaimKeepsUnbackedRecordingByDefault() async throws {
+    let fixture = try makeRetentionCleanupFixture(
+      id: "storage-reclaim-unbacked-default",
+      availableStorageBytesOverride: { 0 }
+    )
+    defer { removeRetentionCleanupFixture(fixture) }
+    let file = try addUnbackedStorageReclaimJob(
+      fixture, id: "storage-reclaim-unbacked-default"
+    )
+
+    let result = try await awaitStorageReclaim(fixture.api)
+
+    XCTAssertEqual(result["deletedCount"] as? Int, 0)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+    let job = try XCTUnwrap(
+      fixture.store.readJob(id: "storage-reclaim-unbacked-default")
+    )
+    XCTAssertNil(job["localDeletedAt"])
+  }
+
+  func testStorageReclaimDeletesUnbackedRecordingWhenPriorityPolicyEnabled()
+    async throws
+  {
+    let fixture = try makeRetentionCleanupFixture(
+      id: "storage-reclaim-unbacked-priority",
+      availableStorageBytesOverride: { 0 }
+    )
+    defer { removeRetentionCleanupFixture(fixture) }
+    let file = try addUnbackedStorageReclaimJob(
+      fixture, id: "storage-reclaim-unbacked-priority"
+    )
+    fixture.defaults.set(
+      ["deleteUnbackedOnPressure": true],
+      forKey: "ios_backup_storage_policy"
+    )
+
+    let result = try await awaitStorageReclaim(fixture.api)
+
+    XCTAssertEqual(result["deletedCount"] as? Int, 1)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    let job = try XCTUnwrap(
+      fixture.store.readJob(id: "storage-reclaim-unbacked-priority")
+    )
+    XCTAssertNotNil(job["localDeletedAt"])
+    XCTAssertEqual(job["cleanupReason"] as? String, "空间不足删除未备份录像")
+  }
+
+  func testStorageReclaimKeepsUploadingRecordingWhenPriorityPolicyEnabled()
+    async throws
+  {
+    let fixture = try makeRetentionCleanupFixture(
+      id: "storage-reclaim-uploading-priority",
+      availableStorageBytesOverride: { 0 }
+    )
+    defer { removeRetentionCleanupFixture(fixture) }
+    let file = try addUnbackedStorageReclaimJob(
+      fixture, id: "storage-reclaim-uploading-priority", state: "uploading"
+    )
+    fixture.defaults.set(
+      ["deleteUnbackedOnPressure": true],
+      forKey: "ios_backup_storage_policy"
+    )
+
+    let result = try await awaitStorageReclaim(fixture.api)
+
+    XCTAssertEqual(result["deletedCount"] as? Int, 0)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
+  }
+
   func testStorageReclaimFollowsPolicyPushedFromDart() async throws {
     let availableBytes: Int64 = 1536 * 1024 * 1024
     let fixture = try makeRetentionCleanupFixture(
@@ -4863,6 +4932,25 @@ class RunnerTests: XCTestCase {
     job["backupCompletedAt"] = "2020-01-01T00:00:00Z"
     job = makeVerifiedStorageReclaimJob(job)
     job["lastAttestedAt"] = lastAttestedAt
+    try fixture.store.upsert(job)
+    return file
+  }
+
+  /// 追加一段还没有电脑校验的录像（未备份或上传失败），用于验证兜底删除策略。
+  private func addUnbackedStorageReclaimJob(
+    _ fixture: RetentionCleanupFixture,
+    id: String,
+    state: String = "failed"
+  ) throws -> URL {
+    let file = fixture.root.appendingPathComponent("recordings/\(id).mp4")
+    let contents = Data("unbacked-reclaim-fixture-\(id)".utf8)
+    try contents.write(to: file)
+    let snapshot = try IosBackupFileSnapshot.read(from: file)
+    var job = makeBackupJob(id: id)
+    job["filePath"] = file.path
+    job["state"] = state
+    job["totalBytes"] = snapshot.byteCount
+    job["lastModified"] = snapshot.modifiedAtMilliseconds
     try fixture.store.upsert(job)
     return file
   }

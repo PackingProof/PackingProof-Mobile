@@ -499,6 +499,8 @@ struct BackupStoragePolicy: Equatable {
   let attestationFreshnessMs: Int64
   let confirmationLimit: Int
   let confirmationGraceMs: Int64
+  /// 「优先继续录制」时允许删除未备份录像；默认关闭（优先保留录像）。
+  let deleteUnbackedOnPressure: Bool
 
   var confirmationGrace: TimeInterval { TimeInterval(confirmationGraceMs) / 1000 }
 
@@ -509,7 +511,8 @@ struct BackupStoragePolicy: Equatable {
     targetBytes: 3 * 1024 * 1024 * 1024,
     attestationFreshnessMs: 5 * 60 * 1000,
     confirmationLimit: 64,
-    confirmationGraceMs: 24 * 60 * 60 * 1000
+    confirmationGraceMs: 24 * 60 * 60 * 1000,
+    deleteUnbackedOnPressure: false
   )
 }
 
@@ -1238,6 +1241,45 @@ final class IosBackupHostApi: BackupNativeHostApi {
         afterId = page.nextId
       } while current < targetBytes && page.jobs.count == 100
     }
+    if policy.deleteUnbackedOnPressure && current < minimumBytes {
+      // 已确认备份清完仍不足：按最老优先删除还没有电脑确认的录像，让操作员继续录下去。
+      let fallbackRoot = recordingsDirectory().path + "/"
+      var fallbackCreatedAtKey: String?
+      var fallbackId: String?
+      var fallbackPage: (jobs: [[String: Any]], nextCreatedAtKey: String?, nextId: String?)
+      repeat {
+        fallbackPage = try jobStore.get().storageFallbackJobsPage(
+          afterCreatedAtKey: fallbackCreatedAtKey,
+          afterId: fallbackId
+        )
+        for job in fallbackPage.jobs where current < targetBytes {
+          guard let path = job["filePath"] as? String,
+                path.hasPrefix(fallbackRoot),
+                canReclaimWithoutProof(job)
+          else { continue }
+          let reason = job["backupCompletedAt"] == nil
+            ? "空间不足删除未备份录像"
+            : "空间不足删除未确认备份"
+          switch try performAtomicCleanup(
+            job: job,
+            allowedStates: ["completed", "failed", "paused", "pending"],
+            reason: reason
+          ) {
+          case .deleted(let bytes):
+            deletedCount += 1
+            freedBytes += bytes
+            jobsChanged = true
+            current = availableStorageBytes()
+          case .reconciledMissing:
+            jobsChanged = true
+          case .stale, .busy, .failed:
+            continue
+          }
+        }
+        fallbackCreatedAtKey = fallbackPage.nextCreatedAtKey
+        fallbackId = fallbackPage.nextId
+      } while current < targetBytes && fallbackPage.jobs.count == 100
+    }
     if jobsChanged {
       emitSummary()
     }
@@ -1290,6 +1332,21 @@ final class IosBackupHostApi: BackupNativeHostApi {
       contentSha256: contentSha256,
       totalBytes: totalBytes
     )
+  }
+
+  /// 「优先继续录制」兜底删除的准入条件：允许没有电脑回执，但只碰已经落盘、不在上传
+  /// 或等待上传中的单会话录像，避免删掉正在写或正在传的文件。
+  private func canReclaimWithoutProof(_ job: [String: Any]) -> Bool {
+    guard let state = job["state"] as? String,
+          ["completed", "failed", "paused", "pending"].contains(state),
+          let path = job["filePath"] as? String,
+          !path.isEmpty,
+          IosBackupCleanupGate.hasSingleSession(job),
+          (job["localDeletedAt"] as? String) == nil,
+          (optionalInt64(job["totalBytes"]) ?? 0) > 0,
+          (optionalInt64(job["lastModified"]) ?? 0) > 0
+    else { return false }
+    return true
   }
 
   /// 与保留期清理保持一致的失败说明，现场可直接看出空间为什么没有回收。
@@ -2691,7 +2748,9 @@ final class IosBackupHostApi: BackupNativeHostApi {
       confirmationLimit: intNumber(request["storageConfirmationLimit"])
         ?? current.confirmationLimit,
       confirmationGraceMs: int64Number(request["storageConfirmationGraceMs"])
-        ?? current.confirmationGraceMs
+        ?? current.confirmationGraceMs,
+      deleteUnbackedOnPressure: (request["storageDeleteUnbackedOnPressure"] as? Bool)
+        ?? current.deleteUnbackedOnPressure
     )
     guard next != current else { return }
     defaults.set(
@@ -2702,6 +2761,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
         "attestationFreshnessMs": next.attestationFreshnessMs,
         "confirmationLimit": next.confirmationLimit,
         "confirmationGraceMs": next.confirmationGraceMs,
+        "deleteUnbackedOnPressure": next.deleteUnbackedOnPressure,
       ],
       forKey: keys.storagePolicy
     )
@@ -2719,7 +2779,9 @@ final class IosBackupHostApi: BackupNativeHostApi {
       confirmationLimit: intNumber(values?["confirmationLimit"])
         ?? fallback.confirmationLimit,
       confirmationGraceMs: int64Number(values?["confirmationGraceMs"])
-        ?? fallback.confirmationGraceMs
+        ?? fallback.confirmationGraceMs,
+      deleteUnbackedOnPressure: (values?["deleteUnbackedOnPressure"] as? Bool)
+        ?? fallback.deleteUnbackedOnPressure
     )
   }
 

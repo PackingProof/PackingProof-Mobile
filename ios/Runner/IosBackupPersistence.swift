@@ -1066,6 +1066,56 @@ final class IosBackupJobStore {
     )
   }
 
+  /// 「优先继续录制」策略下的兜底候选：没有电脑校验证明、但文件已落盘且不在上传中的
+  /// 录像，按创建时间从早到晚返回。
+  func storageFallbackJobsPage(
+    afterCreatedAtKey: String?,
+    afterId: String?,
+    limit: Int = 100
+  ) throws -> (jobs: [[String: Any]], nextCreatedAtKey: String?, nextId: String?) {
+    lock.lock()
+    defer { lock.unlock() }
+    guard (1...100).contains(limit), (afterCreatedAtKey == nil) == (afterId == nil) else {
+      throw IosBackupStoreError(
+        operation: "校验空间回收分页", code: SQLITE_RANGE,
+        message: "分页数量必须为 1 到 100 且游标必须完整"
+      )
+    }
+    let createdAtExpression = "COALESCE(file_created_at, '9999-12-31T23:59:59Z')"
+    let cursorClause = afterCreatedAtKey == nil
+      ? ""
+      : " AND (\(createdAtExpression) > ? OR (\(createdAtExpression) = ? AND id > ?))"
+    let sql = "SELECT * FROM backup_jobs "
+      + "WHERE state IN ('completed','failed','paused','pending') "
+      + "AND local_deleted_at IS NULL AND file_path IS NOT NULL AND file_path != '' "
+      + "AND total_bytes > 0 AND last_modified > 0\(cursorClause) "
+      + "AND NOT EXISTS (SELECT 1 FROM backup_cleanup_intents i WHERE (i.job_id = backup_jobs.id OR i.original_path = backup_jobs.file_path) AND i.phase IN ('claimed','moving','renamed')) "
+      + "ORDER BY \(createdAtExpression) ASC, id ASC LIMIT \(limit)"
+    var stmt: OpaquePointer?
+    try prepare(sql, statement: &stmt, operation: "分页查询空间回收候选")
+    defer { sqlite3_finalize(stmt) }
+    if let afterCreatedAtKey, let afterId {
+      try bindText(stmt, 1, afterCreatedAtKey)
+      try bindText(stmt, 2, afterCreatedAtKey)
+      try bindText(stmt, 3, afterId)
+    }
+    var jobs: [[String: Any]] = []
+    while true {
+      let code = sqlite3_step(stmt)
+      if code == SQLITE_DONE { break }
+      guard code == SQLITE_ROW else {
+        throw databaseError(operation: "分页查询空间回收候选", code: code)
+      }
+      jobs.append(try jobFromRow(stmt))
+    }
+    let last = jobs.last
+    return (
+      jobs,
+      (last?["fileCreatedAt"] as? String) ?? (last == nil ? nil : "9999-12-31T23:59:59Z"),
+      last?["id"] as? String
+    )
+  }
+
   func summaryValues() throws -> [String: Any] {
     lock.lock()
     defer { lock.unlock() }
