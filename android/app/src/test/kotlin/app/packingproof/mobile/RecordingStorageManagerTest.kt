@@ -6,6 +6,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -96,6 +97,166 @@ class RecordingStorageManagerTest {
         val result = manager().checkAndReclaim()
 
         assertPreserved(job, result)
+    }
+
+    @Test
+    fun freshConfirmationReclaimsWithoutAskingTheComputerAgain() {
+        verifiedJob()
+        var confirmations = 0
+        val manager = RecordingStorageManager(
+            context,
+            store,
+            availableBytes = { 0 },
+            confirmRemoteRecording = {
+                confirmations++
+                RemoteRecordAttestation.Unreachable
+            },
+        )
+
+        val result = manager.checkAndReclaim()
+
+        assertEquals(0, confirmations)
+        assertEquals(1, result.values["deletedCount"])
+        assertFalse(source.exists())
+    }
+
+    @Test
+    fun expiredConfirmationIsRenewedWithTheComputerBeforeReclaim() {
+        val staleAttestedAt = Instant.now().minusSeconds(3_600).toString()
+        val expectedBytes = source.length()
+        val job = verifiedJob(lastAttestedAt = staleAttestedAt)
+        val manager = RecordingStorageManager(
+            context,
+            store,
+            availableBytes = { 0 },
+            confirmRemoteRecording = { RemoteRecordAttestation.Confirmed },
+        )
+
+        val result = manager.checkAndReclaim()
+        val deleted = store.readJob(job.getString("id"))!!
+
+        assertEquals(1, result.values["deletedCount"])
+        assertEquals(expectedBytes, result.values["freedBytes"])
+        assertFalse(source.exists())
+        assertNotNull(LanBackupCleanupScheduler.nullableText(deleted, "localDeletedAt"))
+        val renewedAttestedAt =
+            LanBackupCleanupScheduler.nullableText(deleted, "lastAttestedAt")!!
+        assertNotEquals(staleAttestedAt, renewedAttestedAt)
+        assertTrue(RecordingStoragePolicy.isFreshAttestation(renewedAttestedAt))
+    }
+
+    @Test
+    fun expiredConfirmationWithoutComputerAnswerPreservesSource() {
+        val staleAttestedAt = Instant.now().minusSeconds(3_600).toString()
+        val job = verifiedJob(lastAttestedAt = staleAttestedAt)
+        val manager = RecordingStorageManager(
+            context,
+            store,
+            availableBytes = { 0 },
+            confirmRemoteRecording = { RemoteRecordAttestation.Unreachable },
+        )
+
+        val result = manager.checkAndReclaim()
+
+        assertPreserved(job, result)
+        assertEquals(
+            staleAttestedAt,
+            LanBackupCleanupScheduler.nullableText(
+                store.readJob(job.getString("id"))!!,
+                "lastAttestedAt",
+            ),
+        )
+    }
+
+    @Test
+    fun incompleteProofIsNeverSentForRemoteConfirmation() {
+        val staleAttestedAt = Instant.now().minusSeconds(3_600).toString()
+        verifiedJob(receipt = { JSONObject.NULL }, lastAttestedAt = staleAttestedAt)
+        var confirmations = 0
+        val manager = RecordingStorageManager(
+            context,
+            store,
+            availableBytes = { 0 },
+            confirmRemoteRecording = {
+                confirmations++
+                RemoteRecordAttestation.Confirmed
+            },
+        )
+
+        val result = manager.checkAndReclaim()
+
+        assertEquals(0, confirmations)
+        assertEquals(0, result.values["deletedCount"])
+        assertTrue(source.exists())
+    }
+
+    @Test
+    fun unreachableComputerStopsFurtherConfirmationAttempts() {
+        val secondSource = File(context.cacheDir, "storage-manager-test-second.mp4").apply {
+            writeText("second-test-video", Charsets.UTF_8)
+        }
+        try {
+            val staleAttestedAt = Instant.now().minusSeconds(3_600).toString()
+            verifiedJob(lastAttestedAt = staleAttestedAt)
+            verifiedJob(
+                file = secondSource,
+                sessionId = "storage-manager-second-session",
+                lastAttestedAt = staleAttestedAt,
+            )
+            var confirmations = 0
+            val manager = RecordingStorageManager(
+                context,
+                store,
+                availableBytes = { 0 },
+                confirmRemoteRecording = {
+                    confirmations++
+                    RemoteRecordAttestation.Unreachable
+                },
+            )
+
+            val result = manager.checkAndReclaim()
+
+            assertEquals(1, confirmations)
+            assertEquals(0, result.values["deletedCount"])
+            assertTrue(source.exists())
+            assertTrue(secondSource.exists())
+        } finally {
+            secondSource.delete()
+        }
+    }
+
+    @Test
+    fun remoteConfirmationAttemptsAreBoundedPerRun() {
+        val secondSource = File(context.cacheDir, "storage-manager-test-bounded.mp4").apply {
+            writeText("bounded-test-video", Charsets.UTF_8)
+        }
+        try {
+            val staleAttestedAt = Instant.now().minusSeconds(3_600).toString()
+            verifiedJob(lastAttestedAt = staleAttestedAt)
+            verifiedJob(
+                file = secondSource,
+                sessionId = "storage-manager-bounded-session",
+                lastAttestedAt = staleAttestedAt,
+            )
+            var confirmations = 0
+            val manager = RecordingStorageManager(
+                context,
+                store,
+                availableBytes = { 0 },
+                confirmRemoteRecording = {
+                    confirmations++
+                    RemoteRecordAttestation.Confirmed
+                },
+                maxRemoteConfirmationsPerRun = 1,
+            )
+
+            val result = manager.checkAndReclaim()
+
+            assertEquals(1, confirmations)
+            assertEquals(1, result.values["deletedCount"])
+        } finally {
+            secondSource.delete()
+        }
     }
 
     @Test
@@ -334,20 +495,23 @@ class RecordingStorageManagerTest {
     private fun verifiedJob(
         receipt: (JSONObject) -> Any = ::signedReceipt,
         remoteRecordId: Long? = 7L,
-        sessionValues: JSONArray = sessions(),
+        file: File = source,
+        sessionId: String = "storage-manager-session",
+        lastAttestedAt: String = Instant.now().toString(),
+        sessionValues: JSONArray = sessions(sessionId),
     ): JSONObject {
-        val job = store.upsertJob(source.path, sessions()).job
+        val job = store.upsertJob(file.path, sessions(sessionId)).job
         return store.updateJob(job.getString("id"), job.getString("generation")) { current ->
             current.put("state", "completed")
                 .put("destinationComputerId", "host-1")
                 .put("backupCompletedAt", Instant.now().toString())
-                .put("contentSha256", sha256(source))
+                .put("contentSha256", sha256(file))
                 .put("verificationVersion", BackupRequestAuthentication.VERSION)
                 .put("remoteRecordId", 7L)
-                .put("sessions", sessions())
-                .put("lastAttestedAt", Instant.now().toString())
-                .put("totalBytes", source.length())
-                .put("lastModified", source.lastModified())
+                .put("sessions", sessions(sessionId))
+                .put("lastAttestedAt", lastAttestedAt)
+                .put("totalBytes", file.length())
+                .put("lastModified", file.lastModified())
             current.put("verificationReceipt", receipt(current))
                 .put("remoteRecordId", remoteRecordId ?: JSONObject.NULL)
                 .put("sessions", sessionValues)
@@ -423,9 +587,9 @@ class RecordingStorageManagerTest {
         )
     }
 
-    private fun sessions(): JSONArray = JSONArray().put(
+    private fun sessions(id: String = "storage-manager-session"): JSONArray = JSONArray().put(
         JSONObject()
-            .put("id", "storage-manager-session")
+            .put("id", id)
             .put("startedAt", "2026-08-23T09:30:00Z")
             .put("endedAt", "2026-08-23T09:30:01Z"),
     )
