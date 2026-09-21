@@ -991,7 +991,12 @@ internal class LanBackupStateStore(
         val current = readJobUnlocked(expected.id)
             ?: return@withJobLock rejectedStorageReclaim()
         val actual = recordingStorageCandidate(current)
-        if (actual != expected || !RecordingStoragePolicy.isVerifiedCandidate(actual)) {
+        if (actual != expected ||
+            !RecordingStoragePolicy.isVerifiedCandidate(
+                actual,
+                BackupStoragePolicyStore.current(context),
+            )
+        ) {
             return@withJobLock rejectedStorageReclaim()
         }
         val receipt = actual.verificationReceipt

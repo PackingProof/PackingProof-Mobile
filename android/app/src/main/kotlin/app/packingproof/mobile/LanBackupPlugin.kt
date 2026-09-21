@@ -69,6 +69,7 @@ internal class LanBackupPlugin(
         val retentionChanged = store.saveRetentionPolicies(
             unbackedDays, backedDays, returnUnbackedDays, returnBackedDays,
         )
+        BackupStoragePolicyStore.save(context, request)
         setAutoEnabled(request["autoEnabled"] as? Boolean ?: false)
         if (retentionChanged) {
             LanBackupCleanupScheduler.rescheduleAll(context, store)

@@ -56,13 +56,34 @@ class RecordingStorageManagerTest {
         val manager = RecordingStorageManager(
             context,
             store,
-            availableBytes = { RecordingStoragePolicy.TARGET_BYTES },
+            availableBytes = { BackupStoragePolicy.FALLBACK.targetBytes },
         )
 
         val result = manager.checkAndReclaim()
 
         assertFalse(result.jobsChanged)
         assertEquals(0, result.values["deletedCount"])
+    }
+
+    @Test
+    fun reclaimThresholdFollowsPolicyPushedFromDart() {
+        val availableBytes = 1500L * 1024 * 1024
+        val manager = RecordingStorageManager(
+            context,
+            store,
+            availableBytes = { availableBytes },
+        )
+
+        // 未下发策略时使用兜底阈值（2GB），1.5GB 判为空间不足。
+        assertTrue(manager.checkAndReclaim().values["insufficient"] as Boolean)
+
+        BackupStoragePolicyStore.save(
+            context,
+            mapOf("storageMinimumBytes" to 1L * 1024 * 1024 * 1024),
+        )
+
+        // 阈值改由下发值决定后，同一剩余空间不再算不足。
+        assertFalse(manager.checkAndReclaim().values["insufficient"] as Boolean)
     }
 
     @Test
@@ -142,7 +163,12 @@ class RecordingStorageManagerTest {
         val renewedAttestedAt =
             LanBackupCleanupScheduler.nullableText(deleted, "lastAttestedAt")!!
         assertNotEquals(staleAttestedAt, renewedAttestedAt)
-        assertTrue(RecordingStoragePolicy.isFreshAttestation(renewedAttestedAt))
+        assertTrue(
+            RecordingStoragePolicy.isFreshAttestation(
+                renewedAttestedAt,
+                BackupStoragePolicy.FALLBACK,
+            ),
+        )
     }
 
     @Test

@@ -2432,7 +2432,7 @@ class ContinuousSegmentCamera(
         val availableBytes = runCatching {
             StatFs(activity.filesDir.path).availableBytes
         }.getOrDefault(Long.MAX_VALUE)
-        if (availableBytes < RecordingStoragePolicy.MINIMUM_BYTES) {
+        if (availableBytes < BackupStoragePolicyStore.current(activity).minimumBytes) {
             if (!storageFailureReported) {
                 storageFailureReported = true
                 emit(
@@ -2467,7 +2467,8 @@ class ContinuousSegmentCamera(
 
     private fun hasRecordingReserve(path: String): Boolean = runCatching {
         val parent = File(path).parentFile ?: activity.filesDir
-        StatFs(parent.path).availableBytes >= RecordingStoragePolicy.MINIMUM_BYTES
+        StatFs(parent.path).availableBytes >=
+            BackupStoragePolicyStore.current(activity).minimumBytes
     }.getOrDefault(false)
 
     internal fun replySuccess(result: MethodChannel.Result, value: Any?) {

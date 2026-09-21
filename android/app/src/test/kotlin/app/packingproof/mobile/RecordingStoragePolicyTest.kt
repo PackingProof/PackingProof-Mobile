@@ -6,12 +6,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RecordingStoragePolicyTest {
+    private val policy = BackupStoragePolicy.FALLBACK
+
     @Test
     fun fixedWatermarksAreAppliedAtExactBoundaries() {
-        assertTrue(RecordingStoragePolicy.needsWarning(RecordingStoragePolicy.WARNING_BYTES - 1))
-        assertFalse(RecordingStoragePolicy.needsWarning(RecordingStoragePolicy.WARNING_BYTES))
-        assertTrue(RecordingStoragePolicy.needsReclaim(RecordingStoragePolicy.MINIMUM_BYTES - 1))
-        assertFalse(RecordingStoragePolicy.needsReclaim(RecordingStoragePolicy.MINIMUM_BYTES))
+        assertTrue(RecordingStoragePolicy.needsWarning(policy.warningBytes - 1, policy))
+        assertFalse(RecordingStoragePolicy.needsWarning(policy.warningBytes, policy))
+        assertTrue(RecordingStoragePolicy.needsReclaim(policy.minimumBytes - 1, policy))
+        assertFalse(RecordingStoragePolicy.needsReclaim(policy.minimumBytes, policy))
     }
 
     @Test
@@ -45,6 +47,7 @@ class RecordingStoragePolicyTest {
                 missingReceipt,
                 multipleSessions,
             ),
+            policy,
         )
 
         assertEquals(listOf("old", "recent"), candidates.map { it.id })

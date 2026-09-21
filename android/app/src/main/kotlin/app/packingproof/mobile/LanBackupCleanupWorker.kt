@@ -28,8 +28,6 @@ internal object LanBackupCleanupScheduler {
         "lan-backup-cleanup-schedule-refresh"
     internal const val SCHEDULE_REFRESH_WORK_TAG =
         "lan-backup-cleanup-schedule-refresh"
-    val RETENTION_CONFIRMATION_GRACE: Duration = Duration.ofHours(24)
-
     fun reschedule(context: Context, store: LanBackupStateStore, job: JSONObject) {
         LanBackupStateStore.withJobLock {
             val id = job.getString("id")
@@ -194,11 +192,12 @@ internal object LanBackupCleanupScheduler {
 
     internal fun isConfirmationFresh(
         lastAttestedAt: String?,
+        grace: Duration,
         now: Instant = Instant.now(),
     ): Boolean {
         val attested = lastAttestedAt ?: return false
         return runCatching {
-            !now.isAfter(Instant.parse(attested).plus(RETENTION_CONFIRMATION_GRACE))
+            !now.isAfter(Instant.parse(attested).plus(grace))
         }.getOrDefault(false)
     }
 }
@@ -382,6 +381,7 @@ internal class LanBackupCleanupWorker(
                 if (
                     LanBackupCleanupScheduler.isConfirmationFresh(
                         LanBackupCleanupScheduler.nullableText(snapshot, "lastAttestedAt"),
+                        BackupStoragePolicyStore.current(applicationContext).confirmationGrace,
                     )
                 ) {
                     RemoteRecordAttestation.Confirmed
@@ -483,6 +483,7 @@ internal class LanBackupCleanupWorker(
                     if (
                         LanBackupCleanupScheduler.isConfirmationFresh(
                             LanBackupCleanupScheduler.nullableText(job, "lastAttestedAt"),
+                            BackupStoragePolicyStore.current(applicationContext).confirmationGrace,
                         )
                     ) {
                         RemoteRecordAttestation.Confirmed

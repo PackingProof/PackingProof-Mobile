@@ -9,18 +9,17 @@ import java.time.Instant
 private const val STORAGE_LOG_TAG = "RecordingStorage"
 
 internal object RecordingStoragePolicy {
-    const val WARNING_BYTES = 3L * 1024 * 1024 * 1024
-    const val MINIMUM_BYTES = 2L * 1024 * 1024 * 1024
-    const val TARGET_BYTES = 3L * 1024 * 1024 * 1024
-    val STORAGE_ATTESTATION_FRESHNESS = java.time.Duration.ofMinutes(5)
     private val HEX_64 = Regex("^[0-9a-fA-F]{64}$")
 
-    fun needsWarning(availableBytes: Long): Boolean = availableBytes < WARNING_BYTES
-    fun needsReclaim(availableBytes: Long): Boolean = availableBytes < MINIMUM_BYTES
+    fun needsWarning(availableBytes: Long, policy: BackupStoragePolicy): Boolean =
+        availableBytes < policy.warningBytes
 
-    fun isFreshAttestation(value: String): Boolean = runCatching {
+    fun needsReclaim(availableBytes: Long, policy: BackupStoragePolicy): Boolean =
+        availableBytes < policy.minimumBytes
+
+    fun isFreshAttestation(value: String, policy: BackupStoragePolicy): Boolean = runCatching {
         val age = java.time.Duration.between(Instant.parse(value), Instant.now()).abs()
-        age <= STORAGE_ATTESTATION_FRESHNESS
+        age <= policy.attestationFreshness
     }.getOrDefault(false)
 
     /**
@@ -53,14 +52,18 @@ internal object RecordingStoragePolicy {
             candidate.lastModified > 0 &&
             candidate.localDeletedAt == null
 
-    fun isVerifiedCandidate(candidate: RecordingStorageCandidate): Boolean =
+    fun isVerifiedCandidate(
+        candidate: RecordingStorageCandidate,
+        policy: BackupStoragePolicy,
+    ): Boolean =
         hasCompleteProof(candidate) &&
-            candidate.lastAttestedAt?.let(RecordingStoragePolicy::isFreshAttestation) == true
+            candidate.lastAttestedAt?.let { isFreshAttestation(it, policy) } == true
 
     fun verifiedCandidates(
         candidates: List<RecordingStorageCandidate>,
+        policy: BackupStoragePolicy,
     ): List<RecordingStorageCandidate> = candidates
-        .filter(::isVerifiedCandidate)
+        .filter { isVerifiedCandidate(it, policy) }
         .sortedBy { runCatching { Instant.parse(it.fileCreatedAt) }.getOrDefault(Instant.MAX) }
 }
 
@@ -164,17 +167,10 @@ internal class RecordingStorageManager(
     },
     private val beforeGuardedDeleteForTesting: ((JSONObject) -> Unit)? = null,
     private val confirmRemoteRecording: ((RecordingStorageCandidate) -> RemoteRecordAttestation)? = null,
-    private val maxRemoteConfirmationsPerRun: Int = DEFAULT_MAX_REMOTE_CONFIRMATIONS,
+    private val maxRemoteConfirmationsPerRun: Int? = null,
 ) {
-    internal companion object {
-        /**
-         * 一次空间检查里最多重新确认的录像数量。局域网内确认很快，给足次数才能一次
-         * 检查腾出目标空间；一旦电脑不可达就停止后续确认，不会长时间阻塞开始录像。
-         */
-        internal const val DEFAULT_MAX_REMOTE_CONFIRMATIONS = 16
-    }
-
     fun checkAndReclaim(): RecordingStorageCheckResult {
+        val policy = BackupStoragePolicyStore.current(context)
         val before = availableBytes()
         var current = before
         var deletedCount = 0
@@ -182,20 +178,21 @@ internal class RecordingStorageManager(
         var jobsChanged = false
         var remoteConfirmations = 0
         var remoteUnreachable = false
-        if (RecordingStoragePolicy.needsReclaim(current)) {
+        val confirmationLimit = maxRemoteConfirmationsPerRun ?: policy.confirmationLimit
+        if (RecordingStoragePolicy.needsReclaim(current, policy)) {
             var afterCreatedAtKey: String? = null
             var afterId: String? = null
             var page: LanBackupStorageJobPage
             do {
                 page = store.storageRecoveryJobsPage(afterCreatedAtKey, afterId)
                 for (job in page.jobs) {
-                    if (current >= RecordingStoragePolicy.TARGET_BYTES) break
+                    if (current >= policy.targetBytes) break
                     var expected = recordingStorageCandidate(job)
-                    if (!RecordingStoragePolicy.isVerifiedCandidate(expected)) {
+                    if (!RecordingStoragePolicy.isVerifiedCandidate(expected, policy)) {
                         // 电脑确认会过期。过期后先补一次确认，否则空间不足时永远没有可
                         // 回收的录像，只能停止录像或拒绝开始录像。
                         if (remoteUnreachable ||
-                            remoteConfirmations >= maxRemoteConfirmationsPerRun ||
+                            remoteConfirmations >= confirmationLimit ||
                             !RecordingStoragePolicy.hasCompleteProof(expected)
                         ) {
                             continue
@@ -233,7 +230,7 @@ internal class RecordingStorageManager(
                 afterCreatedAtKey = page.nextCreatedAtKey
                 afterId = page.nextId
             } while (
-                current < RecordingStoragePolicy.TARGET_BYTES && page.jobs.size == 100
+                current < policy.targetBytes && page.jobs.size == 100
             )
         }
         return RecordingStorageCheckResult(
@@ -242,8 +239,8 @@ internal class RecordingStorageManager(
                 "availableBytesBefore" to before,
                 "freedBytes" to freedBytes,
                 "deletedCount" to deletedCount,
-                "warning" to RecordingStoragePolicy.needsWarning(current),
-                "insufficient" to RecordingStoragePolicy.needsReclaim(current),
+                "warning" to RecordingStoragePolicy.needsWarning(current, policy),
+                "insufficient" to RecordingStoragePolicy.needsReclaim(current, policy),
             ),
             jobsChanged = jobsChanged,
         )
