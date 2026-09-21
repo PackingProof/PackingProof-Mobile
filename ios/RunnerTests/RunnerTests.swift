@@ -2497,6 +2497,92 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(updated["verificationReceipt"] as? String, "fresh-signed-receipt")
   }
 
+  func testStorageReclaimRenewsExpiredComputerConfirmation() async throws {
+    let fixture = try makeRetentionCleanupFixture(
+      id: "storage-reclaim-expired-confirmation",
+      availableStorageBytesOverride: { 0 },
+      storageAttestationOverride: { _, _, _ in "renewed-signed-receipt" }
+    )
+    defer { removeRetentionCleanupFixture(fixture) }
+    let expiredAttestedAt = ISO8601DateFormatter().string(
+      from: Date().addingTimeInterval(-3_600)
+    )
+    var job = makeVerifiedStorageReclaimJob(fixture.job)
+    job["lastAttestedAt"] = expiredAttestedAt
+    try fixture.store.upsert(job)
+
+    let result = try await awaitStorageReclaim(fixture.api)
+
+    XCTAssertEqual(result["deletedCount"] as? Int, 1)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.file.path))
+    let updated = try XCTUnwrap(
+      fixture.store.readJob(id: "storage-reclaim-expired-confirmation")
+    )
+    XCTAssertNotNil(updated["localDeletedAt"])
+    XCTAssertEqual(updated["verificationReceipt"] as? String, "renewed-signed-receipt")
+    XCTAssertNotEqual(updated["lastAttestedAt"] as? String, expiredAttestedAt)
+  }
+
+  func testStorageReclaimStopsConfirmingAfterComputerIsUnreachable() async throws {
+    let fixture = try makeRetentionCleanupFixture(
+      id: "storage-reclaim-unreachable",
+      availableStorageBytesOverride: { 0 },
+      storageAttestationOverride: { _, _, _ in nil }
+    )
+    defer { removeRetentionCleanupFixture(fixture) }
+    let expiredAttestedAt = ISO8601DateFormatter().string(
+      from: Date().addingTimeInterval(-3_600)
+    )
+    var job = makeVerifiedStorageReclaimJob(fixture.job)
+    job["lastAttestedAt"] = expiredAttestedAt
+    try fixture.store.upsert(job)
+    let secondFile = try addVerifiedStorageReclaimJob(
+      fixture,
+      id: "storage-reclaim-unreachable-2",
+      lastAttestedAt: expiredAttestedAt
+    )
+
+    let result = try await awaitStorageReclaim(fixture.api)
+
+    XCTAssertEqual(result["deletedCount"] as? Int, 0)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.file.path))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: secondFile.path))
+    let messages = [
+      try XCTUnwrap(fixture.store.readJob(id: "storage-reclaim-unreachable")),
+      try XCTUnwrap(fixture.store.readJob(id: "storage-reclaim-unreachable-2")),
+    ].compactMap { $0["errorMessage"] as? String }
+    XCTAssertEqual(messages, ["暂时无法向电脑确认备份，已保留本地录像"])
+  }
+
+  func testStorageReclaimConfirmationAttemptsAreBoundedPerRun() async throws {
+    let fixture = try makeRetentionCleanupFixture(
+      id: "storage-reclaim-bounded",
+      availableStorageBytesOverride: { 0 },
+      storageAttestationOverride: { _, _, _ in "renewed-signed-receipt" },
+      storageReclaimConfirmationLimitOverride: 1
+    )
+    defer { removeRetentionCleanupFixture(fixture) }
+    let expiredAttestedAt = ISO8601DateFormatter().string(
+      from: Date().addingTimeInterval(-3_600)
+    )
+    var job = makeVerifiedStorageReclaimJob(fixture.job)
+    job["lastAttestedAt"] = expiredAttestedAt
+    try fixture.store.upsert(job)
+    let secondFile = try addVerifiedStorageReclaimJob(
+      fixture,
+      id: "storage-reclaim-bounded-2",
+      lastAttestedAt: expiredAttestedAt
+    )
+
+    let result = try await awaitStorageReclaim(fixture.api)
+
+    XCTAssertEqual(result["deletedCount"] as? Int, 1)
+    let remaining = [fixture.file, secondFile].filter {
+      FileManager.default.fileExists(atPath: $0.path)
+    }
+    XCTAssertEqual(remaining.count, 1)
+  }
+
   func testStorageReclaimReconcilesDeletionCommittedBeforeJobTransaction()
     async throws
   {
@@ -4648,6 +4734,7 @@ class RunnerTests: XCTestCase {
     availableStorageBytesOverride: (() -> Int64)? = nil,
     storageAttestationOverride:
       (([String: Any], String, Int64) async -> String?)? = nil,
+    storageReclaimConfirmationLimitOverride: Int? = nil,
     onSnapshot: ((BackupSummaryDto) -> Void)? = nil,
     beforeCleanupFileProofForTesting: (([String: Any]) -> Void)? = nil,
     beforeCleanupIntentClaimForTesting: (([String: Any]) -> Void)? = nil,
@@ -4688,6 +4775,7 @@ class RunnerTests: XCTestCase {
       recordingsRoot: recordings,
       availableStorageBytesOverride: availableStorageBytesOverride,
       storageAttestationOverride: storageAttestationOverride,
+      storageReclaimConfirmationLimitOverride: storageReclaimConfirmationLimitOverride,
       cleanupConfigurationOverride: { true },
       beforeCleanupFileProofForTesting: beforeCleanupFileProofForTesting,
       beforeCleanupIntentClaimForTesting: beforeCleanupIntentClaimForTesting,
@@ -4721,6 +4809,30 @@ class RunnerTests: XCTestCase {
     job["remoteRecordId"] = NSNumber(value: 42)
     job["lastAttestedAt"] = ISO8601DateFormatter().string(from: Date())
     return job
+  }
+
+  /// 追加一段已完成电脑校验的录像，用于验证一次空间回收里的多条候选行为。
+  private func addVerifiedStorageReclaimJob(
+    _ fixture: RetentionCleanupFixture,
+    id: String,
+    lastAttestedAt: String
+  ) throws -> URL {
+    let file = fixture.root.appendingPathComponent("recordings/\(id).mp4")
+    let contents = Data("retention-cleanup-fixture-\(id)".utf8)
+    try contents.write(to: file)
+    let snapshot = try IosBackupFileSnapshot.read(from: file)
+    var job = makeBackupJob(id: id)
+    job["filePath"] = file.path
+    job["state"] = "completed"
+    job["totalBytes"] = snapshot.byteCount
+    job["lastModified"] = snapshot.modifiedAtMilliseconds
+    job["contentSha256"] = SHA256.hash(data: contents)
+      .map { String(format: "%02x", $0) }.joined()
+    job["backupCompletedAt"] = "2020-01-01T00:00:00Z"
+    job = makeVerifiedStorageReclaimJob(job)
+    job["lastAttestedAt"] = lastAttestedAt
+    try fixture.store.upsert(job)
+    return file
   }
 
   private func removeRetentionCleanupFixture(_ fixture: RetentionCleanupFixture) {

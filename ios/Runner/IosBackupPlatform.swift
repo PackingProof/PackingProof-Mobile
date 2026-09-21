@@ -499,6 +499,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private let availableStorageBytesOverride: (() -> Int64)?
   private let storageAttestationOverride:
     (([String: Any], String, Int64) async -> String?)?
+  private let storageReclaimConfirmationLimit: Int
   private let uploadFailureUpdateOverride: ((String, String) throws -> Bool)?
   private let uploadPersistenceFailureReporter: ((String, String, Error) -> Void)?
   private let uploadOperationOverride:
@@ -562,7 +563,9 @@ final class IosBackupHostApi: BackupNativeHostApi {
 
   private static let verificationVersion = 3
   private static let retentionConfirmationGrace: TimeInterval = 24 * 60 * 60
-  private static let storageAttestationFreshness: TimeInterval = 5 * 60
+  /// 一次空间回收里最多向电脑重新确认的录像数量。局域网确认很快，给足次数才能一次
+  /// 检查腾出目标空间；电脑不可达时不再继续确认，不会长时间阻塞开始录像。
+  private static let storageReclaimConfirmationLimit = 16
   private static let cleanupThrottle: TimeInterval = 60
   private static let cleanupRetryDelaysNanoseconds: [UInt64] = [
     1, 2, 4, 8, 16,
@@ -603,6 +606,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
     availableStorageBytesOverride: (() -> Int64)? = nil,
     storageAttestationOverride:
       (([String: Any], String, Int64) async -> String?)? = nil,
+    storageReclaimConfirmationLimitOverride: Int? = nil,
     uploadFailureUpdateOverride: ((String, String) throws -> Bool)? = nil,
     uploadPersistenceFailureReporter:
       ((String, String, Error) -> Void)? = nil,
@@ -635,6 +639,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
     self.recordingsRoot = recordingsRoot
     self.availableStorageBytesOverride = availableStorageBytesOverride
     self.storageAttestationOverride = storageAttestationOverride
+    self.storageReclaimConfirmationLimit =
+      storageReclaimConfirmationLimitOverride ?? Self.storageReclaimConfirmationLimit
     self.uploadFailureUpdateOverride = uploadFailureUpdateOverride
     self.uploadPersistenceFailureReporter = uploadPersistenceFailureReporter
     self.uploadOperationOverride = uploadOperationOverride
@@ -1078,6 +1084,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
     var deletedCount = 0
     var freedBytes: Int64 = 0
     var jobsChanged = false
+    var remoteConfirmations = 0
+    var remoteUnreachable = false
     if current < minimumBytes {
       let recordingsRoot = recordingsDirectory().path + "/"
       var afterCreatedAtKey: String?
@@ -1098,9 +1106,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
           ),
           let expectedSha256 = job["contentSha256"] as? String,
           let totalBytes = job["totalBytes"] as? Int64,
-          let lastAttested = job["lastAttestedAt"] as? String,
-          let attestedDate = Self.isoFormatter.date(from: lastAttested),
-          Date().timeIntervalSince(attestedDate) <= Self.storageAttestationFreshness,
           let path = job["filePath"] as? String,
           path.hasPrefix(recordingsRoot)
         else {
@@ -1122,13 +1127,20 @@ final class IosBackupHostApi: BackupNativeHostApi {
           }
           continue
         }
-        let attestation = await storageAttestation(
+        // 电脑确认会过期。过期后必须补一次确认，否则空间不足时永远没有可回收的
+        // 录像，只能停止录像或拒绝开始录像。
+        if remoteUnreachable || remoteConfirmations >= storageReclaimConfirmationLimit {
+          continue
+        }
+        remoteConfirmations += 1
+        let attestationResult = await storageReclaimAttestation(
           job,
           contentSha256: expectedSha256,
           totalBytes: totalBytes
         )
-        guard let receiptSignature = attestation else {
-          let message = "暂时无法向电脑确认备份，已保留本地录像"
+        guard case .confirmed(let receiptSignature) = attestationResult else {
+          if case .unreachable = attestationResult { remoteUnreachable = true }
+          let message = storageReclaimFailureMessage(attestationResult)
           if job["errorMessage"] as? String != message,
              let id = job["id"] as? String,
              let generation = job["generation"] as? String {
@@ -1233,20 +1245,40 @@ final class IosBackupHostApi: BackupNativeHostApi {
     return (values?[.systemFreeSize] as? NSNumber)?.int64Value
   }
 
-  private func storageAttestation(
+  /// 空间回收专用的电脑确认：注入替身只表达“能确认/不能确认”，无法区分原因时按
+  /// 电脑不可达处理，避免对同一台电脑反复确认。
+  private func storageReclaimAttestation(
     _ job: [String: Any],
     contentSha256: String,
     totalBytes: Int64
-  ) async -> String? {
+  ) async -> AttestationResult {
     if let storageAttestationOverride {
-      return await storageAttestationOverride(job, contentSha256, totalBytes)
+      guard let receiptSignature = await storageAttestationOverride(
+        job, contentSha256, totalBytes
+      ) else { return .unreachable }
+      return .confirmed(receiptSignature: receiptSignature)
     }
-    guard case .confirmed(let receiptSignature) = await attestBackedJob(
+    return await attestBackedJob(
       job,
       contentSha256: contentSha256,
       totalBytes: totalBytes
-    ) else { return nil }
-    return receiptSignature
+    )
+  }
+
+  /// 与保留期清理保持一致的失败说明，现场可直接看出空间为什么没有回收。
+  private func storageReclaimFailureMessage(_ result: AttestationResult) -> String {
+    switch result {
+    case .confirmed:
+      return ""
+    case .missing:
+      return "远端缺失，待重新备份"
+    case .unauthorized:
+      return "需要重新扫码授权"
+    case .notReady:
+      return "电脑端尚未完成校验"
+    case .unreachable:
+      return "暂时无法向电脑确认备份，已保留本地录像"
+    }
   }
 
   /// Recovers at most one bounded page. New cleanup candidates must wait until
