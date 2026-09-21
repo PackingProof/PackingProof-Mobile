@@ -16,7 +16,6 @@ import '../app/app_build_config.dart';
 import '../models/barcode_marker.dart';
 import '../models/app_settings.dart';
 import '../models/backup_retention_policy.dart';
-import '../models/backup_storage_policy.dart';
 import '../models/lan_backup.dart';
 import '../models/recording_session.dart';
 import '../models/order_info.dart';
@@ -524,9 +523,7 @@ class PackingSessionController extends ChangeNotifier
       );
       if (storage.insufficient) {
         timingOutcome = 'insufficient_storage';
-        _errorMessage =
-            '存储空间不足 ${BackupStoragePolicy.minimumLabel}，'
-            '请清理空间或连接电脑完成录像备份';
+        _errorMessage = storage.insufficientMessage;
         notifyListeners();
         await _resumeSharedFileMigrationIfIdle();
         return;

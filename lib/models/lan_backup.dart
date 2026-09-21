@@ -3,6 +3,11 @@ import 'dart:io';
 import 'recording_session.dart';
 import 'recording_operation_mode.dart';
 import 'order_info.dart';
+import 'backup_storage_policy.dart';
+
+// 存储阈值与提示数值统一由 BackupStoragePolicy 提供；这里转出，便于本模型与
+// 会话控制器的 part 文件直接引用，不必在各处重复导入。
+export 'backup_storage_policy.dart';
 
 enum LanBackupJobState { pending, uploading, paused, completed, failed }
 
@@ -296,6 +301,10 @@ class StorageSpaceResult {
   final int deletedCount;
   final bool warning;
   final bool insufficient;
+
+  /// 空间不足导致无法开始录像时展示给操作员的说明。
+  String get insufficientMessage =>
+      BackupStoragePolicy.insufficientToStartMessage;
 }
 
 /// 播放/备份诊断用的网络状态快照（无信号时字段为 null）。

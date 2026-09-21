@@ -35,6 +35,10 @@ class BackupStoragePolicy {
 
   static String get warningLabel => label(warningBytes);
 
+  /// 开始录像被空间不足拦住时的提示，数值随策略变化。
+  static String get insufficientToStartMessage =>
+      '存储空间不足 $minimumLabel，请清理空间或连接电脑完成录像备份';
+
   /// 字节数文案：整 GB 不带小数，其余保留一位小数，小于 1GB 用 MB。
   static String label(int bytes) {
     final double gigabytes = bytes / (1024 * 1024 * 1024);

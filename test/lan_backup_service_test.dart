@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:packing_proof_mobile/models/barcode_marker.dart';
 import 'package:packing_proof_mobile/models/backup_retention_policy.dart';
-import 'package:packing_proof_mobile/models/backup_storage_policy.dart';
 import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/order_info.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
