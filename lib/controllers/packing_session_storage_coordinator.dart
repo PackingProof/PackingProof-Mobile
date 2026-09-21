@@ -29,7 +29,7 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
     _storageMonitorTimer?.cancel();
     _storageMonitorTimer = Timer.periodic(
       const Duration(seconds: 10),
-      (_) => _runInBackground(_checkAndHandleStorage(allowStop: true)),
+      (_) => _runInBackground(_checkStorageWhileWorking()),
     );
   }
 
@@ -38,13 +38,36 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
     _storageMonitorTimer = null;
   }
 
-  /// 开始录像前的空间回收：一次没清够就继续清，直到够用、没有进展或达到轮次上限。
-  /// 录像普遍只有几十兆，单次回收常常只能腾出一部分空间。
-  Future<StorageSpaceResult> _reclaimStorageBeforeStart() async {
-    StorageSpaceResult result = await _checkAndHandleStorage(allowStop: false);
-    for (int round = 1; round < 3; round++) {
-      if (!result.insufficient || result.deletedCount == 0) break;
-      result = await _checkAndHandleStorage(allowStop: false);
+  /// 工作期间巡检：先尽力回收，确实腾不出空间才停止录像。
+  Future<StorageSpaceResult> _checkStorageWhileWorking() async {
+    final StorageSpaceResult result = await _reclaimStorage();
+    if (result.insufficient && isWorking) {
+      await _requestStorageStopWhenIdle();
+    }
+    return result;
+  }
+
+  /// 回收空间：一次没清够就继续清，直到够用、没有进展或达到轮次上限。录像普遍只有
+  /// 几十兆，单次回收常常只能腾出一部分；确实腾不出空间时才提示人工处理。
+  Future<StorageSpaceResult> _reclaimStorage() async {
+    StorageSpaceResult result = await _reclaimStorageOnce();
+    for (
+      int round = 1;
+      round < 3 && result.insufficient && result.deletedCount > 0;
+      round++
+    ) {
+      result = await _reclaimStorageOnce();
+    }
+    if (result.insufficient) {
+      await _queueStorageNotice(
+        const StorageNotice(
+          severity: StorageNoticeSeverity.stopped,
+          message: '已备份录像不足以释放空间，录像已停止。请清理手机空间或连接电脑完成备份',
+        ),
+      );
+      _storageWarningMessage =
+          '存储空间不足 ${BackupStoragePolicy.minimumLabel}，正在停止录像';
+      if (!_disposed) notifyListeners();
     }
     return result;
   }
@@ -52,7 +75,7 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
   /// 已知空间不足时先回收，回收不出空间才放弃当前切段。
   Future<bool> _ensureStorageForSegment() async {
     if (!_cachedStorageInsufficient) return true;
-    return !(await _reclaimStorageBeforeStart()).insufficient;
+    return !(await _reclaimStorage()).insufficient;
   }
 
   /// 相机在剩余空间不足时拒绝切段。这里先立即回收空间再重试一次，避免因为一次
@@ -66,15 +89,14 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
       return await camera.split(nextPath, trackingNumber: code);
     } on PlatformException catch (error) {
       if (error.code != 'storage_low') rethrow;
-      final StorageSpaceResult result = await _reclaimStorageBeforeStart();
+      final StorageSpaceResult result = await _reclaimStorage();
       if (result.insufficient) rethrow;
       return await camera.split(nextPath, trackingNumber: code);
     }
   }
 
-  Future<StorageSpaceResult> _checkAndHandleStorage({
-    required bool allowStop,
-  }) async {
+  /// 单次检查与回收；不做停止决定，空间是否够用、要不要停由调用方判断。
+  Future<StorageSpaceResult> _reclaimStorageOnce() async {
     if (_storageCheckRunning || _disposed) {
       return const StorageSpaceResult(
         availableBytes: 1 << 62,
@@ -112,20 +134,9 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
         );
         _storageWarningMessage = '手机存储空间不足 ${BackupStoragePolicy.warningLabel}';
       }
-      if (result.insufficient) {
-        await _queueStorageNotice(
-          const StorageNotice(
-            severity: StorageNoticeSeverity.stopped,
-            message: '已备份录像不足以释放空间，录像已停止。请清理手机空间或连接电脑完成备份',
-          ),
-        );
-        _storageWarningMessage =
-            '存储空间不足 ${BackupStoragePolicy.minimumLabel}，正在停止录像';
-        notifyListeners();
-        if (allowStop && isWorking) {
-          _runInBackground(_requestStorageStopWhenIdle());
-        }
-      } else if (!_disposed && (result.deletedCount > 0 || result.warning)) {
+      if (!result.insufficient &&
+          !_disposed &&
+          (result.deletedCount > 0 || result.warning)) {
         notifyListeners();
       }
       return result;
@@ -153,7 +164,7 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
 
   Future<void> _handleNativeStorageCritical() async {
     unawaited(_cameraDiagnostics.recordEvent(kind: 'storage_critical'));
-    _runInBackground(_checkAndHandleStorage(allowStop: false));
+    _runInBackground(_reclaimStorage());
     await _queueStorageNotice(
       const StorageNotice(
         severity: StorageNoticeSeverity.stopped,
@@ -202,6 +213,9 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
   }
 
   @visibleForTesting
-  Future<StorageSpaceResult> checkStorageForTesting() =>
-      _checkAndHandleStorage(allowStop: false);
+  Future<StorageSpaceResult> checkStorageForTesting() => _reclaimStorageOnce();
+
+  @visibleForTesting
+  Future<StorageSpaceResult> checkStorageWhileWorkingForTesting() =>
+      _checkStorageWhileWorking();
 }

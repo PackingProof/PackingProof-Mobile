@@ -864,6 +864,74 @@ void main() {
     }
   });
 
+  testWidgets('工作期间空间不足会继续回收而不是马上停录', (WidgetTester tester) async {
+    camera.fullSupported = true;
+    try {
+      await tester.runAsync(() async {
+        await controller.initialize();
+        await controller.retryCapabilityProbe();
+        await controller.startWork();
+      });
+      await _confirmBarcode(tester, controller, 'YT123456789011');
+      await _waitUntil(
+        tester,
+        () => controller.currentCode == 'YT123456789011',
+        reason: 'first barcode should start the native recording',
+      );
+      // 巡检第一轮只清掉一部分空间：应当继续清理，而不是立刻停止录像。
+      backupPlatform.reclaimResults.addAll(<Map<Object?, Object?>>[
+        <Object?, Object?>{
+          'availableBytes': 1 << 30,
+          'availableBytesBefore': 1 << 30,
+          'freedBytes': 700 << 20,
+          'deletedCount': 12,
+          'warning': true,
+          'insufficient': true,
+        },
+        <Object?, Object?>{
+          'availableBytes': 4 << 30,
+          'availableBytesBefore': 1 << 30,
+          'freedBytes': 3 << 30,
+          'deletedCount': 6,
+          'warning': false,
+          'insufficient': false,
+        },
+      ]);
+
+      await tester.runAsync(controller.checkStorageWhileWorkingForTesting);
+
+      expect(controller.isWorking, isTrue);
+      expect(camera.stopWorkCalls, 0);
+    } finally {
+      await _stopWorkIfNeeded(tester, controller);
+      await tester.pump(const Duration(seconds: 4));
+    }
+  });
+
+  test('清理确实没有进展时才按策略停止录像', () async {
+    await controller.initialize();
+    await controller.retryCapabilityProbe();
+    await controller.startWork();
+    backupPlatform.reclaimResults.addAll(<Map<Object?, Object?>>[
+      <Object?, Object?>{
+        'availableBytes': 1 << 30,
+        'availableBytesBefore': 1 << 30,
+        'freedBytes': 0,
+        'deletedCount': 0,
+        'warning': true,
+        'insufficient': true,
+      },
+    ]);
+
+    await controller.checkStorageWhileWorkingForTesting();
+    final DateTime deadline = DateTime.now().add(const Duration(seconds: 3));
+    while (controller.isWorking && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+
+    expect(controller.isWorking, isFalse);
+  });
+
   testWidgets('切段遇到空间不足会先回收再重试，不中断当前录像', (WidgetTester tester) async {
     camera.fullSupported = true;
     try {
