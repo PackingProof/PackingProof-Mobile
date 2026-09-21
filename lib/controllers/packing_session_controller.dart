@@ -1151,7 +1151,7 @@ class PackingSessionController extends ChangeNotifier
     if (camera == null || recordingId == null || completedId == null) {
       return null;
     }
-    if (_cachedStorageInsufficient || !isWorking) return null;
+    if (!isWorking || !await _ensureStorageForSegment()) return null;
     final _PackingOperationTiming timing = _PackingOperationTiming();
     String timingOutcome = 'error';
     try {
@@ -1165,7 +1165,7 @@ class PackingSessionController extends ChangeNotifier
       );
       final NativeRecordingSplit split = await timing.measure(
         'nativeSplit',
-        () => camera.split(nextPath, trackingNumber: code),
+        () => _splitNativeWithStorageRecovery(camera, nextPath, code),
       );
       unawaited(_captureCameraDiagnosticsSnapshot('native_split'));
       final RecordingSegmentTransition? transition = _timeline.startNext(

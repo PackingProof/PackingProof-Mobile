@@ -49,6 +49,29 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
     return result;
   }
 
+  /// 已知空间不足时先回收，回收不出空间才放弃当前切段。
+  Future<bool> _ensureStorageForSegment() async {
+    if (!_cachedStorageInsufficient) return true;
+    return !(await _reclaimStorageBeforeStart()).insufficient;
+  }
+
+  /// 相机在剩余空间不足时拒绝切段。这里先立即回收空间再重试一次，避免因为一次
+  /// 存储抖动就丢掉这一段；回收不出空间时把原错误交回上层处理。
+  Future<NativeRecordingSplit> _splitNativeWithStorageRecovery(
+    ContinuousCameraService camera,
+    String nextPath,
+    String code,
+  ) async {
+    try {
+      return await camera.split(nextPath, trackingNumber: code);
+    } on PlatformException catch (error) {
+      if (error.code != 'storage_low') rethrow;
+      final StorageSpaceResult result = await _reclaimStorageBeforeStart();
+      if (result.insufficient) rethrow;
+      return await camera.split(nextPath, trackingNumber: code);
+    }
+  }
+
   Future<StorageSpaceResult> _checkAndHandleStorage({
     required bool allowStop,
   }) async {

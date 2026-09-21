@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
@@ -33,6 +32,7 @@ class _FakeCameraPlatform implements CameraPlatform {
   bool fullSupported = false;
   int startWorkCalls = 0;
   int splitCalls = 0;
+  int storageLowSplitsRemaining = 0;
   int stopWorkCalls = 0;
   Completer<NativeRecordingStop>? pendingStop;
   String lastMode = 'unverified';
@@ -95,6 +95,13 @@ class _FakeCameraPlatform implements CameraPlatform {
     required String trackingNumber,
   }) async {
     splitCalls++;
+    if (storageLowSplitsRemaining > 0) {
+      storageLowSplitsRemaining--;
+      throw PlatformException(
+        code: 'storage_low',
+        message: '存储空间不足 2GB，无法创建下一段录像',
+      );
+    }
     final String completedPath = lastPath ?? '';
     await File(nextPath).create(recursive: true);
     lastPath = nextPath;
@@ -851,6 +858,47 @@ void main() {
       );
 
       expect(camera.migrationPausedWhenRecordingStarted, isTrue);
+    } finally {
+      await _stopWorkIfNeeded(tester, controller);
+      await tester.pump(const Duration(seconds: 4));
+    }
+  });
+
+  testWidgets('切段遇到空间不足会先回收再重试，不中断当前录像', (WidgetTester tester) async {
+    camera.fullSupported = true;
+    try {
+      await tester.runAsync(() async {
+        await controller.initialize();
+        await controller.retryCapabilityProbe();
+        await controller.startWork();
+      });
+      await _confirmBarcode(tester, controller, 'YT123456789011');
+      await _waitUntil(
+        tester,
+        () => controller.currentCode == 'YT123456789011',
+        reason: 'first barcode should start the native recording',
+      );
+
+      // 下一次切段先被空间拦住：回收出空间后应当自动重试成功，而不是停掉录像。
+      camera.storageLowSplitsRemaining = 1;
+      backupPlatform.reclaimResults.add(<Object?, Object?>{
+        'availableBytes': 4 << 30,
+        'availableBytesBefore': 1 << 30,
+        'freedBytes': 3 << 30,
+        'deletedCount': 4,
+        'warning': false,
+        'insufficient': false,
+      });
+
+      await _confirmBarcode(tester, controller, 'YT123456789012');
+      await _waitUntil(
+        tester,
+        () => camera.splitCalls == 2,
+        reason: '回收空间后必须重试原生切段',
+      );
+
+      expect(controller.isWorking, isTrue);
+      expect(controller.errorMessage, isNull);
     } finally {
       await _stopWorkIfNeeded(tester, controller);
       await tester.pump(const Duration(seconds: 4));

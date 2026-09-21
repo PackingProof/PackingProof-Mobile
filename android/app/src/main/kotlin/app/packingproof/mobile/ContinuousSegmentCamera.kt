@@ -346,7 +346,11 @@ class ContinuousSegmentCamera(
                 return@post
             }
             if (!hasRecordingReserve(path)) {
-                replyError(result, "storage_low", "存储空间不足 2GB，无法开始录像")
+                replyError(
+                    result,
+                    "storage_low",
+                    "存储空间不足 ${reserveGigabytes()}，无法开始录像",
+                )
                 return@post
             }
             this@ContinuousSegmentCamera.recordAudio = recordAudio
@@ -444,11 +448,13 @@ class ContinuousSegmentCamera(
                 return@post
             }
             if (!hasRecordingReserve(path)) {
-                replyError(result, "storage_low", "存储空间不足 2GB，无法创建下一段录像")
-                if (!storageFailureReported) {
-                    storageFailureReported = true
-                    emit("storageCritical", mapOf("message" to "存储空间不足"))
-                }
+                // 只是这一段的启动被空间拦住，录制本身还在继续：不上报 storageCritical，
+                // 由 Dart 侧先回收空间再重试；清理不出空间时监控会按策略停止录制。
+                replyError(
+                    result,
+                    "storage_low",
+                    "存储空间不足 ${reserveGigabytes()}，无法创建下一段录像",
+                )
                 return@post
             }
             ensureParent(path)
@@ -2470,6 +2476,10 @@ class ContinuousSegmentCamera(
         StatFs(parent.path).availableBytes >=
             BackupStoragePolicyStore.current(activity).minimumBytes
     }.getOrDefault(false)
+
+    /// 保留空间文案跟随 Dart 下发的策略，不再写死 2GB。
+    private fun reserveGigabytes(): String =
+        "${BackupStoragePolicyStore.current(activity).minimumBytes / (1024L * 1024 * 1024)}GB"
 
     internal fun replySuccess(result: MethodChannel.Result, value: Any?) {
         mainHandler.post { result.success(value) }
