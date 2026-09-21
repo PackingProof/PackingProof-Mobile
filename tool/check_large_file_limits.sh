@@ -37,4 +37,4 @@ fi
 check_limit lib/screens/recordings_screen.dart 1640
 check_limit ios/Runner/PigeonPlatform.swift 982
 check_limit lib/controllers/packing_session_controller.dart 1657
-check_limit android/app/src/main/kotlin/app/packingproof/mobile/ContinuousSegmentCamera.kt 2527
+check_limit android/app/src/main/kotlin/app/packingproof/mobile/ContinuousSegmentCamera.kt 2497

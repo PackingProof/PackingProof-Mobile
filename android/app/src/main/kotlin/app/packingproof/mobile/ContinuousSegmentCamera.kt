@@ -537,15 +537,15 @@ class ContinuousSegmentCamera(
         }
     }
 
-    fun canSwitchNow(): Boolean = initialized &&
-        canSwitchCamera &&
-        !recordingRequested &&
-        !recordingActive &&
-        startResult == null &&
-        stopResult == null &&
-        splitResult == null &&
-        !pairingScanEnabled &&
-        !workScanEnabled
+    fun canSwitchNow(): Boolean = CameraSwitchResourcePolicy.canSwitch(
+        initialized = initialized,
+        canSwitchCamera = canSwitchCamera,
+        recordingRequested = recordingRequested,
+        recordingActive = recordingActive,
+        segmentOperationPending = startResult != null ||
+            stopResult != null || splitResult != null,
+        pairingScanEnabled = pairingScanEnabled,
+    )
 
     fun currentLensFacing(): Int = selectedLensFacing
 
@@ -586,6 +586,11 @@ class ContinuousSegmentCamera(
             cameraDevice = null
             analysisReader?.close()
             analysisReader = null
+            // 关闭 Camera2 可能让最后一帧的识别任务永远不返回：作废这一代
+            // 结果，否则扫描器会卡在 busy，旧镜头的码也可能串进新会话。
+            analysisGeneration++
+            scannerBusy = false
+            lastAnalysisElapsedMs = 0L
             resetStallRecovery()
             sessionHasPreview = false
             sessionHasEncoder = false
@@ -2489,39 +2494,4 @@ class ContinuousSegmentCamera(
         mainHandler.post { result.error(code, message, null) }
     }
 
-}
-
-internal fun shouldAnalyzeBarcodeFrame(
-    previewActive: Boolean,
-    pairingScanEnabled: Boolean,
-    workScanEnabled: Boolean,
-    scannerBusy: Boolean,
-    elapsedSinceLastAnalysisMs: Long,
-    analysisIntervalMs: Long,
-): Boolean = previewActive &&
-    (pairingScanEnabled || workScanEnabled) &&
-    !scannerBusy &&
-    elapsedSinceLastAnalysisMs >= analysisIntervalMs
-
-internal fun shouldAcceptBarcodeAnalysisResult(
-    resultGeneration: Long,
-    activeGeneration: Long,
-    previewActive: Boolean,
-): Boolean = previewActive && resultGeneration == activeGeneration
-
-internal fun barcodeFormatName(format: Int): String? = when (format) {
-    Barcode.FORMAT_EAN_13 -> "ean13"
-    Barcode.FORMAT_EAN_8 -> "ean8"
-    Barcode.FORMAT_UPC_A -> "upca"
-    Barcode.FORMAT_UPC_E -> "upce"
-    Barcode.FORMAT_ITF -> "itf"
-    Barcode.FORMAT_CODE_128 -> "code128"
-    Barcode.FORMAT_CODE_39 -> "code39"
-    Barcode.FORMAT_CODE_93 -> "code93"
-    Barcode.FORMAT_CODABAR -> "codabar"
-    Barcode.FORMAT_QR_CODE -> "qr"
-    Barcode.FORMAT_DATA_MATRIX -> "dataMatrix"
-    Barcode.FORMAT_PDF417 -> "pdf417"
-    Barcode.FORMAT_AZTEC -> "aztec"
-    else -> null
 }
