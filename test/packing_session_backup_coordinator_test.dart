@@ -141,9 +141,15 @@ void main() {
       runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
     );
     addTearDown(() async {
+      await controller.waitForAutomaticBackupBootstrapForTesting();
+      await controller.waitForAutoRetrySweepForTesting();
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      try {
+        if (await root.exists()) await root.delete(recursive: true);
+      } on FileSystemException {
+        // 临时目录清理失败不阻塞测试。
+      }
     });
     await controller.initialize();
 

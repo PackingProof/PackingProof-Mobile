@@ -210,6 +210,16 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
     }
   }
 
+  /// 等待进行中的自动重排巡检结束：巡检会读写仓库文件，测试清理临时目录前
+  /// 必须先等它收尾，否则 Windows 上会因文件仍被占用而删除失败。
+  @visibleForTesting
+  Future<void> waitForAutoRetrySweepForTesting() async {
+    while (_autoRetrySweepRunning) {
+      await _repositoryBackupTail;
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
   Future<void> _enqueueBackupIfNeeded(
     String filePath,
     List<RecordingSession> sessions,
