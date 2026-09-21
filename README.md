@@ -31,6 +31,7 @@
 | Android（arm64-v8a） | 正式版，正式签名 APK | [GitHub Release](https://github.com/PackingProof/PackingProof-Mobile/releases) · [Gitee Release](https://gitee.com/PackingProof/PackingProof-Mobile/releases) |
 | iOS（iPhone） | 功能完备，当前通过 TestFlight 分发 | [加入 TestFlight 内测](https://testflight.apple.com/join/KR4qNs6t) |
 | Windows 电脑端 | 正式版 | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) |
+| macOS 电脑端（Apple Silicon） | 正式版：保存主机与查看端 | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) |
 
 > Android 与 iOS 版本按正式版维护：受国内应用商店备案流程影响，暂未上架应用商店，因此 Android 直接分发签名 APK、iOS 走 TestFlight，功能与正式版一致。
 
@@ -48,7 +49,7 @@
 
 | 组成 | 仓库 / 形态 | 作用 |
 | --- | --- | --- |
-| 电脑端（主程序、根启动器、局域网回放） | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) | 录像与水印、扫码自动录像、打印后退款拦截、多工位集中备份、NAS 归档 |
+| 电脑端（主程序、根启动器、局域网回放） | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) | Windows 端录像与水印、扫码自动录像、打印后退款拦截、多工位集中备份、NAS 归档；同一仓库另有 macOS 保存主机与查看端 |
 | 手机端（Android / iOS） | 本仓库 | 独立录像与留证，也可作为多工位来源上传主机 |
 | 扩展市场与扩展 API | [PackingProof-Extensions](https://gitee.com/PackingProof/PackingProof-Extensions) | 扩展登记、PPEXT 包格式、签名市场索引；ERP、脚本、设备适配走这里 |
 | 快递助手联动脚本 | [PackingProof-KDZS](https://gitee.com/PackingProof/PackingProof-KDZS) | 官方快递助手（KDZS）订单集成 |

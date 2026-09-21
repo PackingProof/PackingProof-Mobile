@@ -31,6 +31,7 @@ PackingProof Mobile is the mobile client of PackingProof: an Android and iOS rec
 | Android (arm64-v8a) | Released, signed APK | [GitHub Releases](https://github.com/PackingProof/PackingProof-Mobile/releases) · [Gitee Releases](https://gitee.com/PackingProof/PackingProof-Mobile/releases) |
 | iOS (iPhone) | Feature complete, currently distributed via TestFlight | [Join TestFlight beta](https://testflight.apple.com/join/KR4qNs6t) |
 | Windows desktop | Released | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) |
+| macOS desktop (Apple Silicon) | Released: save host and viewer | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) |
 
 > Android and iOS are maintained as release-quality builds. Because of app-store filing requirements in mainland China they are not listed in the app stores yet: Android ships signed APKs and iOS ships through TestFlight with the same feature set.
 
@@ -53,7 +54,7 @@ PackingProof Mobile is the mobile client of PackingProof: an Android and iOS rec
 
 | Part | Repository / form | Role |
 | --- | --- | --- |
-| Desktop app (main program, root launcher, LAN playback) | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) | Recording and watermarking, scan-triggered recording, printed-refund interception, multi-station backup, NAS archiving |
+| Desktop app (main program, root launcher, LAN playback) | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) | Windows build: recording and watermarking, scan-triggered recording, printed-refund interception, multi-station backup, NAS archiving. The same repository also ships a macOS save host and viewer |
 | Mobile app (Android / iOS) | this repository | Standalone recording and evidence, or an upload source for the host |
 | Extension market and extension API | [PackingProof-Extensions](https://gitee.com/PackingProof/PackingProof-Extensions) | Extension registry, PPEXT package format, signed market index (ERP, userscripts, device adapters) |
 | KuaiDiZhuShou integration script | [PackingProof-KDZS](https://gitee.com/PackingProof/PackingProof-KDZS) | Official KDZS shipping-assistant order integration |
@@ -83,7 +84,7 @@ Both platforms ask for camera and microphone permission on first launch; all rec
 
 ## Working with the Desktop App
 
-PackingProof Mobile is one of the multi-station sources for [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) on Windows: within the same LAN the host stores and plays back mobile footage, and the phone appears under the device name assigned by the host. The wider system also includes the [extension market and extension API](https://gitee.com/PackingProof/PackingProof-Extensions), the [KDZS shipping-assistant integration script](https://gitee.com/PackingProof/PackingProof-KDZS) and the [QQ bot](https://gitee.com/PackingProof/PackingProof-QQBot).
+PackingProof Mobile is one of the multi-station sources for [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) on Windows or macOS: within the same LAN the host stores and plays back mobile footage, and the phone appears under the device name assigned by the host. The wider system also includes the [extension market and extension API](https://gitee.com/PackingProof/PackingProof-Extensions), the [KDZS shipping-assistant integration script](https://gitee.com/PackingProof/PackingProof-KDZS) and the [QQ bot](https://gitee.com/PackingProof/PackingProof-QQBot); those three run on the Windows desktop only, while the macOS build is a save host / viewer without the extension API.
 
 ## How to Use
 
