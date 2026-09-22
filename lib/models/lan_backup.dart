@@ -45,6 +45,10 @@ enum LanBackupRecoveryAction {
   updateComputer,
 }
 
+/// 整文件重传类失败每个任务每个周期允许的自动重排上限：上传任务过期、整文件校验
+/// 失败和未分类失败都会重新传送整个文件，与协议里「整文件最多尝试 3 次」保持一致。
+const int lanBackupAutoRetryAttemptLimit = 3;
+
 extension LanBackupFailureRecovery on LanBackupFailureKind {
   LanBackupRecoveryAction get recoveryAction => switch (this) {
     LanBackupFailureKind.credentialInvalid ||
@@ -62,6 +66,18 @@ extension LanBackupFailureRecovery on LanBackupFailureKind {
     LanBackupFailureKind.offlineOrTimeout ||
     LanBackupFailureKind.temporaryService ||
     LanBackupFailureKind.storageUnavailable => true,
+    _ => false,
+  };
+
+  /// 可以靠重新排队自愈、但每次都要整文件重新校验或重新建上传任务的失败。
+  ///
+  /// 这些失败原生侧不会自己恢复，只能由 Dart 侧重新排队；因为一次重排可能重传整
+  /// 个文件，每个任务每个周期只自动重排 [lanBackupAutoRetryAttemptLimit] 次，超过
+  /// 后保留人工「重试备份」入口，避免坏文件反复吃掉流量。
+  bool get limitedAutoRetryable => switch (this) {
+    LanBackupFailureKind.uploadExpired ||
+    LanBackupFailureKind.verificationFailed ||
+    LanBackupFailureKind.unknown => true,
     _ => false,
   };
 

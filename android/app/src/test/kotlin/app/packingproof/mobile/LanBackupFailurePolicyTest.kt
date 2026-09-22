@@ -36,6 +36,28 @@ class LanBackupFailurePolicyTest {
     }
 
     @Test
+    fun `shared classification table matches ios`() {
+        val shared = mapOf(
+            Pair(401, "") to LanBackupFailureKind.CREDENTIAL_INVALID,
+            Pair(400, "device_token_invalid") to LanBackupFailureKind.CREDENTIAL_INVALID,
+            Pair(404, "") to LanBackupFailureKind.INCOMPATIBLE_VERSION,
+            Pair(400, "backup_protocol_upgrade_required") to LanBackupFailureKind.INCOMPATIBLE_VERSION,
+            Pair(426, "") to LanBackupFailureKind.INCOMPATIBLE_VERSION,
+            Pair(408, "") to LanBackupFailureKind.OFFLINE_OR_TIMEOUT,
+            Pair(409, "") to LanBackupFailureKind.TEMPORARY_SERVICE,
+            Pair(400, "offset_mismatch") to LanBackupFailureKind.TEMPORARY_SERVICE,
+            Pair(425, "") to LanBackupFailureKind.TEMPORARY_SERVICE,
+            Pair(429, "") to LanBackupFailureKind.TEMPORARY_SERVICE,
+            Pair(422, "") to LanBackupFailureKind.VERIFICATION_FAILED,
+            Pair(503, "") to LanBackupFailureKind.TEMPORARY_SERVICE,
+        )
+
+        shared.forEach { (input, expected) ->
+            assertEquals(expected, LanBackupFailurePolicy.classifyHttp(input.first, input.second))
+        }
+    }
+
+    @Test
     fun `only transient backup failures are automatically retried`() {
         assertTrue(LanBackupFailurePolicy.shouldAutoRetry(LanBackupFailureKind.OFFLINE_OR_TIMEOUT))
         assertTrue(LanBackupFailurePolicy.shouldAutoRetry(LanBackupFailureKind.TEMPORARY_SERVICE))

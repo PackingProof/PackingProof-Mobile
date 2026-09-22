@@ -729,21 +729,34 @@ class _StatusChip extends StatelessWidget {
   );
 }
 
-String _backupLabel(LanBackupJob job) => switch (job.state) {
-  LanBackupJobState.pending => '未备份',
-  LanBackupJobState.uploading => '备份中 ${(job.progress * 100).round()}%',
-  LanBackupJobState.paused => '等待续传',
-  LanBackupJobState.completed => '已备份',
-  LanBackupJobState.failed => '备份失败',
-};
+/// 本机原片已被保留策略或空间回收清理且还没备份完的任务再也传不上去，不能继续
+/// 显示成「等待续传」。
+bool _backupJobLostLocalSource(LanBackupJob job) =>
+    job.state != LanBackupJobState.completed && job.localDeletedAt != null;
 
-_StatusChipTone _backupTone(LanBackupJob job) => switch (job.state) {
-  LanBackupJobState.pending => _StatusChipTone.backupPending,
-  LanBackupJobState.uploading => _StatusChipTone.backupUploading,
-  LanBackupJobState.paused => _StatusChipTone.backupPaused,
-  LanBackupJobState.completed => _StatusChipTone.backupCompleted,
-  LanBackupJobState.failed => _StatusChipTone.error,
-};
+String _backupLabel(LanBackupJob job) {
+  if (_backupJobLostLocalSource(job)) return '本机已清理';
+  return switch (job.state) {
+    LanBackupJobState.pending => '未备份',
+    LanBackupJobState.uploading => '备份中 ${(job.progress * 100).round()}%',
+    LanBackupJobState.paused => '等待续传',
+    LanBackupJobState.completed => '已备份',
+    LanBackupJobState.failed => '备份失败',
+  };
+}
+
+_StatusChipTone _backupTone(LanBackupJob job) {
+  if (_backupJobLostLocalSource(job)) {
+    return _StatusChipTone.backupPaused;
+  }
+  return switch (job.state) {
+    LanBackupJobState.pending => _StatusChipTone.backupPending,
+    LanBackupJobState.uploading => _StatusChipTone.backupUploading,
+    LanBackupJobState.paused => _StatusChipTone.backupPaused,
+    LanBackupJobState.completed => _StatusChipTone.backupCompleted,
+    LanBackupJobState.failed => _StatusChipTone.error,
+  };
+}
 
 String _dateTime(DateTime value) {
   return '${value.month}月${value.day}日 ${_two(value.hour)}:${_two(value.minute)}';

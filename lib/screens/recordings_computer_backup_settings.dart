@@ -62,6 +62,9 @@ class _ComputerBackupSettings extends StatelessWidget {
         summary.problemJob?.state == LanBackupJobState.paused
         ? summary.problemJob
         : null;
+    // 本机原片已被清理的未完成任务不会再上传，不能再说成「等待自动续传」。
+    final bool problemJobLostLocalSource =
+        (paused ?? failed)?.localDeletedAt != null;
     final LanBackupJob? classifiedFailure = failed;
     final LanBackupFailureKind? failureKind =
         active == null &&
@@ -148,6 +151,8 @@ class _ComputerBackupSettings extends StatelessWidget {
         ? '正在重新连接电脑'
         : active != null
         ? '正在备份 · $progress%'
+        : problemJobLostLocalSource
+        ? '本机原片已清理，无法上传'
         : failed != null
         ? (failed.errorMessage ?? '备份失败')
         : paused != null && !hasNonBlockingStorageIssue

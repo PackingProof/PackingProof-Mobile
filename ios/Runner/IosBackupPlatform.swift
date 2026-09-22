@@ -2597,21 +2597,27 @@ final class IosBackupHostApi: BackupNativeHostApi {
     )
   }
 
-  private static func backupFailureKind(
+  /// 与 Android `LanBackupFailurePolicy.classifyHttp` 共用同一张判定表：同一台电脑
+  /// 返回同样的响应，两端必须判成同一类失败，否则会出现「一端会自动恢复、另一端
+  /// 永远停在等待续传」。
+  static func backupFailureKind(
     statusCode: Int,
     errorCode: String
   ) -> String {
     switch errorCode {
     case "credential_missing", "enrollment_required", "device_token_invalid":
       return "credential_invalid"
-    case "backup_protocol_upgrade_required":
+    case "backup_protocol_upgrade_required", "invalid_content_range",
+         "invalid_request", "invalid_json":
       return "incompatible_version"
-    case "offset_mismatch":
+    case "offset_mismatch", "mobile_backup_failed":
       return "temporary_service"
     case "sha256_mismatch":
       return "verification_failed"
     case "upload_not_found":
       return "upload_expired"
+    case "storage_unavailable":
+      return "storage_unavailable"
     case "invalid_session_id":
       return "unknown"
     default:
@@ -2620,9 +2626,11 @@ final class IosBackupHostApi: BackupNativeHostApi {
     switch statusCode {
     case 401, 403:
       return "credential_invalid"
-    case 426:
+    case 404, 426:
       return "incompatible_version"
-    case 409, 429:
+    case 408:
+      return "offline_or_timeout"
+    case 409, 425, 429:
       return "temporary_service"
     case 422:
       return "verification_failed"

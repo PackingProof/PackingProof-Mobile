@@ -3853,6 +3853,105 @@ void main() {
     );
   });
 
+  testWidgets('本机原片已清理的任务不再显示等待续传', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final String cleanedPath =
+        '${Directory.systemTemp.path}/cleaned-recording.mp4';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('cleaned', 'CLEANED', startedAt, filePath: cleanedPath),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: const LanBackupSnapshot(
+            autoEnabled: true,
+            summary: LanBackupSummary(totalCount: 1, pausedCount: 1),
+          ),
+          onLoadBackupJobsForPaths: (Iterable<String> requestedPaths) async =>
+              _backupJobsForPaths(
+                requestedPaths: requestedPaths,
+                jobs: <LanBackupJob>[
+                  LanBackupJob(
+                    id: 'cleaned',
+                    filePath: cleanedPath,
+                    state: LanBackupJobState.paused,
+                    uploadedBytes: 0,
+                    totalBytes: 1024,
+                    localDeletedAt: DateTime(2026, 7, 19, 9),
+                  ),
+                ],
+              ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('本机已清理'), findsOneWidget);
+    expect(find.text('等待续传'), findsNothing);
+  });
+
+  testWidgets('电脑备份状态说明本机原片已清理无法上传', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: const [],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: LanBackupSnapshot(
+            autoEnabled: true,
+            endpoint: LanBackupEndpoint(
+              baseUri: Uri.parse('http://192.168.1.20:5280'),
+              accessKey: '',
+              computerId: 'computer-1',
+              computerName: '仓库电脑',
+            ),
+            summary: LanBackupSummary(
+              totalCount: 1,
+              pausedCount: 1,
+              problemJob: LanBackupJob(
+                id: 'job-1',
+                filePath: 'cleaned-recording.mp4',
+                state: LanBackupJobState.paused,
+                uploadedBytes: 0,
+                totalBytes: 1024,
+                errorMessage: '网络中断，等待自动续传',
+                localDeletedAt: DateTime(2026, 7, 19, 9),
+              ),
+            ),
+            connectionStatus: LanConnectionStatus.connected,
+          ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+
+    expect(find.text('本机原片已清理，无法上传'), findsOneWidget);
+    expect(find.text('等待自动续传'), findsNothing);
+  });
+
   testWidgets('已备份、等待续传和未备份标签使用不同颜色', (WidgetTester tester) async {
     final DateTime startedAt = DateTime(2026, 7, 18, 12);
     final List<String> paths = <String>[

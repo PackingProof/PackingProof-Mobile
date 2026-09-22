@@ -4770,6 +4770,38 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(first, second)
   }
 
+  func testBackupFailureKindMatchesSharedClassificationTable() {
+    let shared: [(Int, String, String)] = [
+      (401, "", "credential_invalid"),
+      (400, "device_token_invalid", "credential_invalid"),
+      (404, "", "incompatible_version"),
+      (400, "backup_protocol_upgrade_required", "incompatible_version"),
+      (400, "invalid_request", "incompatible_version"),
+      (426, "", "incompatible_version"),
+      (408, "", "offline_or_timeout"),
+      (409, "", "temporary_service"),
+      (400, "offset_mismatch", "temporary_service"),
+      (400, "mobile_backup_failed", "temporary_service"),
+      (425, "", "temporary_service"),
+      (429, "", "temporary_service"),
+      (422, "", "verification_failed"),
+      (503, "", "temporary_service"),
+      (503, "storage_unavailable", "storage_unavailable"),
+      (404, "upload_not_found", "upload_expired"),
+    ]
+
+    for (statusCode, errorCode, expected) in shared {
+      XCTAssertEqual(
+        IosBackupHostApi.backupFailureKind(
+          statusCode: statusCode,
+          errorCode: errorCode
+        ),
+        expected,
+        "\(statusCode)/\(errorCode) 的分类与共享判定表不一致"
+      )
+    }
+  }
+
   private func backupStoreQueryPlan(
     _ sql: String, databaseURL: URL
   ) throws -> [String] {

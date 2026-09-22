@@ -334,6 +334,72 @@ void main() {
     expect(backup.retriedJobIds, <String>['job-throttled', 'job-throttled']);
   });
 
+  test('整文件重传类失败每个任务每周期最多自动重排三次', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-backup-limited-retry-',
+    );
+    final SessionRepository repository = testRepository(root);
+    await repository.initialize();
+    final DateTime startedAt = DateTime.utc(2026, 8, 23, 12);
+    final File video = File('${root.path}/verify.mp4');
+    await video.writeAsBytes(<int>[1]);
+    await repository.addSession(
+      RecordingSession(
+        id: 'verify',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <Never>[],
+      ),
+    );
+    await repository.resumeSharedFileMigration();
+    LanBackupJob job(LanBackupJobState state, LanBackupFailureKind? kind) =>
+        LanBackupJob(
+          id: 'job-verify',
+          filePath: video.path,
+          state: state,
+          uploadedBytes: 0,
+          totalBytes: 1,
+          failureKind: kind,
+        );
+    final _RecordingLanBackupSink backup = _RecordingLanBackupSink()
+      ..jobsByPath[video.path] = job(
+        LanBackupJobState.failed,
+        LanBackupFailureKind.verificationFailed,
+      );
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _NoopSpeechSink(),
+      lanBackupService: backup,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.lanBackup,
+      }),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    await controller.initialize();
+
+    // 校验失败每次都会整文件重传，所以只自动重排到上限就停手。
+    for (int round = 0; round < 5; round++) {
+      await controller.runAutoRetrySweepForTesting();
+    }
+    expect(backup.retriedJobIds, hasLength(lanBackupAutoRetryAttemptLimit));
+
+    // 任务重新有进展（开始上传）后，下一次排队重新给足重试预算。
+    backup.jobsByPath[video.path] = job(LanBackupJobState.uploading, null);
+    await controller.runAutoRetrySweepForTesting();
+    backup.jobsByPath[video.path] = job(
+      LanBackupJobState.failed,
+      LanBackupFailureKind.verificationFailed,
+    );
+    await controller.runAutoRetrySweepForTesting();
+    expect(backup.retriedJobIds, hasLength(lanBackupAutoRetryAttemptLimit + 1));
+  });
+
   test('凭据失效等需要人工处理的失败不会自动重排', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing-proof-backup-auto-retry-skip-',

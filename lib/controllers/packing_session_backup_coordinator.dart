@@ -32,6 +32,9 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
   DateTime? _lastAutoRetrySweepAt;
   Timer? _autoRetrySweepTimer;
 
+  /// 整文件重传类失败的自动重排计数：任务一旦有进展（或需要人工处理）就清空。
+  final Map<String, int> _limitedAutoRetryAttempts = <String, int>{};
+
   /// 自动重传扫描的节流与单轮上限：暂停任务重新排队后会变成待上传，
   /// 下一轮自然处理后面的任务。
   static const Duration _autoRetrySweepInterval = Duration(seconds: 30);
@@ -315,6 +318,10 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
     super.dispose();
   }
 
+  @visibleForTesting
+  Future<void> runAutoRetrySweepForTesting() =>
+      _retryAutoRecoverableBackupFailures();
+
   /// Android 由 WorkManager 自动重试暂时性失败；iOS 失败后只停在暂停态，所以这里在
   /// 电脑连上时把可自动恢复的暂停任务重新排队，避免老视频永远不再上传。
   Future<void> _retryAutoRecoverableBackupFailures() async {
@@ -329,7 +336,12 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
               );
           for (final LanBackupJob job in result.jobs) {
             if (retried >= _autoRetrySweepLimit) break;
-            if (!_shouldAutoRetryBackupJob(job)) continue;
+            if (!_shouldAutoRetryBackupJob(job)) {
+              // 任务已经有进展或需要人工处理，下一次再排队时重新给足重试预算。
+              _limitedAutoRetryAttempts.remove(job.id);
+              continue;
+            }
+            if (!_reserveLimitedAutoRetryAttempt(job)) continue;
             retried++;
             await _lanBackupService.retry(job.id);
           }
@@ -365,7 +377,19 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
     final LanBackupFailureKind? kind = job.failureKind;
     // 没有失败原因的暂停任务来自旧版本「仅登记也写成 paused」的问题（或自动备份关闭时
     // 登记的任务）：自动备份已经开启时应当恢复上传。
-    return kind == null || kind.autoRetryable;
+    return kind == null || kind.autoRetryable || kind.limitedAutoRetryable;
+  }
+
+  /// 整文件重传类失败（上传任务过期、校验失败、未分类失败）每个任务每个周期只
+  /// 自动重排 [lanBackupAutoRetryAttemptLimit] 次，避免坏文件反复吃掉流量；超过后
+  /// 仍保留设置页的人工「重试备份」入口。
+  bool _reserveLimitedAutoRetryAttempt(LanBackupJob job) {
+    final LanBackupFailureKind? kind = job.failureKind;
+    if (kind == null || !kind.limitedAutoRetryable) return true;
+    final int attempts = _limitedAutoRetryAttempts[job.id] ?? 0;
+    if (attempts >= lanBackupAutoRetryAttemptLimit) return false;
+    _limitedAutoRetryAttempts[job.id] = attempts + 1;
+    return true;
   }
 
   Future<void> _drainCleanupEvents() async {
