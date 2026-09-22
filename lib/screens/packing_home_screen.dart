@@ -278,11 +278,14 @@ class _ManualTrackingSheetState extends State<_ManualTrackingSheet> {
     setState(() => _hasInput = hasText);
   }
 
+  /// 面板一打开就把焦点交给输入框，系统键盘交给框架在拿到焦点时自己拉起。
+  ///
+  /// 这里再补一条 `TextInput.show`，会让引擎在键盘弹出的过程中重复调用
+  /// `becomeFirstResponder`，iOS 上会崩在 UIKit 内部。
+  /// 接了扫码枪或外接键盘时系统会抑制软键盘，这里不去猜有没有外设，
+  /// 只看请求之后键盘到底有没有顶起来，没有才交给应用内键盘。
   void _showKeyboard() {
     _inputFocus.requestFocus();
-    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
-    // 接了扫码枪或外接键盘时系统会抑制软键盘，这里不去猜有没有外设，
-    // 只看请求之后键盘到底有没有顶起来，没有才交给应用内键盘。
     _keyboardProbe?.cancel();
     _keyboardProbe = Timer(_systemKeyboardProbeDelay, () {
       if (!mounted || _systemKeyboardProbed) return;
@@ -298,12 +301,19 @@ class _ManualTrackingSheetState extends State<_ManualTrackingSheet> {
   void _toggleKeypad() {
     final bool show = !_keypadVisible;
     setState(() => _keypadOverride = show);
+    if (show) {
+      _inputFocus.requestFocus();
+      unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
+      return;
+    }
+    // 输入框还握着焦点时框架不会再发一次 show（平台侧收起键盘不一定会断开
+    // 框架连接，例如安卓），这里补一条。焦点已经交出去时 requestFocus 会让
+    // 框架带着新连接自己拉起键盘，再补一条就是重复拉起了。
+    final bool frameworkHoldsConnection = _inputFocus.hasFocus;
     _inputFocus.requestFocus();
-    unawaited(
-      SystemChannels.textInput.invokeMethod<void>(
-        show ? 'TextInput.hide' : 'TextInput.show',
-      ),
-    );
+    if (frameworkHoldsConnection) {
+      unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+    }
   }
 
   Future<void> _pasteFromClipboard() async {

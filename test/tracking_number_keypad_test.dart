@@ -61,6 +61,39 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('焦点已经交出去时呼出键盘不再重复拉起', (WidgetTester tester) async {
+    final BuildContext context = await pumpHost(tester);
+    await openSheet(
+      tester,
+      context,
+      onSubmit: (String rawCode, {required bool validate}) async => true,
+    );
+
+    // 平台侧收起键盘后框架会收到连接关闭通知并交出输入框焦点，
+    // 这里用 closeConnection 复现同样的状态。
+    tester.testTextInput.closeConnection();
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isFalse,
+    );
+
+    tester.testTextInput.log.clear();
+    await tester.tap(find.byKey(const Key('manual-tracking-keyboard-button')));
+    await tester.pumpAndSettle();
+
+    // 焦点交回输入框时框架自己会发 TextInput.show；面板再补一条会让引擎在
+    // 键盘弹出的过程中重复 becomeFirstResponder，iOS 上会崩在 UIKit 内部。
+    final int showCount = tester.testTextInput.log
+        .where((MethodCall call) => call.method == 'TextInput.show')
+        .length;
+    expect(showCount, 1);
+    expect(find.byKey(const Key('keypad-backspace-button')), findsNothing);
+
+    Navigator.of(context).pop();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('系统键盘被抑制时用应用内键盘输入并提交', (WidgetTester tester) async {
     final BuildContext context = await pumpHost(tester);
     String? submitted;
