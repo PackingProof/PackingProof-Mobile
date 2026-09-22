@@ -264,6 +264,76 @@ void main() {
     expect(backup.retriedJobIds, <String>['job-legacy-paused']);
   });
 
+  test('节流窗口内的备份变化不会丢掉自动重排', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-backup-auto-retry-throttle-',
+    );
+    final SessionRepository repository = testRepository(root);
+    await repository.initialize();
+    final DateTime startedAt = DateTime.utc(2026, 8, 23, 12);
+    final File video = File('${root.path}/throttle.mp4');
+    await video.writeAsBytes(<int>[1]);
+    await repository.addSession(
+      RecordingSession(
+        id: 'throttle',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <Never>[],
+      ),
+    );
+    await repository.resumeSharedFileMigration();
+    final _RecordingLanBackupSink backup = _RecordingLanBackupSink()
+      ..jobsByPath[video.path] = LanBackupJob(
+        id: 'job-throttled',
+        filePath: video.path,
+        state: LanBackupJobState.paused,
+        uploadedBytes: 0,
+        totalBytes: 1,
+        failureKind: LanBackupFailureKind.offlineOrTimeout,
+      );
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _NoopSpeechSink(),
+      lanBackupService: backup,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.lanBackup,
+      }),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    controller.autoRetrySweepIntervalForTesting = const Duration(
+      milliseconds: 200,
+    );
+    await controller.initialize();
+
+    backup.emitSnapshot(
+      autoEnabled: true,
+      connectionStatus: LanConnectionStatus.connected,
+    );
+    await controller.waitForAutoRetrySweepForTesting();
+    expect(backup.retriedJobIds, <String>['job-throttled']);
+
+    // 节流窗口内只来一次快照变化：这一轮必须补扫，而不是等到下一次备份事件。
+    backup.emitSnapshot(
+      autoEnabled: true,
+      connectionStatus: LanConnectionStatus.connected,
+    );
+    for (
+      int attempt = 0;
+      attempt < 100 && backup.retriedJobIds.length < 2;
+      attempt++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+
+    expect(backup.retriedJobIds, <String>['job-throttled', 'job-throttled']);
+  });
+
   test('凭据失效等需要人工处理的失败不会自动重排', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing-proof-backup-auto-retry-skip-',

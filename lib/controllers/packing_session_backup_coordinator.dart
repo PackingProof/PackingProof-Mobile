@@ -30,11 +30,16 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
   String _automaticIncrementalBackupReason = 'app_start';
   bool _autoRetrySweepRunning = false;
   DateTime? _lastAutoRetrySweepAt;
+  Timer? _autoRetrySweepTimer;
 
   /// 自动重传扫描的节流与单轮上限：暂停任务重新排队后会变成待上传，
   /// 下一轮自然处理后面的任务。
   static const Duration _autoRetrySweepInterval = Duration(seconds: 30);
   static const int _autoRetrySweepLimit = 20;
+
+  /// 节流间隔在测试里需要缩短，才能覆盖「节流窗口内的请求会被补扫」。
+  @visibleForTesting
+  Duration autoRetrySweepIntervalForTesting = _autoRetrySweepInterval;
 
   void _runInBackground(Future<void> task);
   Future<void> _refreshLocalStatistics();
@@ -268,11 +273,19 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
     final LanBackupSnapshot snapshot = _lanBackupService.snapshot;
     if (!snapshot.autoEnabled ||
         snapshot.connectionStatus != LanConnectionStatus.connected) {
+      _cancelAutoRetrySweepTimer();
       return;
     }
     final DateTime now = DateTime.now();
     final DateTime? last = _lastAutoRetrySweepAt;
-    if (last != null && now.difference(last) < _autoRetrySweepInterval) return;
+    final Duration interval = autoRetrySweepIntervalForTesting;
+    if (last != null && now.difference(last) < interval) {
+      // 节流窗口内到达的请求不能直接丢掉：补一次定时扫描，否则暂停任务要等到
+      // 下一次备份事件（可能很久都不来）才会恢复。
+      _scheduleAutoRetrySweepTimer(interval - now.difference(last));
+      return;
+    }
+    _cancelAutoRetrySweepTimer();
     _lastAutoRetrySweepAt = now;
     _autoRetrySweepRunning = true;
     _runInBackground(
@@ -280,6 +293,26 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
         _autoRetrySweepRunning = false;
       }),
     );
+  }
+
+  void _scheduleAutoRetrySweepTimer(Duration delay) {
+    if (_disposed || _autoRetrySweepTimer != null) return;
+    _autoRetrySweepTimer = Timer(delay, () {
+      _autoRetrySweepTimer = null;
+      if (_disposed) return;
+      _scheduleAutoRetrySweep();
+    });
+  }
+
+  void _cancelAutoRetrySweepTimer() {
+    _autoRetrySweepTimer?.cancel();
+    _autoRetrySweepTimer = null;
+  }
+
+  @override
+  void dispose() {
+    _cancelAutoRetrySweepTimer();
+    super.dispose();
   }
 
   /// Android 由 WorkManager 自动重试暂时性失败；iOS 失败后只停在暂停态，所以这里在
