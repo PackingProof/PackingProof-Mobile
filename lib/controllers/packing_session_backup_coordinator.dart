@@ -287,21 +287,23 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
   Future<void> _retryAutoRecoverableBackupFailures() async {
     int retried = 0;
     try {
-      await _forEachRepositoryBackupBatch((
-        List<RecordingSession> sessions,
-      ) async {
-        if (retried >= _autoRetrySweepLimit) return;
-        final LanBackupJobsByPaths result = await _lanBackupService
-            .jobsForPaths(
-              sessions.map((RecordingSession session) => session.filePath),
-            );
-        for (final LanBackupJob job in result.jobs) {
-          if (retried >= _autoRetrySweepLimit) break;
-          if (!_shouldAutoRetryBackupJob(job)) continue;
-          retried++;
-          await _lanBackupService.retry(job.id);
-        }
-      }, shouldContinue: () => !_disposed);
+      await _forEachRepositoryBackupBatch(
+        (List<RecordingSession> sessions) async {
+          if (retried >= _autoRetrySweepLimit) return;
+          final LanBackupJobsByPaths result = await _lanBackupService
+              .jobsForPaths(
+                sessions.map((RecordingSession session) => session.filePath),
+              );
+          for (final LanBackupJob job in result.jobs) {
+            if (retried >= _autoRetrySweepLimit) break;
+            if (!_shouldAutoRetryBackupJob(job)) continue;
+            retried++;
+            await _lanBackupService.retry(job.id);
+          }
+        },
+        shouldContinue: () => !_disposed,
+        materializeSessionFiles: false,
+      );
     } on Object catch (error) {
       // broad-catch: 自动重传是尽力而为，失败不能影响预览、录像或手动备份。
       unawaited(
@@ -461,9 +463,15 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
     Future<void> Function(List<RecordingSession> sessions) action,
   ) => _processStartupBackupIncrement(action);
 
+  /// 从第一条录像开始重扫整库的入口（自动重传与全量备份）。
+  ///
+  /// 每轮都从头覆盖，所以单条录像取不到原片时跳过该条即可；不能像增量游标那样
+  /// 让一条本地已删除的旧录像挡住后面所有录像的排队与重传。
+  /// [materializeSessionFiles] 为 false 时只解析路径，用于查找已有备份任务。
   Future<void> _forEachRepositoryBackupBatch(
     Future<void> Function(List<RecordingSession> sessions) action, {
     bool Function()? shouldContinue,
+    bool materializeSessionFiles = true,
   }) async {
     final BackupRegistrationCursor? highWatermark = await _repository
         .loadBackupRegistrationHighWatermark();
@@ -473,6 +481,8 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
       final BackupIncrementPage? page = await _repository.loadBackupIncrement(
         after: after,
         highWatermark: highWatermark,
+        materializeSessionFiles: materializeSessionFiles,
+        skipUnavailableSessions: true,
       );
       if (page == null) return;
       await action(page.sessions);

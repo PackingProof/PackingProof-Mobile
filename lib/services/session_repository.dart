@@ -485,10 +485,19 @@ class SessionRepository {
     return BackupRegistrationCursor(updatedAt: value.updatedAt, id: value.id);
   }
 
+  /// 按冻结高水位分页读取可备份的录像。
+  ///
+  /// [materializeSessionFiles] 为 false 时只批量解析路径、不要求独占物化：自动重传
+  /// 只用路径匹配本机已有的备份任务，不能因为录制期间暂停了旧录像迁移而整轮扫描失败。
+  /// [skipUnavailableSessions] 为 true 时，单条录像取不到原片只跳过该条；增量游标
+  /// 仍然靠 [BackupIncrementPage.nextAfter] 前进，每次从头重扫的全库入口才能越过
+  /// 本地已删除的旧录像继续处理后面的记录。
   Future<BackupIncrementPage?> loadBackupIncrement({
     required BackupRegistrationCursor? after,
     required BackupRegistrationCursor highWatermark,
     int pageSize = 100,
+    bool materializeSessionFiles = true,
+    bool skipUnavailableSessions = false,
   }) async {
     await initialize();
     final List<RecordingBackupRow> rows = await _recordingDatabase
@@ -500,10 +509,12 @@ class SessionRepository {
           pageSize: pageSize,
         );
     if (rows.isEmpty) return null;
-    final List<RecordingSession> sessions = <RecordingSession>[];
-    for (final RecordingBackupRow row in rows) {
-      sessions.add(await prepareSessionFileForAccess(row.id));
-    }
+    final List<RecordingSession> sessions = materializeSessionFiles
+        ? await _materializeBackupSessions(
+            rows,
+            skipUnavailableSessions: skipUnavailableSessions,
+          )
+        : await _resolveBackupSessions(rows);
     final RecordingBackupRow last = rows.last;
     return BackupIncrementPage(
       sessions: sessions,
@@ -513,6 +524,50 @@ class SessionRepository {
       ),
     );
   }
+
+  /// 逐条独占物化一页录像，供增量注册与逐条入队使用。
+  Future<List<RecordingSession>> _materializeBackupSessions(
+    List<RecordingBackupRow> rows, {
+    required bool skipUnavailableSessions,
+  }) async {
+    final List<RecordingSession> sessions = <RecordingSession>[];
+    for (final RecordingBackupRow row in rows) {
+      try {
+        sessions.add(await prepareSessionFileForAccess(row.id));
+      } on RecordingFilePreparationException {
+        if (!skipUnavailableSessions) rethrow;
+        // 本地已删除或暂时无法物化的录像没有可上传的原片；整页不能因此失败，
+        // 游标按 [BackupIncrementPage.nextAfter] 继续前进。
+      }
+    }
+    return sessions;
+  }
+
+  /// 批量解析一页录像的原片路径，不做独占物化，取不到原片的记录直接跳过。
+  ///
+  /// 自动重传只需要路径来匹配本机已有的备份任务；批量解析避免逐条建索引与逐条
+  /// 查询，数量大时整轮扫描也不会拖慢界面。
+  Future<List<RecordingSession>> _resolveBackupSessions(
+    List<RecordingBackupRow> rows,
+  ) => _serializeSessionMutation(() async {
+    await initialize();
+    final List<RecordingSession> resolved = await _resolveAndRepair(
+      await _recordingDatabase.findActiveByIds(
+        rows.map((RecordingBackupRow row) => row.id).toSet(),
+      ),
+    );
+    final Map<String, RecordingSession> byId = <String, RecordingSession>{
+      for (final RecordingSession session in resolved) session.id: session,
+    };
+    final List<RecordingSession> sessions = <RecordingSession>[];
+    for (final RecordingBackupRow row in rows) {
+      final RecordingSession? session = byId[row.id];
+      if (session == null) continue;
+      if (!await File(session.filePath).exists()) continue;
+      sessions.add(session);
+    }
+    return sessions;
+  });
 
   Future<LocalRecordingStatistics> loadLocalRecordingStatistics() async {
     await initialize();

@@ -74,6 +74,123 @@ void main() {
     }
   });
 
+  test('工作期间暂停迁移不影响已独占文件的录像', () async {
+    final File kept = File('${root.path}/recordings/kept.mp4');
+    await kept.writeAsBytes(<int>[3, 1, 4, 1, 5]);
+    final SessionRepository repository = SessionRepository(rootDirectory: root);
+    addTearDown(repository.dispose);
+    await repository.initialize();
+    final DateTime startedAt = DateTime.utc(2026, 8, 23, 10);
+    await repository.addSession(
+      RecordingSession(
+        id: 'kept',
+        filePath: kept.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <Never>[],
+      ),
+    );
+    // 工作期间控制器会暂停旧共享录像迁移，普通录像不能因此取不到原片。
+    await repository.pauseSharedFileMigration();
+
+    final RecordingSession prepared = await repository
+        .prepareSessionFileForAccess('kept');
+    expect(prepared.filePath, kept.path);
+    expect(await File(prepared.filePath).exists(), isTrue);
+  });
+
+  test('本地已删除的录像不进入备份增量窗口', () async {
+    final File kept = File('${root.path}/recordings/kept.mp4');
+    final File removed = File('${root.path}/recordings/removed.mp4');
+    await kept.writeAsBytes(<int>[3, 1, 4, 1, 5]);
+    await removed.writeAsBytes(<int>[2, 7, 1, 8]);
+    final SessionRepository repository = SessionRepository(rootDirectory: root);
+    addTearDown(repository.dispose);
+    await repository.initialize();
+    final DateTime startedAt = DateTime.utc(2026, 8, 23, 10);
+    await repository.addSessions(<RecordingSession>[
+      RecordingSession(
+        id: 'kept',
+        filePath: kept.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <Never>[],
+      ),
+      RecordingSession(
+        id: 'removed',
+        filePath: removed.path,
+        startedAt: startedAt.add(const Duration(seconds: 2)),
+        endedAt: startedAt.add(const Duration(seconds: 3)),
+        markers: const <Never>[],
+      ),
+    ]);
+    await removed.delete();
+    await repository.recordAutomaticCleanup(
+      eventId: 'cleanup-removed',
+      filePath: removed.path,
+      fileSizeBytes: 4,
+      deletedAt: DateTime.utc(2026, 8, 24, 10),
+      reason: '已备份录像保留策略清理',
+    );
+    final BackupRegistrationCursor highWatermark = (await repository
+        .loadBackupRegistrationHighWatermark())!;
+    // 已删除的录像不再进入增量窗口，否则游标会永远停在取不到原片的那一页。
+    final BackupIncrementPage page = (await repository.loadBackupIncrement(
+      after: null,
+      highWatermark: highWatermark,
+    ))!;
+    expect(
+      page.sessions.map((RecordingSession session) => session.id),
+      <String>['kept'],
+    );
+  });
+
+  test('原片缺失但记录仍在时全库扫描跳过该条，增量入口仍然类型化失败', () async {
+    final File kept = File('${root.path}/recordings/kept.mp4');
+    final File ghost = File('${root.path}/recordings/ghost.mp4');
+    await kept.writeAsBytes(<int>[3, 1, 4, 1, 5]);
+    await ghost.writeAsBytes(<int>[2, 7, 1, 8]);
+    final SessionRepository repository = SessionRepository(rootDirectory: root);
+    addTearDown(repository.dispose);
+    await repository.initialize();
+    final DateTime startedAt = DateTime.utc(2026, 8, 23, 10);
+    await repository.addSessions(<RecordingSession>[
+      RecordingSession(
+        id: 'kept',
+        filePath: kept.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <Never>[],
+      ),
+      RecordingSession(
+        id: 'ghost',
+        filePath: ghost.path,
+        startedAt: startedAt.add(const Duration(seconds: 2)),
+        endedAt: startedAt.add(const Duration(seconds: 3)),
+        markers: const <Never>[],
+      ),
+    ]);
+    // 文件在记录之外被删除（例如旧的清理路径没有留下清理事件）。
+    await ghost.delete();
+    final BackupRegistrationCursor highWatermark = (await repository
+        .loadBackupRegistrationHighWatermark())!;
+
+    await expectLater(
+      repository.loadBackupIncrement(after: null, highWatermark: highWatermark),
+      throwsA(isA<RecordingFilePreparationException>()),
+    );
+    final BackupIncrementPage scan = (await repository.loadBackupIncrement(
+      after: null,
+      highWatermark: highWatermark,
+      materializeSessionFiles: false,
+      skipUnavailableSessions: true,
+    ))!;
+    expect(
+      scan.sessions.map((RecordingSession session) => session.id),
+      <String>['kept'],
+    );
+  });
+
   test('备份物化空间不足时类型化失败且不推进为共享路径任务', () async {
     await _seedSharedSessions(root, <String>[source.path, source.path]);
     final SessionRepository repository = SessionRepository(

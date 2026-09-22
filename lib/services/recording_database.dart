@@ -959,6 +959,9 @@ class RecordingDatabase {
     final Database db = await _db;
     final List<String> conditions = <String>[
       'is_deleted = 0',
+      // 本地已删除的录像没有可上传的原片，留在增量窗口里只会让游标永远
+      // 停在取不到文件的这一页，后面的录像既注册不了也排不上队。
+      'missing_at IS NULL',
       "watermark_status IN ('completed', 'failed')",
     ];
     final List<Object?> args = <Object?>[];
@@ -998,7 +1001,8 @@ class RecordingDatabase {
     final List<Map<String, Object?>> rows = await db.rawQuery(
       'SELECT updated_at, id '
       'FROM recording_sessions INDEXED BY $_backupCursorIndex '
-      "WHERE is_deleted = 0 AND watermark_status IN ('completed', 'failed') "
+      "WHERE is_deleted = 0 AND missing_at IS NULL "
+      "AND watermark_status IN ('completed', 'failed') "
       'ORDER BY updated_at DESC, id DESC LIMIT 1',
     );
     if (rows.isEmpty) return null;
@@ -1021,7 +1025,8 @@ class RecordingDatabase {
     final List<Map<String, Object?>> rows = await db.rawQuery(
       'EXPLAIN QUERY PLAN SELECT updated_at, id FROM recording_sessions '
       'INDEXED BY $_backupCursorIndex '
-      "WHERE is_deleted = 0 AND watermark_status IN ('completed', 'failed')"
+      "WHERE is_deleted = 0 AND missing_at IS NULL "
+      "AND watermark_status IN ('completed', 'failed')"
       '$cursorClause ORDER BY updated_at ASC, id ASC LIMIT 100',
       hasCursor
           ? <Object?>[afterUpdatedAt, afterUpdatedAt, afterId]
@@ -2001,18 +2006,14 @@ class RecordingDatabase {
   }
 
   /// 播放、备份或删除前可优先物化一条旧共享记录，不扫描其他录像。
+  ///
+  /// 「工作期间暂停迁移」只约束需要复制旧共享文件的记录；已经独占自己物理
+  /// 文件的普通记录必须照常放行，否则工作期间的备份扫描会整体失败。
   Future<bool> materializeSharedFileForSession(String sessionId) async {
-    if (_closing ||
-        _sharedFileMigrationPause.isCompleted ||
-        sharedFileMigrationAllowed?.call() == false) {
-      return false;
-    }
+    if (_closing) return false;
     final Database db = await _db;
     return _sharedFileMigrationMutex.run(() async {
-      if (_closing ||
-          _sharedFileMigrationPause.isCompleted ||
-          sharedFileMigrationAllowed?.call() == false ||
-          !identical(_database, db)) {
+      if (_closing || !identical(_database, db)) {
         return false;
       }
       final List<Map<String, Object?>> rows = await db.query(
@@ -2137,6 +2138,11 @@ class RecordingDatabase {
       );
     });
     if (!ownership.current || ownership.retained) return true;
+    if (_closing ||
+        _sharedFileMigrationPause.isCompleted ||
+        sharedFileMigrationAllowed?.call() == false) {
+      return false;
+    }
 
     final String? distinctPath = await _copyToDistinctPath(
       db: db,

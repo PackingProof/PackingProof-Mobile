@@ -187,6 +187,83 @@ void main() {
     });
   });
 
+  test('工作期间自动重排暂停任务，本地已删除录像不再挡住整库扫描', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-backup-auto-retry-working-',
+    );
+    final SessionRepository repository = testRepository(root);
+    await repository.initialize();
+    final DateTime startedAt = DateTime.utc(2026, 8, 23, 12);
+    final File removed = File('${root.path}/recordings/removed.mp4');
+    final File pending = File('${root.path}/recordings/pending.mp4');
+    await removed.writeAsBytes(<int>[1]);
+    await pending.writeAsBytes(<int>[2]);
+    await repository.addSessions(<RecordingSession>[
+      RecordingSession(
+        id: 'removed',
+        filePath: removed.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <Never>[],
+      ),
+      RecordingSession(
+        id: 'pending',
+        filePath: pending.path,
+        startedAt: startedAt.add(const Duration(seconds: 2)),
+        endedAt: startedAt.add(const Duration(seconds: 3)),
+        markers: const <Never>[],
+      ),
+    ]);
+    // 保留策略清理删除本地录像后记录仍在库里，路径解析对这条记录已经失败。
+    await removed.delete();
+    await repository.recordAutomaticCleanup(
+      eventId: 'cleanup-removed',
+      filePath: removed.path,
+      fileSizeBytes: 1,
+      deletedAt: DateTime.utc(2026, 8, 24, 12),
+      reason: '已备份录像保留策略清理',
+    );
+    // 工作期间控制器会暂停旧共享录像迁移，整库扫描不能因此整体失败。
+    await repository.pauseSharedFileMigration();
+    final _RecordingLanBackupSink backup = _RecordingLanBackupSink()
+      ..jobsByPath[pending.path] = LanBackupJob(
+        id: 'job-legacy-paused',
+        filePath: pending.path,
+        state: LanBackupJobState.paused,
+        uploadedBytes: 0,
+        totalBytes: 1,
+      );
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _NoopSpeechSink(),
+      lanBackupService: backup,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.lanBackup,
+      }),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    await controller.initialize();
+
+    backup.emitSnapshot(
+      autoEnabled: true,
+      connectionStatus: LanConnectionStatus.connected,
+    );
+    for (
+      int attempt = 0;
+      attempt < 100 && backup.retriedJobIds.isEmpty;
+      attempt++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+
+    expect(backup.retriedJobIds, <String>['job-legacy-paused']);
+  });
+
   test('凭据失效等需要人工处理的失败不会自动重排', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing-proof-backup-auto-retry-skip-',
@@ -852,6 +929,8 @@ class _PagedBackupRepository extends SessionRepository {
     required BackupRegistrationCursor? after,
     required BackupRegistrationCursor highWatermark,
     int pageSize = 100,
+    bool materializeSessionFiles = true,
+    bool skipUnavailableSessions = false,
   }) async {
     final int first = (after?.updatedAt ?? 0) + 1;
     if (first > highWatermark.updatedAt) return null;
