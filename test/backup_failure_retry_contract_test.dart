@@ -137,9 +137,10 @@ void main() {
 
 /// 解析 Android `classifyHttp` 的判定表，键为 `status:<码>` 或 `error:<错误码>`。
 Map<String, String> _androidClassificationRules(String source) {
+  // Windows 检出的源码是 CRLF，先归一化换行再匹配。
   final RegExpMatch? block = RegExp(
     r'fun classifyHttp[\s\S]*?\n    \}\n',
-  ).firstMatch(source);
+  ).firstMatch(source.replaceAll('\r\n', '\n'));
   if (block == null) return <String, String>{};
   // 换行处会拆开 setOf(...) 与 when 分支，先压成一行再按分支切分。
   final String flat = block.group(0)!.replaceAll(RegExp(r'\s+'), ' ');
@@ -199,9 +200,10 @@ List<String> _androidConditionKeys(String condition) {
 
 /// 解析 iOS `backupFailureKind` 的判定表，键与 Android 侧一致。
 Map<String, String> _iosClassificationRules(String source) {
+  // Windows 检出的源码是 CRLF，先归一化换行再匹配。
   final RegExpMatch? block = RegExp(
     r'static func backupFailureKind[\s\S]*?\n  \}\n',
-  ).firstMatch(source);
+  ).firstMatch(source.replaceAll('\r\n', '\n'));
   if (block == null) return <String, String>{};
   final String flat = block.group(0)!.replaceAll(RegExp(r'\s+'), ' ');
   final int errorCodeSwitch = flat.indexOf('switch errorCode');
