@@ -62,20 +62,9 @@ if [ "$HOST_HALF" = "macos" ]; then
   run_step "video_player_android 分叉漂移" ./tool/check_video_player_android_fork.sh
   run_step "首页 golden 测试" flutter test test/home_golden_test.dart
 
-  SIMULATOR_ID="$(
-    xcrun simctl list devices available -j 2>/dev/null | python3 -c '
-import json, sys
-data = json.load(sys.stdin)
-runtimes = {k: v for k, v in data.get("devices", {}).items() if ".iOS-" in k}
-def order(name):
-    return [int(part) for part in name.split(".")[-1].split("-")[1:]]
-for runtime in sorted(runtimes, key=order, reverse=True):
-    for device in runtimes[runtime]:
-        if device.get("isAvailable"):
-            print(device["udid"])
-            sys.exit(0)
-' || true
-  )"
+  # 启动前准备模拟器：设备没起来时 xcodebuild 只会报启动失败，容易被误认成用例失败。
+  source "$REPO_ROOT/Tools/ios-simulator.sh"
+  SIMULATOR_ID="$(prepare_ios_simulator || true)"
 
   if [ -n "$SIMULATOR_ID" ]; then
     run_step "RunnerTests（iOS 模拟器）" xcodebuild test \
@@ -85,7 +74,7 @@ for runtime in sorted(runtimes, key=order, reverse=True):
       -parallel-testing-enabled NO \
       CODE_SIGNING_ALLOWED=NO
   else
-    skip_step "RunnerTests（iOS 模拟器）" "没有可用的 iOS 模拟器"
+    skip_step "RunnerTests（iOS 模拟器）" "没有可用或无法启动的 iOS 模拟器"
   fi
 
   run_step "iOS 免签名构建" flutter build ios --no-codesign

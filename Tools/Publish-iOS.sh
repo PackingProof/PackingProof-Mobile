@@ -72,6 +72,9 @@ elif [[ "$TAG_VERSION" != "$VERSION_NAME" ]]; then
 fi
 
 echo "准备验证并构建 $RELEASE_TAG"
+# 启动前检查：模拟器没起来时 xcodebuild 只会报启动失败，先把设备准备好。
+source "$REPO_ROOT/Tools/ios-simulator.sh"
+SIMULATOR_ID="$(prepare_ios_simulator)" || exit 1
 flutter pub get
 flutter analyze --no-pub --no-fatal-infos
 flutter test --no-pub --concurrency=1
@@ -82,22 +85,11 @@ if ! git diff --quiet --exit-code || ! git diff --cached --quiet --exit-code; th
   exit 1
 fi
 
-SIMULATOR_ID="$(
-  xcrun simctl list devices available -j |
-    python3 -c 'import json, sys
-data = json.load(sys.stdin)["devices"]
-devices = [device for runtime in data.values() for device in runtime]
-booted = next((device for device in devices if device.get("state") == "Booted"), None)
-selected = booted or (devices[0] if devices else None)
-if selected is None:
-    raise SystemExit("没有可用的 iOS 模拟器")
-print(selected["udid"])'
-)"
-
 xcodebuild test \
   -workspace ios/Runner.xcworkspace \
   -scheme Runner \
   -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+  -parallel-testing-enabled NO \
   CODE_SIGNING_ALLOWED=NO
 
 BUILD_ARGS=(--release app-store)

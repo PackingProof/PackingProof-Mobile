@@ -80,6 +80,26 @@ void main() {
     expect(script, isNot(contains('uninstall')));
   });
 
+  test('iOS 发布与本地 CI 先在启动前准备好模拟器', () {
+    final publishScript = File('Tools/Publish-iOS.sh').readAsStringSync();
+    final ciScript = File('Tools/test-ci.sh').readAsStringSync();
+    final helper = File('Tools/ios-simulator.sh').readAsStringSync();
+
+    for (final script in [publishScript, ciScript]) {
+      expect(script, contains('Tools/ios-simulator.sh'));
+      expect(script, contains('prepare_ios_simulator'));
+    }
+    // 模拟器必须在跑测试之前准备好，否则失败信息会指向用例而不是环境。
+    expect(
+      publishScript.indexOf('prepare_ios_simulator'),
+      lessThan(publishScript.indexOf('flutter analyze')),
+    );
+    expect(helper, contains('xcrun simctl bootstatus'));
+    expect(helper, contains('xcrun simctl list devices booted'));
+    // 与 ci.yml、test-ci.sh 保持一致：时序敏感用例不能按并行 clone 跑。
+    expect(publishScript, contains('-parallel-testing-enabled NO'));
+  });
+
   test('Android 清单配置系统播放器内容提供者', () {
     final manifest = File(
       'android/app/src/main/AndroidManifest.xml',
