@@ -400,6 +400,233 @@ void main() {
     expect(backup.retriedJobIds, hasLength(lanBackupAutoRetryAttemptLimit + 1));
   });
 
+  test('手动上传按任务现状排队并如实返回结果', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-manual-upload-',
+    );
+    final SessionRepository repository = testRepository(root);
+    await repository.initialize();
+    final DateTime startedAt = DateTime.utc(2026, 8, 23, 12);
+    final File video = File('${root.path}/manual-upload.mp4');
+    await video.writeAsBytes(<int>[1, 2, 3]);
+    await repository.addSession(
+      RecordingSession(
+        id: 'manual-upload',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <Never>[],
+      ),
+    );
+    await repository.resumeSharedFileMigration();
+    final _RecordingLanBackupSink backup = _RecordingLanBackupSink();
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _NoopSpeechSink(),
+      lanBackupService: backup,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.lanBackup,
+      }),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    await controller.initialize();
+    final RecordingSession session = (await repository.findActiveSessionsByIds(
+      <String>{'manual-upload'},
+    )).single;
+    backup.emitSnapshot(
+      autoEnabled: true,
+      connectionStatus: LanConnectionStatus.connected,
+    );
+    backup.retryConnectionResult = true;
+
+    // 还没有任务：登记即开始上传（自动备份开着），不必再插一次队列。
+    expect(
+      await controller.uploadSessionNow(session),
+      LanBackupManualUploadResult.uploading,
+    );
+    expect(backup.enqueuedPaths, <String>[video.path]);
+    expect(backup.manualRetriedJobIds, isEmpty);
+
+    // 暂停任务：手动上传重新排队，不受暂停状态影响，也不重复登记。
+    backup.jobsByPath[video.path] = LanBackupJob(
+      id: 'job-manual',
+      filePath: video.path,
+      state: LanBackupJobState.paused,
+      uploadedBytes: 0,
+      totalBytes: 3,
+      failureKind: LanBackupFailureKind.verificationFailed,
+    );
+    expect(
+      await controller.uploadSessionNow(session),
+      LanBackupManualUploadResult.uploading,
+    );
+    expect(backup.manualRetriedJobIds, <String>['job-manual']);
+
+    // 已经在传：不再重复排队。
+    backup.jobsByPath[video.path] = LanBackupJob(
+      id: 'job-manual',
+      filePath: video.path,
+      state: LanBackupJobState.uploading,
+      uploadedBytes: 1,
+      totalBytes: 3,
+    );
+    expect(
+      await controller.uploadSessionNow(session),
+      LanBackupManualUploadResult.alreadyUploading,
+    );
+    expect(backup.manualRetriedJobIds, <String>['job-manual']);
+
+    // 原片已被清理：如实说无法上传。
+    backup.jobsByPath[video.path] = LanBackupJob(
+      id: 'job-manual',
+      filePath: video.path,
+      state: LanBackupJobState.paused,
+      uploadedBytes: 0,
+      totalBytes: 3,
+      localDeletedAt: DateTime.utc(2026, 8, 24),
+    );
+    expect(
+      await controller.uploadSessionNow(session),
+      LanBackupManualUploadResult.sourceUnavailable,
+    );
+
+    // 原片被替换（大小与任务记录不符）：同样不能报成已开始上传。
+    backup.jobsByPath[video.path] = LanBackupJob(
+      id: 'job-manual',
+      filePath: video.path,
+      state: LanBackupJobState.paused,
+      uploadedBytes: 0,
+      totalBytes: 1024,
+    );
+    expect(
+      await controller.uploadSessionNow(session),
+      LanBackupManualUploadResult.sourceUnavailable,
+    );
+  });
+
+  test('主机不在线时手动上传不排队，直接提示先连主机', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-manual-upload-offline-',
+    );
+    final SessionRepository repository = testRepository(root);
+    await repository.initialize();
+    final DateTime startedAt = DateTime.utc(2026, 8, 23, 12);
+    final File video = File('${root.path}/offline-upload.mp4');
+    await video.writeAsBytes(<int>[1, 2, 3]);
+    await repository.addSession(
+      RecordingSession(
+        id: 'offline-upload',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <Never>[],
+      ),
+    );
+    await repository.resumeSharedFileMigration();
+    final _RecordingLanBackupSink backup = _RecordingLanBackupSink()
+      ..jobsByPath[video.path] = LanBackupJob(
+        id: 'job-offline',
+        filePath: video.path,
+        state: LanBackupJobState.paused,
+        uploadedBytes: 0,
+        totalBytes: 3,
+      );
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _NoopSpeechSink(),
+      lanBackupService: backup,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.lanBackup,
+      }),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    await controller.initialize();
+    final RecordingSession session = (await repository.findActiveSessionsByIds(
+      <String>{'offline-upload'},
+    )).single;
+    backup.emitSnapshot(
+      autoEnabled: true,
+      connectionStatus: LanConnectionStatus.offline,
+    );
+    backup.retryConnectionResult = false;
+
+    expect(
+      await controller.uploadSessionNow(session),
+      LanBackupManualUploadResult.hostOffline,
+    );
+    expect(backup.retriedJobIds, isEmpty);
+    expect(backup.enqueuedPaths, isEmpty);
+  });
+
+  test('自动备份暂停时手动上传仍然直接传到电脑', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-manual-upload-paused-',
+    );
+    final SessionRepository repository = testRepository(root);
+    await repository.initialize();
+    final DateTime startedAt = DateTime.utc(2026, 8, 23, 12);
+    final File video = File('${root.path}/paused-upload.mp4');
+    await video.writeAsBytes(<int>[1, 2, 3]);
+    await repository.addSession(
+      RecordingSession(
+        id: 'paused-upload',
+        filePath: video.path,
+        startedAt: startedAt,
+        endedAt: startedAt.add(const Duration(seconds: 1)),
+        markers: const <Never>[],
+      ),
+    );
+    await repository.resumeSharedFileMigration();
+    final _RecordingLanBackupSink backup = _RecordingLanBackupSink()
+      ..jobsByPath[video.path] = LanBackupJob(
+        id: 'job-paused',
+        filePath: video.path,
+        state: LanBackupJobState.paused,
+        uploadedBytes: 0,
+        totalBytes: 3,
+      );
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _NoopSpeechSink(),
+      lanBackupService: backup,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.lanBackup,
+      }),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    await controller.initialize();
+    final RecordingSession session = (await repository.findActiveSessionsByIds(
+      <String>{'paused-upload'},
+    )).single;
+    backup.emitSnapshot(
+      autoEnabled: false,
+      connectionStatus: LanConnectionStatus.connected,
+    );
+    backup.retryConnectionResult = true;
+
+    expect(
+      await controller.uploadSessionNow(session),
+      LanBackupManualUploadResult.uploading,
+    );
+    expect(backup.manualRetriedJobIds, <String>['job-paused']);
+    expect(backup.snapshot.autoEnabled, isFalse);
+  });
+
   test('凭据失效等需要人工处理的失败不会自动重排', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing-proof-backup-auto-retry-skip-',
@@ -1120,6 +1347,7 @@ class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
   final List<int> acknowledgedCleanupRevisions = <int>[];
   final Map<String, LanBackupJob> jobsByPath = <String, LanBackupJob>{};
   final List<String> retriedJobIds = <String>[];
+  final List<String> manualRetriedJobIds = <String>[];
   bool failNextCleanupAcknowledgement = false;
   int initializeCalls = 0;
   bool retryConnectionResult = false;
@@ -1233,8 +1461,11 @@ class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
   Future<void> disconnect() async {}
 
   @override
-  Future<void> retry(String jobId) async {
+  Future<void> retry(String jobId, {bool manual = false}) async {
     retriedJobIds.add(jobId);
+    if (manual) {
+      manualRetriedJobIds.add(jobId);
+    }
   }
 
   @override

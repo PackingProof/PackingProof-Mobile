@@ -225,7 +225,12 @@ mixin _RecordingsBackupCoordinator on State<RecordingsScreen> {
       unawaited(_refreshBackupJobsForPaths());
     }
     if (reconnected) {
-      unawaited(_loadRemote(reset: true, pageNumber: 1, prefetchNext: true));
+      // 电脑重新连上只需要刷新列表，正在翻页的用户不该被拉回第一页。
+      if (_historyPage == 0) {
+        unawaited(_loadRemote(reset: true, pageNumber: 1, prefetchNext: true));
+      } else {
+        _remoteCacheDirty = true;
+      }
     } else if (completedChanged) {
       _reloadRemoteAfterBackup();
     } else if (widget.active &&

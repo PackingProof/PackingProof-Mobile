@@ -558,6 +558,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private var activeUploads: [String: ActiveUpload] = [:]
   private var uploadDispatcherTask: Task<Void, Never>?
   private var uploadDispatchRequested = false
+  /// 操作员手动上传的任务：即使自动备份被暂停，也要把这一条传到电脑。
+  private var manualUploadJobId: String?
   private let hostLifecycleLock = NSLock()
   private var hostForeground: Bool
   private let beforeUploadDispatcherFinalizationForTesting: (() -> Void)?
@@ -1010,6 +1012,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
 
   func requeueJob(
     jobId: String,
+    manual: Bool,
     completion: @escaping (Result<Void, Error>) -> Void
   ) {
     do {
@@ -1019,6 +1022,9 @@ final class IosBackupHostApi: BackupNativeHostApi {
         job.removeValue(forKey: "errorMessage")
         job.removeValue(forKey: "failureKind")
       })
+      if manual {
+        markManualUpload(jobId)
+      }
       cancelActiveUpload(jobId: jobId)
       if let job = try readJobById(jobId) {
         startUpload(job)
@@ -1968,9 +1974,29 @@ final class IosBackupHostApi: BackupNativeHostApi {
     return body()
   }
 
+  private func markManualUpload(_ jobId: String) {
+    withUploadsLock { manualUploadJobId = jobId }
+  }
+
+  /// 手动上传请求在自动备份关闭时也要推进队列；处理完对应任务后清除请求。
+  private func hasManualUploadRequest() -> Bool {
+    withUploadsLock { manualUploadJobId != nil }
+  }
+
+  private func clearManualUploadRequest(_ jobId: String) {
+    withUploadsLock {
+      if manualUploadJobId == jobId {
+        manualUploadJobId = nil
+      }
+    }
+  }
+
+  private func canDispatchUpload() -> Bool {
+    defaults.bool(forKey: "ios_backup_auto_enabled") || hasManualUploadRequest()
+  }
+
   private func requestUploadDispatch() {
-    guard defaults.bool(forKey: "ios_backup_auto_enabled"),
-          isHostForeground() else { return }
+    guard canDispatchUpload(), isHostForeground() else { return }
     uploadsLock.lock()
     uploadDispatchRequested = true
     guard uploadDispatcherTask == nil else {
@@ -2019,18 +2045,19 @@ final class IosBackupHostApi: BackupNativeHostApi {
       return
     }
     while !Task.isCancelled && isHostForeground() {
-      guard defaults.bool(forKey: "ios_backup_auto_enabled") else { break }
+      guard canDispatchUpload() else { break }
       withUploadsLock { uploadDispatchRequested = false }
 
       do {
         while !Task.isCancelled,
               isHostForeground(),
-              defaults.bool(forKey: "ios_backup_auto_enabled"),
+              canDispatchUpload(),
               let job = try jobStore.get().claimNextUploadJob() {
           guard let jobId = job["id"] as? String,
                 let generation = job["generation"] as? String,
                 !generation.isEmpty
           else { continue }
+          clearManualUploadRequest(jobId)
           guard isHostForeground() else {
             _ = try jobStore.get().updateJob(
               id: jobId,

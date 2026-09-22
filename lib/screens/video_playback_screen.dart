@@ -148,6 +148,10 @@ class VideoPlaybackScreen extends StatefulWidget {
     this.playbackDisplayPlatform,
     this.sourceLabel,
     this.backedUp = false,
+    this.backupInProgress = false,
+    this.onUpload,
+    this.backupStatusLoader,
+    this.backupListenable,
     this.onOrderInfo,
     super.key,
   });
@@ -170,6 +174,19 @@ class VideoPlaybackScreen extends StatefulWidget {
 
   /// 该录像是否已备份到电脑。
   final bool backedUp;
+
+  /// 该录像是否正在上传到电脑。
+  final bool backupInProgress;
+
+  /// 手动上传这条录像；返回结果决定提示文案，为空时不显示上传入口。
+  final Future<LanBackupManualUploadResult> Function()? onUpload;
+
+  /// 读取这条录像当前的备份状态（是否已备份 + 当前任务）；为空时只按
+  /// [backedUp]/[backupInProgress] 展示。
+  final Future<LanBackupPlaybackStatus> Function()? backupStatusLoader;
+
+  /// 备份状态变化通知：上传进度、完成或失败都会刷新卡片。
+  final Listenable? backupListenable;
 
   /// 打开订单信息的回调；为空时使用内置的底部弹层。
   final Future<void> Function(BuildContext context, OrderInfo info)?
@@ -199,6 +216,17 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
   bool _sharing = false;
   double _shareProgress = 0;
   String _shareMessage = '';
+  bool _uploading = false;
+
+  /// 已经手动请求过上传：在任务真正完成或失败前，卡片一直保持"上传中"，
+  /// 不会退回「未备份」再跳到「已备份」。
+  bool _uploadRequested = false;
+
+  /// 点按那一刻任务的 revision：只有在这个版本之后出现的完成/失败才算本次请求的
+  /// 结果，避免读到点按前的旧状态时误判成"上传已结束"而闪回「未备份」。
+  int? _uploadJobRevision;
+  Timer? _uploadWatchdog;
+  LanBackupPlaybackStatus? _backupStatus;
   String? _playbackErrorDetail;
   String? _localVideoMime;
   int? _fileSizeBytes;
@@ -221,7 +249,81 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     _video = _createVideoController();
     _disposalGuard = PlaybackDisposalGuard(_disposePlayback);
     _initialized = _initializePlayback();
+    widget.backupListenable?.addListener(_refreshBackupStatus);
+    unawaited(_refreshBackupStatus());
   }
+
+  /// 重新读一次这条录像的备份状态：上传进度、完成与失败都靠它刷新卡片。
+  Future<void> _refreshBackupStatus() async {
+    final Future<LanBackupPlaybackStatus> Function()? loader =
+        widget.backupStatusLoader;
+    if (loader == null) return;
+    LanBackupPlaybackStatus status;
+    try {
+      status = await loader();
+    } on Object {
+      // broad-catch: 备份状态查询失败只影响卡片展示，不能影响播放。
+      return;
+    }
+    if (!mounted) return;
+    final LanBackupJob? job = status.job;
+    // 点按时还没读到过任务（第一次状态查询还没回来）：先把当前版本当成起点，
+    // 之后的完成或失败才算这次上传的结果。
+    final int? baseline = _uploadJobRevision;
+    final bool adoptBaseline =
+        _uploadRequested && baseline == null && job != null;
+    final int? effectiveBaseline = adoptBaseline ? job.revision : baseline;
+    // 点按前的旧状态（revision 没变）不算本次上传的结果：上传期间任务会先停在
+    // 暂停/完成态，读到它就把卡片切回「未备份」会让操作员看到闪回。
+    final bool requestFinished =
+        job != null &&
+        effectiveBaseline != null &&
+        job.revision != effectiveBaseline &&
+        (job.state == LanBackupJobState.completed ||
+            job.state == LanBackupJobState.failed ||
+            job.state == LanBackupJobState.paused);
+    final bool reachedOutcome = status.backedUp || requestFinished;
+    if (_isSameBackupStatus(_backupStatus, status) &&
+        (!reachedOutcome || !_uploadRequested) &&
+        !adoptBaseline) {
+      return;
+    }
+    setState(() {
+      _backupStatus = status;
+      if (adoptBaseline) {
+        _uploadJobRevision = job.revision;
+      }
+      if (reachedOutcome) {
+        _uploadRequested = false;
+        _uploadJobRevision = null;
+      }
+    });
+    unawaited(
+      DiagnosticsLogService().log(
+        kind: 'playback_backup_state',
+        extra: <String, Object?>{
+          'backedUp': status.backedUp,
+          'jobState': job?.state.name,
+          'jobRevision': job?.revision,
+          'uploading': _uploading || _uploadRequested,
+          'uploadRequested': _uploadRequested,
+          'uploadedBytes': job?.uploadedBytes,
+          'totalBytes': job?.totalBytes,
+        },
+      ),
+    );
+  }
+
+  /// 已备份状态与任务进度都没变化时不必重建卡片。
+  bool _isSameBackupStatus(
+    LanBackupPlaybackStatus? left,
+    LanBackupPlaybackStatus? right,
+  ) =>
+      left?.backedUp == right?.backedUp &&
+      left?.job?.revision == right?.job?.revision &&
+      left?.job?.state == right?.job?.state &&
+      left?.job?.uploadedBytes == right?.job?.uploadedBytes &&
+      left?.job?.totalBytes == right?.job?.totalBytes;
 
   VideoPlayerController _createVideoController() {
     return widget.remoteUri == null
@@ -378,6 +480,8 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
 
   @override
   void dispose() {
+    _uploadWatchdog?.cancel();
+    widget.backupListenable?.removeListener(_refreshBackupStatus);
     // 释放失败同样要记日志：这里不再有「先拦一次再补 pop」的兜底代码，
     // 播放器异常不能连累页面退出。
     unawaited(
@@ -1200,6 +1304,33 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         codec,
     ];
     final OrderInfo? orderInfo = _session.orderInfo;
+    final LanBackupPlaybackStatus? status = _backupStatus;
+    final LanBackupJob? job = status?.job;
+    final bool uploading =
+        _uploading ||
+        _uploadRequested ||
+        job?.state == LanBackupJobState.uploading ||
+        widget.backupInProgress;
+    // 拿到任务和文件大小后就切成真实进度条（排队阶段显示 0%），只有还没拿到
+    // 任务进度时才滚动显示，点按之后不会退回「未备份」。
+    final double? backupProgress =
+        uploading &&
+            job != null &&
+            job.totalBytes > 0 &&
+            (job.state == LanBackupJobState.uploading ||
+                job.state == LanBackupJobState.pending)
+        ? job.progress
+        : null;
+    // 已备份沿用录像列表的判定（电脑端记录可用才算），任务状态只用来显示进度。
+    final bool backedUpNow = backedUp || (status?.backedUp ?? false);
+    // 手动上传入口只出现在还没备份、原片又在本机的录像上：已备份的不再重复上传，
+    // 正在传的也不该再排一次队。
+    final bool canUpload =
+        !backedUpNow &&
+        !uploading &&
+        !_uploading &&
+        widget.remoteUri == null &&
+        widget.onUpload != null;
     return RecordingInfoCard(
       code: _session.displayCode,
       codeCopyable: _session.markers.isNotEmpty,
@@ -1207,8 +1338,15 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
       summary: summary,
       tags: tags,
       source: source,
-      backupLabel: backedUp ? '已备份到电脑' : '未备份，仅在本机',
-      backupHighlighted: !backedUp,
+      backupLabel: backedUpNow
+          ? '已备份到电脑'
+          : uploading
+          ? '正在上传到电脑'
+          : '未备份，仅在本机',
+      backupHighlighted: !backedUpNow && !uploading,
+      onBackupTap: canUpload ? _requestUpload : null,
+      backupUploading: uploading,
+      backupProgress: backupProgress,
       trailing: orderInfo == null
           ? null
           : _OrderInfoSummary(
@@ -1216,6 +1354,69 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
               onTap: () => _openOrderInfo(orderInfo),
             ),
     );
+  }
+
+  /// 手动上传这条录像，并把结果如实告诉操作员。
+  Future<void> _requestUpload() async {
+    final Future<LanBackupManualUploadResult> Function()? action =
+        widget.onUpload;
+    if (action == null || _uploading) return;
+    setState(() {
+      _uploading = true;
+      // 能读到任务时才保持"上传中"等待结果；读不到就只按本次请求展示。
+      _uploadRequested = widget.backupStatusLoader != null;
+      _uploadJobRevision = _backupStatus?.job?.revision;
+    });
+    _uploadWatchdog?.cancel();
+    // 兜底：原生侧没落状态或读取一直失败时，别让卡片永远停在"上传中"。
+    _uploadWatchdog = Timer(const Duration(seconds: 60), () {
+      if (!mounted || !_uploadRequested) return;
+      setState(() {
+        _uploadRequested = false;
+        _uploadJobRevision = null;
+      });
+    });
+    LanBackupManualUploadResult? result;
+    try {
+      result = await action();
+    } on Object {
+      // broad-catch: 手动上传失败只提示，不能影响播放或其它录像的备份。
+      result = null;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _uploading = false;
+          if (result != LanBackupManualUploadResult.uploading) {
+            _uploadRequested = false;
+            _uploadJobRevision = null;
+          }
+        });
+      }
+    }
+    if (!mounted) return;
+    unawaited(
+      DiagnosticsLogService().log(
+        kind: 'playback_upload_request',
+        extra: <String, Object?>{
+          'result': result?.name ?? 'failed',
+          'jobState': _backupStatus?.job?.state.name,
+          'jobRevision': _backupStatus?.job?.revision,
+        },
+      ),
+    );
+    // 上传请求可能刚把任务排上队，立即读一次任务，卡片就能接着显示进度条。
+    unawaited(_refreshBackupStatus());
+    // 上传中卡片自己就显示进度，不再重复弹提示；只有被拦住时才说明原因。
+    final String? message = result == null
+        ? '上传请求失败，请稍后重试'
+        : result.needsToast
+        ? result.message
+        : null;
+    if (message != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   Future<void> _openOrderInfo(OrderInfo info) async {

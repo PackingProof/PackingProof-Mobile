@@ -1149,6 +1149,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       onDisconnectBackup: _controller.disconnectBackup,
       onRetryConnection: _controller.retryBackupConnection,
       onRetryBackup: _controller.retryBackup,
+      onUploadRecording: _controller.uploadSessionNow,
       onLoadBackupJobsForPaths: _controller.loadBackupJobsForPaths,
       onRefreshHistory: _controller.refreshSessions,
       onManagingChanged: (bool managing) {

@@ -117,6 +117,85 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
   Future<void> backupAllSessions() =>
       _serializeRepositoryBackup(() => _backupAllRepositorySessions('manual'));
 
+  /// 手动上传一条录像：操作员的点按就是「现在传到电脑」。
+  ///
+  /// 不受自动备份开关限制，也不用管任务原来是什么状态；只有主机确实不在线时
+  /// 才不排队，而是让调用方提示用户先连主机。
+  Future<LanBackupManualUploadResult> uploadSessionNow(
+    RecordingSession session,
+  ) async {
+    final List<LanBackupJob> jobs = (await _lanBackupService.jobsForPaths(
+      <String>[session.filePath],
+    )).jobs;
+    final LanBackupJob? job = jobs.isEmpty ? null : jobs.first;
+    if (job?.state == LanBackupJobState.uploading) {
+      return LanBackupManualUploadResult.alreadyUploading;
+    }
+    if (await _manualUploadSourceMissing(session, job)) {
+      return LanBackupManualUploadResult.sourceUnavailable;
+    }
+    // 主机不在线时不偷偷排队等下次自动上传，直接让操作员先连上主机。
+    if (!await _lanBackupService.retryConnection()) {
+      return LanBackupManualUploadResult.hostOffline;
+    }
+    final bool autoEnabled = _lanBackupService.snapshot.autoEnabled;
+    if (job == null) {
+      await _lanBackupService.enqueueFinalizedFile(
+        session.filePath,
+        <RecordingSession>[session],
+      );
+      // 自动备份开着时登记就已经开始上传，不必再往队列里插一次。
+      if (autoEnabled) {
+        return _logManualUpload(session, null);
+      }
+    }
+    final List<LanBackupJob> current = (await _lanBackupService.jobsForPaths(
+      <String>[session.filePath],
+    )).jobs;
+    if (current.isEmpty) {
+      return LanBackupManualUploadResult.sourceUnavailable;
+    }
+    await _lanBackupService.retry(current.first.id, manual: true);
+    return _logManualUpload(session, current.first);
+  }
+
+  LanBackupManualUploadResult _logManualUpload(
+    RecordingSession session,
+    LanBackupJob? job,
+  ) {
+    unawaited(
+      _runtimeLog.log(
+        kind: 'backup_manual_upload',
+        extra: <String, Object?>{
+          'filePath': session.filePath,
+          'autoEnabled': _lanBackupService.snapshot.autoEnabled,
+          'state': job?.state.name,
+        },
+      ),
+    );
+    return LanBackupManualUploadResult.uploading;
+  }
+
+  /// 手动上传前确认本机原片还在：已被清理、读不到，或大小与任务记录不符时不能
+  /// 报成「已开始上传」。
+  Future<bool> _manualUploadSourceMissing(
+    RecordingSession session,
+    LanBackupJob? job,
+  ) async {
+    if (job?.localDeletedAt != null) return true;
+    final FileStat stat;
+    try {
+      stat = await File(session.filePath).stat();
+    } on FileSystemException {
+      return true;
+    }
+    if (stat.type == FileSystemEntityType.notFound || stat.size <= 0) {
+      return true;
+    }
+    final int expectedBytes = job?.totalBytes ?? 0;
+    return expectedBytes > 0 && stat.size != expectedBytes;
+  }
+
   Future<LanBackupJobsByPaths> loadBackupJobsForPaths(Iterable<String> paths) =>
       _lanBackupService.jobsForPaths(paths);
 

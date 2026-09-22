@@ -2715,7 +2715,7 @@ interface BackupNativeHostApi {
   fun disconnect(callback: (Result<Unit>) -> Unit)
   fun enqueueJob(request: Map<String?, Any?>, callback: (Result<Unit>) -> Unit)
   fun enqueueJobs(requests: List<Map<String?, Any?>>, callback: (Result<Unit>) -> Unit)
-  fun requeueJob(jobId: String, callback: (Result<Unit>) -> Unit)
+  fun requeueJob(jobId: String, manual: Boolean, callback: (Result<Unit>) -> Unit)
   fun cancelJob(jobId: String, callback: (Result<Unit>) -> Unit)
   fun updateRetentionSchedule(request: Map<String?, Any?>, callback: (Result<Unit>) -> Unit)
   fun availableRecordingStorageBytes(callback: (Result<Long?>) -> Unit)
@@ -2985,7 +2985,8 @@ interface BackupNativeHostApi {
           channel.setMessageHandler { message, reply ->
             val args = message as List<Any?>
             val jobIdArg = args[0] as String
-            api.requeueJob(jobIdArg) { result: Result<Unit> ->
+            val manualArg = args[1] as Boolean
+            api.requeueJob(jobIdArg, manualArg) { result: Result<Unit> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(PlatformApiPigeonUtils.wrapError(error))

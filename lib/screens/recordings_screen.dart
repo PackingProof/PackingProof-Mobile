@@ -39,6 +39,7 @@ part 'recordings_device_settings.dart';
 part 'recordings_history_data_coordinator.dart';
 part 'recordings_history_management.dart';
 part 'recordings_order_receiver_settings.dart';
+part 'recordings_playback_launcher.dart';
 part 'recordings_history_widgets.dart';
 
 enum RecordingsScreenMode { history, settings }
@@ -171,6 +172,7 @@ class RecordingsScreen extends StatefulWidget {
     this.onDisconnectBackup,
     this.onRetryConnection,
     this.onRetryBackup,
+    this.onUploadRecording,
     this.onLoadBackupJobsForPaths,
     this.onRefreshHistory,
     this.onManagingChanged,
@@ -252,6 +254,10 @@ class RecordingsScreen extends StatefulWidget {
   final Future<void> Function()? onDisconnectBackup;
   final Future<void> Function()? onRetryConnection;
   final Future<void> Function(String jobId)? onRetryBackup;
+
+  /// 手动上传一条录像；播放页据此提供「点按上传」入口。
+  final Future<LanBackupManualUploadResult> Function(RecordingSession session)?
+  onUploadRecording;
   final Future<LanBackupJobsByPaths> Function(Iterable<String> paths)?
   onLoadBackupJobsForPaths;
   final Future<void> Function()? onRefreshHistory;
@@ -342,7 +348,8 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     with
         _RecordingsBackupCoordinator,
         _RecordingsHistoryDataCoordinator,
-        _RecordingsHistoryManagement {
+        _RecordingsHistoryManagement,
+        _RecordingsPlaybackLauncher {
   @override
   int _historyPageSize = 5;
   static final RecordingThumbnailService _thumbnailService =
@@ -1384,138 +1391,16 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                       hideSourceChip: !hasOtherDeviceRecordings,
                       sourceChipOnSecondaryRow: _managing && item.local == null,
                       onTap: () async {
-                        if (_managing) {
-                          _toggleSelection(session.id);
-                          return;
-                        }
-                        FocusManager.instance.primaryFocus?.unfocus();
-                        final String? watermarkBlockMessage =
-                            recordingWatermarkPlaybackBlockMessage(
-                              session,
-                              localAvailable:
-                                  item.local != null && localAvailable,
-                            );
-                        if (watermarkBlockMessage != null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(watermarkBlockMessage)),
-                          );
-                          return;
-                        }
-                        if (unavailable) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('录像已清理或文件不存在，无法播放')),
-                          );
-                          return;
-                        }
-                        RecordingSession playbackSession = session;
-                        if (localAvailable) {
-                          final Future<RecordingSession> Function(
-                            String sessionId,
-                          )?
-                          prepare = widget.onPrepareLocalPlayback;
-                          if (prepare == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('暂时无法准备独立录像文件')),
-                            );
-                            return;
-                          }
-                          try {
-                            playbackSession = await prepare(session.id);
-                          } on RecordingFilePreparationException {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('暂时无法准备独立录像文件')),
-                            );
-                            return;
-                          } on Object {
-                            // broad-catch: 所有文件准备失败都转换成同一用户提示
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('暂时无法准备独立录像文件')),
-                            );
-                            return;
-                          }
-                        }
-                        Uri? resolvedRemoteUri;
-                        if (!localAvailable &&
-                            remoteAvailable &&
-                            item.remote != null) {
-                          final Future<Uri?> Function(Uri remoteUri)? resolver =
-                              widget.onResolveRemoteUri;
-                          final Uri? currentRemoteUri = resolver == null
-                              ? item.remote!.playUri
-                              : await resolver(item.remote!.playUri);
-                          if (!context.mounted) return;
-                          if (currentRemoteUri == null) {
-                            // 电脑换了身份或重装过时，旧配对凭据已经作废，
-                            // 这时提示"离线"会让人反复重试；要直接让他重新连接。
-                            final bool needsRepair =
-                                widget.remoteConnectionNeedsRepair?.call() ??
-                                false;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  needsRepair
-                                      ? '这台电脑的配对已失效，请在电脑备份里重新连接'
-                                      : '暂时连不上电脑，请确认电脑端程序仍在运行后重试',
-                                ),
-                              ),
-                            );
-                            return;
-                          }
-                          final VideoDecodeSupport? decodeSupport =
-                              await SystemVideoPlayerService()
-                                  .getVideoDecodeSupport();
-                          resolvedRemoteUri =
-                              RemotePlaybackCompat.resolvePlaybackUri(
-                                currentRemoteUri,
-                                decodeSupport: decodeSupport,
-                                videoCodec: item.remote!.videoCodec,
-                              );
-                        }
-                        if (!context.mounted) return;
-                        final bool?
-                        deleted = await Navigator.of(context).push<bool>(
-                          MaterialPageRoute<bool>(
-                            builder: (BuildContext context) =>
-                                VideoPlaybackScreen(
-                                  session: playbackSession,
-                                  onSessionUpdated: _updateSession,
-                                  onDelete: item.local == null
-                                      ? null
-                                      : () => widget.onDeleteSessions(<String>{
-                                          item.local!.id,
-                                        }),
-                                  remoteUri: localAvailable
-                                      ? null
-                                      : remoteAvailable
-                                      ? resolvedRemoteUri
-                                      : null,
-                                  remoteVideoId: localAvailable
-                                      ? null
-                                      : remoteAvailable
-                                      ? item.remote?.id
-                                      : null,
-                                  remoteHeaders: widget.remotePlaybackHeaders,
-                                  backedUpOffline: completedBackupJob != null,
-                                  sourceLabel: _recordingSourceLabel(item),
-                                  backedUp:
-                                      (remoteAvailable &&
-                                          _isRemoteFromThisDevice(
-                                            item.remote!,
-                                          )) ||
-                                      completedBackupJob != null,
-                                  remoteClipService: localAvailable
-                                      ? null
-                                      : item.remote == null
-                                      ? null
-                                      : widget.remoteClipServiceFactory?.call(
-                                          resolvedRemoteUri!,
-                                        ),
-                                  networkDiagnosticsLoader:
-                                      widget.onNetworkDiagnostics,
-                                ),
-                          ),
+                        final bool? deleted = await _openRecordingPlayback(
+                          context: context,
+                          item: item,
+                          session: session,
+                          localAvailable: localAvailable,
+                          remoteAvailable: remoteAvailable,
+                          completedBackupJob: completedBackupJob,
+                          backupJob: backupJob,
+                          unavailable: unavailable,
+                          onSessionUpdated: _updateSession,
                         );
                         if (deleted == true && mounted && item.local != null) {
                           final Set<int> hiddenIds = <int>{

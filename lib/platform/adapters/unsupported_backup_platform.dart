@@ -61,7 +61,8 @@ class UnsupportedBackupNativePlatform implements BackupNativePlatform {
       _unsupported();
 
   @override
-  Future<void> requeueJob(String jobId) => _unsupported();
+  Future<void> requeueJob(String jobId, {bool manual = false}) =>
+      _unsupported();
 
   @override
   Future<void> cancelJob(String jobId) => _unsupported();

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/barcode_marker.dart';
+import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/order_info.dart';
 import 'package:packing_proof_mobile/models/recording_orientation.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
@@ -142,6 +143,11 @@ void main() {
     RecordingOrientation orientation = RecordingOrientation.portrait,
     bool withOrder = false,
     List<BarcodeMarker> markers = const <BarcodeMarker>[],
+    bool backedUp = false,
+    bool backupInProgress = false,
+    Future<LanBackupManualUploadResult> Function()? onUpload,
+    Future<LanBackupPlaybackStatus> Function()? backupStatusLoader,
+    Listenable? backupListenable,
   }) async {
     tester.view.physicalSize = const Size(1080, 1920);
     tester.view.devicePixelRatio = 1;
@@ -161,6 +167,11 @@ void main() {
                         markers: markers,
                       ),
                       onSessionUpdated: (_) async {},
+                      backedUp: backedUp,
+                      backupInProgress: backupInProgress,
+                      onUpload: onUpload,
+                      backupStatusLoader: backupStatusLoader,
+                      backupListenable: backupListenable,
                       playbackDisplayPlatform: displayPlatform,
                     ),
                   ),
@@ -227,6 +238,347 @@ void main() {
     expect(find.byKey(const Key('playback-order-info')), findsOneWidget);
     expect(find.textContaining('买家留言'), findsOneWidget);
     expect(find.text('查看'), findsOneWidget);
+  });
+
+  testWidgets('未备份时可点按信息卡片手动上传', (WidgetTester tester) async {
+    int uploads = 0;
+    await pumpPlayer(
+      tester,
+      onUpload: () async {
+        uploads++;
+        return LanBackupManualUploadResult.uploading;
+      },
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('playback-backup-upload')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('未备份，仅在本机'), findsOneWidget);
+    expect(find.text('点按上传'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('playback-backup-upload')));
+    await tester.pumpAndSettle();
+
+    expect(uploads, 1);
+    // 上传中卡片自己会显示「正在上传到电脑」+进度条，不再重复弹提示。
+    expect(find.text('已开始上传到电脑'), findsNothing);
+  });
+
+  testWidgets('点按上传后卡片保持上传中并显示进度条', (WidgetTester tester) async {
+    final ValueNotifier<int> backupChanges = ValueNotifier<int>(0);
+    addTearDown(backupChanges.dispose);
+    LanBackupJob job = LanBackupJob(
+      id: 'job-progress',
+      filePath: 'C:/recordings/session-1.mp4',
+      state: LanBackupJobState.pending,
+      uploadedBytes: 0,
+      totalBytes: 1000,
+    );
+    await pumpPlayer(
+      tester,
+      backupListenable: backupChanges,
+      backupStatusLoader: () async => LanBackupPlaybackStatus(
+        backedUp: job.state == LanBackupJobState.completed,
+        job: job,
+      ),
+      onUpload: () async {
+        // 手动上传开始后，任务立刻进入上传中并带出进度。
+        job = LanBackupJob(
+          id: 'job-progress',
+          filePath: 'C:/recordings/session-1.mp4',
+          state: LanBackupJobState.uploading,
+          uploadedBytes: 420,
+          totalBytes: 1000,
+        );
+        backupChanges.value++;
+        return LanBackupManualUploadResult.uploading;
+      },
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('playback-backup-upload')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('未备份，仅在本机'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('playback-backup-upload')));
+    await tester.pumpAndSettle();
+
+    // 不能退回「未备份」：保持上传中并显示进度条与百分比。
+    expect(find.text('正在上传到电脑'), findsOneWidget);
+    expect(find.text('42%'), findsOneWidget);
+    expect(find.byKey(const Key('playback-backup-progress')), findsOneWidget);
+    expect(find.text('未备份，仅在本机'), findsNothing);
+  });
+
+  testWidgets('上传过程中从滚动进度条切换成真实进度', (WidgetTester tester) async {
+    final ValueNotifier<int> backupChanges = ValueNotifier<int>(0);
+    addTearDown(backupChanges.dispose);
+    LanBackupJob? job;
+    await pumpPlayer(
+      tester,
+      backupListenable: backupChanges,
+      backupStatusLoader: () async => LanBackupPlaybackStatus(
+        backedUp: job?.state == LanBackupJobState.completed,
+        job: job,
+      ),
+      onUpload: () async {
+        job = LanBackupJob(
+          id: 'job-rolling',
+          filePath: 'C:/recordings/session-1.mp4',
+          state: LanBackupJobState.pending,
+          uploadedBytes: 0,
+          totalBytes: 0,
+        );
+        backupChanges.value++;
+        return LanBackupManualUploadResult.uploading;
+      },
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('playback-backup-upload')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('playback-backup-upload')));
+    await tester.pump();
+
+    LinearProgressIndicator bar() => tester.widget<LinearProgressIndicator>(
+      find.byKey(const Key('playback-backup-progress')),
+    );
+
+    // 还不知道总大小：滚动进度条。
+    expect(bar().value, isNull);
+
+    // 拿到真实进度后立刻切成百分比进度条。
+    job = LanBackupJob(
+      id: 'job-rolling',
+      filePath: 'C:/recordings/session-1.mp4',
+      state: LanBackupJobState.uploading,
+      uploadedBytes: 300,
+      totalBytes: 1000,
+    );
+    backupChanges.value++;
+    await tester.pump();
+    await tester.pump();
+    expect(bar().value, closeTo(0.3, 0.001));
+    expect(find.text('30%'), findsOneWidget);
+
+    job = LanBackupJob(
+      id: 'job-rolling',
+      filePath: 'C:/recordings/session-1.mp4',
+      state: LanBackupJobState.uploading,
+      uploadedBytes: 850,
+      totalBytes: 1000,
+      revision: 1,
+    );
+    backupChanges.value++;
+    await tester.pump();
+    await tester.pump();
+    expect(bar().value, closeTo(0.85, 0.001));
+    expect(find.text('85%'), findsOneWidget);
+    expect(find.text('未备份，仅在本机'), findsNothing);
+  });
+
+  testWidgets('主机不在线时手动上传提示先连主机', (WidgetTester tester) async {
+    await pumpPlayer(
+      tester,
+      onUpload: () async => LanBackupManualUploadResult.hostOffline,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('playback-backup-upload')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('playback-backup-upload')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('主机不在线，请连接主机后重试'), findsOneWidget);
+  });
+
+  testWidgets('已备份或正在上传时不给手动上传入口', (WidgetTester tester) async {
+    await pumpPlayer(
+      tester,
+      backedUp: true,
+      onUpload: () async => LanBackupManualUploadResult.uploading,
+    );
+    await tester.scrollUntilVisible(
+      find.text('已备份到电脑'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('点按上传'), findsNothing);
+    expect(find.byKey(const Key('playback-backup-upload')), findsNothing);
+  });
+
+  testWidgets('正在上传时信息卡片显示进度条且不给上传入口', (WidgetTester tester) async {
+    await pumpPlayer(
+      tester,
+      backupStatusLoader: () async => const LanBackupPlaybackStatus(
+        backedUp: false,
+        job: LanBackupJob(
+          id: 'job-uploading',
+          filePath: 'C:/recordings/session-1.mp4',
+          state: LanBackupJobState.uploading,
+          uploadedBytes: 420,
+          totalBytes: 1000,
+        ),
+      ),
+      onUpload: () async => LanBackupManualUploadResult.alreadyUploading,
+    );
+    await tester.scrollUntilVisible(
+      find.text('正在上传到电脑'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('正在上传到电脑'), findsOneWidget);
+    expect(find.text('42%'), findsOneWidget);
+    expect(find.byKey(const Key('playback-backup-progress')), findsOneWidget);
+    expect(find.text('点按上传'), findsNothing);
+  });
+
+  testWidgets('电脑端记录不可用时可以重新上传，上传中与完成后都不回到未备份', (WidgetTester tester) async {
+    final Completer<LanBackupManualUploadResult> upload =
+        Completer<LanBackupManualUploadResult>();
+    final ValueNotifier<int> backupChanges = ValueNotifier<int>(0);
+    addTearDown(backupChanges.dispose);
+    // 这台电脑上以前传过，但电脑端录像记录已经不可用：列表和播放页都要当成未备份。
+    LanBackupJob job = LanBackupJob(
+      id: 'job-fast',
+      filePath: 'C:/recordings/session-1.mp4',
+      state: LanBackupJobState.completed,
+      uploadedBytes: 1000,
+      totalBytes: 1000,
+      remoteRecordId: 7,
+    );
+    bool remoteAvailable = false;
+    await pumpPlayer(
+      tester,
+      backupListenable: backupChanges,
+      backupStatusLoader: () async =>
+          LanBackupPlaybackStatus(backedUp: remoteAvailable, job: job),
+      onUpload: () => upload.future,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('playback-backup-upload')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('未备份，仅在本机'), findsOneWidget);
+    expect(find.text('点按上传'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('playback-backup-upload')));
+    // 请求还没回来：进度未知，用滚动进度条占位，不能回到「未备份」。
+    await tester.pump();
+    expect(find.text('正在上传到电脑'), findsOneWidget);
+    expect(find.byKey(const Key('playback-backup-progress')), findsOneWidget);
+    expect(find.text('未备份，仅在本机'), findsNothing);
+
+    // 重新上传完成：电脑端记录恢复可用，卡片直接切到「已备份到电脑」。
+    job = LanBackupJob(
+      id: 'job-fast',
+      filePath: 'C:/recordings/session-1.mp4',
+      state: LanBackupJobState.completed,
+      uploadedBytes: 1000,
+      totalBytes: 1000,
+      remoteRecordId: 8,
+    );
+    remoteAvailable = true;
+    backupChanges.value++;
+    upload.complete(LanBackupManualUploadResult.uploading);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('已备份到电脑'), findsOneWidget);
+    expect(find.text('未备份，仅在本机'), findsNothing);
+  });
+
+  testWidgets('点按后读到点按前的旧任务状态也不会闪回未备份', (WidgetTester tester) async {
+    final ValueNotifier<int> backupChanges = ValueNotifier<int>(0);
+    addTearDown(backupChanges.dispose);
+    // 自动备份关着：任务是暂停态，revision 停在 5。
+    LanBackupJob job = LanBackupJob(
+      id: 'job-paused',
+      filePath: 'C:/recordings/session-1.mp4',
+      state: LanBackupJobState.paused,
+      uploadedBytes: 0,
+      totalBytes: 1000,
+      revision: 5,
+    );
+    await pumpPlayer(
+      tester,
+      backupListenable: backupChanges,
+      backupStatusLoader: () async => LanBackupPlaybackStatus(
+        backedUp: job.state == LanBackupJobState.completed,
+        job: job,
+      ),
+      onUpload: () async => LanBackupManualUploadResult.uploading,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('playback-backup-upload')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('playback-backup-upload')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('正在上传到电脑'), findsOneWidget);
+
+    // 原生重新排队还没落状态，卡片又读到同一条暂停任务（revision 未变）：
+    // 这不能当成"上传结束"，否则会闪回未备份。
+    backupChanges.value++;
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('未备份，仅在本机'), findsNothing);
+    expect(find.text('正在上传到电脑'), findsOneWidget);
+
+    // 真正开始上传：revision 前进，显示真实进度。
+    job = LanBackupJob(
+      id: 'job-paused',
+      filePath: 'C:/recordings/session-1.mp4',
+      state: LanBackupJobState.uploading,
+      uploadedBytes: 250,
+      totalBytes: 1000,
+      revision: 6,
+    );
+    backupChanges.value++;
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('25%'), findsOneWidget);
+    expect(find.text('未备份，仅在本机'), findsNothing);
+
+    // 上传失败（revision 前进后停在暂停）：这时才回到未备份并给重试入口。
+    job = LanBackupJob(
+      id: 'job-paused',
+      filePath: 'C:/recordings/session-1.mp4',
+      state: LanBackupJobState.paused,
+      uploadedBytes: 250,
+      totalBytes: 1000,
+      failureKind: LanBackupFailureKind.offlineOrTimeout,
+      revision: 7,
+    );
+    backupChanges.value++;
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('未备份，仅在本机'), findsOneWidget);
+    expect(find.text('点按上传'), findsOneWidget);
   });
 
   testWidgets('窗口布局显示全屏按钮并可进入全屏', (WidgetTester tester) async {

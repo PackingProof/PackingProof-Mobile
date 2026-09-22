@@ -16,6 +16,9 @@ class RecordingInfoCard extends StatelessWidget {
     this.source,
     this.backupLabel,
     this.backupHighlighted = false,
+    this.onBackupTap,
+    this.backupUploading = false,
+    this.backupProgress,
     this.trailing,
     super.key,
   });
@@ -43,6 +46,16 @@ class RecordingInfoCard extends StatelessWidget {
 
   /// 备份状态是否需要一眼看到（未备份时用警示色）。
   final bool backupHighlighted;
+
+  /// 点按备份状态行的动作，例如手动上传这条录像；为空时状态行不可点。
+  final VoidCallback? onBackupTap;
+
+  /// 是否正在上传：为 true 时备份状态行显示进度条（进度未知就是滚动加载），
+  /// 不再显示点按入口。
+  final bool backupUploading;
+
+  /// 上传进度（0..1）；为空表示进度还未知，按不确定状态滚动显示。
+  final double? backupProgress;
 
   /// 卡片底部补充入口，例如订单信息。
   final Widget? trailing;
@@ -126,6 +139,9 @@ class RecordingInfoCard extends StatelessWidget {
               _BackupStatus(
                 label: backupLabel!,
                 highlighted: backupHighlighted,
+                onTap: onBackupTap,
+                uploading: backupUploading,
+                progress: backupProgress,
               ),
             ],
             if (trailing != null) ...<Widget>[
@@ -242,32 +258,100 @@ class _MetadataChip extends StatelessWidget {
 }
 
 class _BackupStatus extends StatelessWidget {
-  const _BackupStatus({required this.label, required this.highlighted});
+  const _BackupStatus({
+    required this.label,
+    required this.highlighted,
+    this.onTap,
+    this.uploading = false,
+    this.progress,
+  });
 
   final String label;
   final bool highlighted;
+  final VoidCallback? onTap;
+
+  /// 上传中：这一行显示进度条，不再显示点按入口。
+  final bool uploading;
+
+  /// 上传进度（0..1）；为空时进度条按不确定状态滚动显示。
+  final double? progress;
+
+  /// 行高固定：未备份（带点按入口）、上传中（进度条）、已备份三种状态高度一致，
+  /// 状态变化时卡片不会跳动。
+  static const double _rowHeight = 30;
+  static const double _progressBarWidth = 64;
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
     final Color tone = highlighted ? colors.error : colors.primary;
-    return Row(
-      children: <Widget>[
-        Icon(
-          highlighted ? Icons.cloud_off_rounded : Icons.cloud_done_rounded,
-          size: 16,
-          color: tone,
-        ),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: TextStyle(
+    final Widget status = SizedBox(
+      height: _rowHeight,
+      child: Row(
+        children: <Widget>[
+          Icon(
+            highlighted ? Icons.cloud_off_rounded : Icons.cloud_done_rounded,
+            size: 16,
             color: tone,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
           ),
-        ),
-      ],
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tone,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const Spacer(),
+          if (uploading) ...<Widget>[
+            SizedBox(
+              width: _progressBarWidth,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(
+                  key: const Key('playback-backup-progress'),
+                  value: progress,
+                  minHeight: 4,
+                  backgroundColor: colors.outlineVariant.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
+            if (progress case final double value) ...<Widget>[
+              const SizedBox(width: 6),
+              Text(
+                '${(value * 100).round()}%',
+                style: TextStyle(
+                  color: colors.primary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ] else if (onTap != null) ...<Widget>[
+            Text(
+              '点按上传',
+              style: TextStyle(
+                color: colors.primary,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 16, color: colors.primary),
+          ],
+        ],
+      ),
+    );
+    if (onTap == null) return status;
+    return InkWell(
+      key: const Key('playback-backup-upload'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: status,
     );
   }
 }

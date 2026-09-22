@@ -17,6 +17,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import org.json.JSONObject
 import java.io.File
 import java.io.EOFException
@@ -47,6 +48,13 @@ internal fun canonicalCompletionSessions(sessions: org.json.JSONArray): org.json
     return org.json.JSONArray().put(completed)
 }
 
+/**
+ * 是否允许这次上传任务继续：普通调度看自动备份总闸；手动上传（带着 jobId 的请求）
+ * 是操作员的明确意图，即使总闸被暂停也要把这一条传到电脑。
+ */
+internal fun shouldRunBackupWork(autoEnabled: Boolean, explicitJobId: String?): Boolean =
+    autoEnabled || explicitJobId != null
+
 internal fun verifiedCompletionRecordId(response: JSONObject, fileSha256: String): Long? {
     if (response.optString("status") != "verified" ||
         response.optString("fileSha256") != fileSha256 ||
@@ -70,18 +78,28 @@ internal object LanBackupDispatcher {
     internal const val UNIQUE_WORK = "lan-backup-dispatcher"
     internal const val WORK_TAG = "lan-backup-upload"
 
-    fun schedule(context: Context, append: Boolean = false) {
-        val request = OneTimeWorkRequestBuilder<LanBackupWorker>()
+    /**
+     * 排队上传任务。[jobId] 非空表示操作员手动上传：只跑这一条，并且不受
+     * 「暂停上传」总闸限制。两种情况都挂在同一条唯一任务链上，保持串行，
+     * 不会和自动上传同时处理同一条录像。
+     */
+    fun schedule(context: Context, append: Boolean = false, jobId: String? = null) {
+        val builder = OneTimeWorkRequestBuilder<LanBackupWorker>()
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.SECONDS)
             .setConstraints(
                 Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
             )
             .addTag("lan-backup")
             .addTag(WORK_TAG)
-            .build()
+        if (jobId != null) builder.setInputData(workDataOf("jobId" to jobId))
+        val request = builder.build()
         WorkManager.getInstance(context).enqueueUniqueWork(
             UNIQUE_WORK,
-            if (append) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,
+            if (append || jobId != null) {
+                ExistingWorkPolicy.APPEND_OR_REPLACE
+            } else {
+                ExistingWorkPolicy.KEEP
+            },
             request,
         )
     }
@@ -109,11 +127,12 @@ internal class LanBackupWorker(
     }
 
     private suspend fun runWork(): Result {
+        val explicitId = inputData.getString("jobId")
+        // 手动上传只请求这一条任务，即使自动备份被暂停也要传到电脑。
         val autoEnabled = applicationContext
             .getSharedPreferences("lan_backup_runtime", Context.MODE_PRIVATE)
             .getBoolean("auto_enabled", false)
-        if (!autoEnabled) return Result.success()
-        val explicitId = inputData.getString("jobId")
+        if (!shouldRunBackupWork(autoEnabled, explicitId)) return Result.success()
         val id = explicitId ?: store.claimNextUploadJob()?.optString("id")
         if (id.isNullOrBlank()) return Result.success()
         requestedRetry = false

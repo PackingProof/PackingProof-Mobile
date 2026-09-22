@@ -493,6 +493,28 @@ void main() {
     }
   });
 
+  test('手动上传结果各有一句操作员能看懂的提示', () {
+    const Map<LanBackupManualUploadResult, String> messages =
+        <LanBackupManualUploadResult, String>{
+          LanBackupManualUploadResult.uploading: '已开始上传到电脑',
+          LanBackupManualUploadResult.hostOffline: '主机不在线，请连接主机后重试',
+          LanBackupManualUploadResult.alreadyUploading: '正在上传到电脑',
+          LanBackupManualUploadResult.sourceUnavailable: '本机原片不可用，无法上传',
+        };
+
+    expect(messages.keys.toSet(), LanBackupManualUploadResult.values.toSet());
+    for (final MapEntry<LanBackupManualUploadResult, String> entry
+        in messages.entries) {
+      expect(entry.key.message, entry.value);
+      expect(entry.key.message.endsWith('。'), isFalse, reason: '提示结尾不加句号');
+    }
+    // 上传中卡片自己就显示进度，只有被拦住的情况才弹提示。
+    expect(LanBackupManualUploadResult.uploading.needsToast, isFalse);
+    expect(LanBackupManualUploadResult.alreadyUploading.needsToast, isFalse);
+    expect(LanBackupManualUploadResult.hostOffline.needsToast, isTrue);
+    expect(LanBackupManualUploadResult.sourceUnavailable.needsToast, isTrue);
+  });
+
   test('手机历史仅请求当前设备可访问的录像', () {
     final Uri uri = buildRemoteRecordingsUri(
       Uri.parse('http://192.168.1.20:5280'),
@@ -2482,8 +2504,11 @@ class _TestChannelBackupPlatform implements BackupNativePlatform {
   }
 
   @override
-  Future<void> requeueJob(String jobId) =>
-      _channel.invokeMethod<void>('retry', <String, Object>{'id': jobId});
+  Future<void> requeueJob(String jobId, {bool manual = false}) =>
+      _channel.invokeMethod<void>('retry', <String, Object>{
+        'id': jobId,
+        'manual': manual,
+      });
 
   @override
   Future<void> cancelJob(String jobId) =>

@@ -2644,7 +2644,7 @@ protocol BackupNativeHostApi {
   func disconnect(completion: @escaping (Result<Void, Error>) -> Void)
   func enqueueJob(request: [String?: Any?], completion: @escaping (Result<Void, Error>) -> Void)
   func enqueueJobs(requests: [[String?: Any?]], completion: @escaping (Result<Void, Error>) -> Void)
-  func requeueJob(jobId: String, completion: @escaping (Result<Void, Error>) -> Void)
+  func requeueJob(jobId: String, manual: Bool, completion: @escaping (Result<Void, Error>) -> Void)
   func cancelJob(jobId: String, completion: @escaping (Result<Void, Error>) -> Void)
   func updateRetentionSchedule(request: [String?: Any?], completion: @escaping (Result<Void, Error>) -> Void)
   func availableRecordingStorageBytes(completion: @escaping (Result<Int64?, Error>) -> Void)
@@ -2910,7 +2910,8 @@ class BackupNativeHostApiSetup {
       requeueJobChannel.setMessageHandler { message, reply in
         let args = message as! [Any?]
         let jobIdArg = args[0] as! String
-        api.requeueJob(jobId: jobIdArg) { result in
+        let manualArg = args[1] as! Bool
+        api.requeueJob(jobId: jobIdArg, manual: manualArg) { result in
           switch result {
           case .success:
             reply(wrapResult(nil))

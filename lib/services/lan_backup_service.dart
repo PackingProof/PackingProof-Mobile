@@ -200,7 +200,9 @@ abstract interface class LanBackupSink implements Listenable {
     List<RecordingSession> sessions, {
     bool forceRestart = false,
   });
-  Future<void> retry(String jobId);
+
+  /// 重新排队备份任务；[manual] 为 true 表示操作员手动上传，不受自动备份开关限制。
+  Future<void> retry(String jobId, {bool manual = false});
   Future<void> cancel(String jobId);
   Future<LanBackupJobsByPaths> jobsForPaths(Iterable<String> paths);
   Future<LanBackupCleanupPage> cleanupEvents({
@@ -1054,10 +1056,10 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   }
 
   @override
-  Future<void> retry(String jobId) async {
-    await _platform.requeueJob(jobId);
+  Future<void> retry(String jobId, {bool manual = false}) async {
+    await _platform.requeueJob(jobId, manual: manual);
     await refresh();
-    _log('backup_retry', <String, Object?>{'jobId': jobId});
+    _log('backup_retry', <String, Object?>{'jobId': jobId, 'manual': manual});
   }
 
   @override

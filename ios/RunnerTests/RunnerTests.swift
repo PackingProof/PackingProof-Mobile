@@ -3828,7 +3828,11 @@ class RunnerTests: XCTestCase {
     )
 
     try await awaitVoidResult { completion in
-      fixture.api.requeueJob(jobId: "generation-lifecycle", completion: completion)
+      fixture.api.requeueJob(
+        jobId: "generation-lifecycle",
+        manual: false,
+        completion: completion
+      )
     }
     let requeued = try XCTUnwrap(fixture.store.readJob(id: "generation-lifecycle"))
     let requeuedGeneration = try XCTUnwrap(requeued["generation"] as? String)
@@ -4340,6 +4344,45 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(try store.readJob(id: id)?["state"] as? String, "completed")
   }
 
+  func testManualUploadRunsWhileAutoBackupPaused() async throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    // 自动备份关着：手动上传仍然要把这一条传出去。
+    fixture.defaults.set(false, forKey: "ios_backup_auto_enabled")
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL,
+      defaults: fixture.defaults
+    )
+    let id = "manual-upload"
+    try store.upsert(makeBackupJob(id: id))
+    let started = expectation(description: "手动上传开始")
+    let api = makeBackupApi(
+      defaults: fixture.defaults,
+      store: store,
+      uploadOperationOverride: { job, identity in
+        _ = try? store.updateJob(
+          id: job["id"] as? String ?? "",
+          expectedGeneration: identity.generation
+        ) { $0["state"] = "completed" }
+        started.fulfill()
+      }
+    )
+
+    // 没有手动请求时，暂停自动备份不会派发上传。
+    api.requestUploadDispatchForTesting()
+    try await Task.sleep(nanoseconds: 100_000_000)
+    XCTAssertEqual(api.uploadTaskCountsForTesting().dispatcher, 0)
+
+    try await awaitVoidResult { completion in
+      api.requeueJob(jobId: id, manual: true, completion: completion)
+    }
+    await fulfillment(of: [started], timeout: 5)
+    await api.waitForUploadDispatcherForTesting()
+
+    XCTAssertEqual(try store.readJob(id: id)?["state"] as? String, "completed")
+    XCTAssertFalse(fixture.defaults.bool(forKey: "ios_backup_auto_enabled"))
+  }
+
   func testUploadDispatcherStopsClaimingAfterHostBackground() async throws {
     let fixture = try makeBackupStoreFixture()
     defer { removeBackupStoreFixture(fixture) }
@@ -4467,7 +4510,7 @@ class RunnerTests: XCTestCase {
 
     api.requestUploadDispatchForTesting()
     await fulfillment(of: [originalStarted], timeout: 5)
-    try await awaitVoidResult { api.requeueJob(jobId: id, completion: $0) }
+    try await awaitVoidResult { api.requeueJob(jobId: id, manual: false, completion: $0) }
     await fulfillment(of: [replacementCompleted], timeout: 5)
     await api.waitForUploadDispatcherForTesting()
 

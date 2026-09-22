@@ -32,7 +32,8 @@ abstract interface class BackupNativePlatform {
 
   Future<void> enqueueJobs(List<Map<Object?, Object?>> requests);
 
-  Future<void> requeueJob(String jobId);
+  /// 重新排队备份任务；[manual] 为 true 表示操作员手动上传，不受自动备份开关限制。
+  Future<void> requeueJob(String jobId, {bool manual = false});
 
   Future<void> cancelJob(String jobId);
 

@@ -1,9 +1,18 @@
 package app.packingproof.mobile
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LanBackupWorkerOffsetTest {
+    @Test
+    fun manualUploadRunsWhileAutoBackupPaused() {
+        assertTrue(shouldRunBackupWork(autoEnabled = false, explicitJobId = "job-manual"))
+        assertTrue(shouldRunBackupWork(autoEnabled = true, explicitJobId = null))
+        assertFalse(shouldRunBackupWork(autoEnabled = false, explicitJobId = null))
+    }
+
     @Test
     fun hostOffsetIsAuthoritativeForInitialUploadOffset() {
         assertEquals(0L, resolveInitialUploadOffset(0L, 100L))

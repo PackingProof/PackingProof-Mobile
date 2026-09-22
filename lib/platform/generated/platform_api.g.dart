@@ -3343,7 +3343,7 @@ class BackupNativeHostApi {
     );
   }
 
-  Future<void> requeueJob(String jobId) async {
+  Future<void> requeueJob(String jobId, bool manual) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.packing_proof_mobile.BackupNativeHostApi.requeueJob$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -3352,7 +3352,7 @@ class BackupNativeHostApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[jobId],
+      <Object?>[jobId, manual],
     );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 

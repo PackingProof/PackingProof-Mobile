@@ -5249,6 +5249,96 @@ void main() {
     expect(find.text('NO-1'), findsOneWidget);
   });
 
+  testWidgets('电脑重连不会把历史页拉回第一页', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    final List<RecordingSession> all = List<RecordingSession>.generate(
+      12,
+      (int index) => _session(
+        'clip-$index',
+        'NO-${index + 1}',
+        startedAt.subtract(Duration(minutes: index)),
+        filePath: 'pubspec.yaml',
+      ),
+    );
+    final ChangeNotifier notifier = ChangeNotifier();
+    LanBackupSnapshot snapshot = LanBackupSnapshot(
+      endpoint: LanBackupEndpoint(
+        baseUri: Uri.parse('http://192.168.1.20:5280'),
+        accessKey: '',
+        computerId: 'computer-1',
+        computerName: '电脑',
+      ),
+      connectionStatus: LanConnectionStatus.connected,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: all,
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          backupSnapshot: snapshot,
+          backupSnapshotProvider: () => snapshot,
+          backupListenable: notifier,
+          onLoadLocalRecordings:
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+                DateTime? start,
+                DateTime? end,
+              }) async {
+                final int start = (page - 1) * pageSize;
+                return LocalRecordingPage(
+                  data: start >= all.length
+                      ? const <RecordingSession>[]
+                      : all.skip(start).take(pageSize).toList(growable: false),
+                  page: page,
+                  pageSize: pageSize,
+                  total: all.length,
+                );
+              },
+          onLoadRemoteRecordings:
+              ({
+                required page,
+                required pageSize,
+                keyword = '',
+                operationMode,
+              }) async => const RemoteRecordingPage.empty(),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('recording-page-next')));
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 3 页'), findsOneWidget);
+
+    // 手动上传会顺带探测主机：连接状态会走 连接中 → 已连接，不能因此回到第一页。
+    snapshot = snapshot.copyWith(
+      connectionStatus: LanConnectionStatus.connecting,
+    );
+    notifier.notifyListeners();
+    await tester.pump();
+    snapshot = snapshot.copyWith(
+      connectionStatus: LanConnectionStatus.connected,
+    );
+    notifier.notifyListeners();
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 / 3 页'), findsOneWidget);
+    expect(find.text('NO-6'), findsOneWidget);
+  });
+
   testWidgets('长按录像行进入管理模式并选中该行', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;

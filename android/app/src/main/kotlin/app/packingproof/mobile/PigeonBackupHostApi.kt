@@ -90,9 +90,10 @@ internal class PigeonBackupHostApi(
 
     override fun requeueJob(
         jobId: String,
+        manual: Boolean,
         callback: (Result<Unit>) -> Unit,
     ) {
-        plugin.submit(callback) { plugin.requeueJob(jobId) }
+        plugin.submit(callback) { plugin.requeueJob(jobId, manual) }
     }
 
     override fun cancelJob(

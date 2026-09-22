@@ -49,6 +49,51 @@ enum LanBackupRecoveryAction {
 /// 失败和未分类失败都会重新传送整个文件，与协议里「整文件最多尝试 3 次」保持一致。
 const int lanBackupAutoRetryAttemptLimit = 3;
 
+/// 播放页展示的备份状态：是否已备份（与录像列表同一判定）与当前备份任务。
+///
+/// 只在播放页第一次打开时取一次列表值是不够的：手动上传期间任务会在
+/// 排队、上传、完成之间变化，卡片必须跟着它刷新。
+class LanBackupPlaybackStatus {
+  const LanBackupPlaybackStatus({required this.backedUp, this.job});
+
+  /// 对当前连接电脑是否已备份（电脑端录像记录可用才算）。
+  final bool backedUp;
+
+  /// 当前备份任务；还没有任务时为 null。
+  final LanBackupJob? job;
+}
+
+/// 播放页手动上传一条录像的结果，页面据此给出准确提示。
+enum LanBackupManualUploadResult {
+  /// 已重新排队，正在传到电脑。
+  uploading,
+
+  /// 主机不在线（没配对、Wi-Fi 不通或电脑没响应），稍后再试。
+  hostOffline,
+
+  /// 这条录像已经在传，不需要重复排队。
+  alreadyUploading,
+
+  /// 本机原片不可用（已被清理或被替换），无法上传。
+  sourceUnavailable;
+
+  String get message => switch (this) {
+    LanBackupManualUploadResult.uploading => '已开始上传到电脑',
+    LanBackupManualUploadResult.hostOffline => '主机不在线，请连接主机后重试',
+    LanBackupManualUploadResult.alreadyUploading => '正在上传到电脑',
+    LanBackupManualUploadResult.sourceUnavailable => '本机原片不可用，无法上传',
+  };
+
+  /// 上传中与正在上传，播放页卡片本身就会显示进度，不必再弹一次提示；
+  /// 被拦住的情况（主机不在线、原片不可用）才需要告诉操作员原因。
+  bool get needsToast => switch (this) {
+    LanBackupManualUploadResult.uploading ||
+    LanBackupManualUploadResult.alreadyUploading => false,
+    LanBackupManualUploadResult.hostOffline ||
+    LanBackupManualUploadResult.sourceUnavailable => true,
+  };
+}
+
 extension LanBackupFailureRecovery on LanBackupFailureKind {
   LanBackupRecoveryAction get recoveryAction => switch (this) {
     LanBackupFailureKind.credentialInvalid ||

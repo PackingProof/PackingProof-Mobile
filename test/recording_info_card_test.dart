@@ -114,6 +114,114 @@ void main() {
     }
   });
 
+  testWidgets('未备份状态行可点按手动上传', (WidgetTester tester) async {
+    int uploads = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: RecordingInfoCard(
+            code: 'JD0001',
+            codeCopyable: true,
+            recordedAt: '9月13日 19:19',
+            backupLabel: '未备份，仅在本机',
+            backupHighlighted: true,
+            onBackupTap: () => uploads++,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('未备份，仅在本机'), findsOneWidget);
+    expect(find.text('点按上传'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('playback-backup-upload')));
+    await tester.pump();
+
+    expect(uploads, 1);
+  });
+
+  testWidgets('备份状态行在上传中显示进度条，三种状态高度一致', (WidgetTester tester) async {
+    Future<void> pumpCard({
+      required String label,
+      required bool highlighted,
+      VoidCallback? onTap,
+      bool uploading = false,
+      double? progress,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RecordingInfoCard(
+              code: 'JD0001',
+              codeCopyable: true,
+              recordedAt: '9月13日 19:19',
+              backupLabel: label,
+              backupHighlighted: highlighted,
+              onBackupTap: onTap,
+              backupUploading: uploading,
+              backupProgress: progress,
+            ),
+          ),
+        ),
+      );
+    }
+
+    double cardHeight() =>
+        tester.getSize(find.byType(RecordingInfoCard)).height;
+
+    // 未备份：点按入口，没有进度条。
+    await pumpCard(label: '未备份，仅在本机', highlighted: true, onTap: () {});
+    final double idleHeight = cardHeight();
+    expect(find.text('点按上传'), findsOneWidget);
+    expect(find.byKey(const Key('playback-backup-progress')), findsNothing);
+
+    // 上传中：改成进度条 + 百分比，高度不能变。
+    await pumpCard(
+      label: '正在上传到电脑',
+      highlighted: false,
+      uploading: true,
+      progress: 0.42,
+    );
+    expect(find.text('正在上传到电脑'), findsOneWidget);
+    expect(find.text('42%'), findsOneWidget);
+    expect(find.byKey(const Key('playback-backup-progress')), findsOneWidget);
+    expect(find.text('点按上传'), findsNothing);
+    expect(cardHeight(), idleHeight);
+
+    // 进度还未知：进度条滚动显示，高度同样不变。
+    await pumpCard(label: '正在上传到电脑', highlighted: false, uploading: true);
+    await tester.pump();
+    expect(find.byKey(const Key('playback-backup-progress')), findsOneWidget);
+    expect(find.text('点按上传'), findsNothing);
+    expect(cardHeight(), idleHeight);
+
+    // 已备份：没有入口也没有进度条，高度仍然一致。
+    await pumpCard(label: '已备份到电脑', highlighted: false);
+    await tester.pump();
+    expect(find.text('点按上传'), findsNothing);
+    expect(find.byKey(const Key('playback-backup-progress')), findsNothing);
+    expect(cardHeight(), idleHeight);
+  });
+
+  testWidgets('已备份状态行不提供上传入口', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: RecordingInfoCard(
+            code: 'JD0001',
+            codeCopyable: true,
+            recordedAt: '9月13日 19:19',
+            backupLabel: '已备份到电脑',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('已备份到电脑'), findsOneWidget);
+    expect(find.text('点按上传'), findsNothing);
+    expect(find.byKey(const Key('playback-backup-upload')), findsNothing);
+  });
+
   testWidgets('点按面单号复制到剪贴板', (WidgetTester tester) async {
     final List<MethodCall> calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

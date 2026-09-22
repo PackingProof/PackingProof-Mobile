@@ -231,7 +231,11 @@ internal class LanBackupPlugin(
 
     fun availableRecordingStorageBytes(): Long? = availableRecordingStorageBytes(context)
 
-    fun requeueJob(id: String) {
+    /**
+     * 重新排队备份任务。[manual] 为 true 表示操作员手动上传：这一条不受
+     * 「暂停上传」总闸限制，直接排到上传链上。
+     */
+    fun requeueJob(id: String, manual: Boolean) {
         val sourceStatus = store.reconcileJobSource(id)
         if (sourceStatus != null && sourceStatus != LanBackupSourceStatus.AVAILABLE) {
             WorkManager.getInstance(context).cancelUniqueWork(WORK_PREFIX + id)
@@ -244,7 +248,11 @@ internal class LanBackupPlugin(
                 .put("failureKind", JSONObject.NULL)
             true
         } ?: error("找不到备份任务")
-        schedule(id, replace = true)
+        if (manual) {
+            scheduleManual(id)
+        } else {
+            schedule(id, replace = true)
+        }
     }
 
     fun cancelJob(id: String) {
@@ -306,6 +314,23 @@ internal class LanBackupPlugin(
         }
         LanBackupDispatcher.schedule(context)
         Log.i(TAG, "Upload dispatcher requested job=$id replace=$replace")
+    }
+
+    /**
+     * 手动上传：操作员的点按要真的把这一条传到电脑，所以不看「暂停上传」开关；
+     * 只要求已经配对并持有设备令牌，否则任务留在队列里等下次连接。
+     */
+    private fun scheduleManual(id: String) {
+        if (store.connection() == null) {
+            Log.w(TAG, "Manual upload queued job=$id reason=no_connection")
+            return
+        }
+        if (credentials.load().isNullOrBlank()) {
+            Log.w(TAG, "Manual upload queued job=$id reason=no_credential")
+            return
+        }
+        LanBackupDispatcher.schedule(context, jobId = id)
+        Log.i(TAG, "Manual upload requested job=$id")
     }
 
     private fun isAutoEnabled(): Boolean = context
