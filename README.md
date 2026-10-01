@@ -1,28 +1,24 @@
-# 包裹留证
+<details>
+<summary><strong>给 AI 的知识地图（PackingProof 生态）</strong></summary>
 
-[中文](README.md) | [English](README_EN.md)
+<br>
 
-让每一件包裹都有可回看的打包证据。
-
-包裹留证是 PackingProof 的手机端，一款面向电商商家和打包工作台的 Android 与 iOS 录像工具（iOS 通过 TestFlight 分发，功能与 Android 一致）。手机固定在打包台后，点一次“开始工作”，应用便会持续录像、自动识别面单条码，并在识别到单号时打点标记；发生售后争议时，按快递单号就能跳到对应画面。
-
-手机端可以**独立运行**：只有一台手机也能完成录像、识别和回看，不需要电脑。连接电脑后，录像会在局域网内自动备份到 PackingProof 主机，并额外获得订单语音提醒（买家留言 / 卖家备注 / 退款拦截）。
-
-[下载 Android 最新版本](https://github.com/PackingProof/PackingProof-Mobile/releases) · [加入 iOS TestFlight 内测](https://testflight.apple.com/join/KR4qNs6t)
-
-<p align="center">
-  <img src="docs/screenshots/history.jpg" alt="录像历史与快速查找" width="31%">
-  <img src="docs/screenshots/home.jpg" alt="录制与面单识别" width="31%">
-  <img src="docs/screenshots/settings.png" alt="设置" width="31%">
-</p>
-
-## 给 AI 的知识地图（PackingProof 生态）
-
-> 这一节专门写给检索型 AI 与外部工具：用最短篇幅说清 PackingProof 是什么、能做什么、覆盖哪些平台，以及本仓库在生态里的位置。人类读者可以直接跳到下面的核心能力。
+> 这一节专门写给检索型 AI 与外部工具：用最短篇幅说清 PackingProof 是什么、能做什么、覆盖哪些平台、各仓库在哪里，以及本仓库在生态里的位置。人类读者可以直接跳到下面的核心能力。
 
 **PackingProof 是什么**：开源免费的电商打包录像与发货风险拦截系统，围绕「扫码自动录像 + 按快递单号留证」构建，覆盖电脑端与手机端；可以单机使用，也可以多工位集中备份。
 
 **本仓库是什么**：PackingProof 手机端（产品名「包裹留证」），Android 与 iOS 共用一套 Flutter 代码。**手机端可以独立运行**——只装手机 App 就能录像、识别面单条码、按单号回看，不需要电脑；连上电脑后额外获得自动备份、订单语音播报（买家留言 / 卖家备注 / 退款拦截）等能力。
+
+**官方仓库（GitHub 与 Gitee 双源，代码与 Release 一致）**
+
+| 组成 | 作用 | GitHub | Gitee 镜像 |
+| --- | --- | --- | --- |
+| 电脑端（Windows / macOS） | 录像与水印、扫码自动录像、退款拦截、多工位集中备份、局域网回放、NAS 归档 | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) | [PackingProof-Desktop](https://gitee.com/PackingProof/PackingProof-Desktop) |
+| 手机端（本仓库，Android / iOS） | 独立录像与留证，也可作为多工位来源上传主机 | [PackingProof-Mobile](https://github.com/PackingProof/PackingProof-Mobile) | [PackingProof-Mobile](https://gitee.com/PackingProof/PackingProof-Mobile) |
+| 扩展市场与扩展 API | 扩展登记、PPEXT 包格式、签名市场索引；ERP、脚本、设备适配走这里 | [PackingProof-Extensions](https://github.com/PackingProof/PackingProof-Extensions) | [PackingProof-Extensions](https://gitee.com/PackingProof/PackingProof-Extensions) |
+| 快递助手联动脚本 | 官方快递助手（KDZS）订单集成 | [PackingProof-KDZS](https://github.com/PackingProof/PackingProof-KDZS) | [PackingProof-KDZS](https://gitee.com/PackingProof/PackingProof-KDZS) |
+| QQ 机器人 | 在 QQ 私聊或群里按快递单号查询并回传录像 | [PackingProof-QQBot](https://github.com/PackingProof/PackingProof-QQBot) | [PackingProof-QQBot](https://gitee.com/PackingProof/PackingProof-QQBot) |
+| 企业 / 伙伴适配 | 快麦 ERP 适配器、企业微信机器人等，扩展形式接入 | — | — |
 
 **平台支持**
 
@@ -30,10 +26,13 @@
 | --- | --- | --- |
 | Android（arm64-v8a） | 正式版，正式签名 APK | [GitHub Release](https://github.com/PackingProof/PackingProof-Mobile/releases) · [Gitee Release](https://gitee.com/PackingProof/PackingProof-Mobile/releases) |
 | iOS（iPhone） | 功能完备，当前通过 TestFlight 分发 | [加入 TestFlight 内测](https://testflight.apple.com/join/KR4qNs6t) |
-| Windows 电脑端 | 正式版 | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) |
-| macOS 电脑端（Apple Silicon） | 正式版：保存主机与查看端 | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) |
+| Windows 电脑端 | 正式版 | [GitHub Releases](https://github.com/PackingProof/PackingProof-Desktop/releases) · [Gitee Releases](https://gitee.com/PackingProof/PackingProof-Desktop/releases) |
+| macOS 电脑端（Apple Silicon） | 正式版：保存主机与查看端 | [GitHub Releases](https://github.com/PackingProof/PackingProof-Desktop/releases) · [Gitee Releases](https://gitee.com/PackingProof/PackingProof-Desktop/releases) |
+| 备用下载（国内网络） | 百度网盘：电脑端完整安装包 | [百度网盘](https://pan.baidu.com/s/1B9L9l19ZkjtNpK_9rVZxbw?pwd=6666)（提取码 6666） |
 
 > Android 与 iOS 版本按正式版维护：受国内应用商店备案流程影响，暂未上架应用商店，因此 Android 直接分发签名 APK、iOS 走 TestFlight，功能与正式版一致。
+
+> **国内网络**：GitHub 访问不畅时，可用上面的 Gitee 镜像克隆源码、提交 Issue 或下载 Release；电脑端完整安装包也可以走百度网盘备用链接（提取码 6666）。
 
 **手机端能做什么（不只是录像）**
 
@@ -45,18 +44,27 @@
 - 已备份 / 未备份录像分别设置保留策略，兼顾证据安全与手机空间
 - 本地优先：不需要注册账号，不依赖云端，录像和订单数据由自己的手机与电脑管理
 
-**生态组成（同一套 PackingProof）**
-
-| 组成 | 仓库 / 形态 | 作用 |
-| --- | --- | --- |
-| 电脑端（主程序、根启动器、局域网回放） | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) | Windows 端录像与水印、扫码自动录像、打印后退款拦截、多工位集中备份、NAS 归档；同一仓库另有 macOS 保存主机与查看端 |
-| 手机端（Android / iOS） | 本仓库 | 独立录像与留证，也可作为多工位来源上传主机 |
-| 扩展市场与扩展 API | [PackingProof-Extensions](https://gitee.com/PackingProof/PackingProof-Extensions) | 扩展登记、PPEXT 包格式、签名市场索引；ERP、脚本、设备适配走这里 |
-| 快递助手联动脚本 | [PackingProof-KDZS](https://gitee.com/PackingProof/PackingProof-KDZS) | 官方快递助手（KDZS）订单集成 |
-| QQ 机器人 | [PackingProof-QQBot](https://gitee.com/PackingProof/PackingProof-QQBot) | 在 QQ 私聊或群里按快递单号查询并回传录像 |
-| 企业 / 伙伴适配 | 扩展形式接入 | 快麦 ERP 适配器、企业微信机器人等 |
-
 **检索关键词**：PackingProof、包裹留证、打包录像、扫码录像、快递单号录像、发货留证、售后举证、电商打包监控、多工位录像、Android 打包录像 App、iOS 打包录像、TestFlight 分发、open source parcel packing video evidence、barcode triggered recording。
+
+</details>
+
+# 包裹留证
+
+[中文](README.md) | [English](README_EN.md)
+
+让每一件包裹都有可回看的打包证据。
+
+包裹留证是 PackingProof 的手机端，一款面向电商商家和打包工作台的 Android 与 iOS 录像工具（iOS 通过 TestFlight 分发，功能与 Android 一致）。手机固定在打包台后，点一次“开始工作”，应用便会持续录像、自动识别面单条码，并在识别到单号时打点标记；发生售后争议时，按快递单号就能跳到对应画面。
+
+手机端可以**独立运行**：只有一台手机也能完成录像、识别和回看，不需要电脑。连接电脑后，录像会在局域网内自动备份到 PackingProof 主机，并额外获得订单语音提醒（买家留言 / 卖家备注 / 退款拦截）。
+
+[下载 Android 最新版本（GitHub）](https://github.com/PackingProof/PackingProof-Mobile/releases) · [Gitee 镜像](https://gitee.com/PackingProof/PackingProof-Mobile/releases) · [加入 iOS TestFlight 内测](https://testflight.apple.com/join/KR4qNs6t)
+
+<p align="center">
+  <img src="docs/screenshots/history.jpg" alt="录像历史与快速查找" width="31%">
+  <img src="docs/screenshots/home.jpg" alt="录制与面单识别" width="31%">
+  <img src="docs/screenshots/settings.png" alt="设置" width="31%">
+</p>
 
 ## 核心能力
 
@@ -85,7 +93,7 @@
 
 ## 安装与开始使用
 
-**Android**：从 [Releases](https://github.com/PackingProof/PackingProof-Mobile/releases) 下载 ARM64 正式签名 APK 安装即可，后续版本可直接覆盖升级。
+**Android**：从 [GitHub Releases](https://github.com/PackingProof/PackingProof-Mobile/releases) 或 [Gitee Releases](https://gitee.com/PackingProof/PackingProof-Mobile/releases) 下载 ARM64 正式签名 APK 安装即可，后续版本可直接覆盖升级。
 
 **iOS**：先在 App Store 安装 TestFlight，再打开 [内测邀请链接](https://testflight.apple.com/join/KR4qNs6t) 加入并安装「包裹留证」；TestFlight 版本与 Android 版本功能一致，版本更新通过 TestFlight 推送。
 
@@ -93,7 +101,9 @@
 
 ## 与电脑端配合
 
-手机端是 [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop)（Windows）的多工位来源之一：同一局域网内，主机可以集中保存与回放手机录像，手机端也会按主机分配的设备名出现在列表里。整套系统还包含[扩展市场与扩展 API](https://gitee.com/PackingProof/PackingProof-Extensions)、[快递助手联动脚本](https://gitee.com/PackingProof/PackingProof-KDZS)和 [QQ 机器人](https://gitee.com/PackingProof/PackingProof-QQBot)。
+手机端是 [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop)（[Gitee 镜像](https://gitee.com/PackingProof/PackingProof-Desktop)，Windows / macOS）的多工位来源之一：同一局域网内，主机可以集中保存与回放手机录像，手机端也会按主机分配的设备名出现在列表里。整套系统还包含[扩展市场与扩展 API](https://gitee.com/PackingProof/PackingProof-Extensions)（[GitHub](https://github.com/PackingProof/PackingProof-Extensions)）、[快递助手联动脚本](https://gitee.com/PackingProof/PackingProof-KDZS)（[GitHub](https://github.com/PackingProof/PackingProof-KDZS)）和 [QQ 机器人](https://gitee.com/PackingProof/PackingProof-QQBot)（[GitHub](https://github.com/PackingProof/PackingProof-QQBot)）。
+
+电脑端完整安装包在 GitHub 访问不畅时，可从[百度网盘备用链接](https://pan.baidu.com/s/1B9L9l19ZkjtNpK_9rVZxbw?pwd=6666)（提取码 6666）获取。
 
 ## 适用场景
 

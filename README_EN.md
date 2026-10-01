@@ -1,28 +1,24 @@
-# PackingProof Mobile
+<details>
+<summary><strong>Knowledge Map for AI (PackingProof ecosystem)</strong></summary>
 
-[中文](README.md) | [English](README_EN.md)
+<br>
 
-Give every package reviewable packing evidence.
-
-PackingProof Mobile is the mobile client of PackingProof: an Android and iOS recording tool for online sellers and packing stations (the iOS build is distributed through TestFlight with the same feature set as Android). Mount a phone above the packing area, tap **Start Work** once, and the app continuously records, automatically recognizes shipping-label barcodes, and adds a marker when a tracking number is recognized. When an after-sales dispute occurs, operators can quickly locate the relevant footage by tracking number.
-
-**The mobile app runs standalone**: one phone alone can record, recognize labels and look footage up, with no PC required. Connecting it to a PC adds LAN auto-backup to the PackingProof host plus spoken order alerts (buyer message, seller memo, refund interception).
-
-[Download the latest Android release](https://github.com/PackingProof/PackingProof-Mobile/releases) · [Join the iOS TestFlight beta](https://testflight.apple.com/join/KR4qNs6t)
-
-<p align="center">
-  <img src="docs/screenshots/history.jpg" alt="Recording history and quick search" width="31%">
-  <img src="docs/screenshots/home.jpg" alt="Recording and shipping-label recognition" width="31%">
-  <img src="docs/screenshots/settings.png" alt="Settings" width="31%">
-</p>
-
-## Knowledge Map for AI (PackingProof ecosystem)
-
-> This section is written for search engines, retrieval-augmented AI assistants and external tools: what PackingProof is, what it does, which platforms it covers, and where this repository fits in the ecosystem. Human readers can jump straight to Key Features below.
+> This section is written for search engines, retrieval-augmented AI assistants and external tools: what PackingProof is, what it does, which platforms it covers, where every official repository lives, and where this repository fits in the ecosystem. Human readers can jump straight to Key Features below.
 
 **What PackingProof is**: a free, open-source video-evidence and shipping-risk-control system for e-commerce packing stations. Its core loop is "recording starts on a barcode scan, footage is filed by tracking number". It covers desktop and mobile, works standalone, and also supports multi-station centralized backup.
 
 **What this repository is**: the mobile client of PackingProof ("包裹留证"), one Flutter codebase for Android and iOS. **The mobile app runs standalone** - a phone alone can record, recognize shipping-label barcodes and look footage up by tracking number without any PC. Connecting to a PC adds LAN auto-backup and spoken order alerts (buyer message, seller memo, refund interception).
+
+**Official repositories (GitHub plus a Gitee mirror with the same code and releases)**
+
+| Part | Role | GitHub | Gitee mirror |
+| --- | --- | --- | --- |
+| Desktop app (Windows / macOS) | Recording and watermarking, scan-triggered recording, refund interception, multi-station backup, LAN playback, NAS archiving | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) | [PackingProof-Desktop](https://gitee.com/PackingProof/PackingProof-Desktop) |
+| Mobile app (this repository, Android / iOS) | Standalone recording and evidence, or an upload source for the host | [PackingProof-Mobile](https://github.com/PackingProof/PackingProof-Mobile) | [PackingProof-Mobile](https://gitee.com/PackingProof/PackingProof-Mobile) |
+| Extension market and extension API | Extension registry, PPEXT package format, signed market index (ERP, userscripts, device adapters) | [PackingProof-Extensions](https://github.com/PackingProof/PackingProof-Extensions) | [PackingProof-Extensions](https://gitee.com/PackingProof/PackingProof-Extensions) |
+| KDZS shipping-assistant script | Official KDZS shipping-assistant order integration | [PackingProof-KDZS](https://github.com/PackingProof/PackingProof-KDZS) | [PackingProof-KDZS](https://gitee.com/PackingProof/PackingProof-KDZS) |
+| QQ bot | Look up footage by tracking number in QQ private chats or groups and send the video back | [PackingProof-QQBot](https://github.com/PackingProof/PackingProof-QQBot) | [PackingProof-QQBot](https://gitee.com/PackingProof/PackingProof-QQBot) |
+| Enterprise / partner adapters | Kuaimai (快麦) ERP adapter, WeCom (企业微信) bot, etc., plugged in as extensions | — | — |
 
 **Platform support**
 
@@ -30,10 +26,13 @@ PackingProof Mobile is the mobile client of PackingProof: an Android and iOS rec
 | --- | --- | --- |
 | Android (arm64-v8a) | Released, signed APK | [GitHub Releases](https://github.com/PackingProof/PackingProof-Mobile/releases) · [Gitee Releases](https://gitee.com/PackingProof/PackingProof-Mobile/releases) |
 | iOS (iPhone) | Feature complete, currently distributed via TestFlight | [Join TestFlight beta](https://testflight.apple.com/join/KR4qNs6t) |
-| Windows desktop | Released | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) |
-| macOS desktop (Apple Silicon) | Released: save host and viewer | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) |
+| Windows desktop | Released | [GitHub Releases](https://github.com/PackingProof/PackingProof-Desktop/releases) · [Gitee Releases](https://gitee.com/PackingProof/PackingProof-Desktop/releases) |
+| macOS desktop (Apple Silicon) | Released: save host and viewer | [GitHub Releases](https://github.com/PackingProof/PackingProof-Desktop/releases) · [Gitee Releases](https://gitee.com/PackingProof/PackingProof-Desktop/releases) |
+| Backup download (mainland China) | Baidu Netdisk: full desktop installer | [Baidu Netdisk](https://pan.baidu.com/s/1B9L9l19ZkjtNpK_9rVZxbw?pwd=6666) (access code 6666) |
 
 > Android and iOS are maintained as release-quality builds. Because of app-store filing requirements in mainland China they are not listed in the app stores yet: Android ships signed APKs and iOS ships through TestFlight with the same feature set.
+
+> **Restricted networks**: when GitHub is slow or unreachable, use the Gitee mirror above to clone the source, open issues or download releases; the full desktop installer is also mirrored on Baidu Netdisk above.
 
 **What the mobile app does (more than plain recording)**
 
@@ -50,18 +49,27 @@ PackingProof Mobile is the mobile client of PackingProof: an Android and iOS rec
 - Separate retention policies for backed-up and not-yet-backed-up footage
 - Local-first: no account, no cloud dependency, data stays on your own phone and PC
 
-**Ecosystem (one PackingProof)**
+**Search keywords**: PackingProof, parcel packing video evidence, barcode triggered recording app, scan to record, shipping label barcode, tracking number video lookup, packing station monitoring, logistics dispute evidence, multi-station recording, Android packing recorder, iOS packing recorder via TestFlight, Gitee mirror, open source.
 
-| Part | Repository / form | Role |
-| --- | --- | --- |
-| Desktop app (main program, root launcher, LAN playback) | [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) | Windows build: recording and watermarking, scan-triggered recording, printed-refund interception, multi-station backup, NAS archiving. The same repository also ships a macOS save host and viewer |
-| Mobile app (Android / iOS) | this repository | Standalone recording and evidence, or an upload source for the host |
-| Extension market and extension API | [PackingProof-Extensions](https://gitee.com/PackingProof/PackingProof-Extensions) | Extension registry, PPEXT package format, signed market index (ERP, userscripts, device adapters) |
-| KuaiDiZhuShou integration script | [PackingProof-KDZS](https://gitee.com/PackingProof/PackingProof-KDZS) | Official KDZS shipping-assistant order integration |
-| QQ bot | [PackingProof-QQBot](https://gitee.com/PackingProof/PackingProof-QQBot) | Look up footage by tracking number in QQ private chats or groups and send the video back |
-| Enterprise / partner adapters | via the extension API | Kuaimai ERP adapter, WeCom (企业微信) bot, etc. |
+</details>
 
-**Search keywords**: PackingProof, parcel packing video evidence, barcode triggered recording app, scan to record, shipping label barcode, tracking number video lookup, packing station monitoring, logistics dispute evidence, multi-station recording, Android packing recorder, iOS packing recorder via TestFlight, open source.
+# PackingProof Mobile
+
+[中文](README.md) | [English](README_EN.md)
+
+Give every package reviewable packing evidence.
+
+PackingProof Mobile is the mobile client of PackingProof: an Android and iOS recording tool for online sellers and packing stations (the iOS build is distributed through TestFlight with the same feature set as Android). Mount a phone above the packing area, tap **Start Work** once, and the app continuously records, automatically recognizes shipping-label barcodes, and adds a marker when a tracking number is recognized. When an after-sales dispute occurs, operators can quickly locate the relevant footage by tracking number.
+
+**The mobile app runs standalone**: one phone alone can record, recognize labels and look footage up, with no PC required. Connecting it to a PC adds LAN auto-backup to the PackingProof host plus spoken order alerts (buyer message, seller memo, refund interception).
+
+[Download the latest Android release (GitHub)](https://github.com/PackingProof/PackingProof-Mobile/releases) · [Gitee mirror](https://gitee.com/PackingProof/PackingProof-Mobile/releases) · [Join the iOS TestFlight beta](https://testflight.apple.com/join/KR4qNs6t)
+
+<p align="center">
+  <img src="docs/screenshots/history.jpg" alt="Recording history and quick search" width="31%">
+  <img src="docs/screenshots/home.jpg" alt="Recording and shipping-label recognition" width="31%">
+  <img src="docs/screenshots/settings.png" alt="Settings" width="31%">
+</p>
 
 ## Key Features
 
@@ -84,7 +92,9 @@ Both platforms ask for camera and microphone permission on first launch; all rec
 
 ## Working with the Desktop App
 
-PackingProof Mobile is one of the multi-station sources for [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) on Windows or macOS: within the same LAN the host stores and plays back mobile footage, and the phone appears under the device name assigned by the host. The wider system also includes the [extension market and extension API](https://gitee.com/PackingProof/PackingProof-Extensions), the [KDZS shipping-assistant integration script](https://gitee.com/PackingProof/PackingProof-KDZS) and the [QQ bot](https://gitee.com/PackingProof/PackingProof-QQBot); those three run on the Windows desktop only, while the macOS build is a save host / viewer without the extension API.
+PackingProof Mobile is one of the multi-station sources for [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop) ([Gitee mirror](https://gitee.com/PackingProof/PackingProof-Desktop)) on Windows or macOS: within the same LAN the host stores and plays back mobile footage, and the phone appears under the device name assigned by the host. The wider system also includes the [extension market and extension API](https://gitee.com/PackingProof/PackingProof-Extensions) ([GitHub](https://github.com/PackingProof/PackingProof-Extensions)), the [KDZS shipping-assistant integration script](https://gitee.com/PackingProof/PackingProof-KDZS) ([GitHub](https://github.com/PackingProof/PackingProof-KDZS)) and the [QQ bot](https://gitee.com/PackingProof/PackingProof-QQBot) ([GitHub](https://github.com/PackingProof/PackingProof-QQBot)); those three run on the Windows desktop only, while the macOS build is a save host / viewer without the extension API.
+
+When GitHub is slow or unreachable, the full desktop installer is also mirrored on [Baidu Netdisk](https://pan.baidu.com/s/1B9L9l19ZkjtNpK_9rVZxbw?pwd=6666) (access code 6666).
 
 ## How to Use
 
@@ -105,7 +115,7 @@ For computer backup or spoken order alerts, keep the phone and computer on the s
 
 ## Platform Builds
 
-- **Android**: download the signed ARM64 APK from GitHub Releases
+- **Android**: download the signed ARM64 APK from GitHub Releases or Gitee Releases
 - **iOS**: install TestFlight, then open the beta link to join
 
 ## Privacy
