@@ -547,7 +547,7 @@ void main() {
     expect(controller.phase, PackingSessionPhase.ready);
     expect(camera.lastMode, 'alternating');
     expect(controller.takeCapabilityNoticeForDisplay(), isNotNull);
-    expect(controller.capabilityStatusText, contains('预览+录像'));
+    expect(controller.capabilityStatusText, contains('仅预览'));
     expect(controller.capabilityProbedAtMs, greaterThan(0));
 
     // 未工作时完成本单是安全的空操作。
@@ -556,7 +556,7 @@ void main() {
     expect(controller.isWorking, isFalse);
   });
 
-  test('手动选择工作模式即时下发并持久化，切回自动恢复默认', () async {
+  test('手动选择工作模式即时下发，但不跨重启保留', () async {
     await controller.initialize();
 
     await controller.setCameraCapabilityPreference(
@@ -569,10 +569,6 @@ void main() {
     );
     expect(controller.capabilityMode, CameraCapabilityMode.alternating);
     expect(camera.lastMode, 'alternating');
-    expect(
-      (await repository.loadSettings()).cameraCapabilityPreference,
-      CameraCapabilityPreference.alternating,
-    );
 
     await controller.setCameraCapabilityPreference(
       CameraCapabilityPreference.auto,
@@ -582,15 +578,15 @@ void main() {
       controller.cameraCapabilityPreference,
       CameraCapabilityPreference.auto,
     );
-    expect(
-      (await repository.loadSettings()).cameraCapabilityPreference,
-      CameraCapabilityPreference.auto,
-    );
   });
 
-  test('手动锁定的模式在新会话启动时直接下发给原生相机', () async {
+  test('工作模式不记忆：新会话一律回到自动', () async {
     await controller.initialize();
     await controller.setCameraCapabilityPreference(
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(
+      controller.cameraCapabilityPreference,
       CameraCapabilityPreference.encoderAnalysis,
     );
 
@@ -614,11 +610,8 @@ void main() {
 
     await second.initialize();
 
-    expect(
-      second.cameraCapabilityPreference,
-      CameraCapabilityPreference.encoderAnalysis,
-    );
-    expect(camera.lastInitializeMode, 'encoder_analysis');
+    expect(second.cameraCapabilityPreference, CameraCapabilityPreference.auto);
+    expect(camera.lastInitializeMode, 'unverified');
   });
 
   test('缓存命中时不再重复探测', () async {

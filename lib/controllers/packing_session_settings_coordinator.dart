@@ -31,8 +31,14 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
   @override
   int _minimumBarcodeLength = AppSettings.defaultMinimumBarcodeLength;
   int _historyPageSize = AppSettings.defaultHistoryPageSize;
+  @override
+  bool _scanBeepEnabled = false;
+  @override
+  bool _scanQrCodes = false;
 
   bool get orderSpeechEnabled => _orderSpeechEnabled;
+  bool get scanBeepEnabled => _scanBeepEnabled;
+  bool get scanQrCodes => _scanQrCodes;
   bool get manualTrackingValidationEnabled => _manualTrackingValidationEnabled;
 
   Future<void> setManualTrackingValidationEnabled(bool enabled) async {
@@ -40,6 +46,20 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
     _manualTrackingValidationEnabled = enabled;
     notifyListeners();
     await _repository.saveManualTrackingValidationEnabled(enabled);
+  }
+
+  Future<void> setScanBeepEnabled(bool enabled) async {
+    if (_scanBeepEnabled == enabled) return;
+    _scanBeepEnabled = enabled;
+    notifyListeners();
+    await _repository.saveScanBeepEnabled(enabled);
+  }
+
+  Future<void> setScanQrCodes(bool enabled) async {
+    if (_scanQrCodes == enabled) return;
+    _scanQrCodes = enabled;
+    notifyListeners();
+    await _repository.saveScanQrCodes(enabled);
   }
 
   Future<void> setWorkMode(WorkMode mode) async {

@@ -898,7 +898,7 @@ void main() {
     expect(_countOccurrences(updated, '"kind":"app_upgrade"'), 1);
   });
 
-  test('任意状态识别条码都会触发独立滴声且同码不重复', () async {
+  test('扫码提示音默认关闭，打开后识别条码才响且同码不重复', () async {
     final _FakeSpeechSink speech = _FakeSpeechSink();
     final PackingSessionController controller = PackingSessionController(
       repository: testRepository(root),
@@ -910,6 +910,13 @@ void main() {
     );
 
     trackController(controller);
+    // 默认关闭：识别到条码也不响
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(value: 'CLEAR', area: 100),
+    ]);
+    expect(speech.beepCount, 0);
+
+    await controller.setScanBeepEnabled(true);
     controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
       const NativeBarcodeCandidate(value: 'CLEAR', area: 100),
     ]);
@@ -944,6 +951,7 @@ void main() {
     );
 
     trackController(controller);
+    await controller.setScanBeepEnabled(true);
     controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
       const NativeBarcodeCandidate(value: 'BACK', area: 100),
     ]);

@@ -18,6 +18,8 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   RecordingOperationMode get _operationMode;
   set _operationMode(RecordingOperationMode value);
   int get _minimumBarcodeLength;
+  bool get _scanBeepEnabled;
+  bool get _scanQrCodes;
   Duration get _analysisInterval;
   bool get _pairingScanActive;
   bool get _pairingBusy;
@@ -128,7 +130,10 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     if (candidates.isEmpty) return;
     final bool allSilent = candidates.every(
       (RejectedBarcodeCandidate candidate) =>
-          !BarcodeCandidatePolicy.acknowledgesScanFeedback(candidate.format),
+          !BarcodeCandidatePolicy.acknowledgesScanFeedback(
+            candidate.format,
+            allowQrCodes: _scanQrCodes,
+          ),
     );
     if (!allSilent) return;
     final RejectedBarcodeCandidate largest = candidates.reduce(
@@ -157,6 +162,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
             largest.value,
             format: largest.format,
             minimumLength: _minimumBarcodeLength,
+            allowQrCodes: _scanQrCodes,
           )?.name,
           'count': candidates.length,
           // 上次写盘以来（含本帧）被静默忽略的帧数，节流掉的帧不会凭空消失。
@@ -167,14 +173,16 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   }
 
   void _processNativeBarcodeFrame(List<NativeBarcodeCandidate> candidates) {
-    if (_recognizedBeepPolicy.shouldBeep(
-      candidates.map(
-        (NativeBarcodeCandidate candidate) =>
-            (value: candidate.value, format: candidate.format),
-      ),
-      // 除配对扫码外都不为二维码/商品码出声：它们不是可用单号。
-      skipSilentFormats: !_pairingScanActive,
-    )) {
+    if (_scanBeepEnabled &&
+        _recognizedBeepPolicy.shouldBeep(
+          candidates.map(
+            (NativeBarcodeCandidate candidate) =>
+                (value: candidate.value, format: candidate.format),
+          ),
+          // 除配对扫码外都不为二维码/商品码出声：它们不是可用单号。
+          skipSilentFormats: !_pairingScanActive,
+          allowQrCodes: _scanQrCodes,
+        )) {
       _speechService.playShortBeep();
       unawaited(
         _runtimeLog.log(
@@ -231,6 +239,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         if (BarcodeCandidatePolicy.isValidForHistoryScan(
           candidate.value,
           format: candidate.format,
+          allowQrCodes: _scanQrCodes,
         )) {
           match = candidate;
           break;
@@ -288,6 +297,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         (c) => (value: c.value, area: c.area.toDouble(), format: c.format),
       ),
       minimumLength: _minimumBarcodeLength,
+      allowQrCodes: _scanQrCodes,
     );
     final DateTime now = DateTime.now();
     if (_capabilityMode == CameraCapabilityMode.alternating &&
@@ -304,6 +314,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       now: now,
       lastCode: _lastRejectedBarcodeCode,
       lastShownAt: _lastRejectedBarcodeAt,
+      allowQrCodes: _scanQrCodes,
     );
     if (rejected != null) {
       _logRejectedBarcode(rejected);
@@ -366,6 +377,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         ),
       ),
       minimumLength: _minimumBarcodeLength,
+      allowQrCodes: _scanQrCodes,
     );
     if (validCode != null &&
         BarcodeCandidatePolicy.mobileCommandFor(validCode) != null) {
@@ -467,6 +479,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
           ),
         ),
         minimumLength: _minimumBarcodeLength,
+        allowQrCodes: _scanQrCodes,
       );
 
       final RejectedBarcodeDecision? rejected = RejectedBarcodePolicy.decide(
@@ -475,6 +488,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         now: now,
         lastCode: _lastRejectedBarcodeCode,
         lastShownAt: _lastRejectedBarcodeAt,
+        allowQrCodes: _scanQrCodes,
       );
       if (rejected != null) {
         _logRejectedBarcode(rejected);
@@ -796,6 +810,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         lastShownAt: _lastRejectedBarcodeAt,
         // 摄像头提示需要节流，提交结果不能因重复回车被节流而放行。
         throttle: false,
+        allowQrCodes: _scanQrCodes,
       );
       if (rejected != null) {
         _showRejectedBarcodeNotice(rejected, now);

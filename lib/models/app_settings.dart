@@ -1,6 +1,5 @@
 import 'backup_retention_policy.dart';
 import 'backup_storage_policy.dart';
-import 'camera_capability.dart';
 import 'work_mode.dart';
 import 'storage_notice.dart';
 import 'recording_video_codec.dart';
@@ -25,7 +24,6 @@ class AppSettings {
     this.manualTrackingValidationEnabled = true,
     this.nativeRecordingFallback = false,
     this.cameraCapabilityState,
-    this.cameraCapabilityPreference = CameraCapabilityPreference.auto,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.recordingOrientation = RecordingOrientation.portrait,
@@ -45,6 +43,8 @@ class AppSettings {
     this.storageNoticeState = const StorageNoticeState(),
     this.minimumBarcodeLength = defaultMinimumBarcodeLength,
     this.historyPageSize = defaultHistoryPageSize,
+    this.scanBeepEnabled = false,
+    this.scanQrCodes = false,
     this.extraValues = const <String, Object?>{},
   });
 
@@ -58,7 +58,6 @@ class AppSettings {
       ..remove('nativeRecordingFallback')
       ..remove('manualTrackingValidationEnabled')
       ..remove('cameraCapabilityState')
-      ..remove('cameraCapabilityPreference')
       ..remove('preferredVideoCodec')
       ..remove('recordingSpec')
       ..remove('recordingOrientation')
@@ -77,6 +76,8 @@ class AppSettings {
     extraValues.remove('storageNoticeState');
     extraValues.remove('minimumBarcodeLength');
     extraValues.remove('historyPageSize');
+    extraValues.remove('scanBeepEnabled');
+    extraValues.remove('scanQrCodes');
     final Set<int> hiddenRemoteRecordingIds =
         ((json['hiddenRemoteRecordingIds'] as List<Object?>?) ?? const [])
             .whereType<num>()
@@ -111,9 +112,6 @@ class AppSettings {
               json['cameraCapabilityState']! as Map<Object?, Object?>,
             )
           : null,
-      cameraCapabilityPreference: cameraCapabilityPreferenceFromStorage(
-        json['cameraCapabilityPreference'],
-      ),
       preferredVideoCodec: recordingVideoCodecFromStorage(
         json['preferredVideoCodec'],
       ),
@@ -169,6 +167,12 @@ class AppSettings {
             ? (json['historyPageSize']! as num).toInt()
             : defaultHistoryPageSize,
       ),
+      scanBeepEnabled: json['scanBeepEnabled'] is bool
+          ? json['scanBeepEnabled']! as bool
+          : false,
+      scanQrCodes: json['scanQrCodes'] is bool
+          ? json['scanQrCodes']! as bool
+          : false,
       extraValues: extraValues,
     );
   }
@@ -201,7 +205,6 @@ class AppSettings {
   final bool manualTrackingValidationEnabled;
   final bool nativeRecordingFallback;
   final Map<String, Object?>? cameraCapabilityState;
-  final CameraCapabilityPreference cameraCapabilityPreference;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
   final RecordingOrientation recordingOrientation;
@@ -221,6 +224,12 @@ class AppSettings {
   final StorageNoticeState storageNoticeState;
   final int minimumBarcodeLength;
   final int historyPageSize;
+
+  /// 扫码提示音，默认关闭：现场多数情况不需要出声。
+  final bool scanBeepEnabled;
+
+  /// 是否把二维码也当作面单号识别，默认关闭（只认一维条码）。
+  final bool scanQrCodes;
   final Map<String, Object?> extraValues;
 
   AppSettings copyWith({
@@ -233,7 +242,6 @@ class AppSettings {
     bool? manualTrackingValidationEnabled,
     bool? nativeRecordingFallback,
     Map<String, Object?>? cameraCapabilityState,
-    CameraCapabilityPreference? cameraCapabilityPreference,
     RecordingVideoCodec? preferredVideoCodec,
     RecordingSpecPreset? recordingSpec,
     RecordingOrientation? recordingOrientation,
@@ -253,6 +261,8 @@ class AppSettings {
     StorageNoticeState? storageNoticeState,
     int? minimumBarcodeLength,
     int? historyPageSize,
+    bool? scanBeepEnabled,
+    bool? scanQrCodes,
   }) {
     return AppSettings(
       workMode: workMode ?? this.workMode,
@@ -268,8 +278,6 @@ class AppSettings {
           nativeRecordingFallback ?? this.nativeRecordingFallback,
       cameraCapabilityState:
           cameraCapabilityState ?? this.cameraCapabilityState,
-      cameraCapabilityPreference:
-          cameraCapabilityPreference ?? this.cameraCapabilityPreference,
       preferredVideoCodec: preferredVideoCodec ?? this.preferredVideoCodec,
       recordingSpec: recordingSpec ?? this.recordingSpec,
       recordingOrientation: recordingOrientation ?? this.recordingOrientation,
@@ -297,6 +305,8 @@ class AppSettings {
       storageNoticeState: storageNoticeState ?? this.storageNoticeState,
       minimumBarcodeLength: minimumBarcodeLength ?? this.minimumBarcodeLength,
       historyPageSize: historyPageSize ?? this.historyPageSize,
+      scanBeepEnabled: scanBeepEnabled ?? this.scanBeepEnabled,
+      scanQrCodes: scanQrCodes ?? this.scanQrCodes,
       extraValues: extraValues,
     );
   }
@@ -312,7 +322,6 @@ class AppSettings {
     'manualTrackingValidationEnabled': manualTrackingValidationEnabled,
     'nativeRecordingFallback': nativeRecordingFallback,
     'cameraCapabilityState': cameraCapabilityState,
-    'cameraCapabilityPreference': cameraCapabilityPreference.storageValue,
     'preferredVideoCodec': preferredVideoCodec.storageValue,
     'recordingSpec': recordingSpec.storageValue,
     'recordingOrientation': recordingOrientation.storageValue,
@@ -332,5 +341,7 @@ class AppSettings {
     'storageNoticeState': storageNoticeState.toJson(),
     'minimumBarcodeLength': minimumBarcodeLength,
     'historyPageSize': historyPageSize,
+    'scanBeepEnabled': scanBeepEnabled,
+    'scanQrCodes': scanQrCodes,
   };
 }

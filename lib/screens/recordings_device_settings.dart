@@ -153,6 +153,7 @@ class _ScanSettingsScreen extends StatefulWidget {
     required this.workMode,
     required this.onWorkModeChanged,
     this.cameraCapability,
+    this.scanPreferences,
     required this.minimumBarcodeLength,
     required this.speechEnabled,
     required this.onSpeechEnabledChanged,
@@ -166,6 +167,7 @@ class _ScanSettingsScreen extends StatefulWidget {
   final WorkMode workMode;
   final ValueChanged<WorkMode> onWorkModeChanged;
   final CameraCapabilitySettings? cameraCapability;
+  final ScanPreferenceSettings? scanPreferences;
   final int minimumBarcodeLength;
   final ValueChanged<int>? onMinimumBarcodeLengthChanged;
   final bool speechEnabled;
@@ -183,6 +185,8 @@ class _ScanSettingsScreenState extends State<_ScanSettingsScreen> {
   late WorkMode _workMode = widget.workMode;
   late CameraCapabilityPreference _cameraPreference =
       widget.cameraCapability?.preference ?? CameraCapabilityPreference.auto;
+  late bool _scanQrCodes = widget.scanPreferences?.scanQrCodes ?? false;
+  late bool _scanBeepEnabled = widget.scanPreferences?.scanBeepEnabled ?? false;
   late int _minimumBarcodeLength = widget.minimumBarcodeLength;
   late bool _speechEnabled = widget.speechEnabled;
   late bool _maxVolumeEnabled = widget.maxVolumeEnabled;
@@ -234,6 +238,31 @@ class _ScanSettingsScreenState extends State<_ScanSettingsScreen> {
                   widget.onWorkModeChanged(value);
                 },
               ),
+              if (widget.scanPreferences
+                  case final ScanPreferenceSettings prefs) ...<Widget>[
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                _SettingSwitch(
+                  key: const Key('scan-qr-codes-switch'),
+                  title: '识别二维码',
+                  subtitle: '二维码也能当单号',
+                  value: _scanQrCodes,
+                  onChanged: (bool value) {
+                    setState(() => _scanQrCodes = value);
+                    prefs.onScanQrCodesChanged(value);
+                  },
+                ),
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                _SettingSwitch(
+                  key: const Key('scan-beep-switch'),
+                  title: '扫码提示音',
+                  subtitle: '识别到条码时响一声',
+                  value: _scanBeepEnabled,
+                  onChanged: (bool value) {
+                    setState(() => _scanBeepEnabled = value);
+                    prefs.onScanBeepEnabledChanged(value);
+                  },
+                ),
+              ],
               if (widget.onMinimumBarcodeLengthChanged != null) ...<Widget>[
                 Divider(height: 1, thickness: 1, color: colors.outlineVariant),
                 _MinimumBarcodeLengthSettings(
@@ -797,6 +826,72 @@ class CameraCapabilitySettings {
   onPreferenceChanged;
   final bool showCard;
   final VoidCallback? onRetryProbe;
+}
+
+/// 扫码相关开关（是否扫二维码、扫码提示音）的展示数据与回调。
+class ScanPreferenceSettings {
+  const ScanPreferenceSettings({
+    required this.scanQrCodes,
+    required this.scanBeepEnabled,
+    required this.onScanQrCodesChanged,
+    required this.onScanBeepEnabledChanged,
+  });
+
+  final bool scanQrCodes;
+  final bool scanBeepEnabled;
+  final ValueChanged<bool> onScanQrCodesChanged;
+  final ValueChanged<bool> onScanBeepEnabledChanged;
+}
+
+class _SettingSwitch extends StatelessWidget {
+  const _SettingSwitch({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(value: value, onChanged: onChanged),
+        ],
+      ),
+    );
+  }
 }
 
 /// 「工作模式」区块：三路 / 两路的选择，附当前能力状态与重新检测入口。
@@ -1417,6 +1512,16 @@ extension _RecordingsSettingsView on _RecordingsScreenState {
             builder: (_) => _ScanSettingsScreen(
               workMode: _workMode,
               onWorkModeChanged: _setWorkMode,
+              scanPreferences: ScanPreferenceSettings(
+                scanQrCodes: widget.scanQrCodes,
+                scanBeepEnabled: widget.scanBeepEnabled,
+                onScanQrCodesChanged: (bool value) {
+                  unawaited(widget.onScanQrCodesChanged?.call(value));
+                },
+                onScanBeepEnabledChanged: (bool value) {
+                  unawaited(widget.onScanBeepEnabledChanged?.call(value));
+                },
+              ),
               cameraCapability:
                   widget.capabilities?.supports(
                         PlatformCapability.cameraCapabilityNegotiation,

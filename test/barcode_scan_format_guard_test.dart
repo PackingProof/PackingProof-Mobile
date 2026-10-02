@@ -55,6 +55,40 @@ void main() {
   ];
 
   group('码制契约', () {
+    test('打开「扫二维码」后二维码才能当单号，默认仍然拒绝', () {
+      for (final String format in matrixFormats) {
+        expect(
+          BarcodeCandidatePolicy.isValidForWorkScan(
+            'SF6048285539252',
+            format: format,
+          ),
+          isFalse,
+          reason: '$format 默认不应参与面单识别',
+        );
+        expect(
+          BarcodeCandidatePolicy.isValidForWorkScan(
+            'SF6048285539252',
+            format: format,
+            allowQrCodes: true,
+          ),
+          isTrue,
+          reason: '打开开关后 $format 应可作为单号',
+        );
+        expect(
+          BarcodeCandidatePolicy.acknowledgesScanFeedback(
+            format,
+            allowQrCodes: true,
+          ),
+          isTrue,
+          reason: '打开开关后 $format 不再静默',
+        );
+        expect(
+          BarcodeCandidatePolicy.acknowledgesScanFeedback(format),
+          isFalse,
+        );
+      }
+    });
+
     test('面单识别只接受这一组一维码制，不得新增', () {
       expect(
         BarcodeCandidatePolicy.workScanFormats,

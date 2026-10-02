@@ -249,25 +249,6 @@ void main() {
       );
     });
 
-    test('存储解析：未知值回到自动', () {
-      expect(
-        cameraCapabilityPreferenceFromStorage('alternating'),
-        CameraCapabilityPreference.alternating,
-      );
-      expect(
-        cameraCapabilityPreferenceFromStorage('ENCODER_ANALYSIS'),
-        CameraCapabilityPreference.encoderAnalysis,
-      );
-      expect(
-        cameraCapabilityPreferenceFromStorage('unsupported'),
-        CameraCapabilityPreference.auto,
-      );
-      expect(
-        cameraCapabilityPreferenceFromStorage(null),
-        CameraCapabilityPreference.auto,
-      );
-    });
-
     test('手动模式的文案与能力模式一致，且不以句号结尾', () {
       for (final CameraCapabilityPreference preference
           in CameraCapabilityPreference.values) {
@@ -284,10 +265,19 @@ void main() {
         CameraCapabilityMode.encoderAnalysis.description,
       );
       // 文案面向小白：直接写“同时能做什么”
-      expect(CameraCapabilityPreference.full.label, '预览+扫码+录像');
-      expect(CameraCapabilityPreference.encoderAnalysis.label, '扫码+录像');
-      expect(CameraCapabilityPreference.alternating.label, '预览+录像');
+      expect(CameraCapabilityPreference.full.label, '预览+扫码');
+      expect(CameraCapabilityPreference.encoderAnalysis.label, '仅扫码');
+      expect(CameraCapabilityPreference.alternating.label, '仅预览');
       expect(CameraCapabilityPreference.auto.label, '自动（推荐）');
+      // 录制是必然发生的，标签里不再重复写“录像”，只说清预览和扫码能不能用
+      for (final CameraCapabilityPreference preference
+          in CameraCapabilityPreference.values) {
+        expect(
+          preference.label,
+          isNot(contains('录像')),
+          reason: preference.label,
+        );
+      }
     });
 
     test('能力文案不出现三路、两路这类黑话', () {

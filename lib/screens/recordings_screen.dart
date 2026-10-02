@@ -177,6 +177,10 @@ class RecordingsScreen extends StatefulWidget {
     this.onRefreshHistory,
     this.onManagingChanged,
     this.cameraCapability,
+    this.scanBeepEnabled = false,
+    this.scanQrCodes = false,
+    this.onScanBeepEnabledChanged,
+    this.onScanQrCodesChanged,
     this.unbackedRetention = UnbackedRetentionPolicy.days30,
     this.backedRetention = BackedRetentionPolicy.days7,
     this.returnUnbackedRetention = UnbackedRetentionPolicy.days3,
@@ -259,6 +263,10 @@ class RecordingsScreen extends StatefulWidget {
   final Future<void> Function()? onRefreshHistory;
   final ValueChanged<bool>? onManagingChanged;
   final CameraCapabilitySettings? cameraCapability;
+  final bool scanBeepEnabled;
+  final bool scanQrCodes;
+  final Future<void> Function(bool enabled)? onScanBeepEnabledChanged;
+  final Future<void> Function(bool enabled)? onScanQrCodesChanged;
   final UnbackedRetentionPolicy unbackedRetention;
   final BackedRetentionPolicy backedRetention;
   final UnbackedRetentionPolicy returnUnbackedRetention;

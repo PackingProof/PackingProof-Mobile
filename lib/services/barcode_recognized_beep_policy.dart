@@ -16,11 +16,15 @@ class BarcodeRecognizedBeepPolicy {
   bool shouldBeep(
     Iterable<({String value, String? format})> candidates, {
     bool skipSilentFormats = false,
+    bool allowQrCodes = false,
   }) {
     String? visible;
     for (final ({String value, String? format}) candidate in candidates) {
       if (skipSilentFormats &&
-          !BarcodeCandidatePolicy.acknowledgesScanFeedback(candidate.format)) {
+          !BarcodeCandidatePolicy.acknowledgesScanFeedback(
+            candidate.format,
+            allowQrCodes: allowQrCodes,
+          )) {
         continue;
       }
       final String normalized = _normalize(candidate.value);

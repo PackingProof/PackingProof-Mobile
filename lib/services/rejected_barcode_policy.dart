@@ -45,12 +45,16 @@ class RejectedBarcodePolicy {
     String? lastCode,
     DateTime? lastShownAt,
     bool throttle = true,
+    bool allowQrCodes = false,
   }) {
     // 先剔除静默码制，避免二维码决定本帧的提示内容。
     final List<RejectedBarcodeCandidate> visible = candidates
         .where(
           (RejectedBarcodeCandidate candidate) =>
-              BarcodeCandidatePolicy.acknowledgesScanFeedback(candidate.format),
+              BarcodeCandidatePolicy.acknowledgesScanFeedback(
+                candidate.format,
+                allowQrCodes: allowQrCodes,
+              ),
         )
         .toList(growable: false);
     if (visible.isEmpty) {
@@ -63,6 +67,7 @@ class RejectedBarcodePolicy {
             candidate.value,
             format: candidate.format,
             minimumLength: minimumLength,
+            allowQrCodes: allowQrCodes,
           ),
     );
     if (hasValid) {
@@ -91,10 +96,11 @@ class RejectedBarcodePolicy {
           largest.value,
           format: largest.format,
           minimumLength: minimumLength,
+          allowQrCodes: allowQrCodes,
         )!;
     return RejectedBarcodeDecision(
       code: code,
-      message: _messageFor(largest, minimumLength),
+      message: _messageFor(largest, minimumLength, allowQrCodes: allowQrCodes),
       reason: reason,
       format: largest.format,
     );
@@ -102,14 +108,16 @@ class RejectedBarcodePolicy {
 
   static String _messageFor(
     RejectedBarcodeCandidate candidate,
-    int minimumLength,
-  ) {
+    int minimumLength, {
+    bool allowQrCodes = false,
+  }) {
     final String code = BarcodeCandidatePolicy.normalize(candidate.value);
     final WorkScanRejection? reason =
         BarcodeCandidatePolicy.rejectionForWorkScan(
           candidate.value,
           format: candidate.format,
           minimumLength: minimumLength,
+          allowQrCodes: allowQrCodes,
         );
     if (reason == WorkScanRejection.tooShort) {
       return '条码长度不符：实际 ${code.length} 位（需至少 $minimumLength 位），已忽略';

@@ -1124,7 +1124,7 @@ void main() {
     await tester.ensureVisible(dropdown);
     await tester.tap(dropdown);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('预览+录像').last);
+    await tester.tap(find.text('仅预览').last);
     await tester.pumpAndSettle();
 
     expect(selected, CameraCapabilityPreference.alternating);
@@ -1133,6 +1133,65 @@ void main() {
       find.text(CameraCapabilityPreference.alternating.description),
       findsOneWidget,
     );
+  });
+
+  testWidgets('扫二维码与扫码提示音开关默认关闭并可切换', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    bool? qrChanged;
+    bool? beepChanged;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          scanQrCodes: false,
+          scanBeepEnabled: false,
+          onScanQrCodesChanged: (bool value) async => qrChanged = value,
+          onScanBeepEnabledChanged: (bool value) async => beepChanged = value,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await _openSettingsEntry(tester, 'scan-settings-open');
+
+    final Finder qrSwitch = find.byKey(const Key('scan-qr-codes-switch'));
+    final Finder beepSwitch = find.byKey(const Key('scan-beep-switch'));
+    expect(qrSwitch, findsOneWidget);
+    expect(beepSwitch, findsOneWidget);
+
+    Switch switchOf(Finder row) => tester.widget<Switch>(
+      find.descendant(of: row, matching: find.byType(Switch)),
+    );
+    expect(switchOf(qrSwitch).value, isFalse);
+    expect(switchOf(beepSwitch).value, isFalse);
+
+    await tester.ensureVisible(qrSwitch);
+    await tester.tap(
+      find.descendant(of: qrSwitch, matching: find.byType(Switch)),
+    );
+    await tester.pump();
+    expect(qrChanged, isTrue);
+    expect(switchOf(qrSwitch).value, isTrue);
+
+    await tester.ensureVisible(beepSwitch);
+    await tester.tap(
+      find.descendant(of: beepSwitch, matching: find.byType(Switch)),
+    );
+    await tester.pump();
+    expect(beepChanged, isTrue);
   });
 
   testWidgets('录制声音默认开启且可关闭', (WidgetTester tester) async {

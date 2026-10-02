@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/backup_retention_policy.dart';
 import 'package:packing_proof_mobile/models/backup_storage_policy.dart';
 import 'package:packing_proof_mobile/models/app_settings.dart';
-import 'package:packing_proof_mobile/models/camera_capability.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/recording_spec.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
@@ -368,40 +367,24 @@ void main() {
     expect(settings.backedRetention, BackedRetentionPolicy.keepForever);
   });
 
-  test('摄像头工作模式按设置保存与恢复', () async {
+  test('扫二维码与扫码提示音默认关闭且可持久化', () async {
     final SessionRepository repository = testRepository(root);
 
-    expect(
-      (await repository.loadSettings()).cameraCapabilityPreference,
-      CameraCapabilityPreference.auto,
-    );
+    final AppSettings defaults = await repository.loadSettings();
+    expect(defaults.scanQrCodes, isFalse);
+    expect(defaults.scanBeepEnabled, isFalse);
 
-    await repository.saveCameraCapabilityPreference(
-      CameraCapabilityPreference.alternating,
-    );
+    await repository.saveScanQrCodes(true);
+    await repository.saveScanBeepEnabled(true);
 
-    expect(
-      (await repository.loadSettings()).cameraCapabilityPreference,
-      CameraCapabilityPreference.alternating,
-    );
+    final AppSettings saved = await repository.loadSettings();
+    expect(saved.scanQrCodes, isTrue);
+    expect(saved.scanBeepEnabled, isTrue);
     final Map<String, Object?> persisted = Map<String, Object?>.from(
       jsonDecode(await File('${root.path}/settings.json').readAsString())
           as Map<Object?, Object?>,
     );
-    expect(persisted['cameraCapabilityPreference'], 'alternating');
-  });
-
-  test('摄像头工作模式存了未知值时回到自动', () async {
-    await File('${root.path}/settings.json').writeAsString(
-      jsonEncode(<String, Object>{
-        'cameraCapabilityPreference': 'something-new',
-      }),
-    );
-    final SessionRepository repository = testRepository(root);
-
-    expect(
-      (await repository.loadSettings()).cameraCapabilityPreference,
-      CameraCapabilityPreference.auto,
-    );
+    expect(persisted['scanQrCodes'], isTrue);
+    expect(persisted['scanBeepEnabled'], isTrue);
   });
 }

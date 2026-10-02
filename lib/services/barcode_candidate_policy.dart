@@ -45,6 +45,15 @@ class BarcodeCandidatePolicy {
     'itf',
   };
 
+  /// 二维码码制。默认不参与面单识别；用户打开「扫二维码」后才接受，
+  /// 用于面单上只有二维码、没有一维条码的场景。
+  static const Set<String> qrFormats = <String>{
+    'qr',
+    'dataMatrix',
+    'pdf417',
+    'aztec',
+  };
+
   /// 工作识别中**完全静默**、不给任何用户反馈的码制。
   ///
   /// 面单二维码在等待条形码时一直停在画面里，每帧都提示会淹没真正的错误提示，
@@ -65,8 +74,14 @@ class BarcodeCandidatePolicy {
   /// 这个码制是否需要给操作员可见/可听的反馈。
   ///
   /// [format] 为空表示调用点没有提供码制信息（例如手动输入），按需要反馈处理。
-  static bool acknowledgesScanFeedback(String? format) =>
-      format == null || !silentWorkScanFormats.contains(format);
+  static bool acknowledgesScanFeedback(
+    String? format, {
+    bool allowQrCodes = false,
+  }) {
+    if (format == null) return true;
+    if (allowQrCodes && qrFormats.contains(format)) return true;
+    return !silentWorkScanFormats.contains(format);
+  }
 
   static String normalize(String? value) {
     return normalizeRaw(value);
@@ -82,6 +97,7 @@ class BarcodeCandidatePolicy {
   static String? selectForWorkScan(
     Iterable<({String value, double area, String? format})> candidates, {
     required int minimumLength,
+    bool allowQrCodes = false,
   }) {
     final ranked = candidates
         .where(
@@ -89,6 +105,7 @@ class BarcodeCandidatePolicy {
             candidate.value,
             format: candidate.format,
             minimumLength: minimumLength,
+            allowQrCodes: allowQrCodes,
           ),
         )
         .toList();
@@ -156,11 +173,13 @@ class BarcodeCandidatePolicy {
     String? value, {
     String? format,
     int minimumLength = defaultMinimumLength,
+    bool allowQrCodes = false,
   }) =>
       rejectionForWorkScan(
         value,
         format: format,
         minimumLength: minimumLength,
+        allowQrCodes: allowQrCodes,
       ) ==
       null;
 
@@ -168,11 +187,13 @@ class BarcodeCandidatePolicy {
     String? value, {
     String? format,
     int minimumLength = defaultMinimumLength,
+    bool allowQrCodes = false,
   }) =>
       rejectionForShippingScan(
         value,
         format: format,
         minimumLength: minimumLength,
+        allowQrCodes: allowQrCodes,
       ) ==
       null;
 
@@ -181,11 +202,13 @@ class BarcodeCandidatePolicy {
     String? value, {
     String? format,
     int minimumLength = defaultMinimumLength,
+    bool allowQrCodes = false,
   }) {
     return rejectionForShippingScan(
       value,
       format: format,
       minimumLength: minimumLength,
+      allowQrCodes: allowQrCodes,
     );
   }
 
@@ -193,6 +216,7 @@ class BarcodeCandidatePolicy {
     String? value, {
     String? format,
     int minimumLength = defaultMinimumLength,
+    bool allowQrCodes = false,
   }) {
     final String normalized = normalize(value);
     if (!isValid(value)) {
@@ -205,6 +229,9 @@ class BarcodeCandidatePolicy {
       return WorkScanRejection.productFormat;
     }
     if (workScanFormats.contains(format)) {
+      return null;
+    }
+    if (allowQrCodes && qrFormats.contains(format)) {
       return null;
     }
     return WorkScanRejection.unsupportedFormat;

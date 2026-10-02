@@ -104,7 +104,8 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
           settings.manualTrackingValidationEnabled;
       _nativeRecordingFallback = settings.nativeRecordingFallback;
       _capabilityState = settings.cameraCapabilityState;
-      _capabilityPreference = settings.cameraCapabilityPreference;
+      _scanBeepEnabled = settings.scanBeepEnabled;
+      _scanQrCodes = settings.scanQrCodes;
       _preferredVideoCodec = settings.preferredVideoCodec;
       _recordingSpec = settings.recordingSpec;
       _availableRecordingSpecs = const <RecordingSpecPreset>[
@@ -318,11 +319,8 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
     }
     if (isWorking || isBusy || _capabilityProbeRunning) return;
     if (_capabilityPreference != CameraCapabilityPreference.auto) {
-      // 手动锁定会让探测结果无法生效，重新检测即回到自动。
+      // 手动锁定会让探测结果无法生效，重新检测即回到自动（工作模式不跨重启保留）。
       _capabilityPreference = CameraCapabilityPreference.auto;
-      await _repository.saveCameraCapabilityPreference(
-        CameraCapabilityPreference.auto,
-      );
     }
     _errorMessage = null;
     _setPhase(PackingSessionPhase.initializing);
@@ -355,7 +353,6 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       await _nativeCamera?.setCapabilityMode(lockedMode.wireValue);
     }
     notifyListeners();
-    await _repository.saveCameraCapabilityPreference(preference);
   }
 
   void _handleNativeProbeFinished(Map<Object?, Object?> results) {

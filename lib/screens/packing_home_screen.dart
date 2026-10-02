@@ -1176,6 +1176,10 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
               showCard: _controller.showCameraCapabilityCard,
             )
           : null,
+      scanBeepEnabled: _controller.scanBeepEnabled,
+      scanQrCodes: _controller.scanQrCodes,
+      onScanBeepEnabledChanged: _controller.setScanBeepEnabled,
+      onScanQrCodesChanged: _controller.setScanQrCodes,
       onLoadRemoteRecordings: _controller.fetchRemoteRecordings,
       onLoadLocalRecordings: _controller.loadLocalRecordings,
       onLoadRemoteRecordingStatuses: _controller.fetchRemoteRecordingStatuses,

@@ -9,7 +9,6 @@ import 'package:path_provider/path_provider.dart';
 import '../models/app_settings.dart';
 import '../models/backup_retention_policy.dart';
 import '../models/backup_storage_policy.dart';
-import '../models/camera_capability.dart';
 import '../models/recording_session.dart';
 import '../models/recording_operation_mode.dart';
 import '../models/recording_spec.dart';
@@ -1015,11 +1014,12 @@ class SessionRepository {
         ),
       );
 
-  Future<void> saveCameraCapabilityPreference(
-    CameraCapabilityPreference preference,
-  ) => _updateSettings(
-    (AppSettings value) =>
-        value.copyWith(cameraCapabilityPreference: preference),
+  Future<void> saveScanBeepEnabled(bool enabled) => _updateSettings(
+    (AppSettings value) => value.copyWith(scanBeepEnabled: enabled),
+  );
+
+  Future<void> saveScanQrCodes(bool enabled) => _updateSettings(
+    (AppSettings value) => value.copyWith(scanQrCodes: enabled),
   );
 
   Future<void> savePreferredVideoCodec(RecordingVideoCodec codec) =>
