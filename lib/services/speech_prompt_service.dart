@@ -22,6 +22,7 @@ abstract interface class SpeechPromptSink {
 
   Future<void> preview();
 
+  /// 扫码识别提示音：由「扫码提示音」开关单独控制，与「语音提示」开关互不影响。
   void playShortBeep();
 
   void resetIncidents();
@@ -214,9 +215,10 @@ class SpeechPromptService implements SpeechPromptSink, DynamicSpeechPromptSink {
 
   @override
   void playShortBeep() {
-    if (_disposed || !_enabled) {
+    if (_disposed) {
       return;
     }
+    // 识别提示音是扫码反馈，不跟「语音提示」开关联动：语音关掉时它照旧响。
     unawaited(_output.playShortBeep());
   }
 

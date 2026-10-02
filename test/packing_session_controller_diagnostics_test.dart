@@ -949,6 +949,13 @@ void main() {
       const NativeBarcodeCandidate(value: 'YT123456789012', area: 200),
     ]);
     expect(speech.beepCount, 3);
+
+    // 关掉「语音提示」后提示音照旧响：两者互不影响
+    await controller.setSpeechEnabled(false);
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(value: 'YT987654321098', area: 200),
+    ]);
+    expect(speech.beepCount, 4);
   });
 
   test('未开始工作时识别指令码立即生效且同码不重复', () async {
@@ -1242,9 +1249,8 @@ class _FakeSpeechSink implements SpeechPromptSink {
 
   @override
   void playShortBeep() {
-    if (enabled) {
-      beepCount++;
-    }
+    // 提示音独立于「语音提示」开关，这里不看 enabled
+    beepCount++;
   }
 
   @override

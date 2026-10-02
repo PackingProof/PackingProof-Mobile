@@ -257,7 +257,7 @@ void main() {
     expect(source.mimeType, 'audio/mpeg');
   });
 
-  test('识别短滴声跟随语音提示开关且不打断播报', () async {
+  test('识别短滴声独立于语音提示开关且不打断播报', () async {
     final _InterruptibleSpeechOutput output = _InterruptibleSpeechOutput();
     final SpeechPromptService service = SpeechPromptService(output: output);
 
@@ -267,7 +267,8 @@ void main() {
 
     await service.setEnabled(false);
     service.playShortBeep();
-    expect(output.shortBeepCount, 1);
+    // 提示音是扫码反馈，关掉语音播报后它照旧响
+    expect(output.shortBeepCount, 2);
     await service.dispose();
   });
 
