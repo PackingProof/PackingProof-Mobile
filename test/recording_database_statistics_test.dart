@@ -221,6 +221,7 @@ void main() {
     );
   });
 
+  // 五万行播种 + 升级播放在慢的 CI 机器上会超过默认 30 秒，和同类的规模测试一样放宽超时。
   test('schema v4 的五万行升级播种准确且常规统计不扫描录像表', () async {
     const int rowCount = 50000;
     final Database legacy = await openDatabase(
@@ -279,7 +280,7 @@ void main() {
     final String plan = (await database.explainLocalStatisticsQueryForTesting())
         .join('\n');
     expect(plan, isNot(contains('recording_sessions')));
-  });
+  }, timeout: const Timeout(Duration(minutes: 2)));
 
   test('升级中断会整体回滚且同版本缺失 trigger 会重新播种修复', () async {
     final Database legacy = await openDatabase(
