@@ -176,11 +176,7 @@ class RecordingsScreen extends StatefulWidget {
     this.onLoadBackupJobsForPaths,
     this.onRefreshHistory,
     this.onManagingChanged,
-    this.capabilityMode,
-    this.capabilityStatusText,
-    this.capabilityProbedAtMs = 0,
-    this.showCameraCapabilityCard = false,
-    this.onRetryCapabilityProbe,
+    this.cameraCapability,
     this.unbackedRetention = UnbackedRetentionPolicy.days30,
     this.backedRetention = BackedRetentionPolicy.days7,
     this.returnUnbackedRetention = UnbackedRetentionPolicy.days3,
@@ -262,11 +258,7 @@ class RecordingsScreen extends StatefulWidget {
   onLoadBackupJobsForPaths;
   final Future<void> Function()? onRefreshHistory;
   final ValueChanged<bool>? onManagingChanged;
-  final CameraCapabilityMode? capabilityMode;
-  final String? capabilityStatusText;
-  final int capabilityProbedAtMs;
-  final bool showCameraCapabilityCard;
-  final VoidCallback? onRetryCapabilityProbe;
+  final CameraCapabilitySettings? cameraCapability;
   final UnbackedRetentionPolicy unbackedRetention;
   final BackedRetentionPolicy backedRetention;
   final UnbackedRetentionPolicy returnUnbackedRetention;

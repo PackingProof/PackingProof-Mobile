@@ -1,45 +1,9 @@
 import 'dart:math' as math;
 
-/// 摄像头工作能力模式。与 Kotlin 的 CameraCapabilityMode 保持一一对应。
-enum CameraCapabilityMode {
-  full,
-  encoderAnalysis,
-  alternating,
-  unsupported,
-  unverified;
+import '../models/camera_capability.dart';
 
-  String get wireValue => switch (this) {
-    CameraCapabilityMode.full => 'full',
-    CameraCapabilityMode.encoderAnalysis => 'encoder_analysis',
-    CameraCapabilityMode.alternating => 'alternating',
-    CameraCapabilityMode.unsupported => 'unsupported',
-    CameraCapabilityMode.unverified => 'unverified',
-  };
-
-  String get label => switch (this) {
-    CameraCapabilityMode.full => '完整模式',
-    CameraCapabilityMode.encoderAnalysis => '兼容两路',
-    CameraCapabilityMode.alternating => '扫码录像轮换',
-    CameraCapabilityMode.unsupported => '不支持',
-    CameraCapabilityMode.unverified => '未完成检测',
-  };
-
-  String get description => switch (this) {
-    CameraCapabilityMode.full => '预览、识别与录像同时进行',
-    CameraCapabilityMode.encoderAnalysis => '录像时预览画面暂停，识别与录像继续工作',
-    CameraCapabilityMode.alternating => '录像时暂停识别，录完一单后点击“完成本单”恢复扫码',
-    CameraCapabilityMode.unsupported => '此设备无法同时预览与识别，暂时无法工作',
-    CameraCapabilityMode.unverified => '设备能力尚未确定，先按常规模式工作，可到设置中重新检测',
-  };
-
-  static CameraCapabilityMode fromWire(Object? value) {
-    final String normalized = '$value'.trim().toLowerCase();
-    for (final CameraCapabilityMode mode in CameraCapabilityMode.values) {
-      if (mode.wireValue == normalized) return mode;
-    }
-    return CameraCapabilityMode.unverified;
-  }
-}
+// 能力模式与用户偏好定义在 models 层，这里继续对外导出，保持既有 import 不变。
+export '../models/camera_capability.dart';
 
 /// 单个探针阶段的原始结果（原生上报，不含阈值判断）。
 class CameraProbePhase {

@@ -1,5 +1,6 @@
 import 'backup_retention_policy.dart';
 import 'backup_storage_policy.dart';
+import 'camera_capability.dart';
 import 'work_mode.dart';
 import 'storage_notice.dart';
 import 'recording_video_codec.dart';
@@ -24,6 +25,7 @@ class AppSettings {
     this.manualTrackingValidationEnabled = true,
     this.nativeRecordingFallback = false,
     this.cameraCapabilityState,
+    this.cameraCapabilityPreference = CameraCapabilityPreference.auto,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.recordingOrientation = RecordingOrientation.portrait,
@@ -56,6 +58,7 @@ class AppSettings {
       ..remove('nativeRecordingFallback')
       ..remove('manualTrackingValidationEnabled')
       ..remove('cameraCapabilityState')
+      ..remove('cameraCapabilityPreference')
       ..remove('preferredVideoCodec')
       ..remove('recordingSpec')
       ..remove('recordingOrientation')
@@ -108,6 +111,9 @@ class AppSettings {
               json['cameraCapabilityState']! as Map<Object?, Object?>,
             )
           : null,
+      cameraCapabilityPreference: cameraCapabilityPreferenceFromStorage(
+        json['cameraCapabilityPreference'],
+      ),
       preferredVideoCodec: recordingVideoCodecFromStorage(
         json['preferredVideoCodec'],
       ),
@@ -195,6 +201,7 @@ class AppSettings {
   final bool manualTrackingValidationEnabled;
   final bool nativeRecordingFallback;
   final Map<String, Object?>? cameraCapabilityState;
+  final CameraCapabilityPreference cameraCapabilityPreference;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
   final RecordingOrientation recordingOrientation;
@@ -226,6 +233,7 @@ class AppSettings {
     bool? manualTrackingValidationEnabled,
     bool? nativeRecordingFallback,
     Map<String, Object?>? cameraCapabilityState,
+    CameraCapabilityPreference? cameraCapabilityPreference,
     RecordingVideoCodec? preferredVideoCodec,
     RecordingSpecPreset? recordingSpec,
     RecordingOrientation? recordingOrientation,
@@ -260,6 +268,8 @@ class AppSettings {
           nativeRecordingFallback ?? this.nativeRecordingFallback,
       cameraCapabilityState:
           cameraCapabilityState ?? this.cameraCapabilityState,
+      cameraCapabilityPreference:
+          cameraCapabilityPreference ?? this.cameraCapabilityPreference,
       preferredVideoCodec: preferredVideoCodec ?? this.preferredVideoCodec,
       recordingSpec: recordingSpec ?? this.recordingSpec,
       recordingOrientation: recordingOrientation ?? this.recordingOrientation,
@@ -302,6 +312,7 @@ class AppSettings {
     'manualTrackingValidationEnabled': manualTrackingValidationEnabled,
     'nativeRecordingFallback': nativeRecordingFallback,
     'cameraCapabilityState': cameraCapabilityState,
+    'cameraCapabilityPreference': cameraCapabilityPreference.storageValue,
     'preferredVideoCodec': preferredVideoCodec.storageValue,
     'recordingSpec': recordingSpec.storageValue,
     'recordingOrientation': recordingOrientation.storageValue,

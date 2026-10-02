@@ -1165,16 +1165,17 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       onManagingChanged: (bool managing) {
         if (mounted) setState(() => _historyManaging = managing);
       },
-      capabilityMode:
+      cameraCapability:
           _controller.capabilities.supports(
             PlatformCapability.continuousCameraRecording,
           )
-          ? _controller.capabilityMode
+          ? CameraCapabilitySettings(
+              preference: _controller.cameraCapabilityPreference,
+              onPreferenceChanged: _controller.setCameraCapabilityPreference,
+              onRetryProbe: _controller.retryCapabilityProbe,
+              showCard: _controller.showCameraCapabilityCard,
+            )
           : null,
-      capabilityStatusText: _controller.capabilityStatusText,
-      capabilityProbedAtMs: _controller.capabilityProbedAtMs,
-      showCameraCapabilityCard: _controller.showCameraCapabilityCard,
-      onRetryCapabilityProbe: _controller.retryCapabilityProbe,
       onLoadRemoteRecordings: _controller.fetchRemoteRecordings,
       onLoadLocalRecordings: _controller.loadLocalRecordings,
       onLoadRemoteRecordingStatuses: _controller.fetchRemoteRecordingStatuses,

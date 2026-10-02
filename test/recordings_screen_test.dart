@@ -950,7 +950,7 @@ void main() {
     expect(find.byKey(const Key('max-volume-settings')), findsNothing);
   });
 
-  testWidgets('能力矩阵同步控制相机、订单和电脑备份入口', (WidgetTester tester) async {
+  testWidgets('能力矩阵同步控制工作模式、订单和电脑备份入口', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 2600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -963,8 +963,10 @@ void main() {
           workMode: WorkMode.continuousScan,
           speechEnabled: true,
           maxVolumeEnabled: true,
-          showCameraCapabilityCard: true,
-          capabilityMode: CameraCapabilityMode.unverified,
+          cameraCapability: CameraCapabilitySettings(
+            preference: CameraCapabilityPreference.auto,
+            onPreferenceChanged: (_) async {},
+          ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
@@ -979,12 +981,12 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(
-      find.byKey(const Key('camera-capability-settings-card')),
-      findsNothing,
-    );
     expect(find.byKey(const Key('order-receiver-settings')), findsNothing);
+    await _openSettingsEntry(tester, 'scan-settings-open');
+    expect(find.byKey(const Key('camera-work-mode-settings')), findsNothing);
 
+    // 换能力矩阵前先卸载整棵树，避免上一次压栈的二级页留在 Navigator 里
+    await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpWidget(
       MaterialApp(
         home: settings(
@@ -995,11 +997,10 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(
-      find.byKey(const Key('camera-capability-settings-card')),
-      findsNothing,
-    );
+    await _openSettingsEntry(tester, 'scan-settings-open');
+    expect(find.byKey(const Key('camera-work-mode-settings')), findsNothing);
 
+    await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpWidget(
       MaterialApp(
         home: settings(
@@ -1012,11 +1013,9 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(
-      find.byKey(const Key('camera-capability-settings-card')),
-      findsOneWidget,
-    );
     expect(find.byKey(const Key('order-receiver-settings')), findsOneWidget);
+    await _openSettingsEntry(tester, 'scan-settings-open');
+    expect(find.byKey(const Key('camera-work-mode-settings')), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     final _FakeBackupHostDiscovery unsupportedDiscovery =
@@ -1069,6 +1068,71 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('computer-backup-settings')), findsOneWidget);
     expect(supportedDiscovery.searchCount, 1);
+  });
+
+  testWidgets('扫码与声音里的工作模式可手动选择并回调', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    CameraCapabilityPreference? selected;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          capabilities: const PlatformCapabilities(<PlatformCapability>{
+            PlatformCapability.continuousCameraRecording,
+            PlatformCapability.cameraCapabilityNegotiation,
+          }),
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          cameraCapability: CameraCapabilitySettings(
+            preference: CameraCapabilityPreference.auto,
+            onPreferenceChanged: (CameraCapabilityPreference value) async {
+              selected = value;
+            },
+          ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('scan-settings-card')), findsOneWidget);
+    await _openSettingsEntry(tester, 'scan-settings-open');
+    expect(find.byKey(const Key('camera-work-mode-settings')), findsOneWidget);
+    // 工作模式卡片放最上面，扫码卡片在它下面
+    expect(find.byKey(const Key('camera-work-mode-card')), findsOneWidget);
+    expect(find.byKey(const Key('scan-settings-card-body')), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('camera-work-mode-card'))).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const Key('scan-settings-card-body'))).dy,
+      ),
+    );
+    expect(find.text('扫码模式'), findsOneWidget);
+    expect(find.text('工作模式'), findsOneWidget);
+
+    final Finder dropdown = find.byKey(const Key('camera-work-mode-dropdown'));
+    await tester.ensureVisible(dropdown);
+    await tester.tap(dropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('预览+录像').last);
+    await tester.pumpAndSettle();
+
+    expect(selected, CameraCapabilityPreference.alternating);
+    // 选完立即在页面上体现，不需要退出重进
+    expect(
+      find.text(CameraCapabilityPreference.alternating.description),
+      findsOneWidget,
+    );
   });
 
   testWidgets('录制声音默认开启且可关闭', (WidgetTester tester) async {

@@ -37,6 +37,7 @@ class _FakeCameraPlatform implements CameraPlatform {
   int stopWorkCalls = 0;
   Completer<NativeRecordingStop>? pendingStop;
   String lastMode = 'unverified';
+  String lastInitializeMode = 'unverified';
   String? lastPath;
   int diagnosticsCalls = 0;
   Completer<void>? diagnosticsBlocker;
@@ -60,6 +61,7 @@ class _FakeCameraPlatform implements CameraPlatform {
     String recordingSpec = 'hd1080p30',
     String capabilityMode = 'unverified',
   }) async {
+    lastInitializeMode = capabilityMode;
     return const ContinuousCameraInitialization(
       textureId: 1,
       previewWidth: 1920,
@@ -545,13 +547,78 @@ void main() {
     expect(controller.phase, PackingSessionPhase.ready);
     expect(camera.lastMode, 'alternating');
     expect(controller.takeCapabilityNoticeForDisplay(), isNotNull);
-    expect(controller.capabilityStatusText, contains('扫码录像轮换'));
+    expect(controller.capabilityStatusText, contains('预览+录像'));
     expect(controller.capabilityProbedAtMs, greaterThan(0));
 
     // 未工作时完成本单是安全的空操作。
     await controller.finishCurrentOrder();
     expect(controller.phase, PackingSessionPhase.ready);
     expect(controller.isWorking, isFalse);
+  });
+
+  test('手动选择工作模式即时下发并持久化，切回自动恢复默认', () async {
+    await controller.initialize();
+
+    await controller.setCameraCapabilityPreference(
+      CameraCapabilityPreference.alternating,
+    );
+
+    expect(
+      controller.cameraCapabilityPreference,
+      CameraCapabilityPreference.alternating,
+    );
+    expect(controller.capabilityMode, CameraCapabilityMode.alternating);
+    expect(camera.lastMode, 'alternating');
+    expect(
+      (await repository.loadSettings()).cameraCapabilityPreference,
+      CameraCapabilityPreference.alternating,
+    );
+
+    await controller.setCameraCapabilityPreference(
+      CameraCapabilityPreference.auto,
+    );
+
+    expect(
+      controller.cameraCapabilityPreference,
+      CameraCapabilityPreference.auto,
+    );
+    expect(
+      (await repository.loadSettings()).cameraCapabilityPreference,
+      CameraCapabilityPreference.auto,
+    );
+  });
+
+  test('手动锁定的模式在新会话启动时直接下发给原生相机', () async {
+    await controller.initialize();
+    await controller.setCameraCapabilityPreference(
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+
+    camera.lastInitializeMode = 'unverified';
+    final PackingSessionController second = PackingSessionController(
+      repository: testRepository(root),
+      speechService: _FakeSpeechSink(),
+      maxVolumeService: _FakeMaxVolumeSink(),
+      orderInfoReceiver: _FakeOrderReceiverSink(),
+      videoWatermarkService: _FakeWatermarkSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.continuousCameraRecording,
+        PlatformCapability.cameraCapabilityNegotiation,
+      }),
+      cameraService: ContinuousCameraService(platform: camera),
+    );
+    addTearDown(() async {
+      await second.shutdown();
+      second.dispose();
+    });
+
+    await second.initialize();
+
+    expect(
+      second.cameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(camera.lastInitializeMode, 'encoder_analysis');
   });
 
   test('缓存命中时不再重复探测', () async {

@@ -37,6 +37,8 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   @override
   CameraCapabilityMode _capabilityMode = CameraCapabilityMode.unverified;
   Map<String, Object?>? _capabilityState;
+  CameraCapabilityPreference _capabilityPreference =
+      CameraCapabilityPreference.auto;
   bool _capabilityProbeRunning = false;
   // Accessed through the app-support mixin's public projection.
   // ignore: unused_field
@@ -102,6 +104,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
           settings.manualTrackingValidationEnabled;
       _nativeRecordingFallback = settings.nativeRecordingFallback;
       _capabilityState = settings.cameraCapabilityState;
+      _capabilityPreference = settings.cameraCapabilityPreference;
       _preferredVideoCodec = settings.preferredVideoCodec;
       _recordingSpec = settings.recordingSpec;
       _availableRecordingSpecs = const <RecordingSpecPreset>[
@@ -314,6 +317,13 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       return;
     }
     if (isWorking || isBusy || _capabilityProbeRunning) return;
+    if (_capabilityPreference != CameraCapabilityPreference.auto) {
+      // 手动锁定会让探测结果无法生效，重新检测即回到自动。
+      _capabilityPreference = CameraCapabilityPreference.auto;
+      await _repository.saveCameraCapabilityPreference(
+        CameraCapabilityPreference.auto,
+      );
+    }
     _errorMessage = null;
     _setPhase(PackingSessionPhase.initializing);
     _capabilityProbeMessage = '正在重新检测摄像头能力';
@@ -328,6 +338,24 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       _setPhase(PackingSessionPhase.ready);
     }
     notifyListeners();
+  }
+
+  /// 设置页：手动选择摄像头工作模式。
+  ///
+  /// 自动表示仍由探测与原生降级决定；手动模式在空闲时立即下发到原生相机，
+  /// 正在工作时先记下来，下次开始工作时生效。
+  Future<void> setCameraCapabilityPreference(
+    CameraCapabilityPreference preference,
+  ) async {
+    if (_disposed || _capabilityPreference == preference) return;
+    _capabilityPreference = preference;
+    final CameraCapabilityMode? lockedMode = preference.lockedMode;
+    if (lockedMode != null && !isWorking && !isBusy) {
+      _capabilityMode = lockedMode;
+      await _nativeCamera?.setCapabilityMode(lockedMode.wireValue);
+    }
+    notifyListeners();
+    await _repository.saveCameraCapabilityPreference(preference);
   }
 
   void _handleNativeProbeFinished(Map<Object?, Object?> results) {
@@ -379,6 +407,8 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   }
 
   CameraCapabilityMode _provisionalCapabilityMode() {
+    final CameraCapabilityMode? lockedMode = _capabilityPreference.lockedMode;
+    if (lockedMode != null) return lockedMode;
     if (_capabilityMode != CameraCapabilityMode.unverified &&
         _capabilityMode != CameraCapabilityMode.unsupported) {
       return _capabilityMode;
@@ -392,8 +422,15 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
     if (_disposed || !_supportsNativeCamera || _nativeCamera == null) {
       return;
     }
+    // 先取镜头身份，顺带同步当前镜头的录制规格；不声明能力协商的平台也要走到这里。
     final Map<String, Object?> identity = await _currentCameraIdentity();
     if (!_supportsCameraCapabilityNegotiation) return;
+    final CameraCapabilityMode? lockedMode = _capabilityPreference.lockedMode;
+    if (lockedMode != null) {
+      _capabilityMode = lockedMode;
+      await _nativeCamera!.setCapabilityMode(lockedMode.wireValue);
+      return;
+    }
     if (identity.isEmpty) return;
     final Map<String, Object?>? cached = _capabilityState;
     final Map<String, Object?>? cachedIdentity = _identityMap(

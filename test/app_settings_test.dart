@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/backup_retention_policy.dart';
 import 'package:packing_proof_mobile/models/backup_storage_policy.dart';
 import 'package:packing_proof_mobile/models/app_settings.dart';
+import 'package:packing_proof_mobile/models/camera_capability.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/recording_spec.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
@@ -365,5 +366,42 @@ void main() {
 
     expect(settings.unbackedRetention, UnbackedRetentionPolicy.keepForever);
     expect(settings.backedRetention, BackedRetentionPolicy.keepForever);
+  });
+
+  test('摄像头工作模式按设置保存与恢复', () async {
+    final SessionRepository repository = testRepository(root);
+
+    expect(
+      (await repository.loadSettings()).cameraCapabilityPreference,
+      CameraCapabilityPreference.auto,
+    );
+
+    await repository.saveCameraCapabilityPreference(
+      CameraCapabilityPreference.alternating,
+    );
+
+    expect(
+      (await repository.loadSettings()).cameraCapabilityPreference,
+      CameraCapabilityPreference.alternating,
+    );
+    final Map<String, Object?> persisted = Map<String, Object?>.from(
+      jsonDecode(await File('${root.path}/settings.json').readAsString())
+          as Map<Object?, Object?>,
+    );
+    expect(persisted['cameraCapabilityPreference'], 'alternating');
+  });
+
+  test('摄像头工作模式存了未知值时回到自动', () async {
+    await File('${root.path}/settings.json').writeAsString(
+      jsonEncode(<String, Object>{
+        'cameraCapabilityPreference': 'something-new',
+      }),
+    );
+    final SessionRepository repository = testRepository(root);
+
+    expect(
+      (await repository.loadSettings()).cameraCapabilityPreference,
+      CameraCapabilityPreference.auto,
+    );
   });
 }

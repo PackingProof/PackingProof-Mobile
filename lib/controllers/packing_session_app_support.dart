@@ -77,10 +77,10 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
   bool get _speechEnabled;
   bool get _maxVolumeEnabled;
   CameraCapabilityMode get _capabilityMode;
+  CameraCapabilityPreference get _capabilityPreference;
   bool get _capabilityProbeRunning;
   String? get _capabilityProbeMessage;
   bool get _supportsCameraCapabilityNegotiation;
-  bool get _nativeRecordingFallback;
   Map<String, Object?>? get _capabilityState;
   UnbackedRetentionPolicy get _unbackedRetention;
   BackedRetentionPolicy get _backedRetention;
@@ -112,13 +112,14 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
   bool get speechEnabled => _speechEnabled;
   bool get maxVolumeEnabled => _maxVolumeEnabled;
   CameraCapabilityMode get capabilityMode => _capabilityMode;
+  CameraCapabilityPreference get cameraCapabilityPreference =>
+      _capabilityPreference;
   bool get capabilityProbeRunning => _capabilityProbeRunning;
   String? get capabilityProbeMessage => _capabilityProbeMessage;
-  bool get showCameraCapabilityCard =>
-      _supportsCameraCapabilityNegotiation &&
-      ((_capabilityMode != CameraCapabilityMode.unverified &&
-              _capabilityMode != CameraCapabilityMode.full) ||
-          _nativeRecordingFallback);
+
+  /// 能力卡片现在同时承载「手动选择工作模式」，所以只要平台支持协商就展示，
+  /// 不再等降级发生后才出现（自动降级没有触发的机型正是需要它的场景）。
+  bool get showCameraCapabilityCard => _supportsCameraCapabilityNegotiation;
   bool get alternatingRecording =>
       _capabilityMode == CameraCapabilityMode.alternating && isRecording;
   bool get canFinishCurrentOrder =>

@@ -152,6 +152,7 @@ class _ScanSettingsScreen extends StatefulWidget {
   const _ScanSettingsScreen({
     required this.workMode,
     required this.onWorkModeChanged,
+    this.cameraCapability,
     required this.minimumBarcodeLength,
     required this.speechEnabled,
     required this.onSpeechEnabledChanged,
@@ -164,6 +165,7 @@ class _ScanSettingsScreen extends StatefulWidget {
 
   final WorkMode workMode;
   final ValueChanged<WorkMode> onWorkModeChanged;
+  final CameraCapabilitySettings? cameraCapability;
   final int minimumBarcodeLength;
   final ValueChanged<int>? onMinimumBarcodeLengthChanged;
   final bool speechEnabled;
@@ -179,6 +181,8 @@ class _ScanSettingsScreen extends StatefulWidget {
 
 class _ScanSettingsScreenState extends State<_ScanSettingsScreen> {
   late WorkMode _workMode = widget.workMode;
+  late CameraCapabilityPreference _cameraPreference =
+      widget.cameraCapability?.preference ?? CameraCapabilityPreference.auto;
   late int _minimumBarcodeLength = widget.minimumBarcodeLength;
   late bool _speechEnabled = widget.speechEnabled;
   late bool _maxVolumeEnabled = widget.maxVolumeEnabled;
@@ -186,11 +190,39 @@ class _ScanSettingsScreenState extends State<_ScanSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
+    final CameraCapabilitySettings? cameraCapability = widget.cameraCapability;
     return Scaffold(
       appBar: AppBar(title: const Text('扫码与声音')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
         children: <Widget>[
+          // 工作模式卡片放最上面：先决定这台设备能同时做什么，再谈扫码细节。
+          if (cameraCapability != null &&
+              cameraCapability.showCard) ...<Widget>[
+            _SettingsCard(
+              key: const Key('camera-work-mode-card'),
+              children: <Widget>[
+                _CameraWorkModeSettings(
+                  preference: _cameraPreference,
+                  onChanged: (CameraCapabilityPreference value) {
+                    setState(() => _cameraPreference = value);
+                    unawaited(cameraCapability.onPreferenceChanged(value));
+                  },
+                  onRetryProbe: cameraCapability.onRetryProbe == null
+                      ? null
+                      : () {
+                          // 重新检测等于回到自动，选择项要跟着变，否则界面会撒谎
+                          setState(
+                            () => _cameraPreference =
+                                CameraCapabilityPreference.auto,
+                          );
+                          cameraCapability.onRetryProbe!();
+                        },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
           // 扫码卡片。
           _SettingsCard(
             key: const Key('scan-settings-card-body'),
@@ -749,38 +781,93 @@ class _SettingsCard extends StatelessWidget {
   }
 }
 
-class _CameraCapabilitySettings extends StatelessWidget {
-  const _CameraCapabilitySettings({
-    required this.mode,
-    required this.statusText,
-    required this.onRetry,
+/// 摄像头工作模式卡片的展示数据与回调。
+///
+/// 聚成一个对象传进 RecordingsScreen，避免这个超大 widget 的构造参数继续膨胀。
+class CameraCapabilitySettings {
+  const CameraCapabilitySettings({
+    required this.preference,
+    required this.onPreferenceChanged,
+    this.showCard = true,
+    this.onRetryProbe,
   });
 
-  final CameraCapabilityMode mode;
-  final String statusText;
-  final VoidCallback? onRetry;
+  final CameraCapabilityPreference preference;
+  final Future<void> Function(CameraCapabilityPreference preference)
+  onPreferenceChanged;
+  final bool showCard;
+  final VoidCallback? onRetryProbe;
+}
+
+/// 「工作模式」区块：三路 / 两路的选择，附当前能力状态与重新检测入口。
+///
+/// 放在「扫码与声音」页里，和「扫码模式」挨着，用户要在同一处决定扫码怎么跑。
+class _CameraWorkModeSettings extends StatelessWidget {
+  const _CameraWorkModeSettings({
+    required this.preference,
+    required this.onChanged,
+    this.onRetryProbe,
+  });
+
+  final CameraCapabilityPreference preference;
+  final ValueChanged<CameraCapabilityPreference> onChanged;
+  final VoidCallback? onRetryProbe;
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      color: colors.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: colors.outlineVariant),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Icon(Icons.videocam_outlined, color: colors.primary),
-        title: const Text('摄像头能力'),
-        subtitle: Text(statusText),
-        trailing: TextButton(
-          key: const Key('retry-camera-capability-button'),
-          onPressed: onRetry,
-          child: const Text('重新检测'),
-        ),
+    return Padding(
+      key: const Key('camera-work-mode-settings'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  '工作模式',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton(
+                key: const Key('retry-camera-capability-button'),
+                onPressed: onRetryProbe,
+                child: const Text('重新检测'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: DropdownButtonFormField<CameraCapabilityPreference>(
+              key: const Key('camera-work-mode-dropdown'),
+              initialValue: preference,
+              decoration: const InputDecoration(isDense: true),
+              items: CameraCapabilityPreference.values
+                  .map(
+                    (CameraCapabilityPreference option) =>
+                        DropdownMenuItem<CameraCapabilityPreference>(
+                          value: option,
+                          child: Text(option.label),
+                        ),
+                  )
+                  .toList(growable: false),
+              onChanged: (CameraCapabilityPreference? value) {
+                if (value != null) onChanged(value);
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            preference.description,
+            style: TextStyle(
+              color: colors.onSurfaceVariant,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -802,7 +889,7 @@ class _WorkModeSettings extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           const Text(
-            '工作模式',
+            '扫码模式',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
@@ -1316,19 +1403,27 @@ class _MaxVolumeSettings extends StatelessWidget {
 
 extension _RecordingsSettingsView on _RecordingsScreenState {
   List<Widget> buildRecordingsSettingsChildren(BuildContext context) {
+    final CameraCapabilitySettings? cameraCapability = widget.cameraCapability;
     return <Widget>[
-      // 扫码与声音（工作模式、条码长度、语音与音量）收进同名的二级页。
+      // 扫码与声音（扫码模式、工作模式、条码长度、语音与音量）收进同名的二级页。
       _SettingsEntryCard(
         key: const Key('scan-settings-card'),
         tileKey: const Key('scan-settings-open'),
         icon: Icons.qr_code_scanner_rounded,
         title: '扫码与声音',
-        subtitle: '工作模式、条码长度与提示音',
+        subtitle: '扫码模式、工作模式与提示音',
         onOpen: () => Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
             builder: (_) => _ScanSettingsScreen(
               workMode: _workMode,
               onWorkModeChanged: _setWorkMode,
+              cameraCapability:
+                  widget.capabilities?.supports(
+                        PlatformCapability.cameraCapabilityNegotiation,
+                      ) ==
+                      false
+                  ? null
+                  : cameraCapability,
               minimumBarcodeLength: _minimumBarcodeLength,
               onMinimumBarcodeLengthChanged:
                   widget.onMinimumBarcodeLengthChanged == null
@@ -1344,24 +1439,6 @@ extension _RecordingsSettingsView on _RecordingsScreenState {
           ),
         ),
       ),
-      if (widget.showCameraCapabilityCard &&
-          widget.capabilities?.supports(
-                PlatformCapability.cameraCapabilityNegotiation,
-              ) !=
-              false &&
-          widget.capabilityMode != null) ...<Widget>[
-        const SizedBox(height: 12),
-        _SettingsCard(
-          key: const Key('camera-capability-settings-card'),
-          children: <Widget>[
-            _CameraCapabilitySettings(
-              mode: widget.capabilityMode!,
-              statusText: widget.capabilityStatusText ?? '',
-              onRetry: widget.onRetryCapabilityProbe,
-            ),
-          ],
-        ),
-      ],
       const SizedBox(height: 12),
       // 清理相关（保留时间、清理策略与说明）收进「录像清理」二级页。
       _SettingsEntryCard(

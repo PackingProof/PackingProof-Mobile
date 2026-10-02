@@ -220,4 +220,93 @@ void main() {
       isFalse,
     );
   });
+
+  group('摄像头工作模式偏好', () {
+    test('存取值与能力模式一一对应', () {
+      expect(CameraCapabilityPreference.auto.storageValue, 'auto');
+      expect(CameraCapabilityPreference.full.storageValue, 'full');
+      expect(
+        CameraCapabilityPreference.encoderAnalysis.storageValue,
+        'encoder_analysis',
+      );
+      expect(
+        CameraCapabilityPreference.alternating.storageValue,
+        'alternating',
+      );
+
+      expect(CameraCapabilityPreference.auto.lockedMode, isNull);
+      expect(
+        CameraCapabilityPreference.full.lockedMode,
+        CameraCapabilityMode.full,
+      );
+      expect(
+        CameraCapabilityPreference.encoderAnalysis.lockedMode,
+        CameraCapabilityMode.encoderAnalysis,
+      );
+      expect(
+        CameraCapabilityPreference.alternating.lockedMode,
+        CameraCapabilityMode.alternating,
+      );
+    });
+
+    test('存储解析：未知值回到自动', () {
+      expect(
+        cameraCapabilityPreferenceFromStorage('alternating'),
+        CameraCapabilityPreference.alternating,
+      );
+      expect(
+        cameraCapabilityPreferenceFromStorage('ENCODER_ANALYSIS'),
+        CameraCapabilityPreference.encoderAnalysis,
+      );
+      expect(
+        cameraCapabilityPreferenceFromStorage('unsupported'),
+        CameraCapabilityPreference.auto,
+      );
+      expect(
+        cameraCapabilityPreferenceFromStorage(null),
+        CameraCapabilityPreference.auto,
+      );
+    });
+
+    test('手动模式的文案与能力模式一致，且不以句号结尾', () {
+      for (final CameraCapabilityPreference preference
+          in CameraCapabilityPreference.values) {
+        expect(preference.label, isNotEmpty);
+        expect(preference.description, isNotEmpty);
+        expect(preference.description.endsWith('。'), isFalse);
+      }
+      expect(
+        CameraCapabilityPreference.alternating.label,
+        CameraCapabilityMode.alternating.label,
+      );
+      expect(
+        CameraCapabilityPreference.encoderAnalysis.description,
+        CameraCapabilityMode.encoderAnalysis.description,
+      );
+      // 文案面向小白：直接写“同时能做什么”
+      expect(CameraCapabilityPreference.full.label, '预览+扫码+录像');
+      expect(CameraCapabilityPreference.encoderAnalysis.label, '扫码+录像');
+      expect(CameraCapabilityPreference.alternating.label, '预览+录像');
+      expect(CameraCapabilityPreference.auto.label, '自动（推荐）');
+    });
+
+    test('能力文案不出现三路、两路这类黑话', () {
+      final List<String> texts = <String>[
+        for (final CameraCapabilityMode mode
+            in CameraCapabilityMode.values) ...<String>[
+          mode.label,
+          mode.description,
+        ],
+        for (final CameraCapabilityPreference preference
+            in CameraCapabilityPreference.values) ...<String>[
+          preference.label,
+          preference.description,
+        ],
+      ];
+      for (final String text in texts) {
+        expect(text, isNot(contains('三路')), reason: text);
+        expect(text, isNot(contains('两路')), reason: text);
+      }
+    });
+  });
 }
