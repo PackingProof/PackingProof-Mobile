@@ -1555,13 +1555,6 @@ class _CameraArea extends StatelessWidget {
                 ),
               ),
             ),
-          if (view._alternatingRecording)
-            const Positioned(
-              left: 18,
-              right: 18,
-              top: 72,
-              child: _AlternatingBanner(),
-            ),
           Positioned(
             left: 18,
             right: 18,
@@ -1570,6 +1563,11 @@ class _CameraArea extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
+                // 常驻提醒和大屏提示一样落在下方，不要跑到画面上方去
+                if (view._alternatingRecording) ...<Widget>[
+                  const _AlternatingBanner(),
+                  const SizedBox(height: 8),
+                ],
                 if (view.scanWarningMessage != null)
                   _ScanWarningToast(message: view.scanWarningMessage!)
                 else if (view.cameraNotice != null)
@@ -2751,6 +2749,10 @@ class _RecordingButtonShimmerPainter extends CustomPainter {
 String _recordingHint(PackingHomeView view) {
   if (view.currentCode.isEmpty) {
     return '识别面单后自动开始录像';
+  }
+  if (view._alternatingRecording) {
+    // 轮换模式录像时识别是关掉的，不能提示用户去扫下一张
+    return '本次录像请点「完成本单」结束';
   }
   return switch (view.workMode) {
     WorkMode.continuousScan => '扫描下一张面单自动分段',
