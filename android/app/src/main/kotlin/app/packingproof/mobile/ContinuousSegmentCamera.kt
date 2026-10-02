@@ -671,6 +671,20 @@ class ContinuousSegmentCamera(
             capabilityMode
         }
 
+    /**
+     * 可见预览输出策略：「仅扫码」（ENCODER_ANALYSIS）在录像时要求预览画面停住。
+     *
+     * GL 管线下相机必须继续喂合成器（编码要它出帧），所以让合成器停止向预览纹理
+     * 出帧，而不是拆掉相机输出；非 GL 管线的该模式本来就不包含预览表面。
+     * 只有录像期间才暂停，空闲时始终显示预览。
+     */
+    private fun applyPreviewOutputPolicy() {
+        val pausePreview =
+            (recordingRequested || recordingActive) &&
+                effectiveRecordingMode() == CameraCapabilityMode.ENCODER_ANALYSIS
+        cameraGlCompositor?.setPreviewEnabled(!pausePreview)
+    }
+
     fun listCameras(): List<Map<String, Any?>> {
         val cached = cachedBackLenses
         if (cached != null) {
@@ -1359,6 +1373,7 @@ class ContinuousSegmentCamera(
             includeAnalysis = includeAnalysis,
         )
         cameraGlCompositor?.setEncoderEnabled(topology.compositorEncoderEnabled)
+        applyPreviewOutputPolicy()
         return buildList {
             if (topology.cameraUsesFrameSurface) compositorInputSurface?.let(::add)
             if (topology.cameraUsesPreviewSurface) previewSurface?.let(::add)
@@ -1969,6 +1984,7 @@ class ContinuousSegmentCamera(
             includeAnalysis = targets.includeAnalysis && sessionHasAnalysis,
         )
         cameraGlCompositor?.setEncoderEnabled(topology.compositorEncoderEnabled)
+        applyPreviewOutputPolicy()
         val request = camera.createCaptureRequest(
             if (targets.includeEncoder) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW,
         ).apply {

@@ -145,6 +145,8 @@ internal class CameraGlCompositor(
     private val started = AtomicBoolean(false)
     private val released = AtomicBoolean(false)
     private val encoderEnabled = AtomicBoolean(false)
+    // 「仅扫码」模式录像时要求可见预览停住：编码输出照常，只停预览纹理出帧。
+    private val previewEnabled = AtomicBoolean(true)
     private val thread = HandlerThread("packing-camera-gl")
     private val rasterThread = HandlerThread("packing-watermark-raster")
     private lateinit var handler: Handler
@@ -212,6 +214,10 @@ internal class CameraGlCompositor(
 
     fun setEncoderEnabled(enabled: Boolean) {
         encoderEnabled.set(enabled)
+    }
+
+    fun setPreviewEnabled(enabled: Boolean) {
+        previewEnabled.set(enabled)
     }
 
     fun hasWatermarkOverlayFailed(): Boolean = watermarkOverlayFailed
@@ -438,7 +444,9 @@ internal class CameraGlCompositor(
         }
         val frameTimeMs = System.currentTimeMillis()
         if (watermarkEnabled && !watermarkOverlayFailed) requestWatermarkTextures(frameTimeMs)
-        drawOutput(previewEglSurface, null, CameraGlOutput.PREVIEW, frameTimeMs)
+        if (previewEnabled.get()) {
+            drawOutput(previewEglSurface, null, CameraGlOutput.PREVIEW, frameTimeMs)
+        }
         if (encoderEnabled.get()) {
             drawOutput(
                 encoderEglSurface,
