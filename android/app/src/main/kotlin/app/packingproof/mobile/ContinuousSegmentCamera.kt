@@ -387,8 +387,8 @@ class ContinuousSegmentCamera(
                     failPendingStart("capability_unsupported", "此设备不支持持续录像")
                 }
                 CameraCapabilityMode.ENCODER_ANALYSIS -> {
-                    // 本机已保存兼容模式：直接以“编码器 + 识别”两路会话开始，
-                    // 不再先尝试三路，避免每次启动都经历停摆重试。
+                    // 用户选中了「仅扫码」，或者本次运行已经降级过一次：
+                    // 直接以“编码器 + 识别”两路会话开始，不再先尝试三路。
                     recreateEncoderAnalysisSession(
                         onError = { message ->
                             muxHandler?.post { failPendingStart("session_config", message) }
@@ -655,35 +655,9 @@ class ContinuousSegmentCamera(
         Log.i(CAMERA_LOG_TAG, "capabilityMode=${capabilityMode.name.lowercase()}")
     }
 
-    /**
-     * 当前实际使用的录像模式：UNVERIFIED 或 FULL 发生运行时停摆降级时，
-     * 当前工作会话临时按 ENCODER_ANALYSIS 运行，但持久结论不被改写。
-     */
-    private fun effectiveRecordingMode(): CameraCapabilityMode =
-        if (sessionFallbackEncoderAnalysis &&
-            capabilityMode in setOf(
-                CameraCapabilityMode.FULL,
-                CameraCapabilityMode.UNVERIFIED,
-            )
-        ) {
-            CameraCapabilityMode.ENCODER_ANALYSIS
-        } else {
-            capabilityMode
-        }
-
-    /**
-     * 可见预览输出策略：「仅扫码」（ENCODER_ANALYSIS）在录像时要求预览画面停住。
-     *
-     * GL 管线下相机必须继续喂合成器（编码要它出帧），所以让合成器停止向预览纹理
-     * 出帧，而不是拆掉相机输出；非 GL 管线的该模式本来就不包含预览表面。
-     * 只有录像期间才暂停，空闲时始终显示预览。
-     */
-    private fun applyPreviewOutputPolicy() {
-        val pausePreview =
-            (recordingRequested || recordingActive) &&
-                effectiveRecordingMode() == CameraCapabilityMode.ENCODER_ANALYSIS
-        cameraGlCompositor?.setPreviewEnabled(!pausePreview)
-    }
+    private fun effectiveRecordingMode() = CameraCapabilityRuntimePolicy.effectiveRecordingMode(
+        capabilityMode, sessionFallbackEncoderAnalysis,
+    )
 
     fun listCameras(): List<Map<String, Any?>> {
         val cached = cachedBackLenses
@@ -1373,7 +1347,9 @@ class ContinuousSegmentCamera(
             includeAnalysis = includeAnalysis,
         )
         cameraGlCompositor?.setEncoderEnabled(topology.compositorEncoderEnabled)
-        applyPreviewOutputPolicy()
+        CameraPreviewOutputPolicy.apply(
+            cameraGlCompositor, recordingRequested || recordingActive, effectiveRecordingMode(),
+        )
         return buildList {
             if (topology.cameraUsesFrameSurface) compositorInputSurface?.let(::add)
             if (topology.cameraUsesPreviewSurface) previewSurface?.let(::add)
@@ -1793,7 +1769,7 @@ class ContinuousSegmentCamera(
 
     /**
      * 重建为“编码器 + 识别”两路会话：录像与条码识别继续工作，预览画面暂停。
-     * 用于启动阶段三路停摆后的自动降级，以及已保存兼容模式的直接开始。
+     * 用于启动阶段三路停摆后的自动降级，以及用户选择的「仅扫码」模式。
      */
     private fun recreateEncoderAnalysisSession(
         onConfigured: (() -> Unit)? = null,
@@ -1984,7 +1960,9 @@ class ContinuousSegmentCamera(
             includeAnalysis = targets.includeAnalysis && sessionHasAnalysis,
         )
         cameraGlCompositor?.setEncoderEnabled(topology.compositorEncoderEnabled)
-        applyPreviewOutputPolicy()
+        CameraPreviewOutputPolicy.apply(
+            cameraGlCompositor, recordingRequested || recordingActive, effectiveRecordingMode(),
+        )
         val request = camera.createCaptureRequest(
             if (targets.includeEncoder) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW,
         ).apply {

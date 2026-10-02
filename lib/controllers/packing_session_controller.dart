@@ -1076,9 +1076,9 @@ class PackingSessionController extends ChangeNotifier
   @visibleForTesting
   void handleNativeRecordingFallbackForTesting(
     Map<Object?, Object?> info, {
-    bool persist = true,
+    bool recordDiagnostics = true,
   }) {
-    _handleNativeRecordingFallback(info, persist: persist);
+    _handleNativeRecordingFallback(info, recordDiagnostics: recordDiagnostics);
   }
 
   @visibleForTesting

@@ -247,6 +247,45 @@ internal object CameraSurfaceLifecyclePolicy {
         }
 }
 
+/**
+ * 工作模式在运行期的取值：本次会话的停摆降级只是临时结论，不改写已探明的能力模式。
+ */
+internal object CameraCapabilityRuntimePolicy {
+    private val degradableModes = setOf(
+        CameraCapabilityMode.FULL,
+        CameraCapabilityMode.UNVERIFIED,
+    )
+
+    fun effectiveRecordingMode(
+        mode: CameraCapabilityMode,
+        sessionFallback: Boolean,
+    ): CameraCapabilityMode =
+        if (sessionFallback && mode in degradableModes) {
+            CameraCapabilityMode.ENCODER_ANALYSIS
+        } else {
+            mode
+        }
+}
+
+/**
+ * 可见预览输出策略：只有「录像中 + 仅扫码」才停住预览画面，空闲时始终显示。
+ *
+ * GL 管线下相机必须继续喂合成器（编码要它出帧），这里停的是合成器向预览纹理的出帧，
+ * 不是拆掉相机输出；非 GL 管线的该模式本来就不包含预览表面。
+ */
+internal object CameraPreviewOutputPolicy {
+    fun pausePreview(recording: Boolean, mode: CameraCapabilityMode): Boolean =
+        recording && mode == CameraCapabilityMode.ENCODER_ANALYSIS
+
+    fun apply(
+        compositor: CameraGlCompositor?,
+        recording: Boolean,
+        mode: CameraCapabilityMode,
+    ) {
+        compositor?.setPreviewEnabled(!pausePreview(recording, mode))
+    }
+}
+
 internal data class LiveWatermarkQuad(
     val topLeft: CameraGlPoint,
     val topRight: CameraGlPoint,

@@ -1083,7 +1083,7 @@ void main() {
     trackController(controller);
     controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
       'mode': 'encoder_analysis',
-    }, persist: false);
+    }, recordDiagnostics: false);
     expect(controller.cameraNotice, notice);
 
     await tester.pump(const Duration(seconds: 3));
@@ -1095,7 +1095,7 @@ void main() {
     controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
       'mode': 'encoder_analysis',
       'phase': 'stall_during_recording',
-    }, persist: false);
+    }, recordDiagnostics: false);
     expect(controller.cameraNotice, notice);
 
     await tester.pump(const Duration(seconds: 3));

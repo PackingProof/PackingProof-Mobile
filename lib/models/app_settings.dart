@@ -22,7 +22,6 @@ class AppSettings {
     this.maxVolumeEnabled = true,
     this.recordAudioEnabled = true,
     this.manualTrackingValidationEnabled = true,
-    this.nativeRecordingFallback = false,
     this.cameraCapabilityState,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
@@ -55,8 +54,10 @@ class AppSettings {
       ..remove('speechEnabled')
       ..remove('orderSpeechEnabled')
       ..remove('maxVolumeEnabled')
-      ..remove('nativeRecordingFallback')
       ..remove('manualTrackingValidationEnabled')
+      // 旧版本把「录像降级为两路」写进设置，会让自动模式被永久锁成两路；
+      // 这里顺手丢掉这个历史键，升级后自动模式重新先试完整模式。
+      ..remove('nativeRecordingFallback')
       ..remove('cameraCapabilityState')
       ..remove('preferredVideoCodec')
       ..remove('recordingSpec')
@@ -104,9 +105,6 @@ class AppSettings {
           json['manualTrackingValidationEnabled'] is bool
           ? json['manualTrackingValidationEnabled']! as bool
           : true,
-      nativeRecordingFallback: json['nativeRecordingFallback'] is bool
-          ? json['nativeRecordingFallback']! as bool
-          : false,
       cameraCapabilityState: json['cameraCapabilityState'] is Map
           ? Map<String, Object?>.from(
               json['cameraCapabilityState']! as Map<Object?, Object?>,
@@ -203,7 +201,6 @@ class AppSettings {
   final bool maxVolumeEnabled;
   final bool recordAudioEnabled;
   final bool manualTrackingValidationEnabled;
-  final bool nativeRecordingFallback;
   final Map<String, Object?>? cameraCapabilityState;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
@@ -240,7 +237,6 @@ class AppSettings {
     bool? maxVolumeEnabled,
     bool? recordAudioEnabled,
     bool? manualTrackingValidationEnabled,
-    bool? nativeRecordingFallback,
     Map<String, Object?>? cameraCapabilityState,
     RecordingVideoCodec? preferredVideoCodec,
     RecordingSpecPreset? recordingSpec,
@@ -274,8 +270,6 @@ class AppSettings {
       manualTrackingValidationEnabled:
           manualTrackingValidationEnabled ??
           this.manualTrackingValidationEnabled,
-      nativeRecordingFallback:
-          nativeRecordingFallback ?? this.nativeRecordingFallback,
       cameraCapabilityState:
           cameraCapabilityState ?? this.cameraCapabilityState,
       preferredVideoCodec: preferredVideoCodec ?? this.preferredVideoCodec,
@@ -320,7 +314,6 @@ class AppSettings {
     'maxVolumeEnabled': maxVolumeEnabled,
     'recordAudioEnabled': recordAudioEnabled,
     'manualTrackingValidationEnabled': manualTrackingValidationEnabled,
-    'nativeRecordingFallback': nativeRecordingFallback,
     'cameraCapabilityState': cameraCapabilityState,
     'preferredVideoCodec': preferredVideoCodec.storageValue,
     'recordingSpec': recordingSpec.storageValue,

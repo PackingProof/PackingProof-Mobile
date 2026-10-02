@@ -1003,10 +1003,6 @@ class SessionRepository {
             value.copyWith(manualTrackingValidationEnabled: enabled),
       );
 
-  Future<void> saveNativeRecordingFallback(bool enabled) => _updateSettings(
-    (AppSettings value) => value.copyWith(nativeRecordingFallback: enabled),
-  );
-
   Future<void> saveCameraCapabilityState(Map<String, Object?> state) =>
       _updateSettings(
         (AppSettings value) => value.copyWith(

@@ -33,6 +33,10 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   Timer? _diagnosticsTimer;
   bool _diagnosticsCaptureRunning = false;
   String? _pendingDiagnosticsTrigger;
+  /// 本次运行内记住「原生把录像降级成两路」的结果。
+  ///
+  /// 不写入设置：一旦跨重启保留，用户把工作模式调回「自动」也只会按两路开始，
+  /// 等于被历史降级永久锁死，再也回不到预览+扫码+录像。
   bool _nativeRecordingFallback = false;
   @override
   CameraCapabilityMode _capabilityMode = CameraCapabilityMode.unverified;
@@ -102,7 +106,6 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       _recordAudioEnabled = settings.recordAudioEnabled;
       _manualTrackingValidationEnabled =
           settings.manualTrackingValidationEnabled;
-      _nativeRecordingFallback = settings.nativeRecordingFallback;
       _capabilityState = settings.cameraCapabilityState;
       _scanBeepEnabled = settings.scanBeepEnabled;
       _scanQrCodes = settings.scanQrCodes;
@@ -322,6 +325,9 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       // 手动锁定会让探测结果无法生效，重新检测即回到自动（工作模式不跨重启保留）。
       _capabilityPreference = CameraCapabilityPreference.auto;
     }
+    // 重新检测等于重新评估硬件：先丢掉上一轮的降级记忆，
+    // 否则探测结论是「可以三路」也仍旧按两路跑。
+    _nativeRecordingFallback = false;
     _errorMessage = null;
     _setPhase(PackingSessionPhase.initializing);
     _capabilityProbeMessage = '正在重新检测摄像头能力';
@@ -340,19 +346,23 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
 
   /// 设置页：手动选择摄像头工作模式。
   ///
-  /// 自动表示仍由探测与原生降级决定；手动模式在空闲时立即下发到原生相机，
-  /// 正在工作时先记下来，下次开始工作时生效。
+  /// 「自动」回到先试预览+扫码+录像；手动模式直接锁到指定能力。
+  /// 两种选择都立即下发到原生相机（原生只是记下模式，下一次开始工作时按它重建会话），
+  /// 并清掉本次运行记录的自动降级，避免上一轮结果把「自动」继续按两路跑。
   Future<void> setCameraCapabilityPreference(
     CameraCapabilityPreference preference,
   ) async {
     if (_disposed || _capabilityPreference == preference) return;
     _capabilityPreference = preference;
-    final CameraCapabilityMode? lockedMode = preference.lockedMode;
-    if (lockedMode != null && !isWorking && !isBusy) {
-      _capabilityMode = lockedMode;
-      await _nativeCamera?.setCapabilityMode(lockedMode.wireValue);
-    }
+    _nativeRecordingFallback = false;
+    _capabilityMode = preference.lockedMode ?? CameraCapabilityMode.unverified;
     notifyListeners();
+    try {
+      await _nativeCamera?.setCapabilityMode(_capabilityMode.wireValue);
+    } on Object {
+      // broad-catch: 下发失败时保留用户选择，原生沿用当前模式继续工作，
+      // 下一次开始工作会重新读取能力模式。
+    }
   }
 
   void _handleNativeProbeFinished(Map<Object?, Object?> results) {
@@ -376,9 +386,9 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
 
   void _handleNativeRecordingFallback(
     Map<Object?, Object?> info, {
-    bool persist = true,
+    bool recordDiagnostics = true,
   }) {
-    if (persist) {
+    if (recordDiagnostics) {
       unawaited(
         _cameraDiagnostics.recordEvent(
           kind: 'recording_fallback',
@@ -388,19 +398,23 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
     }
     final String mode = '${info['mode'] ?? ''}';
     if (mode == 'encoder_analysis') {
+      // 只在本次运行内降级：写进设置会让「自动」下次启动直接两路开始。
+      _nativeRecordingFallback = true;
       _capabilityMode = CameraCapabilityMode.encoderAnalysis;
-      if (persist && !_nativeRecordingFallback) {
-        _nativeRecordingFallback = true;
-        _runInBackground(_repository.saveNativeRecordingFallback(true));
-      }
-      if (persist) {
+      if (recordDiagnostics) {
         _runInBackground(_recordCapabilitySuspicion(info));
       }
     }
     notifyListeners();
-    _showCameraNotice(
-      mode == 'encoder_analysis' ? '受硬件限制，录像时预览画面会暂停，扫码和录像不受影响' : '已切换录像兼容模式',
-    );
+    if (mode != 'encoder_analysis') {
+      _showCameraNotice('已切换录像兼容模式');
+      return;
+    }
+    if (_capabilityPreference != CameraCapabilityPreference.auto) {
+      // 用户自己选的两路模式不是硬件限制，不要谎报成「受硬件限制」。
+      return;
+    }
+    _showCameraNotice('受硬件限制，录像时预览画面会暂停，扫码和录像不受影响');
   }
 
   CameraCapabilityMode _provisionalCapabilityMode() {

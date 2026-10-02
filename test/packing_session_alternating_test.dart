@@ -614,6 +614,64 @@ void main() {
     expect(camera.lastInitializeMode, 'unverified');
   });
 
+  test('原生自动降级不跨重启保留，下次启动仍先试完整模式', () async {
+    await controller.initialize();
+
+    controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
+      'mode': 'encoder_analysis',
+      'phase': 'stall_during_recording',
+    });
+    expect(controller.capabilityMode, CameraCapabilityMode.encoderAnalysis);
+
+    camera.lastInitializeMode = 'stale';
+    final PackingSessionController second = PackingSessionController(
+      repository: testRepository(root),
+      speechService: _FakeSpeechSink(),
+      maxVolumeService: _FakeMaxVolumeSink(),
+      orderInfoReceiver: _FakeOrderReceiverSink(),
+      videoWatermarkService: _FakeWatermarkSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.continuousCameraRecording,
+        PlatformCapability.cameraCapabilityNegotiation,
+      }),
+      cameraService: ContinuousCameraService(platform: camera),
+    );
+    addTearDown(() async {
+      await second.shutdown();
+      second.dispose();
+    });
+
+    await second.initialize();
+
+    expect(second.cameraCapabilityPreference, CameraCapabilityPreference.auto);
+    expect(second.capabilityMode, CameraCapabilityMode.unverified);
+    expect(camera.lastInitializeMode, 'unverified');
+  });
+
+  test('手动选择仅扫码后回到自动，不再被降级记忆锁成两路', () async {
+    await controller.initialize();
+
+    await controller.setCameraCapabilityPreference(
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(controller.capabilityMode, CameraCapabilityMode.encoderAnalysis);
+    expect(camera.lastMode, 'encoder_analysis');
+
+    // 手动选中的两路会话同样会让原生回传 recordingFallback，
+    // 这条事件只是本机限制的补充说明，不能把用户的主动选择当成硬件结论。
+    controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
+      'mode': 'encoder_analysis',
+    });
+    expect(controller.cameraNotice, isNull);
+
+    await controller.setCameraCapabilityPreference(
+      CameraCapabilityPreference.auto,
+    );
+
+    expect(controller.capabilityMode, CameraCapabilityMode.unverified);
+    expect(camera.lastMode, 'unverified');
+  });
+
   test('缓存命中时不再重复探测', () async {
     await controller.initialize();
     await controller.retryCapabilityProbe();
