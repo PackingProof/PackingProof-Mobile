@@ -1,5 +1,6 @@
 import 'backup_retention_policy.dart';
 import 'backup_storage_policy.dart';
+import 'camera_capability.dart';
 import 'work_mode.dart';
 import 'storage_notice.dart';
 import 'recording_video_codec.dart';
@@ -22,6 +23,7 @@ class AppSettings {
     this.maxVolumeEnabled = true,
     this.recordAudioEnabled = true,
     this.manualTrackingValidationEnabled = true,
+    this.cameraCapabilityPreference = CameraCapabilityPreference.full,
     this.cameraCapabilityState,
     this.preferredVideoCodec = RecordingVideoCodec.hevc,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
@@ -55,9 +57,10 @@ class AppSettings {
       ..remove('orderSpeechEnabled')
       ..remove('maxVolumeEnabled')
       ..remove('manualTrackingValidationEnabled')
-      // 旧版本把「录像降级为两路」写进设置，会让自动模式被永久锁成两路；
-      // 这里顺手丢掉这个历史键，升级后自动模式重新先试完整模式。
+      // 旧版本把「录像降级为两路」单独记成一个标记键，用户改回完整模式也甩不掉；
+      // 现在降级结论统一记在 cameraCapabilityPreference 里，这里顺手丢掉历史键。
       ..remove('nativeRecordingFallback')
+      ..remove('cameraCapabilityPreference')
       ..remove('cameraCapabilityState')
       ..remove('preferredVideoCodec')
       ..remove('recordingSpec')
@@ -105,6 +108,9 @@ class AppSettings {
           json['manualTrackingValidationEnabled'] is bool
           ? json['manualTrackingValidationEnabled']! as bool
           : true,
+      cameraCapabilityPreference: cameraCapabilityPreferenceFromStorage(
+        json['cameraCapabilityPreference'],
+      ),
       cameraCapabilityState: json['cameraCapabilityState'] is Map
           ? Map<String, Object?>.from(
               json['cameraCapabilityState']! as Map<Object?, Object?>,
@@ -201,6 +207,7 @@ class AppSettings {
   final bool maxVolumeEnabled;
   final bool recordAudioEnabled;
   final bool manualTrackingValidationEnabled;
+  final CameraCapabilityPreference cameraCapabilityPreference;
   final Map<String, Object?>? cameraCapabilityState;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
@@ -237,6 +244,7 @@ class AppSettings {
     bool? maxVolumeEnabled,
     bool? recordAudioEnabled,
     bool? manualTrackingValidationEnabled,
+    CameraCapabilityPreference? cameraCapabilityPreference,
     Map<String, Object?>? cameraCapabilityState,
     RecordingVideoCodec? preferredVideoCodec,
     RecordingSpecPreset? recordingSpec,
@@ -270,6 +278,8 @@ class AppSettings {
       manualTrackingValidationEnabled:
           manualTrackingValidationEnabled ??
           this.manualTrackingValidationEnabled,
+      cameraCapabilityPreference:
+          cameraCapabilityPreference ?? this.cameraCapabilityPreference,
       cameraCapabilityState:
           cameraCapabilityState ?? this.cameraCapabilityState,
       preferredVideoCodec: preferredVideoCodec ?? this.preferredVideoCodec,
@@ -314,6 +324,7 @@ class AppSettings {
     'maxVolumeEnabled': maxVolumeEnabled,
     'recordAudioEnabled': recordAudioEnabled,
     'manualTrackingValidationEnabled': manualTrackingValidationEnabled,
+    'cameraCapabilityPreference': cameraCapabilityPreference.storageValue,
     'cameraCapabilityState': cameraCapabilityState,
     'preferredVideoCodec': preferredVideoCodec.storageValue,
     'recordingSpec': recordingSpec.storageValue,

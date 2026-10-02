@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/models/backup_retention_policy.dart';
 import 'package:packing_proof_mobile/models/backup_storage_policy.dart';
 import 'package:packing_proof_mobile/models/app_settings.dart';
+import 'package:packing_proof_mobile/models/camera_capability.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/recording_spec.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
@@ -144,6 +145,42 @@ void main() {
     );
     expect(persisted.containsKey('nativeRecordingFallback'), isFalse);
     expect(persisted['futureOption'], <String, Object>{'enabled': true});
+  });
+
+  test('摄像头工作模式默认预览+扫码且可持久化', () async {
+    final SessionRepository repository = testRepository(root);
+
+    expect(
+      (await repository.loadSettings()).cameraCapabilityPreference,
+      CameraCapabilityPreference.full,
+    );
+
+    await repository.saveCameraCapabilityPreference(
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+
+    final AppSettings updated = await repository.loadSettings();
+    expect(
+      updated.cameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    final Map<String, Object?> persisted = Map<String, Object?>.from(
+      jsonDecode(await File('${root.path}/settings.json').readAsString())
+          as Map<Object?, Object?>,
+    );
+    expect(persisted['cameraCapabilityPreference'], 'encoder_analysis');
+  });
+
+  test('存坏的工作模式值回落到默认的预览+扫码', () async {
+    await File('${root.path}/settings.json').writeAsString(
+      jsonEncode(<String, Object>{'cameraCapabilityPreference': '来路不明'}),
+    );
+    final SessionRepository repository = testRepository(root);
+
+    expect(
+      (await repository.loadSettings()).cameraCapabilityPreference,
+      CameraCapabilityPreference.full,
+    );
   });
 
   test('录像编码默认 H.265 且可切换持久化', () async {

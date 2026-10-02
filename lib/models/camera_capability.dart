@@ -78,3 +78,13 @@ enum CameraCapabilityPreference {
       CameraCapabilityMode.alternating.description,
   };
 }
+
+/// 读回工作模式设置；缺失或无法识别时回到默认的「预览+扫码」。
+CameraCapabilityPreference cameraCapabilityPreferenceFromStorage(Object? value) {
+  final String normalized = '$value'.trim();
+  for (final CameraCapabilityPreference preference
+      in CameraCapabilityPreference.values) {
+    if (preference.storageValue == normalized) return preference;
+  }
+  return CameraCapabilityPreference.full;
+}

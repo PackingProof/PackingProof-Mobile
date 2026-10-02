@@ -101,6 +101,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       _recordAudioEnabled = settings.recordAudioEnabled;
       _manualTrackingValidationEnabled =
           settings.manualTrackingValidationEnabled;
+      _capabilityPreference = settings.cameraCapabilityPreference;
       _capabilityState = settings.cameraCapabilityState;
       _scanBeepEnabled = settings.scanBeepEnabled;
       _scanQrCodes = settings.scanQrCodes;
@@ -347,6 +348,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
     _capabilityPreference = preference;
     _capabilityMode = preference.lockedMode;
     notifyListeners();
+    await _repository.saveCameraCapabilityPreference(preference);
     await _pushCapabilityModeToNative();
   }
 
@@ -396,9 +398,14 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       _capabilityMode = CameraCapabilityMode.encoderAnalysis;
       if (_capabilityPreference == CameraCapabilityPreference.full) {
         // 用户要的是「预览+扫码」，原生真的停摆降级：把选择落到「仅扫码」，
-        // 让界面和实际跑的一致。误判也不要紧，用户随时能在下拉里改回来。
+        // 让界面和实际跑的一致，并顺手存进设置，下次启动直接按降级后的模式开始。
+        // 误判也不要紧：用户在下拉里改回来就会覆盖它。
         degradedFromFull = true;
         _capabilityPreference = CameraCapabilityPreference.encoderAnalysis;
+        // 降级结论和用户手动选择写进同一个设置项：下次启动直接按它开始
+        unawaited(
+          _repository.saveCameraCapabilityPreference(_capabilityPreference),
+        );
         unawaited(_pushCapabilityModeToNative());
       }
       if (recordDiagnostics) {

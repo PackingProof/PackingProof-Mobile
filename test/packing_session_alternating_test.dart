@@ -556,7 +556,7 @@ void main() {
     expect(controller.isWorking, isFalse);
   });
 
-  test('手动选择工作模式即时下发，但不跨重启保留', () async {
+  test('手动选择工作模式即时下发并写进设置', () async {
     await controller.initialize();
 
     await controller.setCameraCapabilityPreference(
@@ -581,48 +581,11 @@ void main() {
     expect(camera.lastMode, 'full');
   });
 
-  test('工作模式不记忆：新会话一律回到默认的预览+扫码', () async {
+  test('工作模式写进设置：新会话沿用用户选过的模式', () async {
     await controller.initialize();
     await controller.setCameraCapabilityPreference(
       CameraCapabilityPreference.encoderAnalysis,
     );
-    expect(
-      controller.cameraCapabilityPreference,
-      CameraCapabilityPreference.encoderAnalysis,
-    );
-
-    camera.lastInitializeMode = 'unverified';
-    final PackingSessionController second = PackingSessionController(
-      repository: testRepository(root),
-      speechService: _FakeSpeechSink(),
-      maxVolumeService: _FakeMaxVolumeSink(),
-      orderInfoReceiver: _FakeOrderReceiverSink(),
-      videoWatermarkService: _FakeWatermarkSink(),
-      capabilities: const PlatformCapabilities(<PlatformCapability>{
-        PlatformCapability.continuousCameraRecording,
-        PlatformCapability.cameraCapabilityNegotiation,
-      }),
-      cameraService: ContinuousCameraService(platform: camera),
-    );
-    addTearDown(() async {
-      await second.shutdown();
-      second.dispose();
-    });
-
-    await second.initialize();
-
-    expect(second.cameraCapabilityPreference, CameraCapabilityPreference.full);
-    expect(camera.lastInitializeMode, 'full');
-  });
-
-  test('原生自动降级不跨重启保留，下次启动仍先试完整模式', () async {
-    await controller.initialize();
-
-    controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
-      'mode': 'encoder_analysis',
-      'phase': 'stall_during_recording',
-    });
-    expect(controller.capabilityMode, CameraCapabilityMode.encoderAnalysis);
     expect(
       controller.cameraCapabilityPreference,
       CameraCapabilityPreference.encoderAnalysis,
@@ -648,9 +611,58 @@ void main() {
 
     await second.initialize();
 
-    expect(second.cameraCapabilityPreference, CameraCapabilityPreference.full);
-    expect(second.capabilityMode, CameraCapabilityMode.full);
-    expect(camera.lastInitializeMode, 'full');
+    expect(
+      second.cameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(second.capabilityMode, CameraCapabilityMode.encoderAnalysis);
+    expect(camera.lastInitializeMode, 'encoder_analysis');
+  });
+
+  test('原生自动降级也写进同一个设置项，下次启动直接按降级后的模式开始', () async {
+    await controller.initialize();
+
+    controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
+      'mode': 'encoder_analysis',
+      'phase': 'stall_during_recording',
+    });
+    await pumpEventQueue();
+    expect(controller.capabilityMode, CameraCapabilityMode.encoderAnalysis);
+    expect(
+      controller.cameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(
+      (await repository.loadSettings()).cameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+
+    camera.lastInitializeMode = 'stale';
+    final PackingSessionController second = PackingSessionController(
+      repository: testRepository(root),
+      speechService: _FakeSpeechSink(),
+      maxVolumeService: _FakeMaxVolumeSink(),
+      orderInfoReceiver: _FakeOrderReceiverSink(),
+      videoWatermarkService: _FakeWatermarkSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.continuousCameraRecording,
+        PlatformCapability.cameraCapabilityNegotiation,
+      }),
+      cameraService: ContinuousCameraService(platform: camera),
+    );
+    addTearDown(() async {
+      await second.shutdown();
+      second.dispose();
+    });
+
+    await second.initialize();
+
+    expect(
+      second.cameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(second.capabilityMode, CameraCapabilityMode.encoderAnalysis);
+    expect(camera.lastInitializeMode, 'encoder_analysis');
   });
 
   test('真降级后选择落到「仅扫码」，用户还能手动改回完整模式', () async {
@@ -674,6 +686,10 @@ void main() {
     expect(controller.capabilityMode, CameraCapabilityMode.encoderAnalysis);
     expect(camera.lastMode, 'encoder_analysis');
     expect(controller.cameraNotice, isNotNull);
+    expect(
+      (await repository.loadSettings()).cameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
 
     // 误判也不要紧：下拉里直接改回完整模式，下一次工作重新按完整模式试
     await controller.setCameraCapabilityPreference(
@@ -686,6 +702,10 @@ void main() {
     );
     expect(controller.capabilityMode, CameraCapabilityMode.full);
     expect(camera.lastMode, 'full');
+    expect(
+      (await repository.loadSettings()).cameraCapabilityPreference,
+      CameraCapabilityPreference.full,
+    );
   });
 
   test('用户自己选「仅扫码」不弹硬件限制提示，选择保持不变', () async {

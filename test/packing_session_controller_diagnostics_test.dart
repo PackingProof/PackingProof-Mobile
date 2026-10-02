@@ -23,6 +23,17 @@ import 'package:packing_proof_mobile/platform/platform_capabilities.dart';
 
 import 'test_repository.dart';
 
+/// widget 测试跑在假异步里，真实文件 IO 不会完成；降级顺手落盘的那一步在这里
+/// 换成空实现，落盘行为本身由 packing_session_alternating_test 用普通测试覆盖。
+class _NoDiskCameraPreferenceRepository extends SessionRepository {
+  _NoDiskCameraPreferenceRepository({required super.rootDirectory});
+
+  @override
+  Future<void> saveCameraCapabilityPreference(
+    CameraCapabilityPreference preference,
+  ) async {}
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -1073,42 +1084,55 @@ void main() {
 
   testWidgets('录像兼容提示 5 秒独立计时且新事件重新计时', (WidgetTester tester) async {
     const String notice = '受硬件限制，录像时预览画面会暂停，扫码和录像不受影响';
-    final PackingSessionController controller = PackingSessionController(
-      repository: testRepository(root),
+    // 一次运行里第一次真降级：提示 5 秒后自动消失
+    final SessionRepository firstRepository =
+        _NoDiskCameraPreferenceRepository(rootDirectory: root);
+    addTearDown(firstRepository.dispose);
+    final PackingSessionController first = PackingSessionController(
+      repository: firstRepository,
       speechService: _FakeSpeechSink(),
       runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
       cameraDiagnostics: CameraDiagnosticsService(
         rootProvider: () async => root,
       ),
     );
-    trackController(controller);
-    controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
+    trackController(first);
+    first.handleNativeRecordingFallbackForTesting(<String, Object?>{
       'mode': 'encoder_analysis',
     }, recordDiagnostics: false);
-    expect(controller.cameraNotice, notice);
+    expect(first.cameraNotice, notice);
 
     await tester.pump(const Duration(seconds: 3));
-    expect(controller.cameraNotice, notice);
+    expect(first.cameraNotice, notice);
 
     await tester.pump(const Duration(seconds: 2));
-    expect(controller.cameraNotice, isNull);
+    expect(first.cameraNotice, isNull);
 
-    // 同一次运行里已经降级过就不再重复弹；先由用户改回完整模式，才需要再提示一次
-    await controller.setCameraCapabilityPreference(
-      CameraCapabilityPreference.full,
+    // 再遇到一次降级时提示重新计时。降级会把工作模式落成「仅扫码」，
+    // 同一次运行里不会再提示，所以这里用新的控制器模拟下一次运行。
+    final SessionRepository secondRepository =
+        _NoDiskCameraPreferenceRepository(rootDirectory: root);
+    addTearDown(secondRepository.dispose);
+    final PackingSessionController second = PackingSessionController(
+      repository: secondRepository,
+      speechService: _FakeSpeechSink(),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
     );
-    controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
+    trackController(second);
+    second.handleNativeRecordingFallbackForTesting(<String, Object?>{
       'mode': 'encoder_analysis',
       'phase': 'stall_during_recording',
     }, recordDiagnostics: false);
-    expect(controller.cameraNotice, notice);
+    expect(second.cameraNotice, notice);
 
     await tester.pump(const Duration(seconds: 3));
-    expect(controller.cameraNotice, notice);
+    expect(second.cameraNotice, notice);
 
     await tester.pump(const Duration(seconds: 2));
-    expect(controller.cameraNotice, isNull);
-    await tester.runAsync(controller.shutdown);
+    expect(second.cameraNotice, isNull);
   });
 }
 
