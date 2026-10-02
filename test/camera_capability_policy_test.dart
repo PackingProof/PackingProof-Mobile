@@ -263,10 +263,10 @@ void main() {
         CameraCapabilityMode.encoderAnalysis.description,
       );
       // 文案面向小白：直接写“同时能做什么”
-      expect(CameraCapabilityPreference.full.label, '预览+扫码');
+      expect(CameraCapabilityPreference.full.label, '扫码预览');
       expect(CameraCapabilityPreference.encoderAnalysis.label, '仅扫码');
       expect(CameraCapabilityPreference.alternating.label, '仅预览');
-      // 默认就是「预览+扫码」，不再提供会记住历史降级的「自动」选项
+      // 默认就是「扫码预览」，不再提供会记住历史降级的「自动」选项
       expect(CameraCapabilityPreference.values.first, CameraCapabilityPreference.full);
       // 录制是必然发生的，标签里不再重复写“录像”，只说清预览和扫码能不能用
       for (final CameraCapabilityPreference preference

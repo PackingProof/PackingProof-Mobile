@@ -147,7 +147,7 @@ void main() {
     expect(persisted['futureOption'], <String, Object>{'enabled': true});
   });
 
-  test('摄像头工作模式默认预览+扫码且可持久化', () async {
+  test('摄像头工作模式默认扫码预览且可持久化', () async {
     final SessionRepository repository = testRepository(root);
 
     expect(
@@ -171,7 +171,7 @@ void main() {
     expect(persisted['cameraCapabilityPreference'], 'encoder_analysis');
   });
 
-  test('存坏的工作模式值回落到默认的预览+扫码', () async {
+  test('存坏的工作模式值回落到默认的扫码预览', () async {
     await File('${root.path}/settings.json').writeAsString(
       jsonEncode(<String, Object>{'cameraCapabilityPreference': '来路不明'}),
     );

@@ -397,7 +397,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
     if (mode == 'encoder_analysis') {
       _capabilityMode = CameraCapabilityMode.encoderAnalysis;
       if (_capabilityPreference == CameraCapabilityPreference.full) {
-        // 用户要的是「预览+扫码」，原生真的停摆降级：把选择落到「仅扫码」，
+        // 用户要的是「扫码预览」，原生真的停摆降级：把选择落到「仅扫码」，
         // 让界面和实际跑的一致，并顺手存进设置，下次启动直接按降级后的模式开始。
         // 误判也不要紧：用户在下拉里改回来就会覆盖它。
         degradedFromFull = true;
@@ -436,7 +436,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
     if (!_supportsCameraCapabilityNegotiation) return;
     // 工作模式只由用户选择决定。设备能不能三路一起跑，要在真机上跑起来才知道，
     // 所以开机不再套用历史探测结论，避免把明明支持的机型锁在降级模式里；
-    // 真跑不动时由原生停摆降级，并把「预览+扫码」在设置页临时灰掉。
+    // 真跑不动时由原生停摆降级，并把降级后的模式写回设置。
     _capabilityMode = _capabilityPreference.lockedMode;
     await _nativeCamera!.setCapabilityMode(_capabilityMode.wireValue);
   }

@@ -15,7 +15,7 @@ enum CameraCapabilityMode {
   };
 
   String get label => switch (this) {
-    CameraCapabilityMode.full => '预览+扫码',
+    CameraCapabilityMode.full => '扫码预览',
     CameraCapabilityMode.encoderAnalysis => '仅扫码',
     CameraCapabilityMode.alternating => '仅预览',
     CameraCapabilityMode.unsupported => '不支持',
@@ -41,7 +41,7 @@ enum CameraCapabilityMode {
 
 /// 用户在设置里选择的摄像头工作模式。
 ///
-/// 默认「预览+扫码」：设备到底能不能同时预览、扫码和录像，只有真跑起来才知道，
+/// 默认「扫码预览」：设备到底能不能同时预览、扫码和录像，只有真跑起来才知道，
 /// 所以不做探测门禁。真跑不动时由原生降级，并把这一项在设置里临时灰掉。
 enum CameraCapabilityPreference {
   full,
@@ -79,7 +79,7 @@ enum CameraCapabilityPreference {
   };
 }
 
-/// 读回工作模式设置；缺失或无法识别时回到默认的「预览+扫码」。
+/// 读回工作模式设置；缺失或无法识别时回到默认的「扫码预览」。
 CameraCapabilityPreference cameraCapabilityPreferenceFromStorage(Object? value) {
   final String normalized = '$value'.trim();
   for (final CameraCapabilityPreference preference

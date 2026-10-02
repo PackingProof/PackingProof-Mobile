@@ -882,7 +882,7 @@ class _SettingSwitch extends StatelessWidget {
   }
 }
 
-/// 「工作模式」区块：一行「标题 + 下拉框」，一行说明，不占第三行。
+/// 「工作模式」区块：三段的胶囊 + 选中项说明，和「扫码模式」同一套写法。
 ///
 /// 放在「扫码与提示音」页里，和「扫码模式」挨着，用户要在同一处决定扫码怎么跑。
 class _CameraWorkModeSettings extends StatelessWidget {
@@ -903,39 +903,32 @@ class _CameraWorkModeSettings extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Expanded(
-                child: Text(
-                  '工作模式',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                ),
-              ),
-              const SizedBox(width: 12),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 176),
-                child: DropdownButtonFormField<CameraCapabilityPreference>(
-                  key: const Key('camera-work-mode-dropdown'),
-                  initialValue: preference,
-                  isDense: true,
-                  decoration: const InputDecoration(isDense: true),
-                  items: CameraCapabilityPreference.values
-                      .map(
-                        (CameraCapabilityPreference option) =>
-                            DropdownMenuItem<CameraCapabilityPreference>(
-                              value: option,
-                              child: Text(option.label),
-                            ),
-                      )
-                      .toList(growable: false),
-                  onChanged: (CameraCapabilityPreference? value) {
-                    if (value != null) onChanged(value);
-                  },
-                ),
-              ),
-            ],
+          const Text(
+            '工作模式',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<CameraCapabilityPreference>(
+              key: const Key('camera-work-mode-segments'),
+              showSelectedIcon: false,
+              segments: CameraCapabilityPreference.values
+                  .map(
+                    (CameraCapabilityPreference option) =>
+                        ButtonSegment<CameraCapabilityPreference>(
+                          value: option,
+                          label: Text(option.label),
+                        ),
+                  )
+                  .toList(growable: false),
+              selected: <CameraCapabilityPreference>{preference},
+              onSelectionChanged: (Set<CameraCapabilityPreference> values) {
+                onChanged(values.single);
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
           Text(
             preference.description,
             style: TextStyle(

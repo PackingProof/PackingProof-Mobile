@@ -1120,11 +1120,9 @@ void main() {
     expect(find.text('扫码模式'), findsOneWidget);
     expect(find.text('工作模式'), findsOneWidget);
 
-    final Finder dropdown = find.byKey(const Key('camera-work-mode-dropdown'));
-    await tester.ensureVisible(dropdown);
-    await tester.tap(dropdown);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('仅预览').last);
+    final Finder segments = find.byKey(const Key('camera-work-mode-segments'));
+    await tester.ensureVisible(segments);
+    await tester.tap(find.text(CameraCapabilityPreference.alternating.label));
     await tester.pumpAndSettle();
 
     expect(selected, CameraCapabilityPreference.alternating);
@@ -1135,7 +1133,7 @@ void main() {
     );
   });
 
-  testWidgets('工作模式卡片就两行：标题+下拉框，下面一行说明', (WidgetTester tester) async {
+  testWidgets('工作模式是三段胶囊，三段同时可见且能直接切换', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 2600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -1172,49 +1170,42 @@ void main() {
     await _openSettingsEntry(tester, 'scan-settings-open');
 
     final Finder title = find.text('工作模式');
-    final Finder dropdown = find.byKey(const Key('camera-work-mode-dropdown'));
+    final Finder segments = find.byKey(const Key('camera-work-mode-segments'));
     final Finder description = find.text(
       CameraCapabilityPreference.encoderAnalysis.description,
     );
     expect(title, findsOneWidget);
-    expect(dropdown, findsOneWidget);
+    expect(segments, findsOneWidget);
     expect(description, findsOneWidget);
 
-    // 第一行：左边标题、右边下拉框，两者在同一行
+    // 标题在上、胶囊在中、说明在下；胶囊占满卡片宽度
     expect(
-      tester.getCenter(title).dy,
-      closeTo(tester.getCenter(dropdown).dy, 2),
+      tester.getTopLeft(title).dy,
+      lessThan(tester.getTopLeft(segments).dy),
+    );
+    expect(
+      tester.getBottomLeft(segments).dy,
+      lessThanOrEqualTo(tester.getTopLeft(description).dy),
     );
     expect(
       tester.getTopLeft(title).dx,
-      lessThan(tester.getTopLeft(dropdown).dx),
+      closeTo(tester.getTopLeft(segments).dx, 1),
     );
-    // 第二行：说明在下拉框下面
     expect(
-      tester.getTopLeft(description).dy,
-      greaterThan(tester.getBottomLeft(dropdown).dy),
+      tester.getSize(segments).width,
+      greaterThan(tester.getSize(title).width * 2),
     );
+    // 三段文案同时可见，不用展开
+    for (final CameraCapabilityPreference option
+        in CameraCapabilityPreference.values) {
+      expect(find.text(option.label), findsOneWidget, reason: option.label);
+    }
     // 不再有「恢复默认」这类按钮
     expect(find.text('恢复默认'), findsNothing);
 
-    // 下拉里的模式一律可选：真跑不动时只是选择落到「仅扫码」，用户随时能改回来
-    await tester.ensureVisible(dropdown);
-    await tester.tap(dropdown);
-    await tester.pumpAndSettle();
-    final Finder fullItem = find
-        .text(CameraCapabilityPreference.full.label)
-        .last;
-    final DropdownMenuItem<CameraCapabilityPreference> fullMenuItem = tester
-        .widget<DropdownMenuItem<CameraCapabilityPreference>>(
-          find.ancestor(
-            of: fullItem,
-            matching: find.byType(
-              DropdownMenuItem<CameraCapabilityPreference>,
-            ),
-          ),
-        );
-    expect(fullMenuItem.enabled, isTrue);
-    await tester.tap(fullItem);
+    // 三段一律可选：真跑不动时只是选择落到「仅扫码」，用户随时能改回来
+    await tester.ensureVisible(segments);
+    await tester.tap(find.text(CameraCapabilityPreference.full.label));
     await tester.pumpAndSettle();
 
     expect(selected, CameraCapabilityPreference.full);

@@ -754,7 +754,7 @@ void main() {
       second.dispose();
     });
     await second.initialize();
-    // 探测结论只留作诊断：开机一律按默认的「预览+扫码」开始，
+    // 探测结论只留作诊断：开机一律按默认的「扫码预览」开始，
     // 不再拿历史结论把明明支持的机型锁在降级模式里
     expect(second.cameraCapabilityPreference, CameraCapabilityPreference.full);
     expect(second.capabilityMode, CameraCapabilityMode.full);
