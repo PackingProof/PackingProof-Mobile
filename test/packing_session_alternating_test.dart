@@ -623,7 +623,10 @@ void main() {
       'phase': 'stall_during_recording',
     });
     expect(controller.capabilityMode, CameraCapabilityMode.encoderAnalysis);
-    expect(controller.cameraFullModeUnavailable, isTrue);
+    expect(
+      controller.cameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
 
     camera.lastInitializeMode = 'stale';
     final PackingSessionController second = PackingSessionController(
@@ -646,18 +649,16 @@ void main() {
     await second.initialize();
 
     expect(second.cameraCapabilityPreference, CameraCapabilityPreference.full);
-    expect(second.cameraFullModeUnavailable, isFalse);
     expect(second.capabilityMode, CameraCapabilityMode.full);
     expect(camera.lastInitializeMode, 'full');
   });
 
-  test('真降级后灰掉「预览+扫码」，点恢复默认又能选回来', () async {
+  test('真降级后选择落到「仅扫码」，用户还能手动改回完整模式', () async {
     await controller.initialize();
     expect(
       controller.cameraCapabilityPreference,
       CameraCapabilityPreference.full,
     );
-    expect(controller.cameraFullModeUnavailable, isFalse);
 
     controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
       'mode': 'encoder_analysis',
@@ -665,8 +666,7 @@ void main() {
     });
     await pumpEventQueue();
 
-    // 用户要的是完整模式，原生真的降级：本次运行把这一项灰掉，选择落到「仅扫码」
-    expect(controller.cameraFullModeUnavailable, isTrue);
+    // 用户要的是完整模式，原生真的降级：选择落到「仅扫码」，界面和实际一致
     expect(
       controller.cameraCapabilityPreference,
       CameraCapabilityPreference.encoderAnalysis,
@@ -675,10 +675,11 @@ void main() {
     expect(camera.lastMode, 'encoder_analysis');
     expect(controller.cameraNotice, isNotNull);
 
-    // 误判的解药：一键恢复默认，灰掉的选项马上放回来
-    await controller.restoreCameraCapabilityDefaults();
+    // 误判也不要紧：下拉里直接改回完整模式，下一次工作重新按完整模式试
+    await controller.setCameraCapabilityPreference(
+      CameraCapabilityPreference.full,
+    );
 
-    expect(controller.cameraFullModeUnavailable, isFalse);
     expect(
       controller.cameraCapabilityPreference,
       CameraCapabilityPreference.full,
@@ -687,7 +688,7 @@ void main() {
     expect(camera.lastMode, 'full');
   });
 
-  test('用户自己选「仅扫码」不灰掉完整模式，也不弹硬件限制提示', () async {
+  test('用户自己选「仅扫码」不弹硬件限制提示，选择保持不变', () async {
     await controller.initialize();
 
     await controller.setCameraCapabilityPreference(
@@ -703,7 +704,6 @@ void main() {
     });
     await pumpEventQueue();
 
-    expect(controller.cameraFullModeUnavailable, isFalse);
     expect(
       controller.cameraCapabilityPreference,
       CameraCapabilityPreference.encoderAnalysis,

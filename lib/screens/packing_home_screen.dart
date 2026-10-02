@@ -1172,9 +1172,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
           ? CameraCapabilitySettings(
               preference: _controller.cameraCapabilityPreference,
               onPreferenceChanged: _controller.setCameraCapabilityPreference,
-              onRestoreDefaults: _controller.restoreCameraCapabilityDefaults,
               showCard: _controller.showCameraCapabilityCard,
-              fullModeUnavailable: _controller.cameraFullModeUnavailable,
             )
           : null,
       scanBeepEnabled: _controller.scanBeepEnabled,

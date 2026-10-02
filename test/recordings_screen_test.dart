@@ -966,7 +966,6 @@ void main() {
           cameraCapability: CameraCapabilitySettings(
             preference: CameraCapabilityPreference.full,
             onPreferenceChanged: (_) async {},
-            onRestoreDefaults: () {},
           ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
@@ -1094,7 +1093,6 @@ void main() {
             onPreferenceChanged: (CameraCapabilityPreference value) async {
               selected = value;
             },
-            onRestoreDefaults: () {},
           ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
@@ -1137,13 +1135,12 @@ void main() {
     );
   });
 
-  testWidgets('跑不动的完整模式灰掉，点恢复默认马上放回来', (WidgetTester tester) async {
+  testWidgets('工作模式卡片就两行：标题+下拉框，下面一行说明', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 2600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
     CameraCapabilityPreference? selected;
-    bool restored = false;
     await tester.pumpWidget(
       MaterialApp(
         home: RecordingsScreen(
@@ -1158,11 +1155,9 @@ void main() {
           maxVolumeEnabled: true,
           cameraCapability: CameraCapabilitySettings(
             preference: CameraCapabilityPreference.encoderAnalysis,
-            fullModeUnavailable: true,
             onPreferenceChanged: (CameraCapabilityPreference value) async {
               selected = value;
             },
-            onRestoreDefaults: () => restored = true,
           ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
@@ -1176,22 +1171,36 @@ void main() {
     await tester.pump();
     await _openSettingsEntry(tester, 'scan-settings-open');
 
-    // 卡片如实显示：选中「仅扫码」，并说明完整模式为什么没了
-    expect(
-      find.text(CameraCapabilityPreference.encoderAnalysis.description),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('camera-work-mode-unavailable-note')),
-      findsOneWidget,
-    );
-
+    final Finder title = find.text('工作模式');
     final Finder dropdown = find.byKey(const Key('camera-work-mode-dropdown'));
+    final Finder description = find.text(
+      CameraCapabilityPreference.encoderAnalysis.description,
+    );
+    expect(title, findsOneWidget);
+    expect(dropdown, findsOneWidget);
+    expect(description, findsOneWidget);
+
+    // 第一行：左边标题、右边下拉框，两者在同一行
+    expect(
+      tester.getCenter(title).dy,
+      closeTo(tester.getCenter(dropdown).dy, 2),
+    );
+    expect(
+      tester.getTopLeft(title).dx,
+      lessThan(tester.getTopLeft(dropdown).dx),
+    );
+    // 第二行：说明在下拉框下面
+    expect(
+      tester.getTopLeft(description).dy,
+      greaterThan(tester.getBottomLeft(dropdown).dy),
+    );
+    // 不再有「恢复默认」这类按钮
+    expect(find.text('恢复默认'), findsNothing);
+
+    // 下拉里的模式一律可选：真跑不动时只是选择落到「仅扫码」，用户随时能改回来
     await tester.ensureVisible(dropdown);
     await tester.tap(dropdown);
     await tester.pumpAndSettle();
-
-    // 完整模式还在列表里，只是灰掉、点不动——不做硬隐藏
     final Finder fullItem = find
         .text(CameraCapabilityPreference.full.label)
         .last;
@@ -1204,28 +1213,11 @@ void main() {
             ),
           ),
         );
-    expect(fullMenuItem.enabled, isFalse);
-
+    expect(fullMenuItem.enabled, isTrue);
     await tester.tap(fullItem);
     await tester.pumpAndSettle();
-    expect(selected, isNull);
 
-    await tester.tapAt(const Offset(8, 8));
-    await tester.pumpAndSettle();
-
-    // 误判的解药：点右上角「恢复默认」，灰显和说明立即消失
-    final Finder restoreButton = find.byKey(
-      const Key('restore-camera-work-mode-button'),
-    );
-    expect(find.text('恢复默认'), findsOneWidget);
-    await tester.tap(restoreButton);
-    await tester.pumpAndSettle();
-
-    expect(restored, isTrue);
-    expect(
-      find.byKey(const Key('camera-work-mode-unavailable-note')),
-      findsNothing,
-    );
+    expect(selected, CameraCapabilityPreference.full);
     expect(
       find.text(CameraCapabilityPreference.full.description),
       findsOneWidget,

@@ -33,11 +33,6 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   Timer? _diagnosticsTimer;
   bool _diagnosticsCaptureRunning = false;
   String? _pendingDiagnosticsTrigger;
-  /// 本次运行里「预览+扫码」真的停摆过：设置页把这一项灰掉，点「恢复默认」再放出来。
-  ///
-  /// 不写入设置：设备行不行只有真跑起来才知道，历史结论一旦跨重启保留，
-  /// 就会把用户永久锁在降级后的模式里，再也回不到预览+扫码+录像。
-  bool _fullModeUnavailable = false;
   @override
   CameraCapabilityMode _capabilityMode = CameraCapabilityMode.unverified;
   Map<String, Object?>? _capabilityState;
@@ -325,9 +320,6 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       // 手动锁定会让探测结果无法生效，重新检测即回到默认（工作模式不跨重启保留）。
       _capabilityPreference = CameraCapabilityPreference.full;
     }
-    // 重新检测等于重新评估硬件：先丢掉上一轮的降级记忆，
-    // 否则探测结论是「可以三路」也仍旧按两路跑。
-    _fullModeUnavailable = false;
     _errorMessage = null;
     _setPhase(PackingSessionPhase.initializing);
     _capabilityProbeMessage = '正在重新检测摄像头能力';
@@ -353,23 +345,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   ) async {
     if (_disposed || _capabilityPreference == preference) return;
     _capabilityPreference = preference;
-    if (preference == CameraCapabilityPreference.full) {
-      // 用户主动选回「预览+扫码」：清掉本次运行的失败记忆，允许再试一次。
-      _fullModeUnavailable = false;
-    }
     _capabilityMode = preference.lockedMode;
-    notifyListeners();
-    await _pushCapabilityModeToNative();
-  }
-
-  /// 设置页「恢复默认」：不探测、不等待，直接回到默认的「预览+扫码」。
-  ///
-  /// 这是误判的解药：灰掉的选项随时能一键放回来，下一次工作会重新按完整模式尝试。
-  Future<void> restoreCameraCapabilityDefaults() async {
-    if (_disposed) return;
-    _fullModeUnavailable = false;
-    _capabilityPreference = CameraCapabilityPreference.full;
-    _capabilityMode = CameraCapabilityMode.full;
     notifyListeners();
     await _pushCapabilityModeToNative();
   }
@@ -415,12 +391,13 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       );
     }
     final String mode = '${info['mode'] ?? ''}';
+    bool degradedFromFull = false;
     if (mode == 'encoder_analysis') {
       _capabilityMode = CameraCapabilityMode.encoderAnalysis;
       if (_capabilityPreference == CameraCapabilityPreference.full) {
-        // 用户要的是「预览+扫码」，原生真的停摆降级：本次运行不再提供这一项，
-        // 选择落到「仅扫码」，让界面和实际跑的一致；点「恢复默认」还能放回来。
-        _fullModeUnavailable = true;
+        // 用户要的是「预览+扫码」，原生真的停摆降级：把选择落到「仅扫码」，
+        // 让界面和实际跑的一致。误判也不要紧，用户随时能在下拉里改回来。
+        degradedFromFull = true;
         _capabilityPreference = CameraCapabilityPreference.encoderAnalysis;
         unawaited(_pushCapabilityModeToNative());
       }
@@ -433,7 +410,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       _showCameraNotice('已切换录像兼容模式');
       return;
     }
-    if (!_fullModeUnavailable) {
+    if (!degradedFromFull) {
       // 用户自己选的「仅扫码」不是硬件结论，不要谎报成「受硬件限制」。
       return;
     }
@@ -621,9 +598,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
     required List<Map<String, Object?>> phases,
   }) async {
     if (decision.mode == CameraCapabilityMode.unverified) {
-      _capabilityMode = _fullModeUnavailable
-          ? CameraCapabilityMode.encoderAnalysis
-          : CameraCapabilityMode.unverified;
+      _capabilityMode = _capabilityPreference.lockedMode;
       try {
         await _nativeCamera?.setCapabilityMode(_capabilityMode.wireValue);
       } on Object {

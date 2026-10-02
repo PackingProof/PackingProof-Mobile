@@ -8,6 +8,7 @@ import 'package:packing_proof_mobile/app/app_build_config.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/models/app_settings.dart';
 import 'package:packing_proof_mobile/models/recording_orientation.dart';
+import 'package:packing_proof_mobile/models/camera_capability.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
@@ -1092,6 +1093,10 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     expect(controller.cameraNotice, isNull);
 
+    // 同一次运行里已经降级过就不再重复弹；先由用户改回完整模式，才需要再提示一次
+    await controller.setCameraCapabilityPreference(
+      CameraCapabilityPreference.full,
+    );
     controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
       'mode': 'encoder_analysis',
       'phase': 'stall_during_recording',

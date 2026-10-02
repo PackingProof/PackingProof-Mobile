@@ -78,7 +78,6 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
   bool get _maxVolumeEnabled;
   CameraCapabilityMode get _capabilityMode;
   CameraCapabilityPreference get _capabilityPreference;
-  bool get _fullModeUnavailable;
   bool get _capabilityProbeRunning;
   String? get _capabilityProbeMessage;
   bool get _supportsCameraCapabilityNegotiation;
@@ -115,9 +114,6 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
   CameraCapabilityMode get capabilityMode => _capabilityMode;
   CameraCapabilityPreference get cameraCapabilityPreference =>
       _capabilityPreference;
-
-  /// 「预览+扫码」在本次运行里真的跑不动过：设置页把它灰掉，点「恢复默认」再放回来。
-  bool get cameraFullModeUnavailable => _fullModeUnavailable;
   bool get capabilityProbeRunning => _capabilityProbeRunning;
   String? get capabilityProbeMessage => _capabilityProbeMessage;
 
