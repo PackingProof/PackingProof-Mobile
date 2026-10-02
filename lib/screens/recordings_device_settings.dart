@@ -147,7 +147,7 @@ class _StoragePressureSettings extends StatelessWidget {
   }
 }
 
-/// 二级页：扫码与声音。扫码卡片与声音卡片各占一张小卡片。
+/// 二级页：扫码与提示音。扫码卡片与声音卡片各占一张小卡片。
 class _ScanSettingsScreen extends StatefulWidget {
   const _ScanSettingsScreen({
     required this.workMode,
@@ -199,7 +199,7 @@ class _ScanSettingsScreenState extends State<_ScanSettingsScreen> {
     final ColorScheme colors = Theme.of(context).colorScheme;
     final CameraCapabilitySettings? cameraCapability = widget.cameraCapability;
     return Scaffold(
-      appBar: AppBar(title: const Text('扫码与声音')),
+      appBar: AppBar(title: const Text('扫码与提示音')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
         children: <Widget>[
@@ -907,7 +907,7 @@ class _SettingSwitch extends StatelessWidget {
 
 /// 「工作模式」区块：选择录像时预览和扫码能不能用，附「恢复默认」入口。
 ///
-/// 放在「扫码与声音」页里，和「扫码模式」挨着，用户要在同一处决定扫码怎么跑。
+/// 放在「扫码与提示音」页里，和「扫码模式」挨着，用户要在同一处决定扫码怎么跑。
 class _CameraWorkModeSettings extends StatelessWidget {
   const _CameraWorkModeSettings({
     required this.preference,
@@ -1538,12 +1538,12 @@ extension _RecordingsSettingsView on _RecordingsScreenState {
   List<Widget> buildRecordingsSettingsChildren(BuildContext context) {
     final CameraCapabilitySettings? cameraCapability = widget.cameraCapability;
     return <Widget>[
-      // 扫码与声音（扫码模式、工作模式、条码长度、语音与音量）收进同名的二级页。
+      // 扫码与提示音（扫码模式、工作模式、条码长度、语音与音量）收进同名的二级页。
       _SettingsEntryCard(
         key: const Key('scan-settings-card'),
         tileKey: const Key('scan-settings-open'),
         icon: Icons.qr_code_scanner_rounded,
-        title: '扫码与声音',
+        title: '扫码与提示音',
         subtitle: '扫码模式、工作模式与提示音',
         onOpen: () => Navigator.of(context).push<void>(
           MaterialPageRoute<void>(

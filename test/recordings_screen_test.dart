@@ -271,7 +271,7 @@ void main() {
         .getTopLeft(find.byKey(const Key('order-receiver-open')))
         .dy;
 
-    // 一级只剩入口卡片：扫码与声音 → 录像清理 → 录像设置 → 订单接收。
+    // 一级只剩入口卡片：扫码与提示音 → 录像清理 → 录像设置 → 订单接收。
     expect(scanEntryY, lessThan(cleanupEntryY));
     expect(cleanupEntryY, lessThan(recordingEntryY));
     expect(recordingEntryY, lessThan(orderEntryY));
@@ -305,11 +305,11 @@ void main() {
       findsNWidgets(2),
     );
 
-    // 「扫码与声音」二级页含扫码卡片与声音卡片。
+    // 「扫码与提示音」二级页含扫码卡片与声音卡片。
     await tester.pageBack();
     await tester.pumpAndSettle();
     await _openSettingsEntry(tester, 'scan-settings-open');
-    expect(find.text('扫码与声音'), findsWidgets);
+    expect(find.text('扫码与提示音'), findsWidgets);
     expect(find.byKey(const Key('work-mode-settings')), findsOneWidget);
     // 语音提示与最大音量在同一个二级页的另一张卡片里。
     expect(find.byKey(const Key('speech-prompt-settings')), findsOneWidget);
@@ -539,7 +539,7 @@ void main() {
     expect(scanCard, findsOneWidget);
     expect(cleanupCard, findsOneWidget);
     expect(recordingCard, findsOneWidget);
-    // 语音与音量已并入「扫码与声音」二级页，一级不再有语音卡片。
+    // 语音与音量已并入「扫码与提示音」二级页，一级不再有语音卡片。
     expect(find.byKey(const Key('voice-settings-card')), findsNothing);
 
     expect(
@@ -871,7 +871,7 @@ void main() {
       ),
     );
 
-    // 语音提示在「扫码与声音」二级页里。
+    // 语音提示在「扫码与提示音」二级页里。
     await _openSettingsEntry(tester, 'scan-settings-open');
     expect(find.byKey(const Key('speech-prompt-settings')), findsOneWidget);
     expect(find.text('离线自动使用系统语音'), findsOneWidget);
@@ -1071,7 +1071,7 @@ void main() {
     expect(supportedDiscovery.searchCount, 1);
   });
 
-  testWidgets('扫码与声音里的工作模式可手动选择并回调', (WidgetTester tester) async {
+  testWidgets('扫码与提示音里的工作模式可手动选择并回调', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 2600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
