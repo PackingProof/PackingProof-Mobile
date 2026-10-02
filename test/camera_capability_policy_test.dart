@@ -223,7 +223,6 @@ void main() {
 
   group('摄像头工作模式偏好', () {
     test('存取值与能力模式一一对应', () {
-      expect(CameraCapabilityPreference.auto.storageValue, 'auto');
       expect(CameraCapabilityPreference.full.storageValue, 'full');
       expect(
         CameraCapabilityPreference.encoderAnalysis.storageValue,
@@ -234,7 +233,6 @@ void main() {
         'alternating',
       );
 
-      expect(CameraCapabilityPreference.auto.lockedMode, isNull);
       expect(
         CameraCapabilityPreference.full.lockedMode,
         CameraCapabilityMode.full,
@@ -268,7 +266,8 @@ void main() {
       expect(CameraCapabilityPreference.full.label, '预览+扫码');
       expect(CameraCapabilityPreference.encoderAnalysis.label, '仅扫码');
       expect(CameraCapabilityPreference.alternating.label, '仅预览');
-      expect(CameraCapabilityPreference.auto.label, '自动（推荐）');
+      // 默认就是「预览+扫码」，不再提供会记住历史降级的「自动」选项
+      expect(CameraCapabilityPreference.values.first, CameraCapabilityPreference.full);
       // 录制是必然发生的，标签里不再重复写“录像”，只说清预览和扫码能不能用
       for (final CameraCapabilityPreference preference
           in CameraCapabilityPreference.values) {

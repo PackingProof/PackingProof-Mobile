@@ -539,7 +539,7 @@ void main() {
 
   test('首次探测锁定轮换模式并下发原生模式与一次性说明', () async {
     await controller.initialize();
-    expect(controller.capabilityMode, CameraCapabilityMode.unverified);
+    expect(controller.capabilityMode, CameraCapabilityMode.full);
 
     await controller.retryCapabilityProbe();
 
@@ -571,16 +571,17 @@ void main() {
     expect(camera.lastMode, 'alternating');
 
     await controller.setCameraCapabilityPreference(
-      CameraCapabilityPreference.auto,
+      CameraCapabilityPreference.full,
     );
 
     expect(
       controller.cameraCapabilityPreference,
-      CameraCapabilityPreference.auto,
+      CameraCapabilityPreference.full,
     );
+    expect(camera.lastMode, 'full');
   });
 
-  test('工作模式不记忆：新会话一律回到自动', () async {
+  test('工作模式不记忆：新会话一律回到默认的预览+扫码', () async {
     await controller.initialize();
     await controller.setCameraCapabilityPreference(
       CameraCapabilityPreference.encoderAnalysis,
@@ -610,8 +611,8 @@ void main() {
 
     await second.initialize();
 
-    expect(second.cameraCapabilityPreference, CameraCapabilityPreference.auto);
-    expect(camera.lastInitializeMode, 'unverified');
+    expect(second.cameraCapabilityPreference, CameraCapabilityPreference.full);
+    expect(camera.lastInitializeMode, 'full');
   });
 
   test('原生自动降级不跨重启保留，下次启动仍先试完整模式', () async {
@@ -622,6 +623,7 @@ void main() {
       'phase': 'stall_during_recording',
     });
     expect(controller.capabilityMode, CameraCapabilityMode.encoderAnalysis);
+    expect(controller.cameraFullModeUnavailable, isTrue);
 
     camera.lastInitializeMode = 'stale';
     final PackingSessionController second = PackingSessionController(
@@ -643,12 +645,49 @@ void main() {
 
     await second.initialize();
 
-    expect(second.cameraCapabilityPreference, CameraCapabilityPreference.auto);
-    expect(second.capabilityMode, CameraCapabilityMode.unverified);
-    expect(camera.lastInitializeMode, 'unverified');
+    expect(second.cameraCapabilityPreference, CameraCapabilityPreference.full);
+    expect(second.cameraFullModeUnavailable, isFalse);
+    expect(second.capabilityMode, CameraCapabilityMode.full);
+    expect(camera.lastInitializeMode, 'full');
   });
 
-  test('手动选择仅扫码后回到自动，不再被降级记忆锁成两路', () async {
+  test('真降级后灰掉「预览+扫码」，点恢复默认又能选回来', () async {
+    await controller.initialize();
+    expect(
+      controller.cameraCapabilityPreference,
+      CameraCapabilityPreference.full,
+    );
+    expect(controller.cameraFullModeUnavailable, isFalse);
+
+    controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
+      'mode': 'encoder_analysis',
+      'phase': 'stall_during_recording',
+    });
+    await pumpEventQueue();
+
+    // 用户要的是完整模式，原生真的降级：本次运行把这一项灰掉，选择落到「仅扫码」
+    expect(controller.cameraFullModeUnavailable, isTrue);
+    expect(
+      controller.cameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(controller.capabilityMode, CameraCapabilityMode.encoderAnalysis);
+    expect(camera.lastMode, 'encoder_analysis');
+    expect(controller.cameraNotice, isNotNull);
+
+    // 误判的解药：一键恢复默认，灰掉的选项马上放回来
+    await controller.restoreCameraCapabilityDefaults();
+
+    expect(controller.cameraFullModeUnavailable, isFalse);
+    expect(
+      controller.cameraCapabilityPreference,
+      CameraCapabilityPreference.full,
+    );
+    expect(controller.capabilityMode, CameraCapabilityMode.full);
+    expect(camera.lastMode, 'full');
+  });
+
+  test('用户自己选「仅扫码」不灰掉完整模式，也不弹硬件限制提示', () async {
     await controller.initialize();
 
     await controller.setCameraCapabilityPreference(
@@ -662,17 +701,17 @@ void main() {
     controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
       'mode': 'encoder_analysis',
     });
-    expect(controller.cameraNotice, isNull);
+    await pumpEventQueue();
 
-    await controller.setCameraCapabilityPreference(
-      CameraCapabilityPreference.auto,
+    expect(controller.cameraFullModeUnavailable, isFalse);
+    expect(
+      controller.cameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
     );
-
-    expect(controller.capabilityMode, CameraCapabilityMode.unverified);
-    expect(camera.lastMode, 'unverified');
+    expect(controller.cameraNotice, isNull);
   });
 
-  test('缓存命中时不再重复探测', () async {
+  test('历史探测结论不再决定工作模式', () async {
     await controller.initialize();
     await controller.retryCapabilityProbe();
     expect(controller.capabilityMode, CameraCapabilityMode.alternating);
@@ -695,8 +734,12 @@ void main() {
       second.dispose();
     });
     await second.initialize();
-    expect(second.capabilityMode, CameraCapabilityMode.alternating);
-    expect(second.capabilityProbedAtMs, firstProbedAtMs);
+    // 探测结论只留作诊断：开机一律按默认的「预览+扫码」开始，
+    // 不再拿历史结论把明明支持的机型锁在降级模式里
+    expect(second.cameraCapabilityPreference, CameraCapabilityPreference.full);
+    expect(second.capabilityMode, CameraCapabilityMode.full);
+    expect(camera.lastInitializeMode, 'full');
+    expect(firstProbedAtMs, greaterThan(0));
   });
 
   test('诊断采样禁止重入且只补跑最新触发', () async {

@@ -964,8 +964,9 @@ void main() {
           speechEnabled: true,
           maxVolumeEnabled: true,
           cameraCapability: CameraCapabilitySettings(
-            preference: CameraCapabilityPreference.auto,
+            preference: CameraCapabilityPreference.full,
             onPreferenceChanged: (_) async {},
+            onRestoreDefaults: () {},
           ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
@@ -1089,10 +1090,11 @@ void main() {
           speechEnabled: true,
           maxVolumeEnabled: true,
           cameraCapability: CameraCapabilitySettings(
-            preference: CameraCapabilityPreference.auto,
+            preference: CameraCapabilityPreference.full,
             onPreferenceChanged: (CameraCapabilityPreference value) async {
               selected = value;
             },
+            onRestoreDefaults: () {},
           ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
@@ -1131,6 +1133,101 @@ void main() {
     // 选完立即在页面上体现，不需要退出重进
     expect(
       find.text(CameraCapabilityPreference.alternating.description),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('跑不动的完整模式灰掉，点恢复默认马上放回来', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    CameraCapabilityPreference? selected;
+    bool restored = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          capabilities: const PlatformCapabilities(<PlatformCapability>{
+            PlatformCapability.continuousCameraRecording,
+            PlatformCapability.cameraCapabilityNegotiation,
+          }),
+          sessions: const <RecordingSession>[],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          cameraCapability: CameraCapabilitySettings(
+            preference: CameraCapabilityPreference.encoderAnalysis,
+            fullModeUnavailable: true,
+            onPreferenceChanged: (CameraCapabilityPreference value) async {
+              selected = value;
+            },
+            onRestoreDefaults: () => restored = true,
+          ),
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await _openSettingsEntry(tester, 'scan-settings-open');
+
+    // 卡片如实显示：选中「仅扫码」，并说明完整模式为什么没了
+    expect(
+      find.text(CameraCapabilityPreference.encoderAnalysis.description),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('camera-work-mode-unavailable-note')),
+      findsOneWidget,
+    );
+
+    final Finder dropdown = find.byKey(const Key('camera-work-mode-dropdown'));
+    await tester.ensureVisible(dropdown);
+    await tester.tap(dropdown);
+    await tester.pumpAndSettle();
+
+    // 完整模式还在列表里，只是灰掉、点不动——不做硬隐藏
+    final Finder fullItem = find
+        .text(CameraCapabilityPreference.full.label)
+        .last;
+    final DropdownMenuItem<CameraCapabilityPreference> fullMenuItem = tester
+        .widget<DropdownMenuItem<CameraCapabilityPreference>>(
+          find.ancestor(
+            of: fullItem,
+            matching: find.byType(
+              DropdownMenuItem<CameraCapabilityPreference>,
+            ),
+          ),
+        );
+    expect(fullMenuItem.enabled, isFalse);
+
+    await tester.tap(fullItem);
+    await tester.pumpAndSettle();
+    expect(selected, isNull);
+
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
+
+    // 误判的解药：点右上角「恢复默认」，灰显和说明立即消失
+    final Finder restoreButton = find.byKey(
+      const Key('restore-camera-work-mode-button'),
+    );
+    expect(find.text('恢复默认'), findsOneWidget);
+    await tester.tap(restoreButton);
+    await tester.pumpAndSettle();
+
+    expect(restored, isTrue);
+    expect(
+      find.byKey(const Key('camera-work-mode-unavailable-note')),
+      findsNothing,
+    );
+    expect(
+      find.text(CameraCapabilityPreference.full.description),
       findsOneWidget,
     );
   });

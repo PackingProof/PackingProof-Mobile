@@ -489,7 +489,7 @@ class PackingSessionController extends ChangeNotifier
             'recordAudio': _recordAudioEnabled,
             'recordingSpec': _recordingSpec.storageValue,
             'videoCodec': _preferredVideoCodec.storageValue,
-            'nativeRecordingFallback': _nativeRecordingFallback,
+            'cameraFullModeUnavailable': _fullModeUnavailable,
             'capabilityMode': _capabilityMode.wireValue,
           },
         ),

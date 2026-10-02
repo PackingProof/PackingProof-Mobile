@@ -41,24 +41,21 @@ enum CameraCapabilityMode {
 
 /// 用户在设置里选择的摄像头工作模式。
 ///
-/// 默认自动：先按完整三路工作，检测到停摆再降级；也可以手动锁定某个能力模式，
-/// 用于自动降级没有触发、但设备确实扛不住三路并发的机型。
+/// 默认「预览+扫码」：设备到底能不能同时预览、扫码和录像，只有真跑起来才知道，
+/// 所以不做探测门禁。真跑不动时由原生降级，并把这一项在设置里临时灰掉。
 enum CameraCapabilityPreference {
-  auto,
   full,
   encoderAnalysis,
   alternating;
 
   String get storageValue => switch (this) {
-    CameraCapabilityPreference.auto => 'auto',
     CameraCapabilityPreference.full => 'full',
     CameraCapabilityPreference.encoderAnalysis => 'encoder_analysis',
     CameraCapabilityPreference.alternating => 'alternating',
   };
 
-  /// 手动锁定的能力模式；自动时返回 null，表示仍由探测与原生降级决定。
-  CameraCapabilityMode? get lockedMode => switch (this) {
-    CameraCapabilityPreference.auto => null,
+  /// 选择直接锁定的能力模式。
+  CameraCapabilityMode get lockedMode => switch (this) {
     CameraCapabilityPreference.full => CameraCapabilityMode.full,
     CameraCapabilityPreference.encoderAnalysis =>
       CameraCapabilityMode.encoderAnalysis,
@@ -66,7 +63,6 @@ enum CameraCapabilityPreference {
   };
 
   String get label => switch (this) {
-    CameraCapabilityPreference.auto => '自动（推荐）',
     CameraCapabilityPreference.full => CameraCapabilityMode.full.label,
     CameraCapabilityPreference.encoderAnalysis =>
       CameraCapabilityMode.encoderAnalysis.label,
@@ -75,7 +71,6 @@ enum CameraCapabilityPreference {
   };
 
   String get description => switch (this) {
-    CameraCapabilityPreference.auto => '由程序自动选择：先按「预览+扫码」工作，画面卡住时自动换成能用的方式',
     CameraCapabilityPreference.full => CameraCapabilityMode.full.description,
     CameraCapabilityPreference.encoderAnalysis =>
       CameraCapabilityMode.encoderAnalysis.description,

@@ -184,7 +184,10 @@ class _ScanSettingsScreen extends StatefulWidget {
 class _ScanSettingsScreenState extends State<_ScanSettingsScreen> {
   late WorkMode _workMode = widget.workMode;
   late CameraCapabilityPreference _cameraPreference =
-      widget.cameraCapability?.preference ?? CameraCapabilityPreference.auto;
+      widget.cameraCapability?.preference ?? CameraCapabilityPreference.full;
+  // 页面本地保留一份：点「恢复默认」要马上解除灰显，不能等退出重进
+  late bool _fullModeUnavailable =
+      widget.cameraCapability?.fullModeUnavailable ?? false;
   late bool _scanQrCodes = widget.scanPreferences?.scanQrCodes ?? false;
   late bool _scanBeepEnabled = widget.scanPreferences?.scanBeepEnabled ?? false;
   late int _minimumBarcodeLength = widget.minimumBarcodeLength;
@@ -208,20 +211,24 @@ class _ScanSettingsScreenState extends State<_ScanSettingsScreen> {
               children: <Widget>[
                 _CameraWorkModeSettings(
                   preference: _cameraPreference,
+                  fullModeUnavailable: _fullModeUnavailable,
                   onChanged: (CameraCapabilityPreference value) {
-                    setState(() => _cameraPreference = value);
+                    setState(() {
+                      _cameraPreference = value;
+                      if (value == CameraCapabilityPreference.full) {
+                        _fullModeUnavailable = false;
+                      }
+                    });
                     unawaited(cameraCapability.onPreferenceChanged(value));
                   },
-                  onRetryProbe: cameraCapability.onRetryProbe == null
-                      ? null
-                      : () {
-                          // 重新检测等于回到自动，选择项要跟着变，否则界面会撒谎
-                          setState(
-                            () => _cameraPreference =
-                                CameraCapabilityPreference.auto,
-                          );
-                          cameraCapability.onRetryProbe!();
-                        },
+                  // 恢复默认：灰掉的选项放回来，选择项要跟着变，否则界面会撒谎
+                  onRestoreDefaults: () {
+                    setState(() {
+                      _cameraPreference = CameraCapabilityPreference.full;
+                      _fullModeUnavailable = false;
+                    });
+                    cameraCapability.onRestoreDefaults();
+                  },
                 ),
               ],
             ),
@@ -817,15 +824,19 @@ class CameraCapabilitySettings {
   const CameraCapabilitySettings({
     required this.preference,
     required this.onPreferenceChanged,
+    required this.onRestoreDefaults,
     this.showCard = true,
-    this.onRetryProbe,
+    this.fullModeUnavailable = false,
   });
 
   final CameraCapabilityPreference preference;
   final Future<void> Function(CameraCapabilityPreference preference)
   onPreferenceChanged;
+  final VoidCallback onRestoreDefaults;
   final bool showCard;
-  final VoidCallback? onRetryProbe;
+
+  /// 「预览+扫码」在本次运行里真的跑不动过：下拉里灰掉，点「恢复默认」再放回来。
+  final bool fullModeUnavailable;
 }
 
 /// 扫码相关开关（是否扫二维码、扫码提示音）的展示数据与回调。
@@ -894,19 +905,26 @@ class _SettingSwitch extends StatelessWidget {
   }
 }
 
-/// 「工作模式」区块：三路 / 两路的选择，附当前能力状态与重新检测入口。
+/// 「工作模式」区块：选择录像时预览和扫码能不能用，附「恢复默认」入口。
 ///
 /// 放在「扫码与声音」页里，和「扫码模式」挨着，用户要在同一处决定扫码怎么跑。
 class _CameraWorkModeSettings extends StatelessWidget {
   const _CameraWorkModeSettings({
     required this.preference,
     required this.onChanged,
-    this.onRetryProbe,
+    required this.onRestoreDefaults,
+    this.fullModeUnavailable = false,
   });
 
   final CameraCapabilityPreference preference;
   final ValueChanged<CameraCapabilityPreference> onChanged;
-  final VoidCallback? onRetryProbe;
+  final VoidCallback onRestoreDefaults;
+
+  /// 「预览+扫码」在本次运行里真的跑不动过，下拉里灰掉不让选。
+  final bool fullModeUnavailable;
+
+  bool _isUnavailable(CameraCapabilityPreference option) =>
+      fullModeUnavailable && option == CameraCapabilityPreference.full;
 
   @override
   Widget build(BuildContext context) {
@@ -926,9 +944,13 @@ class _CameraWorkModeSettings extends StatelessWidget {
                 ),
               ),
               TextButton(
-                key: const Key('retry-camera-capability-button'),
-                onPressed: onRetryProbe,
-                child: const Text('重新检测'),
+                key: const Key('restore-camera-work-mode-button'),
+                // 已经是默认值又没有灰掉的选项时无事可做，按钮跟着置灰
+                onPressed: fullModeUnavailable ||
+                        preference != CameraCapabilityPreference.full
+                    ? onRestoreDefaults
+                    : null,
+                child: const Text('恢复默认'),
               ),
             ],
           ),
@@ -944,6 +966,9 @@ class _CameraWorkModeSettings extends StatelessWidget {
                     (CameraCapabilityPreference option) =>
                         DropdownMenuItem<CameraCapabilityPreference>(
                           value: option,
+                          // 真跑不动过的那一项只灰掉、不隐藏：结论可能是误判，
+                          // 用户随时能用右上角「恢复默认」把它放回来
+                          enabled: !_isUnavailable(option),
                           child: Text(option.label),
                         ),
                   )
@@ -962,6 +987,19 @@ class _CameraWorkModeSettings extends StatelessWidget {
               height: 1.5,
             ),
           ),
+          if (fullModeUnavailable) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              '这台设备录像时预览画面会停住，已临时停用「预览+扫码」；'
+              '点右上角「恢复默认」就能再试一次',
+              key: const Key('camera-work-mode-unavailable-note'),
+              style: TextStyle(
+                color: colors.onSurfaceVariant,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+          ],
         ],
       ),
     );
