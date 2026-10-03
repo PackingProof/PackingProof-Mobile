@@ -15,6 +15,7 @@ check_limit() {
   actual_lines="$(awk 'END { print NR }' "$absolute_file")"
   if [ "$actual_lines" -gt "$maximum_lines" ]; then
     echo "${relative_file}: ${actual_lines} 行，超过基线 ${maximum_lines} 行" >&2
+    echo "  按职责拆分并同步下调基线，不要为新增代码提高基线；判定口径见 docs/code-architecture.md" >&2
     return 1
   fi
 }
