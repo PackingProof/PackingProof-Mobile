@@ -21,6 +21,7 @@
 		9828AAE5014071D5CDB4F2E7 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15AA95A630075CB44A63380E /* Pods_RunnerTests.framework */; };
 		A1B2C3D4E5F60718293A4B5C /* IosBackupPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F40516273849A5B6C7 /* IosBackupPersistence.swift */; };
 		A2B3C4D5E6F708192A3B4C5D /* IosBackupPlatform.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D3E4F5061728394A5B6C7D /* IosBackupPlatform.swift */; };
+		A2B3C4D5E6F708192A3B4C5E /* IosOrderReceiverPlatform.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D3E4F5061728394A5B6C7E /* IosOrderReceiverPlatform.swift */; };
 		A7B8C9D0E1F2A3B4C5D6E702 /* IosMediaProcessingCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2A3B4C5D6E701 /* IosMediaProcessingCore.swift */; };
 		A7B8C9D0E1F2A3B4C5D6E703 /* IosMediaProcessingCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2A3B4C5D6E701 /* IosMediaProcessingCore.swift */; };
 		BDF095F42BFEA723990221B9 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3F3DC8261F887E6C56D9A256 /* Pods_Runner.framework */; };
@@ -98,6 +99,7 @@
 		B7B863E615623DDE649284E5 /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
 		C1D2E3F40516273849A5B6C7 /* IosBackupPersistence.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosBackupPersistence.swift; sourceTree = "<group>"; };
 		C2D3E4F5061728394A5B6C7D /* IosBackupPlatform.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosBackupPlatform.swift; sourceTree = "<group>"; };
+		C2D3E4F5061728394A5B6C7E /* IosOrderReceiverPlatform.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosOrderReceiverPlatform.swift; sourceTree = "<group>"; };
 		D10000000000000000000011 /* DeviceTestHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceTestHost.swift; sourceTree = "<group>"; };
 		D10000000000000000000012 /* IosDeviceSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IosDeviceSecurityTests.swift; sourceTree = "<group>"; };
 		D10000000000000000000013 /* PackingProofDeviceTestHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PackingProofDeviceTestHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -235,6 +237,7 @@
 				C3B358335144A53A27AC5CEE /* Generated */,
 				C1D2E3F40516273849A5B6C7 /* IosBackupPersistence.swift */,
 				C2D3E4F5061728394A5B6C7D /* IosBackupPlatform.swift */,
+				C2D3E4F5061728394A5B6C7E /* IosOrderReceiverPlatform.swift */,
 				E5F60718293A4B5C6D7E8F90 /* IosCameraPlatform.swift */,
 				E4F5061728394A5B6C7D8E9F /* IosCameraRecordingLifecycle.swift */,
 				F6A1B2C3D4E5061728394A5F /* IosWatermark.swift */,
@@ -598,6 +601,7 @@
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* IosBackupPersistence.swift in Sources */,
 				A2B3C4D5E6F708192A3B4C5D /* IosBackupPlatform.swift in Sources */,
+				A2B3C4D5E6F708192A3B4C5E /* IosOrderReceiverPlatform.swift in Sources */,
 				D5E6F708192A3B4C5D6E7F80 /* IosCameraPlatform.swift in Sources */,
 				D4E5F60718293A4B5C6D7E8F /* IosCameraRecordingLifecycle.swift in Sources */,
 				F6A1B2C3D4E5061728394A5D /* IosWatermark.swift in Sources */,
