@@ -178,6 +178,51 @@ void main() {
     );
   });
 
+  test('未备份筛选只留本机还没备份的录像', () {
+    final RecordingSession backedUpLocal = _session(
+      id: 'backed-up',
+      code: 'BACKED',
+      startedAt: DateTime(2026, 8, 21, 10),
+      filePath: '/recordings/backed-up.mp4',
+    );
+    final RecordingSession localOnly = _session(
+      id: 'local-only',
+      code: 'LOCAL',
+      startedAt: DateTime(2026, 8, 21, 9),
+      filePath: '/recordings/local-only.mp4',
+    );
+    List<RecordingHistoryItem> filtered(RecordingSourceFilter sourceFilter) =>
+        buildVisibleRecordingHistoryItems(
+          localSessions: <RecordingSession>[backedUpLocal, localOnly],
+          remoteRecordings: const <RemoteRecording>[],
+          hiddenRemoteIds: const <int>{},
+          localRecordingPaths: <String>{
+            backedUpLocal.filePath,
+            localOnly.filePath,
+          },
+          sourceFilter: sourceFilter,
+          isRemoteFromThisDevice: (RemoteRecording remote) => false,
+          isLocalBackedUp: (RecordingSession local) =>
+              local.id == 'backed-up',
+        );
+
+    // 「已备份」和「未备份」互补：前者只留电脑上已有记录的，后者只留还没有的。
+    expect(
+      filtered(const RecordingSourceFilter.backedUp()).single.local,
+      backedUpLocal,
+    );
+    expect(
+      filtered(const RecordingSourceFilter.notBackedUp()).single.local,
+      localOnly,
+    );
+    expect(
+      recordingHistorySourceFilterLabel(
+        const RecordingSourceFilter.notBackedUp(),
+      ),
+      '未备份',
+    );
+  });
+
   test('来源筛选按设备分别列出，主机与从机不再混在一起', () {
     final DateTime now = DateTime(2026, 9, 13);
     final RecordingSourceFilterPresentation presentation =
@@ -206,7 +251,7 @@ void main() {
 
     expect(
       options.map((RecordingSourceOption option) => option.label),
-      <String>['全部来源', '本地', '已备份', '从机2', '电脑1'],
+      <String>['全部来源', '本地', '已备份', '未备份', '从机2', '电脑1'],
     );
     // 设备项的筛选键用设备 ID，避免同名设备相互串拢。
     expect(options.last.filter, const RecordingSourceFilter.device('host-id'));
@@ -282,7 +327,7 @@ void main() {
     expect(presentation.label, '从机2');
     expect(
       presentation.options.map((RecordingSourceOption option) => option.label),
-      <String>['全部来源', '本地', '已备份', '从机2', '电脑1'],
+      <String>['全部来源', '本地', '已备份', '未备份', '从机2', '电脑1'],
     );
   });
 

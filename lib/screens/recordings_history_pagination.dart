@@ -37,6 +37,9 @@ int estimateRecordingHistoryCount({
 }) => switch (sourceFilter.kind) {
   RecordingSourceFilterKind.local => localCount,
   RecordingSourceFilterKind.backedUp => remoteDeviceTotal,
+  // 未备份 = 本机有录像但电脑上还没有对应记录，估算时从本机条数里扣掉已备份部分。
+  RecordingSourceFilterKind.notBackedUp =>
+    (localLogicalCount - remoteDeviceTotal).clamp(0, localLogicalCount),
   RecordingSourceFilterKind.device => localLogicalCount + remoteTotal,
   RecordingSourceFilterKind.all =>
     localLogicalCount +

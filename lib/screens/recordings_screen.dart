@@ -19,7 +19,7 @@ import '../services/lan_backup_service.dart';
 import '../models/work_mode.dart';
 import '../platform/platform_capabilities.dart';
 import '../widgets/about_settings.dart';
-import '../widgets/text_selection_menu.dart';
+import '../widgets/recording_history_filters.dart';
 import '../widgets/two_button_confirm_dialog.dart';
 import '../services/recording_thumbnail_service.dart';
 import '../services/camera_capability_policy.dart';
@@ -815,6 +815,15 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _onSearchChanged(value);
   }
 
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() {
+      _query = '';
+      _historyPage = 0;
+    });
+    unawaited(_loadRemote(reset: true, pageNumber: 1, prefetchNext: true));
+  }
+
   /// 来源筛选项与当前显示名，筛选按钮与筛选面板共用。
   RecordingSourceFilterPresentation get _sourceFilterPresentation =>
       recordingSourceFilterPresentation(
@@ -1249,85 +1258,31 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                       ],
                     ),
                     const SizedBox(height: 10),
-                    SearchBar(
-                      key: const Key('recording-search'),
-                      controller: _searchController,
-                      contextMenuBuilder: buildFlutterTextSelectionMenu,
-                      hintText: '搜索面单号或日期',
-                      leading: const Icon(Icons.search_rounded),
-                      trailing: <Widget>[
-                        IconButton(
-                          key: const Key('scan-search-button'),
-                          tooltip: '扫描条码搜索',
-                          onPressed: widget.onScanSearch,
-                          icon: const Icon(Icons.qr_code_scanner_rounded),
-                        ),
-                        IconButton(
-                          key: const Key('paste-search-button'),
-                          tooltip: '粘贴搜索内容',
-                          onPressed: _pasteSearch,
-                          icon: const Icon(Icons.content_paste_rounded),
-                        ),
-                        if (_query.isNotEmpty)
-                          IconButton(
-                            tooltip: '清除搜索',
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _query = '';
-                                _historyPage = 0;
-                              });
-                              unawaited(
-                                _loadRemote(
-                                  reset: true,
-                                  pageNumber: 1,
-                                  prefetchNext: true,
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.close_rounded),
-                          ),
-                      ],
-                      onChanged: _onSearchChanged,
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: <Widget>[
-                        FilterChip(
-                          key: const Key('recording-source-filter'),
-                          avatar: const Icon(
-                            Icons.filter_alt_rounded,
-                            size: 18,
-                          ),
-                          label: Text(
-                            [
-                              _sourceFilterPresentation.label,
-                              if (_operationFilter != null)
-                                _operationFilter!.label,
-                            ].join(' · '),
-                          ),
-                          selected:
-                              _sourceFilter.kind !=
-                                  RecordingSourceFilterKind.all ||
-                              _operationFilter != null,
-                          showCheckmark: false,
-                          onSelected: (_) => _showSourceFilter(),
-                        ),
-                        FilterChip(
-                          key: const Key('recording-date-filter'),
-                          avatar: const Icon(
-                            Icons.calendar_month_rounded,
-                            size: 18,
-                          ),
-                          label: Text(_dateFilterLabel),
-                          selected:
-                              _datePreset != RecordingHistoryDatePreset.all,
-                          showCheckmark: false,
-                          onSelected: (_) => _showDateFilter(),
-                        ),
-                      ],
+                    RecordingHistoryFilters(
+                      searchController: _searchController,
+                      hasQuery: _query.isNotEmpty,
+                      onSearchChanged: _onSearchChanged,
+                      onPasteSearch: _pasteSearch,
+                      onClearSearch: _clearSearch,
+                      onScan: widget.onScanSearch,
+                      source: (
+                        label: [
+                          _sourceFilterPresentation.label,
+                          if (_operationFilter != null)
+                            _operationFilter!.label,
+                        ].join(' · '),
+                        selected:
+                            _sourceFilter.kind !=
+                                RecordingSourceFilterKind.all ||
+                            _operationFilter != null,
+                        onPressed: _showSourceFilter,
+                      ),
+                      date: (
+                        label: _dateFilterLabel,
+                        selected:
+                            _datePreset != RecordingHistoryDatePreset.all,
+                        onPressed: _showDateFilter,
+                      ),
                     ),
                   ],
                 ),

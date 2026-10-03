@@ -5,11 +5,11 @@ import '../models/lan_backup.dart';
 import '../models/recording_session.dart';
 import '../models/recording_operation_mode.dart';
 
-/// 来源筛选：本地 / 已备份 / 全部，或某台具体设备。
+/// 来源筛选：本地 / 已备份 / 未备份 / 全部，或某台具体设备。
 ///
 /// 电脑端只用一个 `sourceType` 字段区分本机（`pc`）与外接设备（`external`），
 /// 所以"电脑录像"以前会把主机和各从机的录像混在一起；这里改为按设备分开筛。
-enum RecordingSourceFilterKind { all, local, backedUp, device }
+enum RecordingSourceFilterKind { all, local, backedUp, notBackedUp, device }
 
 @immutable
 class RecordingSourceFilter {
@@ -24,6 +24,9 @@ class RecordingSourceFilter {
   const RecordingSourceFilter.backedUp()
     : this._(RecordingSourceFilterKind.backedUp, null);
 
+  const RecordingSourceFilter.notBackedUp()
+    : this._(RecordingSourceFilterKind.notBackedUp, null);
+
   const RecordingSourceFilter.device(String deviceKey)
     : this._(RecordingSourceFilterKind.device, deviceKey);
 
@@ -37,6 +40,7 @@ class RecordingSourceFilter {
     RecordingSourceFilterKind.all => true,
     RecordingSourceFilterKind.local => facts.hasLocalFile,
     RecordingSourceFilterKind.backedUp => facts.backedUp,
+    RecordingSourceFilterKind.notBackedUp => !facts.backedUp,
     RecordingSourceFilterKind.device =>
       facts.sourceDeviceKey != null && facts.sourceDeviceKey == deviceKey,
   };
@@ -137,6 +141,7 @@ RecordingSourceFilterPresentation recordingSourceFilterPresentation({
       (filter: const RecordingSourceFilter.all(), label: '全部来源'),
       (filter: const RecordingSourceFilter.local(), label: '本地'),
       (filter: const RecordingSourceFilter.backedUp(), label: '已备份'),
+      (filter: const RecordingSourceFilter.notBackedUp(), label: '未备份'),
       for (final String key in keys)
         (filter: RecordingSourceFilter.device(key), label: labels[key]!),
     ],
@@ -216,6 +221,7 @@ String recordingHistorySourceFilterLabel(
   RecordingSourceFilterKind.all => '全部来源',
   RecordingSourceFilterKind.local => '本地',
   RecordingSourceFilterKind.backedUp => '已备份',
+  RecordingSourceFilterKind.notBackedUp => '未备份',
   RecordingSourceFilterKind.device =>
     deviceLabel?.trim().isNotEmpty == true ? deviceLabel!.trim() : '其他设备',
 };
