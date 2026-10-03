@@ -19,6 +19,7 @@ import '../services/lan_backup_service.dart';
 import '../models/work_mode.dart';
 import '../platform/platform_capabilities.dart';
 import '../widgets/about_settings.dart';
+import '../widgets/text_selection_menu.dart';
 import '../widgets/two_button_confirm_dialog.dart';
 import '../services/recording_thumbnail_service.dart';
 import '../services/camera_capability_policy.dart';
@@ -1251,6 +1252,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                     SearchBar(
                       key: const Key('recording-search'),
                       controller: _searchController,
+                      contextMenuBuilder: buildFlutterTextSelectionMenu,
                       hintText: '搜索面单号或日期',
                       leading: const Icon(Icons.search_rounded),
                       trailing: <Widget>[

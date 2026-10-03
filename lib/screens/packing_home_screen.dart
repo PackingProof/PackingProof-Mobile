@@ -29,6 +29,7 @@ import '../services/session_repository.dart';
 import '../services/speech_prompt_service.dart';
 import '../services/watermark_geometry.dart';
 import '../widgets/order_info_sheet.dart';
+import '../widgets/text_selection_menu.dart';
 import '../widgets/tracking_number_keypad.dart';
 import '../widgets/two_button_confirm_dialog.dart';
 import 'recordings_screen.dart';
@@ -443,6 +444,7 @@ class _ManualTrackingSheetState extends State<_ManualTrackingSheet> {
                   controller: _input,
                   focusNode: _inputFocus,
                   autoFocus: true,
+                  contextMenuBuilder: buildFlutterTextSelectionMenu,
                   hintText: '输入或粘贴单号',
                   leading: const Icon(Icons.local_shipping_rounded),
                   onSubmitted: (String value) => unawaited(_submit(value)),
