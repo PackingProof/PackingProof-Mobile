@@ -431,6 +431,8 @@ enum IosBackupUploadFailureHandlingResult: Equatable {
   case persisted
   case staleGeneration
   case persistenceFailed
+  /// 切后台时主动取消传输：这不是备份失败，任务保持可续传状态。
+  case backgroundInterrupted
 }
 
 private actor IosBackupUploadStartGate {
@@ -1817,6 +1819,9 @@ final class IosBackupHostApi: BackupNativeHostApi {
     expectedGeneration: String,
     error: Error
   ) -> IosBackupUploadFailureHandlingResult {
+    if Self.isBackgroundUploadCancellation(error, hostForeground: isHostForeground()) {
+      return .backgroundInterrupted
+    }
     let failure = Self.backupFailureInfo(error)
     do {
       let updated: Bool
@@ -1858,6 +1863,20 @@ final class IosBackupHostApi: BackupNativeHostApi {
       emitSummary()
       return .persistenceFailed
     }
+  }
+
+  /// 应用切到后台时我们会主动取消传输。这类取消不是备份失败：任务要留在可
+  /// 续传状态，回到前台由调度器接着传，否则会被写成一个假失败。
+  static func isBackgroundUploadCancellation(
+    _ error: Error,
+    hostForeground: Bool
+  ) -> Bool {
+    guard !hostForeground else { return false }
+    if error is CancellationError { return true }
+    if let urlError = error as? URLError, urlError.code == .cancelled {
+      return true
+    }
+    return false
   }
 
   private func emitSummary() {
@@ -1960,6 +1979,36 @@ final class IosBackupHostApi: BackupNativeHostApi {
     hostLifecycleLock.lock()
     hostForeground = false
     hostLifecycleLock.unlock()
+    // 后台不再继续跑传输与清理扫描：上传切片每块都要读盘、算 SHA256、写库，
+    // 清理切片还要联网确认远端备份。进后台后继续跑只会把 CPU 顶在 30% 以上，
+    // 被 iOS 按后台 CPU 超限直接杀掉（FRONTBOARD 0xc00010ff）。任务与数据库
+    // 进度都保留成可续传状态，回到前台再由 onHostForeground 重新调度。
+    cancelUploadsForBackground()
+    pauseCleanupForBackground()
+  }
+
+  /// 切后台时取消正在跑的上传：清空调度器与在跑任务，进度留在任务行里。
+  private func cancelUploadsForBackground() {
+    let tasks = withUploadsLock { () -> [Task<Void, Never>] in
+      uploadDispatcherTask?.cancel()
+      uploadDispatcherTask = nil
+      uploadDispatchRequested = false
+      let active = activeUploads.values.map(\.task)
+      activeUploads.removeAll()
+      return active
+    }
+    tasks.forEach { $0.cancel() }
+  }
+
+  /// 切后台时收掉正在跑的清理 runner：后台不做清理扫描，回前台补跑。
+  private func pauseCleanupForBackground() {
+    let runner = withCleanupLock { () -> Task<Void, Never>? in
+      guard let task = cleanupRunnerTask else { return nil }
+      cleanupDeferredByBackground = true
+      finalizeCleanupRunnerUnlocked(token: cleanupRunnerToken)
+      return task
+    }
+    runner?.cancel()
   }
 
   private func isHostForeground() -> Bool {

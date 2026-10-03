@@ -3253,6 +3253,36 @@ class RunnerTests: XCTestCase {
     XCTAssertLessThanOrEqual(counts.started, 2)
   }
 
+  func testRunningCleanupSliceIsCancelledAfterHostBackground() async throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL, defaults: fixture.defaults
+    )
+    let sliceStarted = expectation(description: "清理切片已开始")
+    let sliceCancelled = expectation(description: "切后台取消正在跑的清理切片")
+    let api = makeBackupApi(
+      defaults: fixture.defaults,
+      store: store,
+      cleanupOperationOverride: {
+        sliceStarted.fulfill()
+        do {
+          try await Task.sleep(nanoseconds: 30 * 1_000_000_000)
+        } catch {
+          sliceCancelled.fulfill()
+          throw error
+        }
+      },
+      cleanupWorkPauseNanoseconds: 5_000_000,
+      cleanupSliceIntervalNanoseconds: 1_000_000
+    )
+
+    api.triggerCleanupForTesting()
+    await fulfillment(of: [sliceStarted], timeout: 5)
+    api.onHostBackground()
+    await fulfillment(of: [sliceCancelled], timeout: 5)
+  }
+
   func testUnconfiguredBackupSkipsTenThousandCleanupAndSummaryTriggers()
     async throws
   {
@@ -4432,6 +4462,142 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(
       try store.readJob(id: "second-after-background")?["state"] as? String,
       "completed"
+    )
+  }
+
+  func testUploadDispatcherCancelsInFlightUploadAfterHostBackground()
+    async throws
+  {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    fixture.defaults.set(true, forKey: "ios_backup_auto_enabled")
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL,
+      defaults: fixture.defaults
+    )
+    try store.upsert(makeBackupJob(id: "in-flight-upload"))
+    let started = expectation(description: "上传已开始")
+    let cancelled = expectation(description: "切后台取消正在跑的上传")
+    let resumed = expectation(description: "回到前台继续上传")
+    let runCounter = LockedTestCounter()
+    let api = makeBackupApi(
+      defaults: fixture.defaults,
+      store: store,
+      uploadOperationOverride: { job, identity in
+        if runCounter.increment() == 1 {
+          started.fulfill()
+          do {
+            try await Task.sleep(nanoseconds: 30 * 1_000_000_000)
+          } catch {
+            cancelled.fulfill()
+            return
+          }
+          return
+        }
+        resumed.fulfill()
+        _ = try? store.updateJob(
+          id: job["id"] as? String ?? "",
+          expectedGeneration: identity.generation
+        ) { $0["state"] = "completed" }
+      }
+    )
+
+    api.requestUploadDispatchForTesting()
+    await fulfillment(of: [started], timeout: 5)
+    api.onHostBackground()
+    await fulfillment(of: [cancelled], timeout: 5)
+    await api.waitForUploadDispatcherForTesting()
+
+    // 后台取消不是失败：任务保留可续传状态，回到前台接着传。
+    let backgrounded = try XCTUnwrap(store.readJob(id: "in-flight-upload"))
+    XCTAssertEqual(backgrounded["state"] as? String, "uploading")
+    XCTAssertNil(backgrounded["failureKind"] as? String)
+
+    api.onHostForeground()
+    await fulfillment(of: [resumed], timeout: 5)
+    await api.waitForUploadDispatcherForTesting()
+    XCTAssertEqual(
+      try store.readJob(id: "in-flight-upload")?["state"] as? String,
+      "completed"
+    )
+  }
+
+  func testBackgroundUploadCancellationKeepsJobResumable() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL,
+      defaults: fixture.defaults
+    )
+    try store.upsert(makeBackupJob(id: "background-cancel"))
+    let api = makeBackupApi(
+      defaults: fixture.defaults,
+      store: store,
+      hostForeground: false
+    )
+
+    XCTAssertEqual(
+      api.handleUploadFailure(
+        jobId: "background-cancel",
+        expectedGeneration: "generation-background-cancel",
+        error: CancellationError()
+      ),
+      .backgroundInterrupted
+    )
+    let current = try XCTUnwrap(store.readJob(id: "background-cancel"))
+    XCTAssertEqual(current["state"] as? String, "pending")
+    XCTAssertNil(current["failureKind"] as? String)
+    XCTAssertNil(current["errorMessage"] as? String)
+  }
+
+  func testForegroundUploadCancellationStillPersistsFailure() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL,
+      defaults: fixture.defaults
+    )
+    try store.upsert(makeBackupJob(id: "foreground-cancel"))
+    let api = makeBackupApi(defaults: fixture.defaults, store: store)
+
+    XCTAssertEqual(
+      api.handleUploadFailure(
+        jobId: "foreground-cancel",
+        expectedGeneration: "generation-foreground-cancel",
+        error: CancellationError()
+      ),
+      .persisted
+    )
+    let current = try XCTUnwrap(store.readJob(id: "foreground-cancel"))
+    XCTAssertEqual(current["state"] as? String, "paused")
+    XCTAssertEqual(current["failureKind"] as? String, "offline_or_timeout")
+  }
+
+  func testBackgroundNetworkFailureStillPersistsFailure() throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL,
+      defaults: fixture.defaults
+    )
+    try store.upsert(makeBackupJob(id: "background-network-failure"))
+    let api = makeBackupApi(
+      defaults: fixture.defaults,
+      store: store,
+      hostForeground: false
+    )
+
+    XCTAssertEqual(
+      api.handleUploadFailure(
+        jobId: "background-network-failure",
+        expectedGeneration: "generation-background-network-failure",
+        error: URLError(.cannotConnectToHost)
+      ),
+      .persisted
+    )
+    XCTAssertEqual(
+      try store.readJob(id: "background-network-failure")?["state"] as? String,
+      "paused"
     )
   }
 
