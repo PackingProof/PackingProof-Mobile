@@ -72,3 +72,9 @@ PackingProof-Mobile is a Flutter app for continuous package-recording and shippi
 
 - 分支和 Mac/Windows 双机同步优先使用 rebase，保持线性历史，不 squash 原有提交；具体流程见 `docs/cross-machine-development.md`。
 - 不主动创建 merge 提交；只有共享分支、发布/长期分支、明确要求保留整合入口或平台强制要求时才允许 merge。
+
+## 双机与运行环境
+
+- 不假设 AI 固定在哪一台机器上。两台机器对等，按工具链分工：Mac 提供 iOS/Xcode/TestFlight，Windows 提供 Android/Gradle/APK 构建与 Release 创建。
+- 当前环境缺哪一半工具链，就按本机私有笔记通过局域网 SSH 到另一台补齐，并读回完整输出与退出码；需要的那半没跑过，就不能算验证通过，也不能因为本机不是某一台就跳过。
+- 发布、双机同步与跨平台验证细节见 `docs/cross-machine-development.md`、`docs/android-release.md`、`docs/ios-development.md`。

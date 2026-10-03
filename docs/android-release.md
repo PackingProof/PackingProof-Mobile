@@ -1,12 +1,14 @@
 # Android 构建与发布
 
-本文档约定 PackingProof-Mobile 的 Android 本地 Release 测试包和正式发布流程。Android 是主要发布目标；原生 Gradle/JVM 测试、APK 构建及 Android 真机验证优先在局域网 Windows 编译机执行。
+本文档约定 PackingProof-Mobile 的 Android 本地 Release 测试包和正式发布流程。Android 是主要发布目标。
+
+Android 工具链（Gradle/JVM 测试、签名目录、APK 构建、Release 渠道登录态）只在 Windows 上，iOS 工具链（Xcode、TestFlight）只在 Mac 上；AI 在哪一边运行都走同一套顺序，缺的那一半按 `docs/cross-machine-development.md` 通过局域网 SSH 到具备该工具链的机器上执行，不要因为本机不是某一台就跳过。
 
 ## 脚本总览
 
 发布涉及的脚本按调用顺序如下，接手发布时从上往下走即可：
 
-| 脚本 | 机器 | 作用 |
+| 脚本 | 需要在这台机器上执行 | 作用 |
 | --- | --- | --- |
 | `Tools/Check-ReleasePrereqs.ps1` | Windows | 只读自检（PowerShell 7）：`.env`、签名目录、`gh` 登录态与 Gitee 令牌、工具链 |
 | `Tools/Check-ReleasePrereqs.sh` | Mac | 只读自检：TestFlight 凭据、`altool`、工具链；渠道登录态只提示 |
@@ -18,6 +20,8 @@
 | `Tools/Upload-TestFlight.sh` | Mac | 上传 IPA 到 TestFlight |
 
 本机配置集中在仓库根目录 `.env`，模板是已跟踪的 `.env.example`；真实凭据只存在于本机与持有发布权限的人手里，仓库内不保存。
+
+表里的机器指的是**具备该工具链的机器**，不代表 AI 只能在那一侧工作：缺哪一半就走 SSH 过去跑，并把输出和退出码读回来。
 
 ## 构建入口
 
@@ -41,16 +45,16 @@ dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk
 
 固化为以下顺序，任一步失败都不得继续：
 
-0. 两台机器各自自检前置条件：Windows 编译机用 PowerShell 7 跑 `pwsh -NoProfile -File Tools\Check-ReleasePrereqs.ps1`，Mac 跑 `./Tools/Check-ReleasePrereqs.sh`；有阻断项先解决，不要等构建到一半才发现凭据不齐。渠道登录态在 Windows 编译机上是硬性要求（Release 在那里创建），Mac 上只提示
+0. 两半自检都要跑：Windows 侧用 PowerShell 7 跑 `pwsh -NoProfile -File Tools\Check-ReleasePrereqs.ps1`，Mac 侧跑 `./Tools/Check-ReleasePrereqs.sh`；当前环境缺工具链时按 `docs/cross-machine-development.md` 走 SSH 到另一台执行。有阻断项先解决，不要等构建到一半才发现凭据不齐。渠道登录态在有 Android 工具链的 Windows 侧是硬性要求（Release 在那里创建），Mac 侧只提示
 1. 提交全部改动，确认工作区干净，版本号已更新
-2. 两台机器各跑一次本地 CI：`./Tools/test-ci.sh`（Mac 跑 golden/RunnerTests/iOS 构建那一半，Windows 编译机跑 Android 原生测试那一半），跳过项必须在另一台补齐
+2. 本地 CI 两半都要跑：`./Tools/test-ci.sh`（Mac 侧跑 golden/RunnerTests/iOS 构建，Windows 侧跑 Android 原生测试）；在哪一侧运行都可以，另一侧走 SSH 补齐，跳过项必须在另一台补齐
 3. 建本地精确标签 `v<versionName>+<versionCode>`
-4. 以该标签身份执行发布构建：Android 在 Windows 编译机执行 `Tools/Publish-Android.ps1`，iOS 在 Mac 执行 `Tools/Publish-iOS.sh`
+4. 以该标签身份执行发布构建：Android 在具备 Android 工具链的 Windows 机器上执行 `Tools/Publish-Android.ps1`，iOS 在 Mac 上执行 `Tools/Publish-iOS.sh`；不在那台机器时走局域网 SSH
 5. 构建与校验全部通过后，再推送 `main` 与标签到 GitHub 和 Gitee
-6. 在 Windows 编译机上直接创建 Release：APK 已在 `dist/android/`，先按 `SHA256SUMS.txt` 核对，再双击 `双击发布Release.bat` 或执行 `pwsh -NoProfile -File Tools\Publish-Releases.ps1 <发布笔记文件> --title "<一句话内容>"`，一次性创建 GitHub 与 Gitee Release 并上传 APK，不需要把 APK 拷到 Mac
+6. 在具备 Android 工具链的 Windows 侧直接创建 Release：APK 已在 `dist/android/`，先按 `SHA256SUMS.txt` 核对，再双击 `双击发布Release.bat` 或执行 `pwsh -NoProfile -File Tools\Publish-Releases.ps1 <发布笔记文件> --title "<一句话内容>"`，一次性创建 GitHub 与 Gitee Release 并上传 APK，不需要把 APK 拷到 Mac；人不在 Windows 侧时走 SSH
 7. iOS 执行 `./Tools/Upload-TestFlight.sh` 上传 TestFlight，不附 IPA
 
-Android 正式发布在局域网 Windows 编译机执行 `Tools/Publish-Android.ps1`，Release 也由这台机器创建，签名目录来自仓库外配置。Mac 只负责 golden/RunnerTests/iOS 构建与 TestFlight 上传。`.github/workflows/release.yml` 保留为手动触发（`workflow_dispatch`）的备用通道，日常发布不走它。
+Android 正式包只能在具备 Android 工具链的 Windows 编译机上构建（`Tools/Publish-Android.ps1`，签名目录来自仓库外配置），Release 也在这台机器上创建；iOS 侧（golden/RunnerTests/iOS 构建/TestFlight 上传）只在 Mac 上。两边对等：AI 在哪一侧运行，就本侧直接跑、另一侧走局域网 SSH 补齐，不要因为“平时在某一台机器上工作”而跳过另一半。`.github/workflows/release.yml` 保留为手动触发（`workflow_dispatch`）的备用通道，日常发布不走它。
 
 ## 发布前验证与审计
 
@@ -99,7 +103,7 @@ build-manifest.json
 
 GitHub/Gitee Release 只上传 Android APK。iOS 不再上传 IPA，只发布到 TestFlight。`SHA256SUMS.txt` 和 `build-manifest.json` 仅用于本地发布门禁与问题追踪，不作为 Release 附件。
 
-两个平台统一走 Windows 编译机上的 `Tools/Publish-Releases.ps1`（`Tools/Publish-Releases.sh` 是 Mac 上的等价实现，改动其一时必须同步另一处），它按当前精确 tag 找 `dist/android/` 下的 APK，先建 GitHub Release（连不上时自动重试），再建 Gitee Release 并上传同一个 APK；已存在的 Release 会跳过创建，可安全重跑：
+两个平台的 Release 统一在具备 Android 工具链的 Windows 侧创建：`Tools/Publish-Releases.ps1`（`Tools/Publish-Releases.sh` 是 Mac 上的等价实现，改动其一时必须同步另一处）。它按当前精确 tag 找 `dist/android/` 下的 APK，先建 GitHub Release（连不上时自动重试），再建 Gitee Release 并上传同一个 APK；已存在的 Release 会跳过创建，可安全重跑：
 
 ```powershell
 pwsh -NoProfile -File Tools\Publish-Releases.ps1 dist\android\RELEASE_NOTES-v<versionName>+<versionCode>.md `

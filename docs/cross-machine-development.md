@@ -4,10 +4,14 @@
 
 ## 对等编译节点
 
-- Mac 提供 iOS、Xcode 和 CocoaPods 构建验证能力
-- Windows 提供 Android 原生 Gradle/JVM 测试、APK 构建及 Android 真机验证能力
-- 两台机器对等互通。AI 当前无论运行在哪一边，都可按本机私有笔记通过局域网 SSH 控制另一台机器，补跑另一平台的构建和测试并读取结果
-- 当前机器缺少目标平台工具链时，不要把它误判为代码失败，也不要为单次验证临时安装 SDK、Java 或改写 `PATH`
+- 两台机器按工具链分工，不按“谁是主力开发机”分工：
+  - Mac 提供 iOS、Xcode、CocoaPods 与 TestFlight 上传能力
+  - Windows 提供 Android 原生 Gradle/JVM 测试、APK 构建、签名发布与 Android 真机验证能力
+- AI 的运行环境在哪一边都成立，不假设固定在某台机器上。缺哪一半工具链，就按本机私有笔记通过局域网 SSH 到具备该工具链的那台机器补齐，并读回完整输出和退出码后再下结论：
+  - 在 Windows 侧：golden、RunnerTests、iOS 构建、TestFlight 走 SSH 到 Mac
+  - 在 Mac 侧：Gradle/JVM 原生单测、APK 构建、Release 创建走 SSH 到 Windows
+  - 一条命令在哪台机器上执行，不改变它属于哪一半；需要的那半没跑，就不能算通过
+- 当前机器缺少目标平台工具链时，不要把它误判为代码失败，也不要为单次验证临时安装 SDK、Java 或改写 `PATH`；也不要因为本机不是“记忆中的那一台”就跳过该半验证
 - Flutter/Dart 平台无关的分析和测试可在任一具备项目 SDK 的机器运行
 
 ## 常用开发命令

@@ -1,6 +1,6 @@
 # iOS 开发与构建
 
-本文档约定 PackingProof-Mobile 的 iOS、Xcode 和 CocoaPods 开发流程。iOS 构建在 Mac 本机执行；AI 在 Windows 工作时，可按本机私有笔记通过局域网 SSH 控制 Mac 完成验证。
+本文档约定 PackingProof-Mobile 的 iOS、Xcode 和 CocoaPods 开发流程。iOS 构建需要 macOS 与 Xcode，只能在 Mac 上执行；AI 在哪一边工作都一样——在 Mac 上就直接本地执行，在 Windows 上就按本机私有笔记通过局域网 SSH 到 Mac 完成验证，并读回完整输出与退出码。
 
 ## 依赖与锁文件
 

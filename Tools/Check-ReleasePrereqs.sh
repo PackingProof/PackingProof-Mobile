@@ -4,9 +4,9 @@
 #   ./Tools/Check-ReleasePrereqs.sh
 #
 # 只读检查，不构建、不上传、不修改任何东西，也不打印凭据内容。
-# 按当前机器（Mac / Windows 编译机）分别检查它负责的那一半：
-# 签名与 Release 渠道登录态在 Windows 编译机上是阻断项（Release 在那里创建），
-# TestFlight 凭据在 Mac 上是阻断项；另一半的缺失只提示、不算失败。
+# 按当前机器实际具备的工具链分工，不假设 AI 固定在哪一台：
+# Android 工具链（Gradle、签名目录、Release 渠道）只在 Windows 上，iOS 工具链（Xcode、TestFlight）只在 Mac 上；
+# 属于本机那一半的缺失是阻断项，另一半只提示并指出要去哪台机器跑（可走局域网 SSH）。
 #
 # 完整发布顺序见 docs/android-release.md。
 
@@ -67,7 +67,7 @@ else
 fi
 
 echo ""
-echo "== Android 发布（Windows 编译机负责）=="
+echo "== Android 发布（需要 Windows 工具链）=="
 SIGNING_DIR="$(read_dotenv PACKING_PROOF_SIGNING_DIRECTORY)"
 if [ -n "$SIGNING_DIR" ]; then
   if [ -d "$SIGNING_DIR" ]; then
@@ -76,19 +76,19 @@ if [ -n "$SIGNING_DIR" ]; then
     if [ "$HOST" = "windows" ]; then
       fail "PACKING_PROOF_SIGNING_DIRECTORY 指向的目录不存在"
     else
-      warn "PACKING_PROOF_SIGNING_DIRECTORY 指向的目录在本机不存在（Android 在 Windows 编译机上构建，属正常）"
+      warn "PACKING_PROOF_SIGNING_DIRECTORY 指向的目录在本机不存在（Android 侧要到有 Android 工具链的 Windows 机器上跑，可走局域网 SSH）"
     fi
   fi
 else
   if [ "$HOST" = "windows" ]; then
     fail "缺少 PACKING_PROOF_SIGNING_DIRECTORY，Tools/Publish-Android.ps1 会直接失败"
   else
-    warn "本机未配置 PACKING_PROOF_SIGNING_DIRECTORY（Android 由 Windows 编译机负责，属正常）"
+    warn "本机未配置 PACKING_PROOF_SIGNING_DIRECTORY（Android 侧要到 Windows 机器上跑，可走局域网 SSH）"
   fi
 fi
 
 echo ""
-echo "== iOS TestFlight 上传（Mac 负责）=="
+echo "== iOS TestFlight 上传（需要 macOS + Xcode）=="
 KEY_ID="$(read_dotenv APP_STORE_CONNECT_KEY_ID)"
 ISSUER_ID="$(read_dotenv APP_STORE_CONNECT_ISSUER_ID)"
 KEY_PATH="$(read_dotenv APP_STORE_CONNECT_KEY_PATH)"
@@ -105,7 +105,7 @@ if [ -n "$KEY_ID" ] && [ -n "$ISSUER_ID" ]; then
   elif [ "$HOST" = "mac" ]; then
     fail "找不到 API 私钥 .p8（按 APP_STORE_CONNECT_KEY_PATH 或 altool 默认目录查找）"
   else
-    warn "本机找不到 API 私钥 .p8（iOS 由 Mac 负责，属正常）"
+    warn "本机找不到 API 私钥 .p8（iOS 侧要到 Mac 上跑，可走局域网 SSH）"
   fi
 elif [ -n "$APPLE_ID_VALUE" ] && [ -n "$APPLE_PASSWORD" ]; then
   ok "Apple ID 与 App 专用密码已配置（API Key 的退路方式）"
@@ -114,7 +114,7 @@ else
   if [ "$HOST" = "mac" ]; then
     fail "缺少 TestFlight 上传凭据，Tools/Upload-TestFlight.sh 无法运行（见 .env.example）"
   else
-    warn "本机未配置 TestFlight 上传凭据（iOS 由 Mac 负责，属正常）"
+    warn "本机未配置 TestFlight 上传凭据（iOS 侧要到 Mac 上跑，可走局域网 SSH）"
   fi
 fi
 
@@ -127,12 +127,13 @@ if [ "$HOST" = "mac" ]; then
 fi
 
 echo ""
-echo "== 发布渠道登录态（Tools/Publish-Releases.sh 在 Windows 编译机上执行）=="
-# Release 在 Windows 编译机创建：APK 与发布笔记就在那台机器上，不需要跨机拷贝。
+echo "== 发布渠道登录态（Release 需要在有 Android 工具链的 Windows 机器上创建）=="
+# Release 在那台机器上创建：APK 与发布笔记都在那边，不需要跨机拷贝；
+# 本机没有登录态时，走局域网 SSH 到那台机器跑 Tools/Publish-Releases.ps1 即可。
 if [ "$HOST" = "windows" ]; then
   channel_issue() { fail "$1"; }
 else
-  channel_issue() { warn "$1（Release 由 Windows 编译机创建，属正常）"; }
+  channel_issue() { warn "$1（Release 在 Windows 侧创建，本机没有登录态属正常，可走局域网 SSH 到那台机器验证）"; }
 fi
 
 if command -v gh >/dev/null 2>&1; then
@@ -172,7 +173,7 @@ fi
 echo ""
 echo "======== 自检汇总 ========"
 if [ "${#WARNINGS[@]}" -gt 0 ]; then
-  echo "提示（本机不负责的部分，不阻断）："
+  echo "提示（另一半的工具链不在这台机器上，不阻断）："
   for item in "${WARNINGS[@]}"; do echo "  - ${item}"; done
 fi
 
