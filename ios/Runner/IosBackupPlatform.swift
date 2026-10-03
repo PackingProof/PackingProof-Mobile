@@ -580,6 +580,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private let emitLock = NSLock()
   private var summaryEventInFlight = false
   private var summaryEventPending = false
+  private var terminated = false
   private var summaryProgressWorkItem: DispatchWorkItem?
   private var lastSummaryEventRequestedAt = Date.distantPast
   private let summaryQueue = DispatchQueue(
@@ -1914,6 +1915,10 @@ final class IosBackupHostApi: BackupNativeHostApi {
 
   private func sendSummaryIfPossible() {
     emitLock.lock()
+    if terminated {
+      emitLock.unlock()
+      return
+    }
     if summaryEventInFlight {
       summaryEventPending = true
       emitLock.unlock()
@@ -2009,6 +2014,23 @@ final class IosBackupHostApi: BackupNativeHostApi {
       return task
     }
     runner?.cancel()
+  }
+
+  /// App 终止时必须在 Flutter 引擎销毁前停掉一切还会发通道消息的工作。
+  ///
+  /// 引擎销毁后迟到的进度快照会撞上 `sendOnChannel:` 的
+  /// “Sending a message before the FlutterEngine has been run.” 断言，
+  /// 直接被中止（崩溃点 Bis-OzOmkFmwWGxbAUqzqG）。
+  func prepareForTermination() {
+    emitLock.lock()
+    terminated = true
+    emitLock.unlock()
+    cancelUploadsForBackground()
+    pauseCleanupForBackground()
+    summaryQueue.sync { [weak self] in
+      self?.summaryProgressWorkItem?.cancel()
+      self?.summaryProgressWorkItem = nil
+    }
   }
 
   private func isHostForeground() -> Bool {

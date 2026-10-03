@@ -4573,6 +4573,32 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(current["failureKind"] as? String, "offline_or_timeout")
   }
 
+  func testTerminationStopsSummaryEmissions() async throws {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL,
+      defaults: fixture.defaults
+    )
+    let snapshots = LockedTestCounter()
+    let api = makeBackupApi(
+      defaults: fixture.defaults,
+      store: store,
+      onSnapshot: { _ in _ = snapshots.increment() }
+    )
+
+    api.emitProgressSummaryForTesting()
+    api.drainSummaryQueueForTesting()
+    XCTAssertEqual(snapshots.value, 1)
+
+    // 引擎销毁后再往通道发消息会撞上 sendOnChannel 的断言，终止后必须静默。
+    api.prepareForTermination()
+    api.emitProgressSummaryForTesting()
+    api.emitProgressSummaryForTesting()
+    api.drainSummaryQueueForTesting()
+    XCTAssertEqual(snapshots.value, 1)
+  }
+
   func testBackgroundNetworkFailureStillPersistsFailure() throws {
     let fixture = try makeBackupStoreFixture()
     defer { removeBackupStoreFixture(fixture) }
@@ -5070,10 +5096,11 @@ class RunnerTests: XCTestCase {
     beforeCleanupCandidateForTesting: (([String: Any]) -> Void)? = nil,
     recordingsRoot: URL? = nil,
     beforeCleanupIntentClaimForTesting: (([String: Any]) -> Void)? = nil,
-    afterCleanupCommitForTesting: ((IosBackupCleanupIntent) throws -> Void)? = nil
+    afterCleanupCommitForTesting: ((IosBackupCleanupIntent) throws -> Void)? = nil,
+    onSnapshot: ((BackupSummaryDto) -> Void)? = nil
   ) -> IosBackupHostApi {
     IosBackupHostApi(
-      eventApi: FakeBackupNativeEventApi(),
+      eventApi: FakeBackupNativeEventApi(onSnapshot: onSnapshot),
       defaults: defaults,
       credentialStore: IosBackupCredentialStore(
         defaults: defaults,

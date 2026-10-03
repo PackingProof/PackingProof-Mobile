@@ -31,6 +31,7 @@ enum IosVideoCodecCapabilities {
 final class PigeonPlatform {
   private static var cameraHost: IosCameraHostApi?
   private static var backupHost: IosBackupHostApi?
+  private static var orderReceiverHost: IosOrderReceiverHostApi?
   private static var promptAudioHost: IosPromptAudioHost?
   private static var promptAudioChannel: FlutterMethodChannel?
 
@@ -77,11 +78,13 @@ final class PigeonPlatform {
       binaryMessenger: messenger,
       api: cameraHost
     )
+    let orderReceiverHost = IosOrderReceiverHostApi(
+      eventApi: OrderReceiverEventApi(binaryMessenger: messenger)
+    )
+    self.orderReceiverHost = orderReceiverHost
     OrderReceiverHostApiSetup.setUp(
       binaryMessenger: messenger,
-      api: IosOrderReceiverHostApi(
-        eventApi: OrderReceiverEventApi(binaryMessenger: messenger)
-      )
+      api: orderReceiverHost
     )
     let promptAudioHost = IosPromptAudioHost(
       audioSessionCoordinator: audioSessionCoordinator
@@ -95,13 +98,18 @@ final class PigeonPlatform {
     promptAudioChannel.setMethodCallHandler(promptAudioHost.handle)
   }
 
-  /// App 终止时必须在 Flutter 引擎销毁前同步关闭相机。
+  /// App 终止时必须在 Flutter 引擎销毁前同步停掉所有还会给 Dart 发消息的宿主。
   ///
   /// `FlutterViewController` 会在 `UIApplicationWillTerminateNotification` /
   /// `UISceneDidDisconnectNotification` 中销毁引擎；若相机回调仍调用
-  /// `textureFrameAvailable`，会触发 use-after-free 崩溃。
+  /// `textureFrameAvailable`，会触发 use-after-free 崩溃；后台队列上迟到的
+  /// 备份快照或订单推送则会撞上 `sendOnChannel:` 的
+  /// “Sending a message before the FlutterEngine has been run.” 断言被中止
+  /// （崩溃点 Bis-OzOmkFmwWGxbAUqzqG）。
   static func shutdownForTermination() {
     cameraHost?.prepareForTermination()
+    backupHost?.prepareForTermination()
+    orderReceiverHost?.prepareForTermination()
   }
 
   static func onHostForeground() {
@@ -652,6 +660,11 @@ private final class IosOrderReceiverHostApi: OrderReceiverHostApi {
     if socketHandle >= 0 {
       close(socketHandle)
     }
+  }
+
+  /// App 终止时先停掉接收循环，避免销毁引擎后还有订单推送打到通道上。
+  func prepareForTermination() {
+    try? stopReceiver()
   }
 
   // MARK: - HTTP server
