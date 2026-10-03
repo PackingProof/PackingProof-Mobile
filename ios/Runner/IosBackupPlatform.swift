@@ -1992,12 +1992,14 @@ final class IosBackupHostApi: BackupNativeHostApi {
     pauseCleanupForBackground()
   }
 
-  /// 切后台时取消正在跑的上传：清空调度器与在跑任务，进度留在任务行里。
+  /// 切后台时取消正在跑的上传：调度器与在跑任务一起取消，进度留在任务行里。
+  ///
+  /// 这里只取消、不提前把 `uploadDispatcherTask` 置空：调度器退出时会自己清句柄
+  /// 并决定要不要补跑。提前置空会让回到前台时又起第二个调度器，两个调度器都能领
+  /// 到同一条 uploading 任务，同一条录像会被传两遍。
   private func cancelUploadsForBackground() {
     let tasks = withUploadsLock { () -> [Task<Void, Never>] in
       uploadDispatcherTask?.cancel()
-      uploadDispatcherTask = nil
-      uploadDispatchRequested = false
       let active = activeUploads.values.map(\.task)
       activeUploads.removeAll()
       return active
