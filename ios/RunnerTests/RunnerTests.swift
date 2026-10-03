@@ -4489,6 +4489,7 @@ class RunnerTests: XCTestCase {
           do {
             try await Task.sleep(nanoseconds: 30 * 1_000_000_000)
           } catch {
+            // broad-catch: 用例用睡眠模拟“传到一半被切后台”，被取消即上传已中止
             cancelled.fulfill()
             return
           }
