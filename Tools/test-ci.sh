@@ -50,7 +50,7 @@ echo "增量检查基线：${DIFF_BASE}"
 # —— 两半共有的检查 ——
 run_step "改动文件空白字符" ./tool/check_diff.sh "$DIFF_BASE"
 run_step "新增宽泛 catch" ./tool/check_new_broad_catches.sh "$DIFF_BASE"
-run_step "大文件行数上限" ./tool/check_large_file_limits.sh
+run_step "大文件行数提示" ./tool/check_large_file_limits.sh
 run_step "flutter pub get" flutter pub get
 run_step "flutter analyze" flutter analyze
 run_step "Flutter 非视觉测试" flutter test --exclude-tags golden
