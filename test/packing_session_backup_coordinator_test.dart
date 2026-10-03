@@ -21,6 +21,16 @@ import 'package:packing_proof_mobile/services/video_watermark_service.dart';
 
 import 'test_repository.dart';
 
+/// Windows CI 上后台巡检可能还占着仓库文件，删临时目录会偶发失败（errno 32）；
+/// 与仓库既有做法一致，清理失败不阻塞用例。
+Future<void> deleteTemporaryRoot(Directory root) async {
+  try {
+    if (await root.exists()) await root.delete(recursive: true);
+  } on FileSystemException {
+    // 临时目录清理失败不阻塞测试。
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -62,7 +72,7 @@ void main() {
     addTearDown(() async {
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
 
     await controller.initialize();
@@ -146,7 +156,7 @@ void main() {
       await controller.shutdown();
       controller.dispose();
       try {
-        if (await root.exists()) await root.delete(recursive: true);
+        await deleteTemporaryRoot(root);
       } on FileSystemException {
         // 临时目录清理失败不阻塞测试。
       }
@@ -245,7 +255,7 @@ void main() {
     addTearDown(() async {
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     await controller.initialize();
 
@@ -304,7 +314,7 @@ void main() {
     addTearDown(() async {
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     controller.autoRetrySweepIntervalForTesting = const Duration(
       milliseconds: 200,
@@ -379,7 +389,7 @@ void main() {
     addTearDown(() async {
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     await controller.initialize();
 
@@ -432,7 +442,7 @@ void main() {
     addTearDown(() async {
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     await controller.initialize();
     final RecordingSession session = (await repository.findActiveSessionsByIds(
@@ -548,7 +558,7 @@ void main() {
     addTearDown(() async {
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     await controller.initialize();
     final RecordingSession session = (await repository.findActiveSessionsByIds(
@@ -607,7 +617,7 @@ void main() {
     addTearDown(() async {
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     await controller.initialize();
     final RecordingSession session = (await repository.findActiveSessionsByIds(
@@ -667,7 +677,7 @@ void main() {
     addTearDown(() async {
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     await controller.initialize();
     backup.emitSnapshot(
@@ -715,7 +725,7 @@ void main() {
       if (!firstBatchGate.isCompleted) firstBatchGate.complete();
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
 
     await controller
@@ -767,7 +777,7 @@ void main() {
       if (!firstBatchGate.isCompleted) firstBatchGate.complete();
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
 
     await controller.setLanBackupAutoEnabled(true);
@@ -786,7 +796,7 @@ void main() {
       'packing-proof-backup-cursor-interrupted-',
     );
     addTearDown(() async {
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     final SessionRepository firstRepository = SessionRepository(
       rootDirectory: root,
@@ -858,7 +868,7 @@ void main() {
       'packing-proof-cleanup-cursor-interrupted-',
     );
     addTearDown(() async {
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     final String filePath = '${root.path}/cleaned.mp4';
     final SessionRepository firstRepository = SessionRepository(
@@ -953,7 +963,7 @@ void main() {
       'packing-proof-cleanup-page-',
     );
     addTearDown(() async {
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     final _InterruptingCleanupRepository repository =
         _InterruptingCleanupRepository(
@@ -1004,7 +1014,7 @@ void main() {
         'packing-proof-backup-scale-',
       );
       addTearDown(() async {
-        if (await root.exists()) await root.delete(recursive: true);
+        await deleteTemporaryRoot(root);
       });
       final _PagedBackupRepository repository = _PagedBackupRepository(
         rootDirectory: root,
@@ -1043,7 +1053,7 @@ void main() {
       'packing-proof-backup-scale-resume-',
     );
     addTearDown(() async {
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     final _PagedBackupRepository repository = _PagedBackupRepository(
       rootDirectory: root,
@@ -1103,7 +1113,7 @@ void main() {
     addTearDown(() async {
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
 
     await controller.watermarkAndBackupForTesting(source.path, session);
@@ -1135,7 +1145,7 @@ void main() {
     addTearDown(() async {
       await controller.shutdown();
       controller.dispose();
-      if (await root.exists()) await root.delete(recursive: true);
+      await deleteTemporaryRoot(root);
     });
     int notifications = 0;
     controller.addListener(() => notifications++);
@@ -1163,7 +1173,7 @@ Future<void> _verifyCleanupReplayAroundRepositoryFailure() async {
     'packing-proof-cleanup-replay-',
   );
   addTearDown(() async {
-    if (await root.exists()) await root.delete(recursive: true);
+    await deleteTemporaryRoot(root);
   });
   final String filePath = '${root.path}/cleaned.mp4';
   final DateTime deletedAt = DateTime.utc(2026, 8, 23, 13);
