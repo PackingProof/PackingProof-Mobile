@@ -214,6 +214,7 @@ class PackingSessionController extends ChangeNotifier
   @override
   BackedRetentionPolicy _returnBackedRetention = BackedRetentionPolicy.days1;
   bool _appIsActive = true;
+  bool _workStoppedByInactive = false;
   @override
   String? _errorMessage;
   @override
@@ -954,6 +955,20 @@ class PackingSessionController extends ChangeNotifier
   Future<void> handleInactive() async {
     _appIsActive = false;
     final bool keepOrderReceiver = isWorking;
+    if (isWorking) _workStoppedByInactive = true;
+    // 锁屏、切后台都会走到这里：手里没有日志时，这条记录能直接证明
+    // "录二三十秒后屏幕黑掉、录像停"是不是被系统挂起造成的。
+    unawaited(
+      _runtimeLog.log(
+        kind: 'app_lifecycle',
+        extra: <String, Object?>{
+          'state': 'inactive',
+          'working': isWorking,
+          'recording': isRecording,
+          'phase': _phase.name,
+        },
+      ),
+    );
     await _orderInfoReceiver.setBackgroundKeepAlive(keepOrderReceiver);
     if (isWorking) {
       await stopWork();
@@ -966,6 +981,22 @@ class PackingSessionController extends ChangeNotifier
 
   Future<void> handleResumed() async {
     _appIsActive = true;
+    if (_workStoppedByInactive) {
+      _workStoppedByInactive = false;
+      // 让操作员知道录像为什么只录了一半：锁屏/切后台会停录。
+      _showCameraNotice('锁屏或切到后台会停止录像，请保持屏幕常亮');
+    }
+    unawaited(
+      _runtimeLog.log(
+        kind: 'app_lifecycle',
+        extra: <String, Object?>{
+          'state': 'resumed',
+          'working': isWorking,
+          'recording': isRecording,
+          'phase': _phase.name,
+        },
+      ),
+    );
     final bool needsInitialization = _supportsNativeCamera
         ? _nativeInitialization == null
         : _cameraController?.value.isInitialized != true;

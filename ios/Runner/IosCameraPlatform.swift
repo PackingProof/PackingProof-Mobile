@@ -821,6 +821,8 @@ final class IosCameraHostApi:
   private var lastAppendedVideoFrameAt: TimeInterval?
   private var watermarkSkipBudget = IosLiveWatermarkSkipBudget()
   private let recordingLifecycle = IosCameraRecordingLifecycle()
+  /// 最后一次请求的屏幕常亮状态；锁屏会让录像被迫停止，所以要在诊断里留痕。
+  private var requestedIdleTimerDisabled = false
   private var barcodeBatchGate =
     IosLatestPendingGate<[BarcodeCandidateDto]>(minimumInterval: 0.1)
   private var barcodeGeneration: UInt64 = 0
@@ -1115,6 +1117,8 @@ final class IosCameraHostApi:
         true, owner: self.recordingActivityOwner
       )
       self.recordAudio = recordAudio
+      // 录像一开始就要求保持屏幕常亮，避免 30 秒左右自动锁屏停录。
+      self.setIdleTimerDisabled(true)
       do {
         try self.recordPerformanceStage(
           "ensureSession",
@@ -1374,6 +1378,7 @@ final class IosCameraHostApi:
       let path = self.currentPath ?? ""
       let startedAt = self.currentStartedAtMs
       let endedAt = Int64(Date().timeIntervalSince1970 * 1000)
+      self.setIdleTimerDisabled(false)
       self.finishCurrentWriter { [weak self] finishResult in
         guard let self else {
           return
@@ -1519,6 +1524,7 @@ final class IosCameraHostApi:
         "currentAudioPeak": currentAudioPeak,
         "liveWatermarkFailed": currentWatermarkFailed,
         "liveWatermarkError": currentWatermarkError,
+        "idleTimerDisabled": requestedIdleTimerDisabled,
         "lastAudioSampleCount": lastAudioSampleCount,
         "lastAudioAppendFailedCount": lastAudioAppendFailedCount,
         "lastAudioLastError": lastAudioLastError,
@@ -2513,6 +2519,16 @@ final class IosCameraHostApi:
         "摄像头会话未运行",
         code: "camera_session_not_running"
       )
+    }
+  }
+
+  /// 录像期间保持屏幕常亮：锁屏会让应用被系统挂起，录像被迫停止、文件只剩
+  /// 前面一截。Dart 侧的 wakelock 插件仍是主路径，这里在原生录像开始/结束
+  /// 各兜一层，并把请求状态写进诊断，便于确认"黑屏停录"是不是锁屏造成的。
+  private func setIdleTimerDisabled(_ disabled: Bool) {
+    requestedIdleTimerDisabled = disabled
+    DispatchQueue.main.async {
+      UIApplication.shared.isIdleTimerDisabled = disabled
     }
   }
 
