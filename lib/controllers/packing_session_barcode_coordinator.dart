@@ -662,6 +662,20 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       } on Object catch (error) {
         // broad-catch: Start failures are converted to visible error state and
         // a fixed offline speech incident below.
+        unawaited(
+          _runtimeLog.log(
+            kind: 'recording_start_failed',
+            extra: <String, Object?>{
+              'code': code,
+              'error': '$error',
+              'recording': isRecording,
+              'working': isWorking,
+              'busy': isBusy,
+              'cameraReady': isCameraReady,
+              'capabilityMode': _capabilityMode.wireValue,
+            },
+          ),
+        );
         _timeline.reset();
         _errorMessage = '无法开始录像，请重新对准面单\n$error';
         _setPhase(PackingSessionPhase.waitingForBarcode);
