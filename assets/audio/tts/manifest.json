@@ -124,13 +124,13 @@
     },
     {
       "id": "recordingFailed",
-      "text": "录制失败",
+      "text": "无法开始录像，请重新对准面单",
       "priority": "warning",
       "voice": "zh-CN-YunjianNeural",
       "file": "recording_failed.mp3",
-      "bytes": 10604,
-      "sha256": "f43b5eaa7fd75d8a8de4c71c73d60f494bc2ca28f46488c916aad9c2048fe315",
-      "cacheKey": "4924b4a921daace468434bfed88cbedd8c9a404cbdb772ca095fe1db4ed88701"
+      "bytes": 22752,
+      "sha256": "343140fa5c5636d96fda35c2d4a15809c356c938d8136d231ff00c2046138824",
+      "cacheKey": "94010f1ce7851b51a69e92d0aeaba30a1e5e557dadb16adb3f642c6a8d27c9b8"
     },
     {
       "id": "audioRecordingFailed",
@@ -174,13 +174,23 @@
     },
     {
       "id": "recordingSaveFailed",
-      "text": "录像保存失败",
+      "text": "录像保存失败，请保留应用后重试",
       "priority": "warning",
       "voice": "zh-CN-YunjianNeural",
       "file": "recording_save_failed.mp3",
-      "bytes": 13340,
-      "sha256": "8e068e3f586a31fac200774d98c10d2fe5bdb00ed0b0a8ec7a4af0fb1856659c",
-      "cacheKey": "11feaa3f7c42ac4c75be6a5f7d7872a660830dce35fde2814e61f9c7144c7ed5"
+      "bytes": 25056,
+      "sha256": "9cd4d1826d3584f55d3a77c0bca20ce2148a525443e381b253b973296174b85e",
+      "cacheKey": "992319df0d76ad902ea6ff36267a153e7187c1f35e382586643bd9508ad8729d"
+    },
+    {
+      "id": "storageInsufficient",
+      "text": "预留空间不足，请清理空间或连接电脑备份",
+      "priority": "warning",
+      "voice": "zh-CN-YunjianNeural",
+      "file": "storage_insufficient.mp3",
+      "bytes": 28512,
+      "sha256": "ca8c83dcc12164032e8156374eb7e4e43823d2dfafd54cce67f88fe470460b84",
+      "cacheKey": "cc8e58d50e44d0c2151d93fa1613960c2a6ea3617d14f31f373df61fb35c5b35"
     },
     {
       "id": "cameraDisconnected",

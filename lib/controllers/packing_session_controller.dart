@@ -509,7 +509,18 @@ class PackingSessionController extends ChangeNotifier
       );
       if (storage.insufficient) {
         timingOutcome = 'insufficient_storage';
-        _errorMessage = storage.insufficientMessage;
+        if (_storagePressurePolicy == StoragePressurePolicy.preserveFootage) {
+          // 老用户默认「优先保留录像」：只清电脑确认过的备份，腾不出空间就
+          // 停录。这里明确告诉他去设置改成「优先继续录制」，并播报一句
+          // 说人话的空间不足提示，不再丢一句抽象的保存失败。
+          _errorMessage = BackupStoragePolicy.preserveFootageInsufficientNotice;
+          _speechService.enqueue(
+            SpeechPrompt.storageInsufficient,
+            incidentKey: SpeechPrompt.storageInsufficient.name,
+          );
+        } else {
+          _errorMessage = storage.insufficientMessage;
+        }
         notifyListeners();
         await _resumeSharedFileMigrationIfIdle();
         return;

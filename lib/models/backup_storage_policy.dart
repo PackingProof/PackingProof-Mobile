@@ -77,6 +77,12 @@ class BackupStoragePolicy {
   static String get insufficientToStartMessage =>
       '存储空间不足 $minimumLabel，请清理空间或连接电脑完成录像备份';
 
+  /// 老用户默认的「优先保留录像」下空间不足时的横幅提示：只说原因，
+  /// 再给一条可执行的设置路径，操作员才知道怎么让打包不中断。
+  static const String preserveFootageInsufficientNotice =
+      '预留空间不足，录像已停止\n'
+      '把「清理策略」改为「优先继续录制」，空间不足时会自动清理最老的录像，让打包不中断';
+
   /// 字节数文案：整 GB 不带小数，其余保留一位小数，小于 1GB 用 MB。
   static String label(int bytes) {
     final double gigabytes = bytes / (1024 * 1024 * 1024);

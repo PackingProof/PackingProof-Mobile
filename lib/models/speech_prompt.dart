@@ -68,7 +68,7 @@ enum SpeechPrompt {
     priority: SpeechPromptPriority.warning,
   ),
   recordingFailed(
-    text: '录制失败',
+    text: '无法开始录像，请重新对准面单',
     assetName: 'recording_failed.mp3',
     priority: SpeechPromptPriority.warning,
   ),
@@ -93,8 +93,13 @@ enum SpeechPrompt {
     priority: SpeechPromptPriority.warning,
   ),
   recordingSaveFailed(
-    text: '录像保存失败',
+    text: '录像保存失败，请保留应用后重试',
     assetName: 'recording_save_failed.mp3',
+    priority: SpeechPromptPriority.warning,
+  ),
+  storageInsufficient(
+    text: '预留空间不足，请清理空间或连接电脑备份',
+    assetName: 'storage_insufficient.mp3',
     priority: SpeechPromptPriority.warning,
   ),
   cameraDisconnected(
