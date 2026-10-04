@@ -174,13 +174,13 @@
     },
     {
       "id": "recordingSaveFailed",
-      "text": "录像保存失败，请保留应用后重试",
+      "text": "录像保存失败，请别切后台或锁屏后重试",
       "priority": "warning",
       "voice": "zh-CN-YunjianNeural",
       "file": "recording_save_failed.mp3",
-      "bytes": 25056,
-      "sha256": "9cd4d1826d3584f55d3a77c0bca20ce2148a525443e381b253b973296174b85e",
-      "cacheKey": "992319df0d76ad902ea6ff36267a153e7187c1f35e382586643bd9508ad8729d"
+      "bytes": 28224,
+      "sha256": "12dd8add0eed43d0dc3800b84f35ad68e1a760161478770d081ef5af8cef48a4",
+      "cacheKey": "ada4f69d4e8afde194c46879907a998dae84911abbf6240abae42ea11ee1791f"
     },
     {
       "id": "storageInsufficient",

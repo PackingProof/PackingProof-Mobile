@@ -93,7 +93,7 @@ enum SpeechPrompt {
     priority: SpeechPromptPriority.warning,
   ),
   recordingSaveFailed(
-    text: '录像保存失败，请保留应用后重试',
+    text: '录像保存失败，请别切后台或锁屏后重试',
     assetName: 'recording_save_failed.mp3',
     priority: SpeechPromptPriority.warning,
   ),

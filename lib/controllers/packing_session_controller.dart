@@ -736,9 +736,13 @@ class PackingSessionController extends ChangeNotifier
       await _syncWakelock();
       await _endMaxVolumeSession();
       if (_stoppingForLifecycle) {
-        // 锁屏/切后台导致的终止不是「录制失败」：不要说成软件出错，也不要
-        // 回到前台后播报失败提示，只留中性说明，避免用户怀疑软件有问题。
-        _errorMessage = '录像已终止：应用切到后台或锁屏\n请保持屏幕常亮后重新开始';
+        // 锁屏/切后台导致的终止不是「录制失败」：录像已经按停止流程收尾，
+        // 只按普通「停止录制」告知，并说清下次别切后台、别锁屏。
+        _errorMessage = '应用切到后台或锁屏，录像已停止\n请保持屏幕常亮，别切后台、别锁屏';
+        _speechService.enqueue(
+          SpeechPrompt.recordingStopped,
+          incidentKey: SpeechPrompt.recordingStopped.name,
+        );
       } else {
         _errorMessage = '录像保存失败，请保留应用并重试\n$error';
         _setPhase(PackingSessionPhase.error);
