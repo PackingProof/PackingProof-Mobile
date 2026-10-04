@@ -77,6 +77,11 @@ enum SpeechPrompt {
     assetName: 'audio_recording_failed.mp3',
     priority: SpeechPromptPriority.warning,
   ),
+  microphoneBusy(
+    text: '麦克风被占用，请结束通话后重试',
+    assetName: 'microphone_busy.mp3',
+    priority: SpeechPromptPriority.warning,
+  ),
   videoFileCreateFailed(
     text: '录像文件创建失败',
     assetName: 'video_file_create_failed.mp3',

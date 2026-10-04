@@ -40,6 +40,7 @@ import '../services/diagnostics_log_service.dart';
 import '../services/initial_recording_prompt_policy.dart';
 import '../services/lan_backup_service.dart';
 import '../services/max_volume_service.dart';
+import '../services/microphone_busy_policy.dart';
 import '../services/order_info_receiver_service.dart';
 import '../services/rejected_barcode_policy.dart';
 import '../services/remote_video_clip_service.dart';
@@ -1422,7 +1423,9 @@ class PackingSessionController extends ChangeNotifier
       return;
     }
     final SpeechPrompt prompt;
-    if (normalized.contains('permission') ||
+    if (normalized.contains('麦克风被占用')) {
+      prompt = SpeechPrompt.microphoneBusy;
+    } else if (normalized.contains('permission') ||
         normalized.contains('权限') ||
         normalized.contains('accessdenied') ||
         normalized.contains('accessrestricted')) {

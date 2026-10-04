@@ -143,6 +143,16 @@
       "cacheKey": "8a6ab586e6e61c5c4e6cf018325fc315e94c31f53cb64a59c33c6b89962576b0"
     },
     {
+      "id": "microphoneBusy",
+      "text": "麦克风被占用，请结束通话后重试",
+      "priority": "warning",
+      "voice": "zh-CN-YunjianNeural",
+      "file": "microphone_busy.mp3",
+      "bytes": 23472,
+      "sha256": "7bc59998fbff1c513ecba30ceadf14c572f077ee8a447e3d5b1f07af68afc0b9",
+      "cacheKey": "4df8a000165419367ba802375139e664ee06668fba4b7d2d0570d8dd6ac0e56f"
+    },
+    {
       "id": "videoFileCreateFailed",
       "text": "录像文件创建失败",
       "priority": "warning",

@@ -22,6 +22,7 @@ private final class FakeIosAudioSession: IosAudioSessionProtocol {
   var isActive = false
   var failNextActivation = false
   var failNextDeactivation = false
+  var activationFailuresRemaining = 0
 
   func setCategory(
     _ category: AVAudioSession.Category,
@@ -36,6 +37,10 @@ private final class FakeIosAudioSession: IosAudioSessionProtocol {
     options: AVAudioSession.SetActiveOptions
   ) throws {
     activeCalls.append(active)
+    if active && activationFailuresRemaining > 0 {
+      activationFailuresRemaining -= 1
+      throw Failure.activation
+    }
     if active && failNextActivation {
       failNextActivation = false
       throw Failure.activation
@@ -128,6 +133,44 @@ class RunnerTests: XCTestCase {
     )
   }
 
+  func testAudioSessionActivationRetriesBeforeReportingMicrophoneBusy() throws {
+    let session = FakeIosAudioSession()
+    session.activationFailuresRemaining = 1
+    let coordinator = IosSharedAudioSessionCoordinator(session: session)
+
+    try coordinator.acquire(.camera)
+
+    XCTAssertEqual(session.activeCalls, [true, true])
+    XCTAssertTrue(session.isActive)
+    XCTAssertEqual(coordinator.ownerCount(.camera), 1)
+  }
+
+  func testAudioSessionActivationFailureReportsMicrophoneBusyCode() {
+    let session = FakeIosAudioSession()
+    session.activationFailuresRemaining =
+      IosAudioSessionActivationPolicy.maximumAttempts
+    let coordinator = IosSharedAudioSessionCoordinator(session: session)
+
+    XCTAssertThrowsError(try coordinator.acquire(.camera)) { error in
+      let pigeon = error as? PigeonError
+      XCTAssertEqual(
+        pigeon?.code,
+        IosAudioSessionActivationPolicy.unavailableCode
+      )
+      XCTAssertEqual(
+        session.activeCalls.filter { $0 }.count,
+        IosAudioSessionActivationPolicy.maximumAttempts
+      )
+      let details = pigeon?.details as? [String: Any]
+      XCTAssertEqual(
+        details?["attempts"] as? Int,
+        IosAudioSessionActivationPolicy.maximumAttempts
+      )
+      XCTAssertNotNil(details?["otherAudioPlaying"])
+    }
+    XCTAssertEqual(coordinator.ownerCount(.camera), 0)
+  }
+
   func testEndingMaxVolumeKeepsRunningCameraAudioSessionActive() throws {
     let session = FakeIosAudioSession()
     let coordinator = IosSharedAudioSessionCoordinator(session: session)
@@ -180,7 +223,9 @@ class RunnerTests: XCTestCase {
 
   func testAudioSessionActivationFailureIsNotReportedAsSuccess() {
     let session = FakeIosAudioSession()
-    session.failNextActivation = true
+    // 单次失败会被重试兜底，这里模拟持续失败：必须如实报错，不能算成功。
+    session.activationFailuresRemaining =
+      IosAudioSessionActivationPolicy.maximumAttempts
     let coordinator = IosSharedAudioSessionCoordinator(session: session)
     let maxVolume = IosAlertAudioSessionHostApi(
       audioSessionCoordinator: coordinator

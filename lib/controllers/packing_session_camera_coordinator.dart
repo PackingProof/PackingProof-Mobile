@@ -248,10 +248,16 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       _speechService.resetIncidents();
     } on PlatformException catch (error) {
       _recordInitFailure(error.code, error.message ?? '');
-      _errorMessage = error.code == 'permission_denied'
-          ? '需要摄像头${_recordAudioEnabled ? '和麦克风' : ''}权限才能工作\n请允许权限后重试'
-          : '摄像头初始化失败，请重试\n${error.message ?? error.code}';
+      final bool microphoneBusy = MicrophoneBusyPolicy.matches(error);
+      if (microphoneBusy) {
+        _errorMessage = MicrophoneBusyPolicy.notice;
+      } else {
+        _errorMessage = error.code == 'permission_denied'
+            ? '需要摄像头${_recordAudioEnabled ? '和麦克风' : ''}权限才能工作\n请允许权限后重试'
+            : '摄像头初始化失败，请重试\n${error.message ?? error.code}';
+      }
       _setPhase(PackingSessionPhase.error);
+      if (microphoneBusy) _speakErrorMessage(MicrophoneBusyPolicy.speechText);
     } on CameraException catch (error) {
       _recordInitFailure(error.code, error.description ?? '');
       _setCameraError(error);

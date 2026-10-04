@@ -7,6 +7,36 @@ enum IosAudioSessionOwner: Hashable {
   case maxVolume
 }
 
+/// 音频会话激活失败时的重试与分类策略。
+///
+/// `AVAudioSession.setActive(true)` 在麦克风被通话或其他应用占用时会失败，
+/// 表现为 `NSOSStatusErrorDomain 561017449（!act）`。刚结束的通话往往一瞬间
+/// 就释放麦克风，所以先做有限次重试；仍然失败就抛带专用 code 的错误，交给
+/// Dart 明确提示操作员「麦克风被占用」，而不是笼统的摄像头不可用。
+enum IosAudioSessionActivationPolicy {
+  static let maximumAttempts = 3
+  static let retryDelaysSeconds: [TimeInterval] = [0.2, 0.5]
+  static let unavailableCode = "audio_session_unavailable"
+
+  static func retryDelay(afterFailedAttempt attempt: Int) -> TimeInterval? {
+    guard attempt >= 1, attempt <= retryDelaysSeconds.count else { return nil }
+    return retryDelaysSeconds[attempt - 1]
+  }
+
+  /// 失败时带上音频会话状态，便于判断是通话占用还是其他冲突。
+  static func activationDiagnostics(attempts: Int) -> [String: Any] {
+    let session = AVAudioSession.sharedInstance()
+    return [
+      "attempts": attempts,
+      "otherAudioPlaying": session.isOtherAudioPlaying,
+      "secondaryAudioShouldBeSilencedHint":
+        session.secondaryAudioShouldBeSilencedHint,
+      "category": session.category.rawValue,
+      "mode": session.mode.rawValue,
+    ]
+  }
+}
+
 protocol IosAudioSessionProtocol: AnyObject {
   func setCategory(
     _ category: AVAudioSession.Category,
@@ -97,7 +127,32 @@ final class IosSharedAudioSessionCoordinator {
       mode: .videoRecording,
       options: [.defaultToSpeaker]
     )
-    try session.setActive(true, options: [])
+    var lastError: Error?
+    for attempt in 1...IosAudioSessionActivationPolicy.maximumAttempts {
+      do {
+        try session.setActive(true, options: [])
+        return
+      } catch {
+        lastError = error
+        guard
+          let delay = IosAudioSessionActivationPolicy.retryDelay(
+            afterFailedAttempt: attempt
+          )
+        else {
+          break
+        }
+        // 通话刚结束时麦克风往往马上释放，等一小会儿再试一次即可恢复，
+        // 不必让操作员再看一次「摄像头不可用」。
+        Thread.sleep(forTimeInterval: delay)
+      }
+    }
+    throw pigeonError(
+      "麦克风可能被通话或其他应用占用：\(lastError?.localizedDescription ?? "未知错误")",
+      code: IosAudioSessionActivationPolicy.unavailableCode,
+      details: IosAudioSessionActivationPolicy.activationDiagnostics(
+        attempts: IosAudioSessionActivationPolicy.maximumAttempts
+      )
+    )
   }
 }
 

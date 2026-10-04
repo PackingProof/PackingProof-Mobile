@@ -290,9 +290,10 @@ extension IosPromptAudioHost: AVAudioPlayerDelegate {
 
 func pigeonError(
   _ message: String,
-  code: String = "ios_unavailable"
+  code: String = "ios_unavailable",
+  details: Any? = nil
 ) -> PigeonError {
-  PigeonError(code: code, message: message, details: nil)
+  PigeonError(code: code, message: message, details: details)
 }
 
 private final class IosMediaProcessingHostApi: MediaProcessingHostApi {

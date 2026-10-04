@@ -673,16 +673,27 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
               'busy': isBusy,
               'cameraReady': isCameraReady,
               'capabilityMode': _capabilityMode.wireValue,
+              'microphoneBusy': MicrophoneBusyPolicy.matches(error),
             },
           ),
         );
         _timeline.reset();
-        _errorMessage = '无法开始录像，请重新对准面单\n$error';
         _setPhase(PackingSessionPhase.waitingForBarcode);
-        _speechService.enqueue(
-          SpeechPrompt.recordingFailed,
-          incidentKey: SpeechPrompt.recordingFailed.name,
-        );
+        if (MicrophoneBusyPolicy.matches(error)) {
+          // 麦克风被通话/其他应用占用时，直接告诉操作员原因和动作，
+          // 不要只说一句「录制失败」。
+          _errorMessage = MicrophoneBusyPolicy.notice;
+          _speechService.enqueue(
+            SpeechPrompt.microphoneBusy,
+            incidentKey: SpeechPrompt.microphoneBusy.name,
+          );
+        } else {
+          _errorMessage = '无法开始录像，请重新对准面单\n$error';
+          _speechService.enqueue(
+            SpeechPrompt.recordingFailed,
+            incidentKey: SpeechPrompt.recordingFailed.name,
+          );
+        }
       } finally {
         _handlingBarcode = false;
       }
