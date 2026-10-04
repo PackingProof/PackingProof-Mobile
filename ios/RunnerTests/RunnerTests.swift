@@ -856,6 +856,19 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(timeline.keyframeSeconds(duration: 2.5), [0, 1, 2, 2.5])
   }
 
+  func testLiveWatermarkSkipBudgetCapsDroppedFramesWithinOneSecond() {
+    // 丢帧预算按 30fps 一秒取整：计划持续迟到时必须尽早升级为无水印继续录，
+    // 不能一直丢帧，否则整段录像会没有视频帧。
+    XCTAssertEqual(IosLiveWatermarkSkipBudget.maximumSkippedFramesPerSegment, 30)
+    var budget = IosLiveWatermarkSkipBudget()
+    for _ in 1..<IosLiveWatermarkSkipBudget.maximumSkippedFramesPerSegment {
+      XCTAssertFalse(budget.recordSkippedFrame())
+    }
+    XCTAssertTrue(budget.recordSkippedFrame())
+    budget.reset()
+    XCTAssertFalse(budget.recordSkippedFrame())
+  }
+
   func testWatermarkFontSizeScales4KFrom1080pReference() {
     XCTAssertEqual(
       iosWatermarkFontSize(forOutputSize: CGSize(width: 1080, height: 1920)),

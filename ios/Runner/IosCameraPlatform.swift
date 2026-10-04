@@ -201,6 +201,26 @@ enum IosCameraVideoAppendPolicy {
   }
 }
 
+/// 实时水印计划迟到时的丢帧上限。
+///
+/// 计划短暂迟到时先丢帧保住水印；一个分段里累计丢帧超过上限就必须升级为
+/// 「无水印继续录」，由 Dart 侧停下后再补水印。否则计划持续迟到时整段录像
+/// 不再写入任何视频帧，用户侧看到的就是黑屏，而日志里什么错误都没有。
+struct IosLiveWatermarkSkipBudget: Equatable {
+  static let maximumSkippedFramesPerSegment = 30
+
+  private(set) var skippedFrames = 0
+
+  mutating func recordSkippedFrame() -> Bool {
+    skippedFrames += 1
+    return skippedFrames >= Self.maximumSkippedFramesPerSegment
+  }
+
+  mutating func reset() {
+    skippedFrames = 0
+  }
+}
+
 enum IosAudioSampleEnergyProbe {
   private static let maximumSamplesPerProbe = 256
 
@@ -793,6 +813,13 @@ final class IosCameraHostApi:
   private let stateLock = NSLock()
   private let performanceLock = NSLock()
   private let visionStateLock = NSLock()
+  private let videoFrameStateLock = NSLock()
+  private var videoFramesReceived: Int64 = 0
+  private var videoFramesAppended: Int64 = 0
+  private var videoFramesSkippedWriterNotReady: Int64 = 0
+  private var videoFramesSkippedWatermark: Int64 = 0
+  private var lastAppendedVideoFrameAt: TimeInterval?
+  private var watermarkSkipBudget = IosLiveWatermarkSkipBudget()
   private let recordingLifecycle = IosCameraRecordingLifecycle()
   private var barcodeBatchGate =
     IosLatestPendingGate<[BarcodeCandidateDto]>(minimumInterval: 0.1)
@@ -1443,6 +1470,7 @@ final class IosCameraHostApi:
     let audioRoute = audioSession.currentRoute
     let lastSegment = lastSegmentDiagnosticsSnapshot()
     let performance = performanceDiagnosticsSnapshot()
+    let videoFrames = videoFrameDiagnosticsSnapshot()
     completion(.success([
       "device": [
         "manufacturer": "Apple",
@@ -1476,6 +1504,11 @@ final class IosCameraHostApi:
         },
         "visionFallbackLastError": visionDiagnostics.lastError,
         "videoOutputAttached": videoOutput != nil,
+        "videoFramesReceived": videoFrames.received,
+        "videoFramesAppended": videoFrames.appended,
+        "videoFramesSkippedWriterNotReady": videoFrames.skippedNotReady,
+        "videoFramesSkippedWatermark": videoFrames.skippedWatermark,
+        "lastAppendedVideoFrameAgeMs": videoFrames.lastAppendedAgeMs,
         "audioOutputAttached": audioOutput != nil,
         "recordingAudioActive": recordingAudioActive,
         "currentAudioSampleCount": currentAudioSampleCount,
@@ -1916,6 +1949,7 @@ final class IosCameraHostApi:
       guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
         return
       }
+      recordVideoFrameReceived()
       scheduleVisionFallback(for: pixelBuffer)
       var shouldAppendVideo = true
       var transientWatermarkFailure = false
@@ -1933,9 +1967,24 @@ final class IosCameraHostApi:
           // broad-catch: 谓词只接收可重试的水印领域错误并保留录像连续性
           transientWatermarkFailure = true
           if writer != nil {
-            shouldAppendVideo = false
+            if watermarkSkipBudgetExhausted() {
+              // 计划持续迟到：继续写入无水印帧，由 Dart 侧停下后补水印；
+              // 继续等计划只会让整段录像没有任何视频帧，用户看到的就是黑屏。
+              currentWatermarkFailed = true
+              currentWatermarkError = "实时水印计划持续迟到：\(error)"
+              eventApi.nativeError(
+                message: "录像继续保存，但实时水印写入失败",
+                completion: { _ in }
+              )
+              transientWatermarkFailure = false
+            } else {
+              shouldAppendVideo = false
+              recordVideoFrameDropped(byWatermark: true)
+            }
           }
-          prepareInitialWatermarkPlanIfNeeded(from: pixelBuffer)
+          if !currentWatermarkFailed {
+            prepareInitialWatermarkPlanIfNeeded(from: pixelBuffer)
+          }
         } catch {
           if writer != nil {
             currentWatermarkFailed = true
@@ -1948,7 +1997,7 @@ final class IosCameraHostApi:
         }
       }
       if IosLiveWatermarkHostPolicy.shouldPublishPreviewFrame(
-        watermarkRequired: watermarkRequired,
+        watermarkRequired: !currentWatermarkFailed,
         transientPreparationFailure: transientWatermarkFailure
       ) {
         bufferLock.lock()
@@ -2873,6 +2922,7 @@ final class IosCameraHostApi:
     self.currentStartedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
     self.currentSegmentSerial += 1
     self.writerSessionStarted = false
+    self.resetWatermarkSkipBudget()
     firstWrittenFrameTiming.begin(operation: operation)
     self.recordingAudioActive = recordAudio && audioInput != nil
     self.currentAudioSampleCount = 0
@@ -2943,7 +2993,7 @@ final class IosCameraHostApi:
       writer.startSession(atSourceTime: timestamp)
       writerSessionStarted = true
     }
-    IosCameraVideoAppendPolicy.appendWhenReady(
+    let appended = IosCameraVideoAppendPolicy.appendWhenReady(
       isReady: videoInput.isReadyForMoreMediaData,
       append: { [pixelBufferAdaptor] in
         pixelBufferAdaptor?.append(
@@ -2954,6 +3004,67 @@ final class IosCameraHostApi:
       onWritten: { [firstWrittenFrameTiming] in
         firstWrittenFrameTiming.recordWrittenFrameIfNeeded()
       }
+    )
+    if appended {
+      recordVideoFrameAppended()
+    } else {
+      recordVideoFrameDropped(byWatermark: false)
+    }
+  }
+
+  private func recordVideoFrameReceived() {
+    videoFrameStateLock.lock()
+    videoFramesReceived += 1
+    videoFrameStateLock.unlock()
+  }
+
+  private func recordVideoFrameAppended() {
+    videoFrameStateLock.lock()
+    videoFramesAppended += 1
+    lastAppendedVideoFrameAt = ProcessInfo.processInfo.systemUptime
+    videoFrameStateLock.unlock()
+  }
+
+  private func recordVideoFrameDropped(byWatermark: Bool) {
+    videoFrameStateLock.lock()
+    if byWatermark {
+      videoFramesSkippedWatermark += 1
+    } else {
+      videoFramesSkippedWriterNotReady += 1
+    }
+    videoFrameStateLock.unlock()
+  }
+
+  /// 记录一次因水印计划迟到而丟掉的视频帧；返回 true 表示预算用尽，
+  /// 调用方必须升级为「无水印继续录」。
+  private func watermarkSkipBudgetExhausted() -> Bool {
+    videoFrameStateLock.lock()
+    defer { videoFrameStateLock.unlock() }
+    return watermarkSkipBudget.recordSkippedFrame()
+  }
+
+  private func resetWatermarkSkipBudget() {
+    videoFrameStateLock.lock()
+    watermarkSkipBudget.reset()
+    videoFrameStateLock.unlock()
+  }
+
+  private func videoFrameDiagnosticsSnapshot() -> (
+    received: Int64,
+    appended: Int64,
+    skippedNotReady: Int64,
+    skippedWatermark: Int64,
+    lastAppendedAgeMs: Int64?
+  ) {
+    videoFrameStateLock.lock()
+    defer { videoFrameStateLock.unlock() }
+    let now = ProcessInfo.processInfo.systemUptime
+    return (
+      videoFramesReceived,
+      videoFramesAppended,
+      videoFramesSkippedWriterNotReady,
+      videoFramesSkippedWatermark,
+      lastAppendedVideoFrameAt.map { Int64(max(0, (now - $0) * 1000)) }
     )
   }
 
@@ -3014,6 +3125,7 @@ final class IosCameraHostApi:
     }
     self.watermarkPreparationPending = false
     writerSessionStarted = false
+    resetWatermarkSkipBudget()
     lastAudioSampleCount = currentAudioSampleCount
     lastAudioAppendFailedCount = currentAudioAppendFailedCount
     lastAudioLastError = currentAudioLastError
