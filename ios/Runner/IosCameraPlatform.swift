@@ -1759,6 +1759,9 @@ final class IosCameraHostApi:
         return
       }
       self.previewActive = active
+      // 预览开着（包括还没开始工作的待机扫码）就要求屏幕常亮；录像期间
+      // 不允许关闭预览，所以这里不会削弱录像期的常亮要求。
+      self.setIdleTimerDisabled(active)
       if active {
         self.configureOutputDelegates()
         if !self.session.isRunning {

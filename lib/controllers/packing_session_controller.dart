@@ -215,6 +215,8 @@ class PackingSessionController extends ChangeNotifier
   BackedRetentionPolicy _returnBackedRetention = BackedRetentionPolicy.days1;
   bool _appIsActive = true;
   bool _workStoppedByInactive = false;
+  bool _previewActive = false;
+  bool _wakelockApplied = false;
   @override
   String? _errorMessage;
   @override
@@ -531,7 +533,7 @@ class PackingSessionController extends ChangeNotifier
       }
       _beginInitialPromptFlow();
 
-      await timing.measure('wakelock', WakelockPlus.enable);
+      await timing.measure('wakelock', _syncWakelock);
       await timing.measure('preview', () => setPreviewActive(true));
       await timing.measure('workScan', () => _syncWorkScanForCamera());
       unawaited(_captureCameraDiagnosticsSnapshot('start_work'));
@@ -569,7 +571,7 @@ class PackingSessionController extends ChangeNotifier
       _stopStorageMonitor();
       _activeOrderInfo = null;
       _timeline.reset();
-      await WakelockPlus.disable();
+      await _syncWakelock();
       await _endMaxVolumeSession();
       _setCameraError(error);
       await _resumeSharedFileMigrationIfIdle();
@@ -591,7 +593,7 @@ class PackingSessionController extends ChangeNotifier
       _stopStorageMonitor();
       _activeOrderInfo = null;
       _timeline.reset();
-      await WakelockPlus.disable();
+      await _syncWakelock();
       await _endMaxVolumeSession();
       _errorMessage = '无法开始录像，请重新检查摄像头\n$error';
       _setPhase(PackingSessionPhase.error);
@@ -646,7 +648,7 @@ class PackingSessionController extends ChangeNotifier
       _candidateCode = '';
       _setActiveOrderInfo(null, announce: false);
       _stabilityTracker.reset();
-      await WakelockPlus.disable();
+      await _syncWakelock();
       await _endMaxVolumeSession();
       _setPhase(PackingSessionPhase.ready);
       await _releaseStorageNoticeAfterWork();
@@ -682,7 +684,7 @@ class PackingSessionController extends ChangeNotifier
       _alternatingLastCompletedCode = null;
       _alternatingNoCodeSince = null;
       _stopStorageMonitor();
-      await WakelockPlus.disable();
+      await _syncWakelock();
       await _endMaxVolumeSession();
       await Future<void>.delayed(transitionSettleDelay);
       _setPhase(PackingSessionPhase.ready);
@@ -715,7 +717,7 @@ class PackingSessionController extends ChangeNotifier
       _alternatingLastCompletedCode = null;
       _alternatingNoCodeSince = null;
       _stopStorageMonitor();
-      await WakelockPlus.disable();
+      await _syncWakelock();
       await _endMaxVolumeSession();
       _errorMessage = '录像保存失败，请保留应用并重试\n$error';
       _setPhase(PackingSessionPhase.error);
@@ -954,6 +956,7 @@ class PackingSessionController extends ChangeNotifier
 
   Future<void> handleInactive() async {
     _appIsActive = false;
+    await _syncWakelock();
     final bool keepOrderReceiver = isWorking;
     if (isWorking) _workStoppedByInactive = true;
     // 锁屏、切后台都会走到这里：手里没有日志时，这条记录能直接证明
@@ -981,6 +984,7 @@ class PackingSessionController extends ChangeNotifier
 
   Future<void> handleResumed() async {
     _appIsActive = true;
+    await _syncWakelock();
     if (_workStoppedByInactive) {
       _workStoppedByInactive = false;
       // 让操作员知道录像为什么只录了一半：锁屏/切后台会停录。
@@ -1025,6 +1029,8 @@ class PackingSessionController extends ChangeNotifier
 
   Future<void> setPreviewActive(bool active) async {
     if (!_supportsNativeCamera) return;
+    _previewActive = active;
+    unawaited(_syncWakelock());
     _pendingPreviewTransitions++;
     final Future<void> next = _previewStateTail.then((_) async {
       try {
@@ -1046,6 +1052,28 @@ class PackingSessionController extends ChangeNotifier
       await _nativeCamera?.setWorkScanEnabled(enabled);
     } on Object {
       if (enabled) rethrow;
+    }
+  }
+
+  /// 屏幕保持常亮 = 应用在前台且相机预览已打开。
+  ///
+  /// 待机扫码阶段（还没点「开始工作」）也算：屏幕一锁，系统会把应用挂起，
+  /// 待机扫码和正在进行的录像都会断掉，用户看到的就是"录二三十秒自动黑屏停
+  /// 了"。切到历史/设置或退到后台时预览关闭，这里随之放开。
+  Future<void> _syncWakelock() async {
+    final bool desired = _appIsActive && _previewActive;
+    if (desired == _wakelockApplied) return;
+    final bool previous = _wakelockApplied;
+    _wakelockApplied = desired;
+    try {
+      if (desired) {
+        await WakelockPlus.enable();
+      } else {
+        await WakelockPlus.disable();
+      }
+    } on Object {
+      // 保持常亮失败不影响录像主流程，下次状态变化再试。
+      _wakelockApplied = previous;
     }
   }
 
@@ -1144,7 +1172,7 @@ class PackingSessionController extends ChangeNotifier
     } on Object catch (error) {
       _timeline.reset();
       _workActive = false;
-      await WakelockPlus.disable();
+      await _syncWakelock();
       await _endMaxVolumeSession();
       _errorMessage = '录像保存失败，请保留应用并重试\n$error';
       _setPhase(PackingSessionPhase.error);
@@ -1300,7 +1328,7 @@ class PackingSessionController extends ChangeNotifier
     } on Object catch (error) {
       _timeline.reset();
       _workActive = false;
-      await WakelockPlus.disable();
+      await _syncWakelock();
       await _endMaxVolumeSession();
       _errorMessage = '录像分段保存失败\n$error';
       _setPhase(PackingSessionPhase.error);
@@ -1652,6 +1680,7 @@ class PackingSessionController extends ChangeNotifier
     }
 
     await Future.wait<void>(<Future<void>>[
+      // 关停时必须直接释放，不能按"预览还开着"再判定一次。
       cleanup('wakelock', WakelockPlus.disable),
       if (camera != null) cleanup('camera', camera.dispose),
       if (nativeCamera != null) cleanup('nativeCamera', nativeCamera.dispose),
