@@ -39,7 +39,7 @@ void main() {
     expect(source, contains('(updated_at < ? OR id <= ?)'));
   });
 
-  test('v2 数据库升级到 v5 时创建迁移、统计、备份与水印结构', () async {
+  test('v2 数据库升级到 v7 时创建迁移、统计、备份与水印结构', () async {
     final File source = File('${root.path}/legacy.mp4');
     await source.writeAsBytes(<int>[1, 2, 3]);
     await _createV2Database(databasePath, sourcePath: source.path);
@@ -53,7 +53,7 @@ void main() {
       options: OpenDatabaseOptions(singleInstance: false),
     );
     addTearDown(raw.close);
-    expect(await raw.getVersion(), 6);
+    expect(await raw.getVersion(), 7);
     final List<Map<String, Object?>> schema = await raw.rawQuery(
       "SELECT type, name, sql FROM sqlite_master "
       "WHERE name IN ('recording_metadata', 'recording_file_owners', "

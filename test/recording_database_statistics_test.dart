@@ -23,7 +23,7 @@ void main() {
     if (await root.exists()) await root.delete(recursive: true);
   });
 
-  test('增量统计覆盖 upsert、missing、恢复、软删除和水印文件替换', () async {
+  test('增量统计覆盖 upsert、备份清理、恢复、软删除和水印文件替换', () async {
     var now = DateTime(2026, 8, 23, 12);
     final RecordingDatabase database = RecordingDatabase(
       path: databasePath,
@@ -102,10 +102,12 @@ void main() {
       deletedAt: now,
       reason: '重复测试清理',
     );
+    // 本机今日统计的是今天录制的单量，电脑校验后清理本机文件不减少今日数，
+    // 只有用户主动删除才扣除。
     _expectStatistics(
       await database.loadLocalRecordingStatistics(),
       total: 1,
-      today: 0,
+      today: 1,
       totalBytes: 5,
     );
 
@@ -186,6 +188,49 @@ void main() {
     expect(rolloverPlan, contains('idx_recording_statistics_today'));
   });
 
+  test('schema v6 升级后按新口径重算今日统计，备份清理不减少', () async {
+    final Database legacy = await openDatabase(
+      databasePath,
+      version: 6,
+      onCreate: _createV6Schema,
+    );
+    final int startedAt = DateTime(2026, 8, 23, 9).millisecondsSinceEpoch;
+    await legacy.insert('recording_sessions', <String, Object?>{
+      'id': 'legacy-today-backup-cleaned',
+      'file_path': '${root.path}/legacy-today.mp4',
+      'started_at': startedAt,
+      'ended_at': startedAt + 1000,
+      'payload_json': '{}',
+      'file_size_bytes': 9,
+      'created_at': startedAt,
+      'updated_at': startedAt,
+      'missing_at': startedAt,
+    });
+    // v6 统计口径会把电脑校验后清理本机文件的记录从今日数里扣掉。
+    await legacy.insert('recording_statistics', <String, Object?>{
+      'id': 1,
+      'total_count': 0,
+      'today_count': 0,
+      'total_bytes': 0,
+      'today_start_ms': DateTime(2026, 8, 23).millisecondsSinceEpoch,
+    });
+    await legacy.close();
+
+    final RecordingDatabase upgraded = RecordingDatabase(
+      path: databasePath,
+      startSharedFileMigrationWorker: false,
+      localStatisticsNowForTesting: () => DateTime(2026, 8, 23, 12),
+    );
+    addTearDown(upgraded.close);
+    await upgraded.initialize();
+    _expectStatistics(
+      await upgraded.loadLocalRecordingStatistics(),
+      total: 0,
+      today: 1,
+      totalBytes: 0,
+    );
+  });
+
   test('旧索引迁移只累计实际插入且不会因冲突重复计数', () async {
     final RecordingDatabase database = RecordingDatabase(
       path: databasePath,
@@ -245,7 +290,7 @@ void main() {
           'payload_json': '{}',
           'file_size_bytes': index + 1,
           'is_deleted': index % 10 == 0 ? 1 : 0,
-          'missing_at': index % 10 == 1 ? timestamp : null,
+          'missing_at': index % 5 == 4 ? timestamp : null,
           'created_at': timestamp,
           'updated_at': timestamp,
         });
@@ -266,9 +311,10 @@ void main() {
     var expectedToday = 0;
     var expectedBytes = 0;
     for (var index = 0; index < rowCount; index++) {
-      if (index % 10 == 0 || index % 10 == 1) continue;
-      expectedTotal++;
+      if (index % 10 == 0) continue;
       if (index.isEven) expectedToday++;
+      if (index % 5 == 4) continue;
+      expectedTotal++;
       expectedBytes += index + 1;
     }
     _expectStatistics(
@@ -397,6 +443,61 @@ void _expectStatistics(
   expect(actual.total, total);
   expect(actual.today, today);
   expect(actual.totalBytes, totalBytes);
+}
+
+Future<void> _createV6Schema(Database db, int version) async {
+  await db.execute('''
+    CREATE TABLE recording_sessions (
+      id TEXT PRIMARY KEY,
+      file_path TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER NOT NULL,
+      tracking_number TEXT NOT NULL DEFAULT '',
+      order_id TEXT NOT NULL DEFAULT '',
+      search_text TEXT NOT NULL DEFAULT '',
+      operation_mode TEXT NOT NULL DEFAULT 'shipping',
+      payload_json TEXT NOT NULL,
+      file_size_bytes INTEGER NOT NULL DEFAULT 0,
+      is_deleted INTEGER NOT NULL DEFAULT 0,
+      deleted_at INTEGER,
+      delete_reason TEXT NOT NULL DEFAULT '',
+      missing_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      recording_orientation TEXT NOT NULL DEFAULT 'portrait',
+      watermark_status TEXT NOT NULL DEFAULT 'completed',
+      watermark_attempt_count INTEGER NOT NULL DEFAULT 0,
+      watermark_owner_id TEXT NOT NULL DEFAULT '',
+      watermark_operation_id TEXT NOT NULL DEFAULT '',
+      watermark_claimed_at INTEGER
+    )
+  ''');
+  await db.execute('''
+    CREATE TABLE recording_delete_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_path TEXT NOT NULL,
+      session_id TEXT NOT NULL DEFAULT '',
+      tracking_number TEXT NOT NULL DEFAULT '',
+      file_size_bytes INTEGER NOT NULL DEFAULT 0,
+      deleted_at INTEGER NOT NULL,
+      reason TEXT NOT NULL DEFAULT ''
+    )
+  ''');
+  await db.execute('''
+    CREATE TABLE recording_metadata (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  ''');
+  await db.execute('''
+    CREATE TABLE recording_statistics (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      total_count INTEGER NOT NULL,
+      today_count INTEGER NOT NULL,
+      total_bytes INTEGER NOT NULL,
+      today_start_ms INTEGER NOT NULL
+    )
+  ''');
 }
 
 Future<void> _createV4Schema(Database db, int version) async {

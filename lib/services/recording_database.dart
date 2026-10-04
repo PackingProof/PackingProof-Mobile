@@ -159,7 +159,7 @@ class RecordingDatabase {
   bool _closing = false;
   bool _watermarkRecoveryCompleted = false;
 
-  static const int _schemaVersion = 6;
+  static const int _schemaVersion = 7;
   static final String _watermarkProcessOwnerId =
       '${DateTime.now().microsecondsSinceEpoch}-${Object().hashCode}';
   static const String _sharedFileMigrationKey =
@@ -397,6 +397,13 @@ class RecordingDatabase {
           'CREATE INDEX idx_recording_active_mode_time ON recording_sessions(is_deleted, operation_mode, started_at DESC, id DESC)',
         );
       }
+      if (oldVersion < 7) {
+        // 今日统计不再随备份清理减少，需要按新口径重算并替换部分索引。
+        await _rebuildRecordingStatistics(
+          db,
+          todayStart: _todayStartMilliseconds(DateTime.now()),
+        );
+      }
     },
   );
 
@@ -521,10 +528,13 @@ class RecordingDatabase {
         today_start_ms INTEGER NOT NULL
       )
     ''');
+    // 今日统计只排除用户主动删除的录像，不排除文件已被备份清理的记录，所以部分
+    // 索引的谓词从 v7 起收窄为 is_deleted = 0；旧库同名索引必须先删除再重建。
+    await db.execute('DROP INDEX IF EXISTS $_recordingStatisticsTodayIndex');
     await db.execute(
       'CREATE INDEX IF NOT EXISTS $_recordingStatisticsTodayIndex '
       'ON recording_sessions(started_at) '
-      'WHERE is_deleted = 0 AND missing_at IS NULL',
+      'WHERE is_deleted = 0',
     );
     await db.delete(_recordingStatisticsTable);
     await db.rawInsert(
@@ -534,12 +544,15 @@ class RecordingDatabase {
       )
       SELECT
         1,
-        COUNT(*),
+        COALESCE(SUM(CASE WHEN missing_at IS NULL THEN 1 ELSE 0 END), 0),
         COALESCE(SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END), 0),
-        COALESCE(SUM(file_size_bytes), 0),
+        COALESCE(
+          SUM(CASE WHEN missing_at IS NULL THEN file_size_bytes ELSE 0 END),
+          0
+        ),
         ?
       FROM recording_sessions
-      WHERE is_deleted = 0 AND missing_at IS NULL
+      WHERE is_deleted = 0
     ''',
       <Object?>[todayStart, todayStart],
     );
@@ -552,7 +565,7 @@ class RecordingDatabase {
             CASE WHEN NEW.is_deleted = 0 AND NEW.missing_at IS NULL
               THEN 1 ELSE 0 END,
           today_count = today_count +
-            CASE WHEN NEW.is_deleted = 0 AND NEW.missing_at IS NULL
+            CASE WHEN NEW.is_deleted = 0
               AND NEW.started_at >= today_start_ms THEN 1 ELSE 0 END,
           total_bytes = total_bytes +
             CASE WHEN NEW.is_deleted = 0 AND NEW.missing_at IS NULL
@@ -569,7 +582,7 @@ class RecordingDatabase {
             CASE WHEN OLD.is_deleted = 0 AND OLD.missing_at IS NULL
               THEN 1 ELSE 0 END,
           today_count = today_count -
-            CASE WHEN OLD.is_deleted = 0 AND OLD.missing_at IS NULL
+            CASE WHEN OLD.is_deleted = 0
               AND OLD.started_at >= today_start_ms THEN 1 ELSE 0 END,
           total_bytes = total_bytes -
             CASE WHEN OLD.is_deleted = 0 AND OLD.missing_at IS NULL
@@ -589,9 +602,9 @@ class RecordingDatabase {
             + CASE WHEN NEW.is_deleted = 0 AND NEW.missing_at IS NULL
                 THEN 1 ELSE 0 END,
           today_count = today_count
-            - CASE WHEN OLD.is_deleted = 0 AND OLD.missing_at IS NULL
+            - CASE WHEN OLD.is_deleted = 0
                 AND OLD.started_at >= today_start_ms THEN 1 ELSE 0 END
-            + CASE WHEN NEW.is_deleted = 0 AND NEW.missing_at IS NULL
+            + CASE WHEN NEW.is_deleted = 0
                 AND NEW.started_at >= today_start_ms THEN 1 ELSE 0 END,
           total_bytes = total_bytes
             - CASE WHEN OLD.is_deleted = 0 AND OLD.missing_at IS NULL
@@ -1071,8 +1084,7 @@ class RecordingDatabase {
             today_count = (
               SELECT COUNT(*) FROM recording_sessions
               INDEXED BY $_recordingStatisticsTodayIndex
-              WHERE is_deleted = 0 AND missing_at IS NULL
-                AND started_at >= ?
+              WHERE is_deleted = 0 AND started_at >= ?
             ),
             today_start_ms = ?
           WHERE id = 1
@@ -1113,7 +1125,7 @@ class RecordingDatabase {
     final List<Map<String, Object?>> rows = await db.rawQuery(
       'EXPLAIN QUERY PLAN SELECT COUNT(*) FROM recording_sessions '
       'INDEXED BY $_recordingStatisticsTodayIndex '
-      'WHERE is_deleted = 0 AND missing_at IS NULL AND started_at >= ?',
+      'WHERE is_deleted = 0 AND started_at >= ?',
       <Object?>[todayStart],
     );
     return rows
