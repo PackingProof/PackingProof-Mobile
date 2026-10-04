@@ -1089,6 +1089,49 @@ void main() {
     expect(controller.historyScanResult, 'YT123456789012');
   });
 
+  test('历史搜索扫码结果取走前不会把后续帧当成工作扫码', () async {
+    final PackingSessionController controller = PackingSessionController(
+      repository: testRepository(root),
+      speechService: _FakeSpeechSink(),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+
+    trackController(controller);
+    await controller.initialize();
+    controller.beginHistoryBarcodeScan();
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(
+        value: 'YT123456789012',
+        area: 200,
+        format: 'code128',
+      ),
+    ]);
+    expect(controller.historyScanResult, 'YT123456789012');
+    expect(controller.historyScanActive, isFalse);
+
+    // 搜索结果还没被界面取走，预览关闭前继续送来的帧不能再走工作扫码，
+    // 否则同一张面单会被确认成待机扫码，误触发「开始录像」。
+    controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+      const NativeBarcodeCandidate(
+        value: 'YT123456789012',
+        area: 200,
+        format: 'code128',
+      ),
+      const NativeBarcodeCandidate(
+        value: 'SF999999999999',
+        area: 180,
+        format: 'code128',
+      ),
+    ]);
+
+    expect(controller.isWorking, isFalse);
+    expect(controller.candidateCode, isEmpty);
+    expect(controller.historyScanResult, 'YT123456789012');
+  });
+
   testWidgets('录像兼容提示 5 秒独立计时且新事件重新计时', (WidgetTester tester) async {
     const String notice = '受硬件限制，录像时预览画面会暂停，扫码和录像不受影响';
     // 一次运行里第一次真降级：提示 5 秒后自动消失

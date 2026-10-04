@@ -958,6 +958,9 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
               _transientReturnTab = 1;
             });
             _resetExitIntent();
+            // 搜索扫码结束后必须收回相机预览：预览留在历史页会继续送帧，
+            // 待机扫码会把同一张面单当成工作扫码，误触发「开始录像」。
+            unawaited(_controller.setPreviewActive(false));
           });
         }
         return PopScope<Object?>(

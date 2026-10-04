@@ -218,6 +218,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     }
     if (command != null && commandCode != null) {
       if (!_historyScanActive &&
+          _historyScanResult == null &&
           !_pairingScanActive &&
           !_handlingBarcode &&
           commandCode != _lastTriggeredCommandCode) {
@@ -251,6 +252,11 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         unawaited(_nativeCamera?.setPairingScanEnabled(false));
         notifyListeners();
       }
+      return;
+    }
+    if (_historyScanResult != null) {
+      // 搜索扫码结果还没被界面取走时，后续帧仍算搜索扫码：预览关闭前还会送
+      // 来几帧，落进待机扫码会把同一张面单当成工作扫码，误触发「开始录像」。
       return;
     }
     if (_pairingScanActive) {
