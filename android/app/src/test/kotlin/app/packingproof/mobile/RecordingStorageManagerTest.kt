@@ -37,6 +37,11 @@ class RecordingStorageManagerTest {
     @Before
     fun setUp() {
         context.deleteDatabase("lan_backup.db")
+        // 本类用例固定为「优先保留录像」；「优先继续录制」由各自用例显式覆盖。
+        BackupStoragePolicyStore.save(
+            context,
+            mapOf("storageDeleteUnbackedOnPressure" to false),
+        )
         source = File(context.cacheDir, "storage-manager-test.mp4").apply {
             writeText("test-video", Charsets.UTF_8)
         }
@@ -66,12 +71,16 @@ class RecordingStorageManagerTest {
     }
 
     @Test
-    fun unbackedRecordingIsKeptUnlessPriorityPolicyIsEnabled() {
+    fun unbackedRecordingFollowsConfiguredPressurePolicy() {
         val job = unbackedJob(source, "storage-manager-unbacked-session")
 
-        val defaultResult = manager().checkAndReclaim()
+        BackupStoragePolicyStore.save(
+            context,
+            mapOf("storageDeleteUnbackedOnPressure" to false),
+        )
+        val keepResult = manager().checkAndReclaim()
 
-        assertEquals(0, defaultResult.values["deletedCount"])
+        assertEquals(0, keepResult.values["deletedCount"])
         assertTrue(source.exists())
         assertNull(
             LanBackupCleanupScheduler.nullableText(

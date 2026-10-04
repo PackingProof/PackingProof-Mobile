@@ -6,6 +6,10 @@ enum StoragePressurePolicy {
   /// 优先继续录制：电脑可有可无，可能删除未备份录像。
   preserveRecording;
 
+  /// 出厂默认策略：空间不足时优先接着录，必要时删除最老的未备份录像。
+  static const StoragePressurePolicy defaultValue =
+      StoragePressurePolicy.preserveRecording;
+
   bool get deletesUnbacked => this == StoragePressurePolicy.preserveRecording;
 
   String get storageValue => name;
@@ -24,7 +28,7 @@ enum StoragePressurePolicy {
 StoragePressurePolicy storagePressurePolicyFromStorage(Object? value) =>
     StoragePressurePolicy.values.firstWhere(
       (StoragePressurePolicy item) => item.name == value,
-      orElse: () => StoragePressurePolicy.preserveFootage,
+      orElse: () => StoragePressurePolicy.defaultValue,
     );
 
 /// 录像存储与电脑确认规则的唯一来源。
@@ -54,7 +58,7 @@ class BackupStoragePolicy {
 
   static Map<String, Object?> toNativeRequest({
     StoragePressurePolicy pressurePolicy =
-        StoragePressurePolicy.preserveFootage,
+        StoragePressurePolicy.defaultValue,
   }) => <String, Object?>{
     'storageMinimumBytes': minimumBytes,
     'storageWarningBytes': warningBytes,

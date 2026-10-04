@@ -501,7 +501,7 @@ struct BackupStoragePolicy: Equatable {
   let attestationFreshnessMs: Int64
   let confirmationLimit: Int
   let confirmationGraceMs: Int64
-  /// 「优先继续录制」时允许删除未备份录像；默认关闭（优先保留录像）。
+  /// 「优先继续录制」时允许删除未备份录像；这也是默认策略。
   let deleteUnbackedOnPressure: Bool
 
   var confirmationGrace: TimeInterval { TimeInterval(confirmationGraceMs) / 1000 }
@@ -514,7 +514,7 @@ struct BackupStoragePolicy: Equatable {
     attestationFreshnessMs: 5 * 60 * 1000,
     confirmationLimit: 64,
     confirmationGraceMs: 24 * 60 * 60 * 1000,
-    deleteUnbackedOnPressure: false
+    deleteUnbackedOnPressure: true
   )
 }
 

@@ -48,7 +48,7 @@ void main() {
     expect(settings.returnBackedRetention, BackedRetentionPolicy.days1);
     expect(
       settings.storagePressurePolicy,
-      StoragePressurePolicy.preserveFootage,
+      StoragePressurePolicy.preserveRecording,
     );
     expect(settings.minimumBarcodeLength, 11);
     expect(settings.operationMode, RecordingOperationMode.shipping);
@@ -379,7 +379,7 @@ void main() {
     expect(settings.speechEnabled, isFalse);
   });
 
-  test('空间不足策略可持久化并默认优先保留录像', () async {
+  test('空间不足策略可持久化并默认优先继续录制', () async {
     final SessionRepository repository = testRepository(root);
 
     await repository.saveBackupRetention(

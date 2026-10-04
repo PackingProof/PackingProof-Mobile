@@ -15,9 +15,9 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
   set _returnBackedRetention(BackedRetentionPolicy value);
   bool get _disposed;
 
-  /// 空间不足时的取舍策略（设置项，默认优先保留录像）。
+  /// 空间不足时的取舍策略（设置项，默认优先继续录制）。
   StoragePressurePolicy _storagePressurePolicy =
-      StoragePressurePolicy.preserveFootage;
+      StoragePressurePolicy.defaultValue;
   bool _cleanupDrainRunning = false;
   bool _cleanupCursorLoaded = false;
   int _cleanupAfterRevision = 0;
@@ -65,7 +65,7 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
     required UnbackedRetentionPolicy returnUnbacked,
     required BackedRetentionPolicy returnBacked,
     StoragePressurePolicy storagePressurePolicy =
-        StoragePressurePolicy.preserveFootage,
+        StoragePressurePolicy.defaultValue,
   }) async {
     _unbackedRetention = unbacked;
     _backedRetention = backed;

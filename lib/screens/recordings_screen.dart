@@ -186,7 +186,7 @@ class RecordingsScreen extends StatefulWidget {
     this.backedRetention = BackedRetentionPolicy.days7,
     this.returnUnbackedRetention = UnbackedRetentionPolicy.days3,
     this.returnBackedRetention = BackedRetentionPolicy.days1,
-    this.storagePressurePolicy = StoragePressurePolicy.preserveFootage,
+    this.storagePressurePolicy = StoragePressurePolicy.defaultValue,
     this.onBackupRetentionChanged,
     this.onLoadRemoteRecordings,
     this.onLoadLocalRecordings,

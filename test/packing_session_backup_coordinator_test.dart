@@ -1387,7 +1387,7 @@ class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
     BackedRetentionPolicy returnBackedRetention =
         BackedRetentionPolicy.immediately,
     StoragePressurePolicy storagePressurePolicy =
-        StoragePressurePolicy.preserveFootage,
+        StoragePressurePolicy.defaultValue,
   }) async {
     initializeCalls++;
     _snapshot = _snapshot.copyWith(autoEnabled: autoEnabled);
@@ -1434,7 +1434,7 @@ class _RecordingLanBackupSink extends ChangeNotifier implements LanBackupSink {
     UnbackedRetentionPolicy returnUnbacked = UnbackedRetentionPolicy.days3,
     BackedRetentionPolicy returnBacked = BackedRetentionPolicy.immediately,
     StoragePressurePolicy storagePressurePolicy =
-        StoragePressurePolicy.preserveFootage,
+        StoragePressurePolicy.defaultValue,
   }) async {}
 
   @override

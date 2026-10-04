@@ -1182,7 +1182,7 @@ class SessionRepository {
     UnbackedRetentionPolicy returnUnbacked = UnbackedRetentionPolicy.days3,
     BackedRetentionPolicy returnBacked = BackedRetentionPolicy.days1,
     StoragePressurePolicy storagePressurePolicy =
-        StoragePressurePolicy.preserveFootage,
+        StoragePressurePolicy.defaultValue,
   }) => _updateSettings(
     (AppSettings value) => value.copyWith(
       unbackedRetention: unbacked,

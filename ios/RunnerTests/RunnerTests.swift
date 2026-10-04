@@ -2625,7 +2625,9 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(remaining.count, 1)
   }
 
-  func testStorageReclaimKeepsUnbackedRecordingByDefault() async throws {
+  func testStorageReclaimKeepsUnbackedRecordingWhenPriorityPolicyDisabled()
+    async throws
+  {
     let fixture = try makeRetentionCleanupFixture(
       id: "storage-reclaim-unbacked-default",
       availableStorageBytesOverride: { 0 }
@@ -2633,6 +2635,10 @@ class RunnerTests: XCTestCase {
     defer { removeRetentionCleanupFixture(fixture) }
     let file = try addUnbackedStorageReclaimJob(
       fixture, id: "storage-reclaim-unbacked-default"
+    )
+    fixture.defaults.set(
+      ["deleteUnbackedOnPressure": false],
+      forKey: "ios_backup_storage_policy"
     )
 
     let result = try await awaitStorageReclaim(fixture.api)
@@ -5170,6 +5176,11 @@ class RunnerTests: XCTestCase {
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
     defaults.removePersistentDomain(forName: suiteName)
     defaults.set(autoEnabled, forKey: "ios_backup_auto_enabled")
+    // 空间回收用例固定为「优先保留录像」；「优先继续录制」由各自用例显式覆盖。
+    defaults.set(
+      ["deleteUnbackedOnPressure": false],
+      forKey: "ios_backup_storage_policy"
+    )
     let store = try IosBackupJobStore(
       databaseURL: root.appendingPathComponent("lan_backup.db"), defaults: defaults
     )

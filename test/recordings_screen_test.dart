@@ -294,7 +294,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('3. 退货录像：未备份满 3 天后从本机删除'), findsOneWidget);
-    expect(find.textContaining('5. 空间不足时只清理电脑确认过的备份'), findsOneWidget);
+    expect(find.textContaining('5. 空间不足时按最老的优先删除'), findsOneWidget);
     expect(find.textContaining('6. 正在上传的录像不会清理'), findsOneWidget);
     // 发货与退货之间有一条分割线。
     expect(
@@ -352,7 +352,8 @@ void main() {
     await _openSettingsEntry(tester, 'cleanup-settings-open');
 
     expect(find.textContaining('未备份满 30 天后从本机删除'), findsOneWidget);
-    expect(find.textContaining('5. 空间不足时只清理电脑确认过的备份'), findsOneWidget);
+    expect(find.textContaining('5. 空间不足时按最老的优先删除'), findsOneWidget);
+    expect(find.textContaining('删掉的未备份录像无法恢复'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('unbacked-retention-dropdown')));
     await tester.pumpAndSettle();
@@ -361,10 +362,10 @@ void main() {
 
     expect(find.textContaining('发货录像：未备份的不会自动清理'), findsOneWidget);
 
-    await tester.tap(find.text('优先继续录制'));
+    await tester.tap(find.text('优先保留录像'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('删掉的未备份录像无法恢复'), findsOneWidget);
+    expect(find.textContaining('5. 空间不足时只清理电脑确认过的备份'), findsOneWidget);
   });
 
   testWidgets('设置页保留标题栏', (WidgetTester tester) async {
@@ -790,7 +791,7 @@ void main() {
   });
 
   testWidgets('清理策略使用胶囊选择并显示对应说明', (WidgetTester tester) async {
-    StoragePressurePolicy selected = StoragePressurePolicy.preserveFootage;
+    StoragePressurePolicy selected = StoragePressurePolicy.preserveRecording;
     await tester.pumpWidget(
       MaterialApp(
         home: RecordingsScreen(
@@ -829,21 +830,21 @@ void main() {
       <String>['优先保留录像', '优先继续录制'],
     );
     expect(button.selected, <StoragePressurePolicy>{
-      StoragePressurePolicy.preserveFootage,
+      StoragePressurePolicy.preserveRecording,
     });
     expect(find.text('录像清理策略'), findsWidgets);
     expect(find.byKey(const Key('storage-pressure-settings')), findsOneWidget);
-    expect(find.text('只清理电脑确认过的备份，腾不出空间就停止录制'), findsOneWidget);
-
-    await tester.tap(find.text('优先继续录制'));
-    await tester.pump();
-
-    expect(selected, StoragePressurePolicy.preserveRecording);
-    final Text description = tester.widget<Text>(find.text('电脑可有可无，可能删除未备份录像'));
+    final Text warning = tester.widget<Text>(find.text('电脑可有可无，可能删除未备份录像'));
     expect(
-      description.style?.color,
+      warning.style?.color,
       Theme.of(tester.element(find.text('录像清理策略').first)).colorScheme.error,
     );
+
+    await tester.tap(find.text('优先保留录像'));
+    await tester.pump();
+
+    expect(selected, StoragePressurePolicy.preserveFootage);
+    expect(find.text('只清理电脑确认过的备份，腾不出空间就停止录制'), findsOneWidget);
   });
 
   testWidgets('语音设置可关闭并在开启时试听', (WidgetTester tester) async {

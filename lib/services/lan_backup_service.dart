@@ -166,7 +166,7 @@ abstract interface class LanBackupSink implements Listenable {
         UnbackedRetentionPolicy.days3,
     BackedRetentionPolicy returnBackedRetention = BackedRetentionPolicy.days1,
     StoragePressurePolicy storagePressurePolicy =
-        StoragePressurePolicy.preserveFootage,
+        StoragePressurePolicy.defaultValue,
   });
   Future<void> pair(
     String qrValue, {
@@ -186,7 +186,7 @@ abstract interface class LanBackupSink implements Listenable {
     UnbackedRetentionPolicy returnUnbacked = UnbackedRetentionPolicy.days3,
     BackedRetentionPolicy returnBacked = BackedRetentionPolicy.days1,
     StoragePressurePolicy storagePressurePolicy =
-        StoragePressurePolicy.preserveFootage,
+        StoragePressurePolicy.defaultValue,
   });
   Future<void> enqueueFinalizedFile(
     String filePath,
@@ -329,7 +329,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
         UnbackedRetentionPolicy.days3,
     BackedRetentionPolicy returnBackedRetention = BackedRetentionPolicy.days1,
     StoragePressurePolicy storagePressurePolicy =
-        StoragePressurePolicy.preserveFootage,
+        StoragePressurePolicy.defaultValue,
   }) async {
     _attachNativeHandler();
     _snapshot = _snapshot.copyWith(autoEnabled: autoEnabled);
@@ -943,7 +943,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     UnbackedRetentionPolicy returnUnbacked = UnbackedRetentionPolicy.days3,
     BackedRetentionPolicy returnBacked = BackedRetentionPolicy.days1,
     StoragePressurePolicy storagePressurePolicy =
-        StoragePressurePolicy.preserveFootage,
+        StoragePressurePolicy.defaultValue,
   }) async {
     await _platform.updateRetentionSchedule(<String, Object?>{
       'unbackedRetentionDays': unbacked.days,

@@ -24,7 +24,7 @@ void main() {
       'storageAttestationFreshnessMs': expected['attestationFreshnessMs'],
       'storageConfirmationLimit': expected['confirmationLimit'],
       'storageConfirmationGraceMs': expected['confirmationGraceMs'],
-      'storageDeleteUnbackedOnPressure': false,
+      'storageDeleteUnbackedOnPressure': true,
     });
     expect(BackupStoragePolicy.targetBytes, BackupStoragePolicy.warningBytes);
     // 只有“优先继续录制”才允许删除未备份录像。
@@ -75,7 +75,7 @@ void main() {
     );
   });
 
-  test('两端兜底的未备份删除开关默认关闭', () {
+  test('两端兜底的未备份删除开关与默认策略一致', () {
     final String kotlin = File(
       'android/app/src/main/kotlin/app/packingproof/mobile/BackupStoragePolicy.kt',
     ).readAsStringSync();
@@ -87,15 +87,15 @@ void main() {
       RegExp(
         r'deleteUnbackedOnPressure = (true|false)',
       ).firstMatch(kotlin)?.group(1),
-      'false',
-      reason: 'BackupStoragePolicy.kt 的兜底值应为优先保留录像',
+      'true',
+      reason: 'BackupStoragePolicy.kt 的兜底值应为优先继续录制',
     );
     expect(
       RegExp(
         r'deleteUnbackedOnPressure: (true|false)',
       ).firstMatch(swift)?.group(1),
-      'false',
-      reason: 'IosBackupPlatform.swift 的兜底值应为优先保留录像',
+      'true',
+      reason: 'IosBackupPlatform.swift 的兜底值应为优先继续录制',
     );
   });
 }

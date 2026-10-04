@@ -39,7 +39,7 @@ class AppSettings {
     this.backedRetention = BackedRetentionPolicy.days7,
     this.returnUnbackedRetention = UnbackedRetentionPolicy.days3,
     this.returnBackedRetention = BackedRetentionPolicy.days1,
-    this.storagePressurePolicy = StoragePressurePolicy.preserveFootage,
+    this.storagePressurePolicy = StoragePressurePolicy.defaultValue,
     this.hiddenRemoteRecordingIds = const <int>{},
     this.storageNoticeState = const StorageNoticeState(),
     this.minimumBarcodeLength = defaultMinimumBarcodeLength,
