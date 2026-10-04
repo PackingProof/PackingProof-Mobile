@@ -78,7 +78,7 @@ enum SpeechPrompt {
     priority: SpeechPromptPriority.warning,
   ),
   microphoneBusy(
-    text: '麦克风被占用，请结束通话后重试',
+    text: '麦克风被占用，请关闭占用麦克风的应用后重试',
     assetName: 'microphone_busy.mp3',
     priority: SpeechPromptPriority.warning,
   ),

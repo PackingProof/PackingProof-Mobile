@@ -1462,6 +1462,8 @@ class PackingSessionController extends ChangeNotifier
   @override
   Future<void> _disposeCamera() async {
     _cancelInitialPromptFlow();
+    _microphoneBusyRetryTimer?.cancel();
+    _microphoneBusyRetryTimer = null;
     if (_supportsNativeCamera) {
       final ContinuousCameraService? nativeCamera = _nativeCamera;
       _nativeCamera = null;

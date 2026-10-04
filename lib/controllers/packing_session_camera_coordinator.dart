@@ -31,6 +31,13 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   List<NativeCameraLens> _backCameraLenses = const <NativeCameraLens>[];
   Timer? _cameraNoticeTimer;
   Timer? _diagnosticsTimer;
+  Timer? _microphoneBusyRetryTimer;
+  int _microphoneBusyRetries = 0;
+  /// 麦克风被其他应用占用时的自动重试节奏：先等 2 秒，再等 6 秒。
+  static const List<Duration> _microphoneBusyRetryDelays = <Duration>[
+    Duration(seconds: 2),
+    Duration(seconds: 6),
+  ];
   bool _diagnosticsCaptureRunning = false;
   String? _pendingDiagnosticsTrigger;
   @override
@@ -209,6 +216,8 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
         if (_phase == PackingSessionPhase.error) {
           return;
         }
+        _microphoneBusyRetries = 0;
+        _microphoneBusyRetryTimer?.cancel();
         _speechService.resetIncidents();
         _setPhase(PackingSessionPhase.ready);
         // 待机状态也保持面单识别：扫到面单直接开始工作。
@@ -258,6 +267,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       }
       _setPhase(PackingSessionPhase.error);
       if (microphoneBusy) _speakErrorMessage(MicrophoneBusyPolicy.speechText);
+      if (microphoneBusy) _scheduleMicrophoneBusyRetry();
     } on CameraException catch (error) {
       _recordInitFailure(error.code, error.description ?? '');
       _setCameraError(error);
@@ -312,6 +322,26 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
     unawaited(_cameraDiagnostics.recordEvent(kind: 'retry_initialize'));
     await _disposeCamera();
     await initialize(force: true);
+  }
+
+  /// 麦克风被其他应用占用时，应用自己按 2 秒、6 秒的节奏再试两次：
+  /// 对方一释放音频会话就自动恢复，操作员不用盯着错误页手动重试。
+  void _scheduleMicrophoneBusyRetry() {
+    if (_disposed || !_supportsNativeCamera) return;
+    if (_microphoneBusyRetries >= _microphoneBusyRetryDelays.length) return;
+    final Duration delay = _microphoneBusyRetryDelays[_microphoneBusyRetries];
+    _microphoneBusyRetries++;
+    _microphoneBusyRetryTimer?.cancel();
+    _microphoneBusyRetryTimer = Timer(delay, () {
+      if (_disposed || isWorking || isBusy) return;
+      unawaited(
+        _cameraDiagnostics.recordEvent(
+          kind: 'microphone_busy_retry',
+          extra: <String, Object?>{'delayMs': delay.inMilliseconds},
+        ),
+      );
+      unawaited(retryInitialize());
+    });
   }
 
   /// 设置页「重新检测」：仅空闲时可用，探测期间阻塞开始工作。

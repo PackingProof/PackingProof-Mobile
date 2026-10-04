@@ -23,16 +23,23 @@ enum IosAudioSessionActivationPolicy {
     return retryDelaysSeconds[attempt - 1]
   }
 
-  /// 失败时带上音频会话状态，便于判断是通话占用还是其他冲突。
-  static func activationDiagnostics(attempts: Int) -> [String: Any] {
+  /// 失败时带上音频会话状态，便于判断是谁抢走了会话（通话、语音、录音、
+  /// 导航等都可能，不限于打电话）。
+  static func activationDiagnostics(
+    attempts: Int,
+    osStatus: Int?
+  ) -> [String: Any] {
     let session = AVAudioSession.sharedInstance()
     return [
       "attempts": attempts,
+      "osStatus": osStatus ?? 0,
       "otherAudioPlaying": session.isOtherAudioPlaying,
       "secondaryAudioShouldBeSilencedHint":
         session.secondaryAudioShouldBeSilencedHint,
       "category": session.category.rawValue,
       "mode": session.mode.rawValue,
+      "routeInputs": session.currentRoute.inputs.map(\.portType.rawValue),
+      "routeOutputs": session.currentRoute.outputs.map(\.portType.rawValue),
     ]
   }
 }
@@ -61,9 +68,72 @@ final class IosSharedAudioSessionCoordinator {
   private let session: IosAudioSessionProtocol
   private let lock = NSLock()
   private var ownerCounts: [IosAudioSessionOwner: Int] = [:]
+  private var interruptionActive = false
+  private var lastInterruption: [String: Any]?
+  private var lastRouteChange: [String: Any]?
+  private var interruptionObserver: NSObjectProtocol?
+  private var routeObserver: NSObjectProtocol?
 
   init(session: IosAudioSessionProtocol) {
     self.session = session
+    let center = NotificationCenter.default
+    interruptionObserver = center.addObserver(
+      forName: AVAudioSession.interruptionNotification,
+      object: nil,
+      queue: nil
+    ) { [weak self] notification in
+      self?.recordInterruption(notification)
+    }
+    routeObserver = center.addObserver(
+      forName: AVAudioSession.routeChangeNotification,
+      object: nil,
+      queue: nil
+    ) { [weak self] notification in
+      self?.recordRouteChange(notification)
+    }
+  }
+
+  deinit {
+    let center = NotificationCenter.default
+    if let interruptionObserver { center.removeObserver(interruptionObserver) }
+    if let routeObserver { center.removeObserver(routeObserver) }
+  }
+
+  /// 记录系统级中断：通话、语音、Siri、闹钟等都会先发中断再抢走会话。
+  private func recordInterruption(_ notification: Notification) {
+    let info = notification.userInfo
+    let rawType = (info?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?
+      .intValue
+    let type = rawType.flatMap {
+      AVAudioSession.InterruptionType(rawValue: UInt($0))
+    }
+    var entry: [String: Any] = [
+      "type": type == .began ? "began" : "ended",
+    ]
+    if let rawReason = (info?[AVAudioSessionInterruptionReasonKey] as? NSNumber)?
+      .intValue
+    {
+      entry["reason"] = rawReason
+    }
+    lock.lock()
+    interruptionActive = type == .began
+    lastInterruption = entry
+    lock.unlock()
+  }
+
+  private func recordRouteChange(_ notification: Notification) {
+    let info = notification.userInfo
+    let rawReason =
+      (info?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.intValue
+    let previous = info?[AVAudioSessionRouteChangePreviousRouteKey]
+      as? AVAudioSessionRouteDescription
+    lock.lock()
+    lastRouteChange = [
+      "reason": rawReason ?? 0,
+      "previousInputs": previous?.inputs.map(\.portType.rawValue) ?? [],
+      "previousOutputs": previous?.outputs.map(\.portType.rawValue) ?? [],
+    ]
+    lock.unlock()
   }
 
   func acquire(_ owner: IosAudioSessionOwner) throws {
@@ -148,12 +218,19 @@ final class IosSharedAudioSessionCoordinator {
         Thread.sleep(forTimeInterval: delay)
       }
     }
+    // 这里仍持有 lock（由 acquire/ensureActive 调用），所以直接读中断/路由
+    // 记录，通知回调会等锁，不会并发改写。
+    var details = IosAudioSessionActivationPolicy.activationDiagnostics(
+      attempts: IosAudioSessionActivationPolicy.maximumAttempts,
+      osStatus: (lastError as NSError?)?.code
+    )
+    details["interruptionActive"] = interruptionActive
+    details["lastInterruption"] = lastInterruption
+    details["lastRouteChange"] = lastRouteChange
     throw pigeonError(
       "麦克风可能被通话或其他应用占用：\(lastError?.localizedDescription ?? "未知错误")",
       code: IosAudioSessionActivationPolicy.unavailableCode,
-      details: IosAudioSessionActivationPolicy.activationDiagnostics(
-        attempts: IosAudioSessionActivationPolicy.maximumAttempts
-      )
+      details: details
     )
   }
 }
