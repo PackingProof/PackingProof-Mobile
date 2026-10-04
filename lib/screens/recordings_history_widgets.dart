@@ -57,7 +57,7 @@ class _HistorySummary extends StatelessWidget {
       children: <Widget>[
         _SummaryMetric(label: '本机今日', value: '$today'),
         const SizedBox(width: 10),
-        _SummaryMetric(label: '本机全部', value: '$total'),
+        _SummaryMetric(label: '本地全部', value: '$total'),
         const SizedBox(width: 10),
         _SummaryMetric(
           label: '总占用',

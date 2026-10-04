@@ -1504,7 +1504,7 @@ void main() {
     expect(find.text('0 MB'), findsOneWidget);
     expect(
       tester.getCenter(find.text('本机今日')).dx,
-      lessThan(tester.getCenter(find.text('本机全部')).dx),
+      lessThan(tester.getCenter(find.text('本地全部')).dx),
     );
     final Text totalSizeText = tester.widget<Text>(find.text('0 MB'));
     final List<InlineSpan> totalSizeParts =
