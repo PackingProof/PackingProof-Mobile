@@ -1072,7 +1072,7 @@ class PackingSessionController extends ChangeNotifier
         await WakelockPlus.disable();
       }
     } on Object {
-      // 保持常亮失败不影响录像主流程，下次状态变化再试。
+      // broad-catch: 保持常亮失败不影响录像主流程，下次状态变化再试。
       _wakelockApplied = previous;
     }
   }
