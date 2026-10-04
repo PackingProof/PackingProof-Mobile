@@ -688,11 +688,20 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
             incidentKey: SpeechPrompt.microphoneBusy.name,
           );
         } else {
-          _errorMessage = '无法开始录像，请重新对准面单\n$error';
-          _speechService.enqueue(
-            SpeechPrompt.recordingFailed,
-            incidentKey: SpeechPrompt.recordingFailed.name,
-          );
+          final String text = '$error';
+          final bool cameraTornDown =
+              text.contains('摄像头已经关闭') || text.contains('摄像头尚未准备完成');
+          if (cameraTornDown) {
+            // 切后台/锁屏会把原生摄像头拆掉，这种"开始失败"不是软件出错，
+            // 不能播报「录制失败」，否则用户会以为软件有问题。
+            _errorMessage = '录像已终止：应用切到后台或锁屏\n请保持屏幕常亮后重新开始';
+          } else {
+            _errorMessage = '无法开始录像，请重新对准面单\n$error';
+            _speechService.enqueue(
+              SpeechPrompt.recordingFailed,
+              incidentKey: SpeechPrompt.recordingFailed.name,
+            );
+          }
         }
       } finally {
         _handlingBarcode = false;

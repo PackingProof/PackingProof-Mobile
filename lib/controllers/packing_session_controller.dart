@@ -215,6 +215,7 @@ class PackingSessionController extends ChangeNotifier
   BackedRetentionPolicy _returnBackedRetention = BackedRetentionPolicy.days1;
   bool _appIsActive = true;
   bool _workStoppedByInactive = false;
+  bool _stoppingForLifecycle = false;
   bool _previewActive = false;
   bool _wakelockApplied = false;
   @override
@@ -709,7 +710,11 @@ class PackingSessionController extends ChangeNotifier
       unawaited(
         _runtimeLog.log(
           kind: 'stop_work_error',
-          extra: <String, Object?>{'generation': generation, 'error': '$error'},
+          extra: <String, Object?>{
+            'generation': generation,
+            'error': '$error',
+            if (_stoppingForLifecycle) 'reason': 'app_inactive',
+          },
         ),
       );
       _timeline.reset();
@@ -719,10 +724,16 @@ class PackingSessionController extends ChangeNotifier
       _stopStorageMonitor();
       await _syncWakelock();
       await _endMaxVolumeSession();
-      _errorMessage = '录像保存失败，请保留应用并重试\n$error';
-      _setPhase(PackingSessionPhase.error);
-      if (!silentStorageStop) {
-        _speakErrorMessage(error.toString());
+      if (_stoppingForLifecycle) {
+        // 锁屏/切后台导致的终止不是「录制失败」：不要说成软件出错，也不要
+        // 回到前台后播报失败提示，只留中性说明，避免用户怀疑软件有问题。
+        _errorMessage = '录像已终止：应用切到后台或锁屏\n请保持屏幕常亮后重新开始';
+      } else {
+        _errorMessage = '录像保存失败，请保留应用并重试\n$error';
+        _setPhase(PackingSessionPhase.error);
+        if (!silentStorageStop) {
+          _speakErrorMessage(error.toString());
+        }
       }
       await _resumeSharedFileMigrationIfIdle();
       return null;
@@ -974,7 +985,12 @@ class PackingSessionController extends ChangeNotifier
     );
     await _orderInfoReceiver.setBackgroundKeepAlive(keepOrderReceiver);
     if (isWorking) {
-      await stopWork();
+      _stoppingForLifecycle = true;
+      try {
+        await stopWork();
+      } finally {
+        _stoppingForLifecycle = false;
+      }
     }
     if (_phase != PackingSessionPhase.saving) {
       await _disposeCamera();
