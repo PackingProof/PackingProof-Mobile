@@ -10,6 +10,15 @@ import android.media.MediaRecorder
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
+/**
+ * 麦克风初始化或启动失败：多半是麦克风被通话或其他应用占用。
+ *
+ * 单独成类型是为了让上层把失败分类成「麦克风被占用」，提示操作员结束通话
+ * 或关掉占用麦克风的应用后重试，而不是笼统地报一句录制失败。
+ */
+internal class MicrophoneBusyException(cause: Throwable) :
+    IllegalStateException("麦克风被占用或不可用", cause)
+
 internal class AudioInputFrameClock(
     private val basePtsUs: Long,
     private val sampleRate: Int,
@@ -88,6 +97,22 @@ internal class RecordingAudioPipeline(
     }
 
     @SuppressLint("MissingPermission")
+    private fun createMicrophoneRecorder(bufferSize: Int): AudioRecord {
+        val activeRecorder = AudioRecord(
+            MediaRecorder.AudioSource.CAMCORDER,
+            AUDIO_SAMPLE_RATE,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+            bufferSize * 2,
+        )
+        if (activeRecorder.state != AudioRecord.STATE_INITIALIZED) {
+            activeRecorder.release()
+            throw MicrophoneBusyException(IllegalStateException("麦克风初始化失败"))
+        }
+        return activeRecorder
+    }
+
+    @SuppressLint("MissingPermission")
     private fun runPipeline() {
         var codec: MediaCodec? = null
         var localRecorder: AudioRecord? = null
@@ -98,17 +123,8 @@ internal class RecordingAudioPipeline(
                 AudioFormat.ENCODING_PCM_16BIT,
             )
             val bufferSize = max(minimumBufferSize, MINIMUM_BUFFER_SIZE)
-            val activeRecorder = AudioRecord(
-                MediaRecorder.AudioSource.CAMCORDER,
-                AUDIO_SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                bufferSize * 2,
-            )
+            val activeRecorder = createMicrophoneRecorder(bufferSize)
             localRecorder = activeRecorder
-            if (activeRecorder.state != AudioRecord.STATE_INITIALIZED) {
-                throw IllegalStateException("麦克风初始化失败")
-            }
             recorder = activeRecorder
             val audioFormat = MediaFormat.createAudioFormat(
                 MediaFormat.MIMETYPE_AUDIO_AAC,
@@ -125,7 +141,11 @@ internal class RecordingAudioPipeline(
             codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
             codec.configure(audioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             codec.start()
-            activeRecorder.startRecording()
+            try {
+                activeRecorder.startRecording()
+            } catch (error: Throwable) {
+                throw MicrophoneBusyException(error)
+            }
             val inputClock = AudioInputFrameClock(
                 nanoTime() / 1_000L,
                 AUDIO_SAMPLE_RATE,

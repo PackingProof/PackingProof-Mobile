@@ -226,7 +226,13 @@ class ContinuousSegmentCamera(
         onFailure = { error ->
             muxHandler?.post {
                 if (startResult != null) {
-                    failPendingStart("audio_init", "麦克风或音频编码器启动失败")
+                    if (error is MicrophoneBusyException) {
+                        // 与 iOS 的 audio_session_unavailable 同一码：Dart 侧据此
+                        // 提示「麦克风被占用，可能正在通话」。
+                        failPendingStart("audio_session_unavailable", "麦克风被占用或不可用")
+                    } else {
+                        failPendingStart("audio_init", "麦克风或音频编码器启动失败")
+                    }
                 } else {
                     notifyNativeError("声音录制异常", error)
                 }
