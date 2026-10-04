@@ -133,6 +133,8 @@ final class IosSharedAudioSessionCoordinator {
         try session.setActive(true, options: [])
         return
       } catch {
+        // broad-catch: 激活失败先重试；最终仍失败会把原始错误和诊断一起抛给
+        // Dart，由上层提示「麦克风被占用」。
         lastError = error
         guard
           let delay = IosAudioSessionActivationPolicy.retryDelay(
