@@ -1566,6 +1566,24 @@ class _CameraArea extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
+                // 扫码类黑色条幅也落在下方，和常驻提醒、识别提示保持同一位置
+                if (view.pairingScanActive ||
+                    view.pairingMessage != null) ...<Widget>[
+                  _ComputerPairingBanner(
+                    key: const Key('computer-pairing-banner'),
+                    message: view.pairingMessage ?? '扫描电脑二维码',
+                    onCancel: view.onPairingCancel,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if (view.historyScanActive) ...<Widget>[
+                  _ComputerPairingBanner(
+                    key: const Key('history-scan-banner'),
+                    message: '对准条码，识别后自动筛选历史记录',
+                    onCancel: view.onHistoryScanCancel,
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 // 常驻提醒和大屏提示一样落在下方，不要跑到画面上方去
                 if (view._alternatingRecording) ...<Widget>[
                   const _AlternatingBanner(),
@@ -1608,26 +1626,6 @@ class _CameraArea extends StatelessWidget {
               ],
             ),
           ),
-          if (view.pairingScanActive || view.pairingMessage != null)
-            Positioned(
-              left: 20,
-              right: 20,
-              top: 88,
-              child: _ComputerPairingBanner(
-                message: view.pairingMessage ?? '扫描电脑二维码',
-                onCancel: view.onPairingCancel,
-              ),
-            ),
-          if (view.historyScanActive)
-            Positioned(
-              left: 20,
-              right: 20,
-              top: 24,
-              child: _ComputerPairingBanner(
-                message: '对准条码，识别后自动筛选历史记录',
-                onCancel: view.onHistoryScanCancel,
-              ),
-            ),
           if (view.flashAvailable &&
               !view.pairingScanActive &&
               !view.historyScanActive)
@@ -2043,7 +2041,7 @@ class _CameraWatermarkPlacement extends StatelessWidget {
 }
 
 class _ComputerPairingBanner extends StatelessWidget {
-  const _ComputerPairingBanner({required this.message, this.onCancel});
+  const _ComputerPairingBanner({super.key, required this.message, this.onCancel});
 
   final String message;
   final VoidCallback? onCancel;

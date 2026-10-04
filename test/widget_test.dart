@@ -908,6 +908,45 @@ void main() {
     expect(controlPanel.bottom, lessThanOrEqualTo(640 - 36));
   });
 
+  testWidgets('扫码类黑色条幅统一落在下方提示区', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    Future<void> pumpScanBanner({
+      bool pairing = false,
+      bool history = false,
+    }) => tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.ready,
+          elapsed: Duration.zero,
+          pairingScanActive: pairing,
+          historyScanActive: history,
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    const double screenMiddle = 844 / 2;
+    await pumpScanBanner(pairing: true);
+    expect(
+      tester.getCenter(find.byKey(const Key('computer-pairing-banner'))).dy,
+      greaterThan(screenMiddle),
+      reason: '电脑配对条幅要和其它提示一样落在下方',
+    );
+
+    await pumpScanBanner(history: true);
+    expect(
+      tester.getCenter(find.byKey(const Key('history-scan-banner'))).dy,
+      greaterThan(screenMiddle),
+      reason: '历史搜索扫码条幅要和其它提示一样落在下方',
+    );
+  });
+
   testWidgets('实时水印预览和录像始终只显示原生纹理中的水印', (WidgetTester tester) async {
     Future<void> pumpPhase(PackingSessionPhase phase) async {
       await tester.pumpWidget(
