@@ -583,6 +583,8 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
   int _handledPairingReplacementRevision = 0;
   String _handledMobileUpdateSignature = '';
   bool _mobileUpdateNoticeScheduled = false;
+  bool _autoOpenCleanup = false;
+  int _handledStoragePolicyHintRevision = 0;
   int _handledStorageNoticeRevision = 0;
   bool _capabilityNoticeDialogShown = false;
   int _transientReturnTab = 1;
@@ -916,6 +918,19 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
           }
         }
         final int storageNoticeRevision = _controller.storageNoticeRevision;
+        final int storagePolicyHintRevision =
+            _controller.storagePolicyHintRevision;
+        if (storagePolicyHintRevision > _handledStoragePolicyHintRevision &&
+            _controller.storagePolicyHintPending &&
+            !_controller.isWorking &&
+            _controller.storagePressurePolicy ==
+                StoragePressurePolicy.preserveFootage) {
+          _handledStoragePolicyHintRevision = storagePolicyHintRevision;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _showStoragePolicyHintBanner();
+          });
+        }
         if (storageNoticeRevision > _handledStorageNoticeRevision) {
           _handledStorageNoticeRevision = storageNoticeRevision;
           final StorageNotice? notice = _controller
@@ -1093,6 +1108,49 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
     );
   }
 
+  /// 空间不足且当前仍是「优先保留录像」：持久横幅引导去改成「优先继续录制」，
+  /// 点「去设置」直接跳到「设置 → 录像清理」。
+  void _showStoragePolicyHintBanner() {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentMaterialBanner();
+    messenger.showMaterialBanner(
+      MaterialBanner(
+        key: const Key('storage-policy-hint-banner'),
+        leading: const Icon(Icons.cleaning_services_rounded),
+        content: const Text(
+          BackupStoragePolicy.preserveFootageInsufficientNotice,
+        ),
+        actions: <Widget>[
+          TextButton(
+            key: const Key('storage-policy-hint-dismiss'),
+            onPressed: () {
+              messenger.hideCurrentMaterialBanner();
+              _controller.clearStoragePolicyHint();
+            },
+            child: const Text('知道了'),
+          ),
+          TextButton(
+            key: const Key('storage-policy-hint-open-settings'),
+            onPressed: () {
+              messenger.hideCurrentMaterialBanner();
+              _controller.clearStoragePolicyHint();
+              _openCleanupSettings();
+            },
+            child: const Text('去设置'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openCleanupSettings() {
+    _resetExitIntent();
+    setState(() {
+      _selectedTab = 2;
+      _autoOpenCleanup = true;
+    });
+  }
+
   Future<void> _showStorageNotice(StorageNotice notice) => showDialog<void>(
     context: context,
     builder: (BuildContext context) => AlertDialog(
@@ -1143,6 +1201,10 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       returnUnbackedRetention: _controller.returnUnbackedRetention,
       returnBackedRetention: _controller.returnBackedRetention,
       storagePressurePolicy: _controller.storagePressurePolicy,
+      autoOpenCleanup: mode == RecordingsScreenMode.settings && _autoOpenCleanup,
+      onCleanupOpened: () {
+        if (_autoOpenCleanup) setState(() => _autoOpenCleanup = false);
+      },
       backupSnapshot: _controller.backupSnapshot,
       backupListenable: _controller,
       backupSnapshotProvider: () => _controller.backupSnapshot,

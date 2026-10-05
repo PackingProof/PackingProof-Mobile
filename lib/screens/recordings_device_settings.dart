@@ -1472,6 +1472,40 @@ class _MaxVolumeSettings extends StatelessWidget {
 }
 
 extension _RecordingsSettingsView on _RecordingsScreenState {
+  /// 打开「录像清理」二级页；空间不足横幅的「去设置」也走同一条路径。
+  Future<void> _openCleanupSettingsPage() =>
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => _CleanupSettingsScreen(
+            unbackedRetention: _unbackedRetention,
+            backedRetention: _backedRetention,
+            onUnbackedRetentionChanged: (UnbackedRetentionPolicy value) async {
+              await _setUnbackedRetention(value);
+              return _unbackedRetention == value;
+            },
+            // 「备份后立即清除」需要二次确认，被拒绝时保留原选择。
+            onBackedRetentionChanged: (BackedRetentionPolicy value) async {
+              await _setBackedRetention(value);
+              return _backedRetention == value;
+            },
+            returnUnbackedRetention: _returnUnbackedRetention,
+            returnBackedRetention: _returnBackedRetention,
+            onReturnUnbackedRetentionChanged:
+                (UnbackedRetentionPolicy value) async {
+                  await _setReturnUnbackedRetention(value);
+                  return _returnUnbackedRetention == value;
+                },
+            onReturnBackedRetentionChanged:
+                (BackedRetentionPolicy value) async {
+                  await _setReturnBackedRetention(value);
+                  return _returnBackedRetention == value;
+                },
+            storagePressurePolicy: _storagePressurePolicy,
+            onStoragePressurePolicyChanged: _setStoragePressurePolicy,
+          ),
+        ),
+      );
+
   List<Widget> buildRecordingsSettingsChildren(BuildContext context) {
     final CameraCapabilitySettings? cameraCapability = widget.cameraCapability;
     return <Widget>[
@@ -1527,38 +1561,7 @@ extension _RecordingsSettingsView on _RecordingsScreenState {
         icon: Icons.cleaning_services_rounded,
         title: '录像清理',
         subtitle: '保留时间、清理策略与说明',
-        onOpen: () => Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (_) => _CleanupSettingsScreen(
-              unbackedRetention: _unbackedRetention,
-              backedRetention: _backedRetention,
-              onUnbackedRetentionChanged:
-                  (UnbackedRetentionPolicy value) async {
-                    await _setUnbackedRetention(value);
-                    return _unbackedRetention == value;
-                  },
-              // 「备份后立即清除」需要二次确认，被拒绝时保留原选择。
-              onBackedRetentionChanged: (BackedRetentionPolicy value) async {
-                await _setBackedRetention(value);
-                return _backedRetention == value;
-              },
-              returnUnbackedRetention: _returnUnbackedRetention,
-              returnBackedRetention: _returnBackedRetention,
-              onReturnUnbackedRetentionChanged:
-                  (UnbackedRetentionPolicy value) async {
-                    await _setReturnUnbackedRetention(value);
-                    return _returnUnbackedRetention == value;
-                  },
-              onReturnBackedRetentionChanged:
-                  (BackedRetentionPolicy value) async {
-                    await _setReturnBackedRetention(value);
-                    return _returnBackedRetention == value;
-                  },
-              storagePressurePolicy: _storagePressurePolicy,
-              onStoragePressurePolicyChanged: _setStoragePressurePolicy,
-            ),
-          ),
-        ),
+        onOpen: _openCleanupSettingsPage,
       ),
       const SizedBox(height: 12),
       // 录像相关（编码、规格方向、声音）收进二级页。

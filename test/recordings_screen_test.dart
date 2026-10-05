@@ -847,6 +847,33 @@ void main() {
     expect(find.text('只清理电脑确认过的备份，腾不出空间就停止录制'), findsOneWidget);
   });
 
+  testWidgets('空间不足引导横幅的「去设置」会自动打开录像清理页', (WidgetTester tester) async {
+    bool cleanupOpened = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          sessions: const [],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          autoOpenCleanup: true,
+          onCleanupOpened: () => cleanupOpened = true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(cleanupOpened, isTrue);
+    expect(find.text('录像清理策略'), findsOneWidget);
+  });
+
   testWidgets('语音设置可关闭并在开启时试听', (WidgetTester tester) async {
     bool enabled = true;
     int previewCount = 0;

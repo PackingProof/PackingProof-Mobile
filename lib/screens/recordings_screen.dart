@@ -206,6 +206,8 @@ class RecordingsScreen extends StatefulWidget {
     this.onConnectBackupHost,
     this.backupHostDiscovery,
     this.onScanSearch,
+    this.autoOpenCleanup = false,
+    this.onCleanupOpened,
     this.externalSearchQuery = '',
     this.active = true,
     this.focusBackupRevision = 0,
@@ -334,6 +336,9 @@ class RecordingsScreen extends StatefulWidget {
   onConnectBackupHost;
   final LanBackupHostDiscovery? backupHostDiscovery;
   final VoidCallback? onScanSearch;
+  /// 由首页的空间不足横幅发起：本页打开后自动进入「录像清理」二级页。
+  final bool autoOpenCleanup;
+  final VoidCallback? onCleanupOpened;
   final String externalSearchQuery;
   final bool active;
   final int focusBackupRevision;
@@ -436,6 +441,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _recordingOrientation = widget.recordingOrientation;
     _minimumBarcodeLength = widget.minimumBarcodeLength;
     _historyPageSize = widget.historyPageSize;
+    if (widget.autoOpenCleanup) _scheduleAutoOpenCleanup();
     if (_systemVideoPlayerSupported) {
       unawaited(_loadDeviceDecodeSupport());
     }
@@ -477,6 +483,9 @@ class _RecordingsScreenState extends State<RecordingsScreen>
   @override
   void didUpdateWidget(covariant RecordingsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.autoOpenCleanup && !oldWidget.autoOpenCleanup) {
+      _scheduleAutoOpenCleanup();
+    }
     final bool sessionsChanged = !_sameSessionSnapshot(
       oldWidget.sessions,
       widget.sessions,
@@ -990,6 +999,15 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _localRequestGeneration++;
     _loadingLocal = false;
     unawaited(_loadLocal(reset: true, pageNumber: 1, prefetchNext: true));
+  }
+
+  /// 首页空间不足横幅点了「去设置」：本页出现后自动推开「录像清理」。
+  void _scheduleAutoOpenCleanup() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onCleanupOpened?.call();
+      unawaited(_openCleanupSettingsPage());
+    });
   }
 
   Future<void> _showNextHistoryPage(int pageCount) async {

@@ -1166,6 +1166,49 @@ void main() {
 
     expect(notifications, 1);
   });
+
+  test('优先保留录像下空间不足会置起改策略横幅提示', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-storage-policy-hint-',
+    );
+    final _RecordingLanBackupSink backup = _RecordingLanBackupSink();
+    final PackingSessionController controller = PackingSessionController(
+      repository: testRepository(root),
+      speechService: _NoopSpeechSink(),
+      lanBackupService: backup,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+      await deleteTemporaryRoot(root);
+    });
+
+    await controller.setBackupRetention(
+      unbacked: UnbackedRetentionPolicy.days30,
+      backed: BackedRetentionPolicy.days7,
+      returnUnbacked: UnbackedRetentionPolicy.days3,
+      returnBacked: BackedRetentionPolicy.days1,
+      storagePressurePolicy: StoragePressurePolicy.preserveFootage,
+    );
+    backup.storageResult = const StorageSpaceResult(
+      availableBytes: 900 * 1024 * 1024,
+      availableBytesBefore: 900 * 1024 * 1024,
+      freedBytes: 0,
+      deletedCount: 0,
+      warning: true,
+      insufficient: true,
+    );
+
+    await controller.checkStorageWhileWorkingForTesting();
+
+    expect(controller.storagePolicyHintPending, isTrue);
+    expect(controller.storagePolicyHintRevision, greaterThan(0));
+
+    controller.clearStoragePolicyHint();
+    expect(controller.storagePolicyHintPending, isFalse);
+  });
 }
 
 Future<void> _verifyCleanupReplayAroundRepositoryFailure() async {

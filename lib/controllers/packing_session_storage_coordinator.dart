@@ -4,6 +4,20 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
   bool get isWorking;
   bool get isBusy;
   CameraDiagnosticsService get _cameraDiagnostics;
+
+  int _storagePolicyHintRevision = 0;
+  bool _storagePolicyHintPending = false;
+
+  /// 空间不足且当前是「优先保留录像」时递增，界面据此弹出改策略的横幅。
+  int get storagePolicyHintRevision => _storagePolicyHintRevision;
+
+  bool get storagePolicyHintPending => _storagePolicyHintPending;
+
+  void clearStoragePolicyHint() {
+    if (!_storagePolicyHintPending) return;
+    _storagePolicyHintPending = false;
+    if (!_disposed) notifyListeners();
+  }
   Future<RecordingSession?> stopWork();
   Future<void> _syncWorkScanForCamera();
 
@@ -60,6 +74,12 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
       result = await _reclaimStorageOnce();
     }
     if (result.insufficient) {
+      if (_storagePressurePolicy == StoragePressurePolicy.preserveFootage) {
+        // 老用户默认「优先保留录像」：只能删电脑确认过的备份，腾不出空间就
+        // 停录。这是唯一能让他继续打包的设置改动，所以必须主动引导。
+        _storagePolicyHintPending = true;
+        _storagePolicyHintRevision++;
+      }
       await _queueStorageNotice(
         const StorageNotice(
           severity: StorageNoticeSeverity.stopped,
