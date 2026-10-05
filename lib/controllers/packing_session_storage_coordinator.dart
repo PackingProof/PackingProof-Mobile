@@ -113,6 +113,23 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
       final StorageSpaceResult result = await _lanBackupService
           .checkAndReclaimStorage();
       _lastStorageResult = result;
+      // 用户报「空间不足」时，必须能回答"到底清理没有、清了多少、为什么
+      // 腾不出来"。这里把回收结果和当时的清理策略一起落盘。
+      unawaited(
+        _runtimeLog.log(
+          kind: 'storage_reclaim',
+          extra: <String, Object?>{
+            'policy': _storagePressurePolicy.storageValue,
+            'availableBytes': result.availableBytes,
+            'availableBeforeBytes': result.availableBytesBefore,
+            'freedBytes': result.freedBytes,
+            'deletedCount': result.deletedCount,
+            'warning': result.warning,
+            'insufficient': result.insufficient,
+            'working': isWorking,
+          },
+        ),
+      );
       if (result.deletedCount > 0) {
         final String message =
             '存储空间不足，已提前清理 ${result.deletedCount} 个已备份录像，'
