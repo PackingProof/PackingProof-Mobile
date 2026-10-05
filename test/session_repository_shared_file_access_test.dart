@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:packing_proof_mobile/models/backup_storage_policy.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/services/session_repository.dart';
 import 'package:sqflite/sqflite.dart';
@@ -195,7 +196,9 @@ void main() {
     await _seedSharedSessions(root, <String>[source.path, source.path]);
     final SessionRepository repository = SessionRepository(
       rootDirectory: root,
-      availableRecordingStorageBytes: () async => 2 * 1024 * 1024 * 1024,
+      // 刚低于「空间不足」门槛，门槛值跟着策略常量走。
+      availableRecordingStorageBytes: () async =>
+          BackupStoragePolicy.minimumBytes - 1,
     );
     addTearDown(repository.dispose);
     await repository.resumeSharedFileMigration();
