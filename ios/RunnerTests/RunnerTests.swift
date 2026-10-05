@@ -2759,14 +2759,14 @@ class RunnerTests: XCTestCase {
   }
 
   func testStorageReclaimFollowsPolicyPushedFromDart() async throws {
-    let availableBytes: Int64 = 1536 * 1024 * 1024
+    let availableBytes: Int64 = 900 * 1024 * 1024
     let fixture = try makeRetentionCleanupFixture(
       id: "storage-reclaim-pushed-policy",
       availableStorageBytesOverride: { availableBytes }
     )
     defer { removeRetentionCleanupFixture(fixture) }
 
-    // 未下发策略时使用兜底阈值（2GB），1.5GB 判为空间不足。
+    // 未下发策略时使用兜底阈值（1GB），900MB 判为空间不足。
     let fallbackResult = try await awaitStorageReclaim(fixture.api)
     XCTAssertEqual(fallbackResult["insufficient"] as? Bool, true)
     XCTAssertEqual(fallbackResult["warning"] as? Bool, true)
@@ -2775,9 +2775,9 @@ class RunnerTests: XCTestCase {
       fixture.api.initialize(
         request: [
           "autoEnabled": false,
-          "storageMinimumBytes": 1 * 1024 * 1024 * 1024,
-          "storageWarningBytes": 1 * 1024 * 1024 * 1024 + 1,
-          "storageTargetBytes": 1 * 1024 * 1024 * 1024 + 1,
+          "storageMinimumBytes": 512 * 1024 * 1024,
+          "storageWarningBytes": 512 * 1024 * 1024 + 1,
+          "storageTargetBytes": 512 * 1024 * 1024 + 1,
         ]
       ) { result in
         continuation.resume(with: result)

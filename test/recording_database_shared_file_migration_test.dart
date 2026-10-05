@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:packing_proof_mobile/models/backup_storage_policy.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/services/recording_database.dart'
     as production;
@@ -163,7 +164,9 @@ void main() {
       'first',
       'second',
     ]);
-    final int available = 2 * 1024 * 1024 * 1024 + source.lengthSync() - 1;
+    // 刚好差 1 字节到「空间不足」门槛，门槛值跟着策略常量走。
+    final int available =
+        BackupStoragePolicy.minimumBytes + source.lengthSync() - 1;
     final RecordingDatabase database = RecordingDatabase(
       path: databasePath,
       startSharedFileMigrationWorker: false,

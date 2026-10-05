@@ -168,19 +168,19 @@ class RecordingStorageManagerTest {
 
     @Test
     fun reclaimThresholdFollowsPolicyPushedFromDart() {
-        val availableBytes = 1500L * 1024 * 1024
+        val availableBytes = 900L * 1024 * 1024
         val manager = RecordingStorageManager(
             context,
             store,
             availableBytes = { availableBytes },
         )
 
-        // 未下发策略时使用兜底阈值（2GB），1.5GB 判为空间不足。
+        // 未下发策略时使用兜底阈值（1GB），900MB 判为空间不足。
         assertTrue(manager.checkAndReclaim().values["insufficient"] as Boolean)
 
         BackupStoragePolicyStore.save(
             context,
-            mapOf("storageMinimumBytes" to 1L * 1024 * 1024 * 1024),
+            mapOf("storageMinimumBytes" to 512L * 1024 * 1024),
         )
 
         // 阈值改由下发值决定后，同一剩余空间不再算不足。

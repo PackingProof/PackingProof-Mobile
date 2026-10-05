@@ -25,9 +25,9 @@ internal data class BackupStoragePolicy(
     companion object {
         // 仅用于下发前，必须与 Dart 端 BackupStoragePolicy 的数值一致。
         val FALLBACK = BackupStoragePolicy(
-            minimumBytes = 2L * 1024 * 1024 * 1024,
-            warningBytes = 3L * 1024 * 1024 * 1024,
-            targetBytes = 3L * 1024 * 1024 * 1024,
+            minimumBytes = 1L * 1024 * 1024 * 1024,
+            warningBytes = 2L * 1024 * 1024 * 1024,
+            targetBytes = 2L * 1024 * 1024 * 1024,
             attestationFreshnessMs = 5L * 60 * 1000,
             confirmationLimit = 64,
             confirmationGraceMs = 24L * 60 * 60 * 1000,

@@ -56,7 +56,7 @@ class BackupStoragePolicyStoreTest {
 
     @Test
     fun reclaimBoundaryFollowsPushedPolicy() {
-        val availableBytes = 1536L * 1024 * 1024
+        val availableBytes = 900L * 1024 * 1024
         assertTrue(
             RecordingStoragePolicy.needsReclaim(
                 availableBytes,
@@ -66,7 +66,7 @@ class BackupStoragePolicyStoreTest {
 
         BackupStoragePolicyStore.save(
             context,
-            mapOf("storageMinimumBytes" to 1L * 1024 * 1024 * 1024),
+            mapOf("storageMinimumBytes" to 512L * 1024 * 1024),
         )
         val policy = BackupStoragePolicyStore.current(context)
 

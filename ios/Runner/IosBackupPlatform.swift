@@ -508,9 +508,9 @@ struct BackupStoragePolicy: Equatable {
 
   /// 仅用于下发前，必须与 Dart 端 BackupStoragePolicy 的数值一致。
   static let fallback = BackupStoragePolicy(
-    minimumBytes: 2 * 1024 * 1024 * 1024,
-    warningBytes: 3 * 1024 * 1024 * 1024,
-    targetBytes: 3 * 1024 * 1024 * 1024,
+    minimumBytes: 1 * 1024 * 1024 * 1024,
+    warningBytes: 2 * 1024 * 1024 * 1024,
+    targetBytes: 2 * 1024 * 1024 * 1024,
     attestationFreshnessMs: 5 * 60 * 1000,
     confirmationLimit: 64,
     confirmationGraceMs: 24 * 60 * 60 * 1000,

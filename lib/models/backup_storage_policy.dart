@@ -40,10 +40,13 @@ class BackupStoragePolicy {
   const BackupStoragePolicy._();
 
   /// 低于该值必须回收空间，回收不出空间就不再开始或继续录像。
-  static const int minimumBytes = 2 * 1024 * 1024 * 1024;
+  ///
+  /// 取 1GB：720p 约 45MB/分钟，够录二十分钟以上；门槛太高会让手机还有一
+  /// 两个 G 的老用户被拦下，反而更影响连续打包。
+  static const int minimumBytes = 1024 * 1024 * 1024;
 
   /// 低于该值提醒操作员；空间回收的目标余量也取该值。
-  static const int warningBytes = 3 * 1024 * 1024 * 1024;
+  static const int warningBytes = 2 * 1024 * 1024 * 1024;
   static const int targetBytes = warningBytes;
 
   /// “刚向电脑确认过”的有效期，超期必须重新向电脑确认才能删除录像。
