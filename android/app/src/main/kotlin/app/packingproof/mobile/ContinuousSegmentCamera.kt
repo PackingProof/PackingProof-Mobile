@@ -37,6 +37,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
 import java.io.File
 import java.nio.ByteBuffer
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
 
@@ -68,6 +69,7 @@ class ContinuousSegmentCamera(
 ) {
     companion object {
         private const val ANALYSIS_INTERVAL_MS = 250L
+        private const val ANALYSIS_PERF_LOG_INTERVAL_TICKS = 40L
         private const val START_TIMEOUT_MS = 6_000L
         private const val SPLIT_TIMEOUT_MS = 3_000L
         private const val CAMERA_LOG_TAG = "PackingProof.Camera"
@@ -258,6 +260,11 @@ class ContinuousSegmentCamera(
     @Volatile private var analysisCropAttemptCount = 0L
     @Volatile private var analysisCropDetectedCount = 0L
     @Volatile private var analysisCropLastSummary: String? = null
+    @Volatile private var analysisTickCount = 0L
+    @Volatile private var analysisTickTotalMs = 0L
+    @Volatile private var analysisTickMaxMs = 0L
+    @Volatile private var analysisTickOverBudgetCount = 0L
+    private val analysisPassStats = ConcurrentHashMap<String, BarcodeAnalysisPassStats>()
     @Volatile private var pairingScanEnabled = false
     @Volatile private var workScanEnabled = false
     @Volatile private var torchEnabled = false
@@ -1497,6 +1504,13 @@ class ContinuousSegmentCamera(
         var fallbackBarcodes: List<Barcode>? = null
     }
 
+    private class BarcodeAnalysisPassStats {
+        @Volatile var attempts = 0L
+        @Volatile var hits = 0L
+        @Volatile var totalMs = 0L
+        @Volatile var maxMs = 0L
+    }
+
     /**
      * 超广角识别实验：整帧失败后按策略依次尝试中心裁剪通道。
      * 所有通道共用同一帧，`scannerBusy` 在整个链路完成前保持占用。
@@ -1550,6 +1564,7 @@ class ContinuousSegmentCamera(
                 if (pass.cropScale != null && foundPreferred) {
                     analysisCropDetectedCount++
                 }
+                recordPassPerformance(pass, elapsedMs, foundPreferred)
                 if (!foundPreferred && barcodes.isNotEmpty() && trace.fallbackBarcodes == null) {
                     trace.fallbackBarcodes = barcodes
                 }
@@ -1596,6 +1611,11 @@ class ContinuousSegmentCamera(
             }
             .addOnFailureListener { error ->
                 trace.summary += "${pass.label}=error:${error.javaClass.simpleName}"
+                recordPassPerformance(
+                    pass = pass,
+                    elapsedMs = SystemClock.elapsedRealtime() - passStartedAtMs,
+                    foundPreferred = false,
+                )
                 completeBarcodeAnalysis(
                     image,
                     generation,
@@ -1667,6 +1687,14 @@ class ContinuousSegmentCamera(
                 }
             }
         } finally {
+            val totalMs = SystemClock.elapsedRealtime() - startedAtMs
+            analysisTickCount++
+            analysisTickTotalMs += totalMs
+            if (totalMs > analysisTickMaxMs) analysisTickMaxMs = totalMs
+            if (totalMs > ANALYSIS_INTERVAL_MS) analysisTickOverBudgetCount++
+            if (analysisTickCount % ANALYSIS_PERF_LOG_INTERVAL_TICKS == 0L) {
+                Log.i(CAMERA_LOG_TAG, "analysis perf ${analysisPerformanceLog()}")
+            }
             if (summary.any { it.startsWith("crop") }) {
                 analysisCropLastSummary = summary.joinToString(" ")
             }
@@ -1688,6 +1716,45 @@ class ContinuousSegmentCamera(
             lastAnalysisFailure = "${error.javaClass.simpleName}: ${error.message.orEmpty()}"
         }
     }
+
+    private fun recordPassPerformance(
+        pass: BarcodeAnalysisPass,
+        elapsedMs: Long,
+        foundPreferred: Boolean,
+    ) {
+        val stats = analysisPassStats.getOrPut(pass.label) { BarcodeAnalysisPassStats() }
+        stats.attempts++
+        stats.totalMs += elapsedMs
+        if (elapsedMs > stats.maxMs) stats.maxMs = elapsedMs
+        if (foundPreferred) stats.hits++
+    }
+
+    private fun analysisPerformanceLog(): String {
+        val ticks = analysisTickCount
+        val averageMs = if (ticks > 0) analysisTickTotalMs / ticks else 0L
+        val passSummary = analysisPassStats.entries
+            .sortedBy { it.key }
+            .joinToString(" ") { (label, stats) ->
+                val passAverage = if (stats.attempts > 0) stats.totalMs / stats.attempts else 0L
+                "$label=${stats.attempts} avg=${passAverage}ms max=${stats.maxMs}ms hit=${stats.hits}"
+            }
+        return "ticks=$ticks avgMs=$averageMs maxMs=$analysisTickMaxMs " +
+            "overBudget=$analysisTickOverBudgetCount $passSummary"
+    }
+
+    private fun analysisPassStatsSnapshot(): List<Map<String, Any?>> =
+        analysisPassStats.entries
+            .sortedBy { it.key }
+            .map { (label, stats) ->
+                val averageMs = if (stats.attempts > 0) stats.totalMs / stats.attempts else 0L
+                mapOf(
+                    "label" to label,
+                    "attempts" to stats.attempts,
+                    "hits" to stats.hits,
+                    "averageMs" to averageMs,
+                    "maxMs" to stats.maxMs,
+                )
+            }
 
     private fun refreshCaptureRequest() {
         cameraHandler?.post {
@@ -2540,6 +2607,8 @@ class ContinuousSegmentCamera(
                     analysisStartedCount, analysisCompletedCount, analysisDetectedCount,
                     analysisFailureCount, lastAnalysisCompletedElapsedMs, lastAnalysisFailure,
                     analysisCropAttemptCount, analysisCropDetectedCount, analysisCropLastSummary,
+                    analysisTickCount, analysisTickTotalMs, analysisTickMaxMs,
+                    analysisTickOverBudgetCount, analysisPassStatsSnapshot(),
                 ),
                 CameraSwitchAndFrameDiagnostics(
                     switchCount, lastSwitchDurationMs, lastSwitchRestartedEncoder,

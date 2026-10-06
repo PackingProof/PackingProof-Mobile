@@ -43,6 +43,11 @@ internal data class CameraAnalysisDiagnostics(
     val cropAttemptCount: Long = 0L,
     val cropDetectedCount: Long = 0L,
     val cropLastSummary: String? = null,
+    val tickCount: Long = 0L,
+    val tickTotalMs: Long = 0L,
+    val tickMaxMs: Long = 0L,
+    val tickOverBudgetCount: Long = 0L,
+    val passStats: List<Map<String, Any?>> = emptyList(),
 )
 
 internal data class CameraSwitchAndFrameDiagnostics(
@@ -292,6 +297,11 @@ internal object CameraDiagnosticsSnapshotMapper {
             "analysisCropAttemptCount" to analysis.cropAttemptCount,
             "analysisCropDetectedCount" to analysis.cropDetectedCount,
             "analysisCropLastSummary" to analysis.cropLastSummary,
+            "analysisTickCount" to analysis.tickCount,
+            "analysisTickTotalMs" to analysis.tickTotalMs,
+            "analysisTickMaxMs" to analysis.tickMaxMs,
+            "analysisOverBudgetCount" to analysis.tickOverBudgetCount,
+            "analysisPassStats" to analysis.passStats,
             "recordingRequested" to activity.recordingRequested,
             "recordingActive" to activity.recordingActive,
             "torchEnabled" to activity.torchEnabled,
