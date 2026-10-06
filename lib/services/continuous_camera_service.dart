@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/recording_spec.dart';
@@ -317,7 +318,11 @@ class ContinuousCameraService {
           platform ??
           (channel != null
               ? _LegacyCameraPlatform(channel)
-              : AppContainer.forCurrentPlatform().camera) {
+              : AppContainer.forCurrentPlatform().camera),
+      _controlChannel =
+          channel ??
+          const MethodChannel('app.packingproof.mobile/continuous_camera'),
+      _controlChannelIsExplicit = channel != null {
     _platform.onBarcodeBatch = (List<NativeBarcodeCandidate> candidates) {
       onBarcodeFrame?.call(candidates);
     };
@@ -336,6 +341,8 @@ class ContinuousCameraService {
   }
 
   final CameraPlatform _platform;
+  final MethodChannel _controlChannel;
+  final bool _controlChannelIsExplicit;
 
   void Function(List<NativeBarcodeCandidate> candidates)? onBarcodeFrame;
   void Function(String message)? onError;
@@ -393,6 +400,24 @@ class ContinuousCameraService {
 
   Future<void> setWorkScanEnabled(bool enabled) =>
       _platform.setWorkScanEnabled(enabled);
+
+  /// 候选码出现时临时提速确认；确认成功或超时后回到默认节奏。
+  ///
+  /// Android 原生相机实现了该通道；其他平台暂时保持无操作。
+  Future<void> setAnalysisBoost(bool active) async {
+    if (!_controlChannelIsExplicit &&
+        defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    try {
+      await _controlChannel.invokeMethod<void>(
+        'setAnalysisBoost',
+        <String, Object>{'active': active},
+      );
+    } on MissingPluginException {
+      // 测试或未注册通道时忽略，不影响相机主流程。
+    }
+  }
 
   Future<void> setPreviewActive(bool active) =>
       _platform.setPreviewActive(active);

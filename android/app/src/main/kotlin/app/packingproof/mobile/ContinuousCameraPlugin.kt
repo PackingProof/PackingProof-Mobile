@@ -92,6 +92,10 @@ class ContinuousCameraPlugin(
                 engine.setWorkScanEnabled(call.argument<Boolean>("enabled") == true)
                 result.success(null)
             }
+            "setAnalysisBoost" -> {
+                engine.setAnalysisBoost(call.argument<Boolean>("active") == true)
+                result.success(null)
+            }
             "setPreviewActive" -> {
                 engine.setPreviewActive(
                     call.argument<Boolean>("active") == true,

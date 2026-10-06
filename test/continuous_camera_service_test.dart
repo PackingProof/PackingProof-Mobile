@@ -193,6 +193,33 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
+  test('候选码提速通过控制通道下发', () async {
+    const MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/continuous_camera',
+    );
+    final List<MethodCall> calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          calls.add(call);
+          return null;
+        });
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
+
+    await service.setAnalysisBoost(true);
+    await service.setAnalysisBoost(false);
+
+    expect(calls, hasLength(2));
+    expect(calls.first.method, 'setAnalysisBoost');
+    expect(calls.first.arguments, <String, Object>{'active': true});
+    expect(calls.last.method, 'setAnalysisBoost');
+    expect(calls.last.arguments, <String, Object>{'active': false});
+    await service.dispose();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+  });
+
   test('开始录像时传递录制声音开关', () async {
     const MethodChannel channel = MethodChannel(
       'app.packingproof.mobile/continuous_camera',

@@ -32,11 +32,15 @@ internal object BarcodeAnalysisPassPolicy {
         foundPreferredBarcode: Boolean,
     ): Boolean = !foundPreferredBarcode && passIndex < passCount - 1
 
+    /**
+     * 识别间隔：默认 [standardMs]；发现候选码后进入提速窗口用 [boostMs]。
+     * 与镜头无关，超广角、主摄、长焦共用同一套变速策略。
+     */
     fun analysisIntervalMs(
-        zoomRatio: Double,
+        boosted: Boolean,
         standardMs: Long,
-        ultraWideMs: Long,
-    ): Long = if (zoomRatio < 1.0) ultraWideMs else standardMs
+        boostMs: Long,
+    ): Long = if (boosted) boostMs else standardMs
 }
 
 /**

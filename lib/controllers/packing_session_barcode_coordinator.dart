@@ -172,6 +172,19 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     );
   }
 
+  /// 识别到候选码时请求原生提速确认；确认成功后立即回到默认节奏。
+  ///
+  /// 候选码长时间没确认时，原生侧 2 秒提速窗口会自动回落，不会一直高频。
+  void _syncAnalysisBoost(BarcodeObservation observation) {
+    final ContinuousCameraService? camera = _nativeCamera;
+    if (camera == null) return;
+    if (observation.confirmedCode.isNotEmpty) {
+      unawaited(camera.setAnalysisBoost(false));
+    } else if (observation.candidateCode.isNotEmpty) {
+      unawaited(camera.setAnalysisBoost(true));
+    }
+  }
+
   void _processNativeBarcodeFrame(List<NativeBarcodeCandidate> candidates) {
     if (_scanBeepEnabled &&
         _recognizedBeepPolicy.shouldBeep(
@@ -332,6 +345,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       validCode,
       now,
     );
+    _syncAnalysisBoost(observation);
     if (observation.confirmedCode.isNotEmpty) {
       _candidateCode = '';
       final int receivedAtMs = now.millisecondsSinceEpoch;
@@ -394,6 +408,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       validCode,
       now,
     );
+    _syncAnalysisBoost(observation);
     if (observation.confirmedCode.isNotEmpty &&
         !_idleAutoStartRunning &&
         !isBusy) {
@@ -506,6 +521,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         validCode,
         now,
       );
+      _syncAnalysisBoost(observation);
       if (observation.confirmedCode.isNotEmpty) {
         _candidateCode = '';
         _runInBackground(

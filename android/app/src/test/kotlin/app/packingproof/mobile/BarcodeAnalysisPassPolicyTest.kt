@@ -38,29 +38,21 @@ class BarcodeAnalysisPassPolicyTest {
     }
 
     @Test
-    fun `超广角使用更短的识别间隔`() {
+    fun `发现候选码后使用提速间隔`() {
         assertEquals(
-            150L,
+            120L,
             BarcodeAnalysisPassPolicy.analysisIntervalMs(
-                zoomRatio = 0.7,
+                boosted = true,
                 standardMs = 250L,
-                ultraWideMs = 150L,
+                boostMs = 120L,
             ),
         )
         assertEquals(
             250L,
             BarcodeAnalysisPassPolicy.analysisIntervalMs(
-                zoomRatio = 1.0,
+                boosted = false,
                 standardMs = 250L,
-                ultraWideMs = 150L,
-            ),
-        )
-        assertEquals(
-            250L,
-            BarcodeAnalysisPassPolicy.analysisIntervalMs(
-                zoomRatio = 5.0,
-                standardMs = 250L,
-                ultraWideMs = 150L,
+                boostMs = 120L,
             ),
         )
     }

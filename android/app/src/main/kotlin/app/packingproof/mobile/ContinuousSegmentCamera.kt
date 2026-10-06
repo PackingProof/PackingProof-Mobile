@@ -69,7 +69,8 @@ class ContinuousSegmentCamera(
 ) {
     companion object {
         private const val ANALYSIS_INTERVAL_MS = 250L
-        private const val ULTRA_WIDE_ANALYSIS_INTERVAL_MS = 150L
+        private const val ANALYSIS_BOOST_INTERVAL_MS = 120L
+        private const val ANALYSIS_BOOST_HOLD_MS = 2_000L
         private const val ANALYSIS_PERF_LOG_INTERVAL_TICKS = 40L
         private const val START_TIMEOUT_MS = 6_000L
         private const val SPLIT_TIMEOUT_MS = 3_000L
@@ -261,6 +262,7 @@ class ContinuousSegmentCamera(
     @Volatile private var analysisCropAttemptCount = 0L
     @Volatile private var analysisCropDetectedCount = 0L
     @Volatile private var analysisCropLastSummary: String? = null
+    @Volatile private var analysisBoostUntilMs = 0L
     @Volatile private var analysisTickCount = 0L
     @Volatile private var analysisTickTotalMs = 0L
     @Volatile private var analysisTickMaxMs = 0L
@@ -1507,9 +1509,9 @@ class ContinuousSegmentCamera(
 
     private fun currentAnalysisIntervalMs(): Long =
         BarcodeAnalysisPassPolicy.analysisIntervalMs(
-            zoomRatio = selectedZoomRatio,
+            boosted = SystemClock.elapsedRealtime() < analysisBoostUntilMs,
             standardMs = ANALYSIS_INTERVAL_MS,
-            ultraWideMs = ULTRA_WIDE_ANALYSIS_INTERVAL_MS,
+            boostMs = ANALYSIS_BOOST_INTERVAL_MS,
         )
 
     private class BarcodeAnalysisTrace {
@@ -2243,6 +2245,15 @@ class ContinuousSegmentCamera(
         if (!enabled) lastAnalysisElapsedMs = 0L
         Log.i(CAMERA_LOG_TAG, "workScanEnabled=$enabled")
         refreshCaptureRequest()
+    }
+
+    fun setAnalysisBoost(active: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        val wasBoosted = now < analysisBoostUntilMs
+        analysisBoostUntilMs = if (active) now + ANALYSIS_BOOST_HOLD_MS else 0L
+        if (wasBoosted != active) {
+            Log.i(CAMERA_LOG_TAG, "analysisBoost=$active")
+        }
     }
 
     fun setPreviewActive(active: Boolean, result: MethodChannel.Result) {
