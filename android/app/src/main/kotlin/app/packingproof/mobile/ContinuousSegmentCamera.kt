@@ -13,6 +13,7 @@ import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.StreamConfigurationMap
+import android.media.Image
 import android.media.ImageReader
 import android.media.MediaCodec
 import android.media.MediaFormat
@@ -254,6 +255,9 @@ class ContinuousSegmentCamera(
     @Volatile private var analysisFailureCount = 0L
     @Volatile private var lastAnalysisCompletedElapsedMs = 0L
     @Volatile private var lastAnalysisFailure: String? = null
+    @Volatile private var analysisCropAttemptCount = 0L
+    @Volatile private var analysisCropDetectedCount = 0L
+    @Volatile private var analysisCropLastSummary: String? = null
     @Volatile private var pairingScanEnabled = false
     @Volatile private var workScanEnabled = false
     @Volatile private var torchEnabled = false
@@ -1478,55 +1482,200 @@ class ContinuousSegmentCamera(
         val generation = analysisGeneration
         lastAnalysisElapsedMs = SystemClock.elapsedRealtime()
         analysisStartedCount++
-        try {
-            val input = InputImage.fromMediaImage(image, sensorOrientation)
-            barcodeScanner.process(input)
-                .addOnSuccessListener { barcodes ->
-                    if (!shouldAcceptBarcodeAnalysisResult(
-                            resultGeneration = generation,
-                            activeGeneration = analysisGeneration,
-                            previewActive = previewActive,
-                        )
-                    ) {
-                        return@addOnSuccessListener
-                    }
-                    recordAnalysisResult(barcodes.size)
-                    val detectedAtMs = System.currentTimeMillis()
-                    val values = barcodes.mapNotNull { barcode ->
-                        val raw = barcode.rawValue?.trim().orEmpty()
-                        if (raw.isEmpty()) null else mapOf(
-                            "value" to raw,
-                            "area" to ((barcode.boundingBox ?: Rect()).let { it.width().toLong() * it.height() }),
-                            "format" to barcodeFormatName(barcode.format),
-                            "detectedAtMs" to detectedAtMs,
-                        )
-                    }
-                    emit("barcodeFrame", values)
-                }
-                .addOnFailureListener { error ->
-                    if (!shouldAcceptBarcodeAnalysisResult(
-                            resultGeneration = generation,
-                            activeGeneration = analysisGeneration,
-                            previewActive = previewActive,
-                        )
-                    ) {
-                        return@addOnFailureListener
-                    }
-                    recordAnalysisResult(0, error)
-                    emit("barcodeFrame", emptyList<Any>())
-                }
-                .addOnCompleteListener {
-                    cameraHandler?.post {
-                        image.close()
-                        if (generation == analysisGeneration) {
-                            scannerBusy = false
-                        }
-                    }
-                }
+        runBarcodeAnalysisPass(
+            image = image,
+            generation = generation,
+            startedAtMs = SystemClock.elapsedRealtime(),
+            passes = BarcodeAnalysisPassPolicy.passesForLens(selectedZoomRatio),
+            passIndex = 0,
+            trace = BarcodeAnalysisTrace(),
+        )
+    }
+
+    private class BarcodeAnalysisTrace {
+        val summary = mutableListOf<String>()
+        var fallbackBarcodes: List<Barcode>? = null
+    }
+
+    /**
+     * 超广角识别实验：整帧失败后按策略依次尝试中心裁剪通道。
+     * 所有通道共用同一帧，`scannerBusy` 在整个链路完成前保持占用。
+     */
+    private fun runBarcodeAnalysisPass(
+        image: Image,
+        generation: Long,
+        startedAtMs: Long,
+        passes: List<BarcodeAnalysisPass>,
+        passIndex: Int,
+        trace: BarcodeAnalysisTrace,
+    ) {
+        val pass = passes[passIndex]
+        val input = try {
+            buildAnalysisInput(image, pass)
         } catch (error: Throwable) {
-            recordAnalysisResult(0, error)
-            image.close()
-            scannerBusy = false
+            Log.w(CAMERA_LOG_TAG, "${pass.label} 识别输入构建失败", error)
+            completeBarcodeAnalysis(
+                image,
+                generation,
+                startedAtMs,
+                trace.fallbackBarcodes ?: emptyList(),
+                trace.summary,
+                error,
+            )
+            return
+        }
+        if (input == null) {
+            trace.summary += "${pass.label}=unavailable"
+            completeBarcodeAnalysis(
+                image = image,
+                generation = generation,
+                startedAtMs = startedAtMs,
+                barcodes = trace.fallbackBarcodes ?: emptyList(),
+                summary = trace.summary,
+                error = IllegalStateException("${pass.label} 识别输入不可用"),
+            )
+            return
+        }
+        if (pass.cropScale != null) analysisCropAttemptCount++
+        val passStartedAtMs = SystemClock.elapsedRealtime()
+        barcodeScanner.process(input)
+            .addOnSuccessListener { barcodes ->
+                val elapsedMs = SystemClock.elapsedRealtime() - passStartedAtMs
+                trace.summary += "${pass.label}=${barcodes.size}/${elapsedMs}ms"
+                val foundPreferred = barcodes.any {
+                    BarcodeAnalysisFormatPolicy.isPreferredFormat(
+                        barcodeFormatName(it.format),
+                    )
+                }
+                if (pass.cropScale != null && foundPreferred) {
+                    analysisCropDetectedCount++
+                }
+                if (!foundPreferred && barcodes.isNotEmpty() && trace.fallbackBarcodes == null) {
+                    trace.fallbackBarcodes = barcodes
+                }
+                val canContinue = BarcodeAnalysisPassPolicy.shouldRunNextPass(
+                    passIndex = passIndex,
+                    passCount = passes.size,
+                    foundPreferredBarcode = foundPreferred,
+                ) && generation == analysisGeneration
+                if (canContinue) {
+                    val handler = cameraHandler
+                    val posted = handler != null && handler.post {
+                        runBarcodeAnalysisPass(
+                            image = image,
+                            generation = generation,
+                            startedAtMs = startedAtMs,
+                            passes = passes,
+                            passIndex = passIndex + 1,
+                            trace = trace,
+                        )
+                    }
+                    if (!posted) {
+                        completeBarcodeAnalysis(
+                            image,
+                            generation,
+                            startedAtMs,
+                            trace.fallbackBarcodes ?: emptyList(),
+                            trace.summary,
+                        )
+                    }
+                } else {
+                    val finalBarcodes = if (foundPreferred) {
+                        barcodes
+                    } else {
+                        trace.fallbackBarcodes ?: barcodes
+                    }
+                    completeBarcodeAnalysis(
+                        image,
+                        generation,
+                        startedAtMs,
+                        finalBarcodes,
+                        trace.summary,
+                    )
+                }
+            }
+            .addOnFailureListener { error ->
+                trace.summary += "${pass.label}=error:${error.javaClass.simpleName}"
+                completeBarcodeAnalysis(
+                    image,
+                    generation,
+                    startedAtMs,
+                    trace.fallbackBarcodes ?: emptyList(),
+                    trace.summary,
+                    error,
+                )
+            }
+    }
+
+    private fun buildAnalysisInput(image: Image, pass: BarcodeAnalysisPass): InputImage? {
+        val scale = pass.cropScale
+            ?: return InputImage.fromMediaImage(image, sensorOrientation)
+        val planes = image.planes
+        if (planes.size < 3) return null
+        val cropped = cropYuv420CenterToNv21(
+            y = YuvPlane(planes[0].buffer, planes[0].rowStride, planes[0].pixelStride),
+            u = YuvPlane(planes[1].buffer, planes[1].rowStride, planes[1].pixelStride),
+            v = YuvPlane(planes[2].buffer, planes[2].rowStride, planes[2].pixelStride),
+            width = image.width,
+            height = image.height,
+            scale = scale,
+        ) ?: return null
+        return InputImage.fromByteArray(
+            cropped.bytes,
+            cropped.width,
+            cropped.height,
+            sensorOrientation,
+            ImageFormat.NV21,
+        )
+    }
+
+    private fun completeBarcodeAnalysis(
+        image: Image,
+        generation: Long,
+        startedAtMs: Long,
+        barcodes: List<Barcode>,
+        summary: List<String>,
+        error: Throwable? = null,
+    ) {
+        try {
+            val accepted = shouldAcceptBarcodeAnalysisResult(
+                resultGeneration = generation,
+                activeGeneration = analysisGeneration,
+                previewActive = previewActive,
+            )
+            if (accepted) {
+                recordAnalysisResult(if (error == null) barcodes.size else 0, error)
+                val detectedAtMs = System.currentTimeMillis()
+                val values = barcodes.mapNotNull { barcode ->
+                    val raw = barcode.rawValue?.trim().orEmpty()
+                    if (raw.isEmpty()) null else mapOf(
+                        "value" to raw,
+                        "area" to ((barcode.boundingBox ?: Rect()).let { it.width().toLong() * it.height() }),
+                        "format" to barcodeFormatName(barcode.format),
+                        "detectedAtMs" to detectedAtMs,
+                    )
+                }
+                emit("barcodeFrame", values)
+                if (barcodes.isNotEmpty()) {
+                    Log.i(
+                        CAMERA_LOG_TAG,
+                        "barcode analysis hit lens=$selectedZoomRatio " +
+                            "analysis=${analysisSize.width}x${analysisSize.height} " +
+                            "passes=${summary.joinToString(" ")} " +
+                            "totalMs=${SystemClock.elapsedRealtime() - startedAtMs}",
+                    )
+                }
+            }
+        } finally {
+            if (summary.any { it.startsWith("crop") }) {
+                analysisCropLastSummary = summary.joinToString(" ")
+            }
+            cameraHandler?.post {
+                image.close()
+                if (generation == analysisGeneration) {
+                    scannerBusy = false
+                }
+            }
         }
     }
 
@@ -2390,6 +2539,7 @@ class ContinuousSegmentCamera(
                 CameraAnalysisDiagnostics(
                     analysisStartedCount, analysisCompletedCount, analysisDetectedCount,
                     analysisFailureCount, lastAnalysisCompletedElapsedMs, lastAnalysisFailure,
+                    analysisCropAttemptCount, analysisCropDetectedCount, analysisCropLastSummary,
                 ),
                 CameraSwitchAndFrameDiagnostics(
                     switchCount, lastSwitchDurationMs, lastSwitchRestartedEncoder,

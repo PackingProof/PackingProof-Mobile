@@ -40,6 +40,9 @@ internal data class CameraAnalysisDiagnostics(
     val failureCount: Long,
     val lastCompletedElapsedMs: Long,
     val lastFailure: String?,
+    val cropAttemptCount: Long = 0L,
+    val cropDetectedCount: Long = 0L,
+    val cropLastSummary: String? = null,
 )
 
 internal data class CameraSwitchAndFrameDiagnostics(
@@ -286,6 +289,9 @@ internal object CameraDiagnosticsSnapshotMapper {
             "analysisFailureCount" to analysis.failureCount,
             "lastAnalysisCompletedAgeMs" to elapsedAge(nowElapsedMs, analysis.lastCompletedElapsedMs),
             "lastAnalysisFailure" to analysis.lastFailure,
+            "analysisCropAttemptCount" to analysis.cropAttemptCount,
+            "analysisCropDetectedCount" to analysis.cropDetectedCount,
+            "analysisCropLastSummary" to analysis.cropLastSummary,
             "recordingRequested" to activity.recordingRequested,
             "recordingActive" to activity.recordingActive,
             "torchEnabled" to activity.torchEnabled,
