@@ -14,18 +14,19 @@ void main() {
     );
   });
 
-  test('本地页缓存仅保留当前页前后各两页', () {
+  test('本地页缓存保留当前页之前的全部页，只回收更旧的页', () {
     final Map<int, String> pages = <int, String>{
       for (var page = 1; page <= 12; page++) page: 'page-$page',
     };
 
     trimRecordingHistoryPageCache(pages, currentDataPage: 7);
 
-    expect(pages.keys, <int>[5, 6, 7, 8, 9]);
-    expect(pages, hasLength(5));
+    // 当前页之前的页被整段保留：混合来源的页码切片依赖这段前缀。
+    expect(pages.keys, <int>[1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(pages, hasLength(9));
   });
 
-  test('靠近首屏时页缓存不会为凑足五页越过当前页后两页', () {
+  test('靠近首屏时页缓存不会越过当前页后两页', () {
     final Map<int, String> pages = <int, String>{
       for (var page = 1; page <= 8; page++) page: 'page-$page',
     };

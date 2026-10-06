@@ -18,14 +18,11 @@ void trimRecordingHistoryPageCache<T>(
 }) {
   assert(currentDataPage >= 1);
   assert(radius >= 0);
-  final int firstRetainedPage = (currentDataPage - radius).clamp(
-    1,
-    currentDataPage,
-  );
+  // 只回收比当前页更旧的页。当前页之前的页必须整段保留：历史列表是按
+  // 「已加载页」拼出来的，丢了前面的页，后面的页码就会整体前移，
+  // 于是同一个页码在来回翻页后显示的是另一批录像（勾选状态随之丢失）。
   final int lastRetainedPage = currentDataPage + radius;
-  pages.removeWhere(
-    (int page, T _) => page < firstRetainedPage || page > lastRetainedPage,
-  );
+  pages.removeWhere((int page, T _) => page > lastRetainedPage);
 }
 
 int estimateRecordingHistoryCount({
