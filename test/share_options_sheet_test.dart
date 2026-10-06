@@ -26,8 +26,17 @@ void main() {
     await tester.tap(find.text('打开分享'));
     await tester.pumpAndSettle();
 
-    expect(find.text('用其他应用分享'), findsOneWidget);
+    expect(find.text('分享给其他应用'), findsOneWidget);
     expect(find.text('保存到本地相册'), findsOneWidget);
+
+    final Icon appsIcon = tester.widget<Icon>(
+      find.byIcon(Icons.ios_share_rounded),
+    );
+    final Icon galleryIcon = tester.widget<Icon>(
+      find.byIcon(Icons.photo_library_outlined),
+    );
+    expect(appsIcon.color, isNotNull);
+    expect(appsIcon.color, galleryIcon.color);
 
     await tester.tap(find.text('保存到本地相册'));
     await tester.pumpAndSettle();
@@ -52,7 +61,7 @@ void main() {
     await tester.tap(find.text('打开分享'));
     await tester.pumpAndSettle();
 
-    expect(find.text('用其他应用分享'), findsOneWidget);
+    expect(find.text('分享给其他应用'), findsOneWidget);
     expect(find.text('保存到本地相册'), findsNothing);
   });
 }

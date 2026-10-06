@@ -18,8 +18,8 @@ Future<ShareOption?> showShareOptionsSheet(
           children: <Widget>[
             ListTile(
               key: const Key('share-option-apps'),
-              leading: const Icon(Icons.ios_share_rounded),
-              title: const Text('用其他应用分享'),
+              leading: Icon(Icons.ios_share_rounded, color: colors.primary),
+              title: const Text('分享给其他应用'),
               onTap: () => Navigator.pop(context, ShareOption.apps),
             ),
             if (canSaveToGallery)
