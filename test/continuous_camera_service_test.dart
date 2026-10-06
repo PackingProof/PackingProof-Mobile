@@ -166,6 +166,50 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
+  test('镜头列表按倍率升序把超广角放在最左', () async {
+    const MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/continuous_camera',
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          if (call.method == 'listCameras') {
+            return <Object?>[
+              <String, Object?>{
+                'cameraId': 'wide',
+                'focalLength': 5.4,
+                'zoomRatio': 1.0,
+                'isMain': true,
+              },
+              <String, Object?>{
+                'cameraId': 'ultra',
+                'focalLength': 2.0,
+                'zoomRatio': 0.5,
+              },
+              <String, Object?>{
+                'cameraId': 'tele',
+                'focalLength': 9.0,
+                'zoomRatio': 2.0,
+              },
+            ];
+          }
+          return null;
+        });
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
+
+    final List<NativeCameraLens> lenses = await service.listCameras();
+
+    expect(lenses.map((NativeCameraLens lens) => lens.cameraId), <String>[
+      'ultra',
+      'wide',
+      'tele',
+    ]);
+    await service.dispose();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+  });
+
   test('工作扫码和预览活跃状态使用独立的原生开关', () async {
     const MethodChannel channel = MethodChannel(
       'app.packingproof.mobile/continuous_camera',

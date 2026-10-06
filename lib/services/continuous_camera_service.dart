@@ -428,7 +428,28 @@ class ContinuousCameraService {
   Future<ContinuousCameraInitialization> switchCamera() =>
       _platform.switchCamera();
 
-  Future<List<NativeCameraLens>> listCameras() => _platform.listCameras();
+  Future<List<NativeCameraLens>> listCameras() async {
+    final List<NativeCameraLens> lenses = await _platform.listCameras();
+    return _sortedBackLenses(lenses);
+  }
+
+  /// 统一两端镜头顺序：倍率升序，超广角在最左、主摄居中、长焦在右。
+  ///
+  /// iOS 的 DiscoverySession 顺序没有文档保证，不能直接照搬原生顺序；
+  /// Android 原本已按焦距升序，这里保持同一口径。
+  static List<NativeCameraLens> _sortedBackLenses(
+    List<NativeCameraLens> lenses,
+  ) {
+    final List<NativeCameraLens> sorted = List<NativeCameraLens>.of(lenses);
+    sorted.sort((NativeCameraLens a, NativeCameraLens b) {
+      final int byZoom = a.zoomRatio.compareTo(b.zoomRatio);
+      if (byZoom != 0) return byZoom;
+      final int byFocalLength = a.focalLength.compareTo(b.focalLength);
+      if (byFocalLength != 0) return byFocalLength;
+      return a.cameraId.compareTo(b.cameraId);
+    });
+    return sorted;
+  }
 
   Future<ContinuousCameraInitialization> switchToCamera(String cameraId) =>
       _platform.switchToCamera(cameraId);
