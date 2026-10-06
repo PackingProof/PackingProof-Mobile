@@ -418,6 +418,9 @@ class PackingSessionController extends ChangeNotifier
         )) {
       return;
     }
+    final NativeCameraLens selectedLens = _backCameraLenses.firstWhere(
+      (NativeCameraLens lens) => lens.cameraId == cameraId,
+    );
     final Stopwatch stopwatch = Stopwatch()..start();
     bool usedFallback = false;
     try {
@@ -432,6 +435,9 @@ class PackingSessionController extends ChangeNotifier
       await _resolveCameraCapability();
       if (_phase == PackingSessionPhase.error) return;
       _setPhase(PackingSessionPhase.ready);
+      if (selectedLens.zoomRatio < 1.0) {
+        _showCameraNotice('超广角受硬件限制，扫码识别质量与速度不如主摄');
+      }
       unawaited(_captureCameraDiagnosticsSnapshot('switch_lens'));
     } on Object {
       usedFallback = true;

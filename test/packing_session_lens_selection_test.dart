@@ -360,6 +360,15 @@ void main() {
     expect(camera.switchToCameraCalls, 1);
     expect(controller.activeCameraId, 'ultra');
     expect(controller.backCameraLenses.length, 3);
+    expect(controller.cameraNotice, '超广角受硬件限制，扫码识别质量与速度不如主摄');
+  });
+
+  test('切到主摄不提示超广角硬件限制', () async {
+    await controller.initialize();
+
+    await controller.switchToCamera('wide');
+
+    expect(controller.cameraNotice, isNot('超广角受硬件限制，扫码识别质量与速度不如主摄'));
   });
 
   test('手电筒可以连续开关且不触发语音', () async {
