@@ -5,6 +5,7 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
   final Set<String> _selectedLocalIds = <String>{};
   final Map<String, String> _selectedTrackingNumbers = <String, String>{};
   bool _managing = false;
+  bool _sharingSelection = false;
 
   List<RecordingHistoryItem> get _visibleItems;
 
@@ -191,5 +192,143 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
         ),
       ),
     );
+  }
+
+  /// 批量分享/保存所选录像：电脑上、本机缺失的文件跳过并在结果里说明。
+  Future<void> _shareSelected() async {
+    if (_selectedIds.isEmpty || _sharingSelection) return;
+    final List<RecordingSession> sessions = _sessions
+        .where(
+          (RecordingSession session) => _selectedLocalIds.contains(session.id),
+        )
+        .toList(growable: false);
+    if (sessions.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('电脑上的录像不在本机，无法分享或保存')));
+      return;
+    }
+    final bool canSaveToGallery = AppContainer.forCurrentPlatform().capabilities
+        .supports(PlatformCapability.saveVideoToGallery);
+    final ShareOption? option = await showShareOptionsSheet(
+      context,
+      canSaveToGallery: canSaveToGallery,
+    );
+    if (option == null || !mounted) return;
+    final bool saveToGallery = option == ShareOption.gallery;
+    setState(() {
+      _sharingSelection = true;
+    });
+    try {
+      final VideoShareService shareService = VideoShareService();
+      final List<File> files = <File>[];
+      int prepareFailed = 0;
+      for (final RecordingSession session in sessions) {
+        try {
+          final File source = File(session.filePath);
+          if (!await source.exists()) {
+            prepareFailed++;
+            continue;
+          }
+          files.add(
+            await shareService.prepareForSharing(
+              source,
+              fileName: shareFileName(session),
+            ),
+          );
+        } on Object {
+          prepareFailed++;
+        }
+      }
+      if (!mounted) return;
+      final String skippedNote = _shareSkipNote(
+        skippedRemote: _selectedIds.length - sessions.length,
+        failed: prepareFailed,
+      );
+      if (files.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(skippedNote.isEmpty ? '没有可分享的录像' : skippedNote),
+          ),
+        );
+        return;
+      }
+      if (saveToGallery) {
+        final SystemMediaPresenter presenter =
+            AppContainer.forCurrentPlatform().systemMediaPresenter;
+        int saved = 0;
+        int saveFailed = 0;
+        for (final File file in files) {
+          try {
+            await presenter.saveVideoToGallery(file.path);
+            saved++;
+          } on Object {
+            saveFailed++;
+          }
+        }
+        if (!mounted) return;
+        final String note = _shareSkipNote(
+          skippedRemote: _selectedIds.length - sessions.length,
+          failed: saveFailed,
+          failedLabel: '保存失败',
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              saved == 0
+                  ? (note.isEmpty ? '保存到相册失败' : note)
+                  : '已保存 $saved 段录像到相册${note.isEmpty ? '' : '（$note）'}',
+            ),
+          ),
+        );
+        return;
+      }
+      if (skippedNote.isNotEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(skippedNote)));
+      }
+      await SharePlus.instance.share(
+        ShareParams(
+          title: files.length == 1 ? '分享录像' : '分享 ${files.length} 段录像',
+          files: files
+              .map((File file) => XFile(file.path, mimeType: 'video/mp4'))
+              .toList(growable: false),
+        ),
+      );
+    } on Object catch (error) {
+      unawaited(
+        DiagnosticsLogService().log(
+          kind: saveToGallery ? 'gallery_save_failed' : 'share_failed',
+          extra: <String, Object?>{
+            'source': 'manage',
+            'count': sessions.length,
+            'error': error.toString(),
+          },
+        ),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${saveToGallery ? '保存' : '分享'}失败，请稍后重试')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _sharingSelection = false;
+        });
+      }
+    }
+  }
+
+  String _shareSkipNote({
+    required int skippedRemote,
+    required int failed,
+    String failedLabel = '准备失败',
+  }) {
+    return <String>[
+      if (skippedRemote > 0) '跳过电脑上的 $skippedRemote 条',
+      if (failed > 0) '$failed 段$failedLabel',
+    ].join('，');
   }
 }

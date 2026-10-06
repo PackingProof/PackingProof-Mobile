@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
@@ -20,6 +19,7 @@ import '../services/playback_fullscreen_policy.dart';
 import '../services/recording_path_diagnostics.dart';
 import '../services/remote_playback_compat.dart';
 import '../services/remote_playback_probe.dart';
+import '../services/share_file_naming.dart';
 import '../services/system_video_player_service.dart';
 import '../services/video_share_service.dart';
 import '../services/remote_video_clip_service.dart';
@@ -1126,18 +1126,7 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     return _shareService.prepareForSharing(file, fileName: name);
   }
 
-  String _shareNameStem() {
-    final String sourceStem = p.basenameWithoutExtension(_session.filePath);
-    final bool hasComputerNaming = RegExp(
-      r'^.+_\d{8}_\d{6}_(发货|退货)(_.+)?$',
-    ).hasMatch(sourceStem);
-    if (hasComputerNaming) return sourceStem;
-    final DateTime value = _session.startedAt;
-    final String date =
-        '${value.year.toString().padLeft(4, '0')}${value.month.toString().padLeft(2, '0')}${value.day.toString().padLeft(2, '0')}_'
-        '${value.hour.toString().padLeft(2, '0')}${value.minute.toString().padLeft(2, '0')}${value.second.toString().padLeft(2, '0')}';
-    return '${_session.displayCode}_${date}_${_session.operationMode.label}';
-  }
+  String _shareNameStem() => shareFileNameStem(_session);
 
   @override
   Widget build(BuildContext context) {

@@ -5599,7 +5599,14 @@ void main() {
     await tester.pump();
 
     expect(find.text('已选 1 项'), findsOneWidget);
-    expect(find.text('完成'), findsNWidgets(2));
+    expect(
+      find.byKey(const Key('exit-managing-appbar-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('share-selected-recordings')),
+      findsOneWidget,
+    );
     expect(find.byType(Checkbox), findsNWidgets(2));
     await tester.tap(find.text('A-1111'));
     await tester.pump();
@@ -5970,13 +5977,13 @@ void main() {
     await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
     expect(find.text('全部来源'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('finish-managing-appbar-button')));
+    await tester.tap(find.byKey(const Key('exit-managing-appbar-button')));
     await tester.pump();
     expect(find.text('全部来源'), findsOneWidget);
     expect(find.text('管理'), findsOneWidget);
   });
 
-  testWidgets('管理模式全选与完成按钮位于底部操作栏上方', (WidgetTester tester) async {
+  testWidgets('管理模式底部操作栏单行承载复制、分享与删除', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -6005,8 +6012,8 @@ void main() {
     await tester.pump();
 
     expect(
-      find.descendant(of: find.byType(AppBar), matching: find.text('完成')),
-      findsOneWidget,
+      tester.widget(find.byKey(const Key('exit-managing-appbar-button'))),
+      isA<IconButton>(),
     );
     final ColorScheme colors = Theme.of(
       tester.element(find.byKey(const Key('manage-bottom-bar'))),
@@ -6020,41 +6027,77 @@ void main() {
     );
     expect(
       tester.widget(find.byKey(const Key('select-all-recordings-button'))),
-      isA<OutlinedButton>(),
+      isA<TextButton>(),
     );
-    expect(
-      tester.widget(find.byKey(const Key('finish-managing-button'))),
-      isA<OutlinedButton>(),
-    );
-    expect(
-      tester.widget(find.byKey(const Key('finish-managing-appbar-button'))),
-      isA<OutlinedButton>(),
-    );
-    expect(
-      tester.getSize(find.byKey(const Key('finish-managing-button'))).height,
-      tester
-          .getSize(find.byKey(const Key('select-all-recordings-button')))
-          .height,
-    );
-    final double selectAllTop = tester.getTopLeft(find.text('全选本页')).dy;
-    final double finishTop = tester
-        .getTopLeft(find.byKey(const Key('finish-managing-button')))
-        .dy;
-    final double copyTop = tester.getTopLeft(find.text('复制单号')).dy;
-    final double deleteTop = tester.getTopLeft(find.text('删除')).dy;
-    expect(selectAllTop, lessThan(copyTop));
-    expect(finishTop, lessThan(copyTop));
-    expect(selectAllTop, lessThan(deleteTop));
-    expect(finishTop, lessThan(deleteTop));
+    final Finder copy = find.byKey(const Key('copy-selected-tracking-numbers'));
+    final Finder share = find.byKey(const Key('share-selected-recordings'));
+    final Finder delete = find.byKey(const Key('delete-selected-recordings'));
+    expect(copy, findsOneWidget);
+    expect(share, findsOneWidget);
+    expect(delete, findsOneWidget);
+    expect(tester.widget(copy), isA<FilledButton>());
+    expect(tester.widget(share), isA<FilledButton>());
+    expect(tester.widget(delete), isA<FilledButton>());
+    final double rowCenter = tester.getCenter(copy).dy;
+    expect(tester.getCenter(share).dy, closeTo(rowCenter, 0.01));
+    expect(tester.getCenter(delete).dy, closeTo(rowCenter, 0.01));
+    expect(tester.getCenter(copy).dx, lessThan(tester.getCenter(share).dx));
+    expect(tester.getCenter(share).dx, lessThan(tester.getCenter(delete).dx));
 
     await tester.tap(find.text('全选本页'));
     await tester.pump();
     expect(find.text('取消全选'), findsOneWidget);
     expect(find.text('已选 2 项'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('finish-managing-button')));
+    await tester.tap(find.byKey(const Key('exit-managing-appbar-button')));
     await tester.pump();
     expect(find.text('管理'), findsOneWidget);
+  });
+
+  testWidgets('管理模式下分享入口弹出分享选项且空选择时禁用', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final DateTime startedAt = DateTime(2026, 7, 18, 12);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          sessions: <RecordingSession>[
+            _session('clip-1', 'A-1111', startedAt, filePath: 'pubspec.yaml'),
+          ],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('manage-recordings-button')));
+    await tester.pump();
+
+    final Finder share = find.byKey(const Key('share-selected-recordings'));
+    expect(tester.widget<FilledButton>(share).onPressed, isNull);
+
+    await tester.tap(find.text('全选本页'));
+    await tester.pump();
+    expect(tester.widget<FilledButton>(share).onPressed, isNotNull);
+
+    await tester.tap(share);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('share-option-apps')), findsOneWidget);
+    expect(find.text('分享给其他应用'), findsOneWidget);
+    // 测试宿主不是 Android/iOS，相册入口按能力隐藏
+    expect(find.byKey(const Key('share-option-gallery')), findsNothing);
+
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('share-option-apps')), findsNothing);
   });
 
   testWidgets('全选本页按页叠加选择', (WidgetTester tester) async {
@@ -6189,7 +6232,7 @@ void main() {
     await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
     expect(
-      find.byKey(const Key('finish-managing-appbar-button')),
+      find.byKey(const Key('exit-managing-appbar-button')),
       findsOneWidget,
     );
   });
@@ -6256,11 +6299,11 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
-    expect(find.byKey(const Key('finish-managing-button')), findsOneWidget);
+    expect(find.byKey(const Key('share-selected-recordings')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('嵌入父页面时管理模式顶部与底部都有退出按钮', (WidgetTester tester) async {
+  testWidgets('嵌入父页面时管理模式顶部可退出且底部操作栏可见', (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -6301,15 +6344,17 @@ void main() {
     await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
 
-    final Finder appbarFinish = find.byKey(
-      const Key('finish-managing-appbar-button'),
+    final Finder appbarExit = find.byKey(
+      const Key('exit-managing-appbar-button'),
     );
-    final Finder bottomFinish = find.byKey(const Key('finish-managing-button'));
-    expect(appbarFinish, findsOneWidget);
-    expect(bottomFinish, findsOneWidget);
-    expect(tester.getCenter(bottomFinish).dy, greaterThan(1000));
+    final Finder bottomShare = find.byKey(
+      const Key('share-selected-recordings'),
+    );
+    expect(appbarExit, findsOneWidget);
+    expect(bottomShare, findsOneWidget);
+    expect(tester.getCenter(bottomShare).dy, greaterThan(1000));
 
-    await tester.tap(appbarFinish);
+    await tester.tap(appbarExit);
     await tester.pump();
     expect(find.byKey(const Key('manage-recordings-button')), findsOneWidget);
   });
@@ -6675,7 +6720,11 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('manage-recordings-button')));
     await tester.pump();
-    expect(find.text('完成'), findsNWidgets(2));
+    expect(find.text('已选 0 项'), findsOneWidget);
+    expect(
+      find.byKey(const Key('exit-managing-appbar-button')),
+      findsOneWidget,
+    );
     expect(find.byType(Checkbox), findsNWidgets(2));
 
     await tester.binding.handlePopRoute();

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/app_settings.dart';
 import '../app/packing_proof_theme.dart';
@@ -17,17 +18,23 @@ import '../services/order_info_receiver_service.dart';
 import '../services/lan_backup_discovery_service.dart';
 import '../services/lan_backup_service.dart';
 import '../models/work_mode.dart';
+import '../platform/contracts/media_platform.dart';
 import '../platform/platform_capabilities.dart';
+import '../platform/platform_container.dart';
 import '../widgets/about_settings.dart';
 import '../widgets/recording_history_filters.dart';
+import '../widgets/share_options_sheet.dart';
 import '../widgets/two_button_confirm_dialog.dart';
 import '../services/recording_thumbnail_service.dart';
 import '../services/camera_capability_policy.dart';
+import '../services/diagnostics_log_service.dart';
 import '../services/recording_database.dart';
 import '../services/session_repository.dart';
 import '../services/remote_playback_compat.dart';
 import '../services/remote_video_clip_service.dart';
+import '../services/share_file_naming.dart';
 import '../services/system_video_player_service.dart';
+import '../services/video_share_service.dart';
 import 'recordings_history_filter.dart';
 import 'recordings_history_pagination.dart';
 import 'video_playback_screen.dart';
@@ -336,6 +343,7 @@ class RecordingsScreen extends StatefulWidget {
   onConnectBackupHost;
   final LanBackupHostDiscovery? backupHostDiscovery;
   final VoidCallback? onScanSearch;
+
   /// 由首页的空间不足横幅发起：本页打开后自动进入「录像清理」二级页。
   final bool autoOpenCleanup;
   final VoidCallback? onCleanupOpened;
@@ -1151,7 +1159,15 @@ class _RecordingsScreenState extends State<RecordingsScreen>
       },
       child: Scaffold(
         appBar: AppBar(
-          automaticallyImplyLeading: !widget.embedded,
+          automaticallyImplyLeading: !widget.embedded && !_managing,
+          leading: _managing
+              ? IconButton(
+                  key: const Key('exit-managing-appbar-button'),
+                  tooltip: '退出管理',
+                  onPressed: _toggleManaging,
+                  icon: const Icon(Icons.close_rounded),
+                )
+              : null,
           title: _managing
               ? Text('已选 ${_selectedIds.length} 项')
               : historyMode
@@ -1162,10 +1178,21 @@ class _RecordingsScreenState extends State<RecordingsScreen>
               : const Text('设置'),
           actions: <Widget>[
             if (_managing)
-              OutlinedButton(
-                key: const Key('finish-managing-appbar-button'),
-                onPressed: _toggleManaging,
-                child: const Text('完成'),
+              TextButton(
+                key: const Key('select-all-recordings-button'),
+                onPressed: currentPageSessions.isEmpty
+                    ? null
+                    : () => _toggleSelectAllCurrentPage(currentPageSessions),
+                child: Text(
+                  currentPageSessions.isNotEmpty &&
+                          _selectedIds.containsAll(
+                            currentPageSessions.map(
+                              (RecordingSession item) => item.id,
+                            ),
+                          )
+                      ? '取消全选'
+                      : '全选本页',
+                ),
               ),
           ],
         ),
@@ -1286,8 +1313,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                       source: (
                         label: [
                           _sourceFilterPresentation.label,
-                          if (_operationFilter != null)
-                            _operationFilter!.label,
+                          if (_operationFilter != null) _operationFilter!.label,
                         ].join(' · '),
                         selected:
                             _sourceFilter.kind !=
@@ -1297,8 +1323,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                       ),
                       date: (
                         label: _dateFilterLabel,
-                        selected:
-                            _datePreset != RecordingHistoryDatePreset.all,
+                        selected: _datePreset != RecordingHistoryDatePreset.all,
                         onPressed: _showDateFilter,
                       ),
                     ),
@@ -1429,65 +1454,62 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                       top: BorderSide(color: colors.outlineVariant),
                     ),
                   ),
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 14),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                  child: Row(
                     children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          if (currentPageSessions.isNotEmpty)
-                            OutlinedButton(
-                              key: const Key('select-all-recordings-button'),
-                              onPressed: () => _toggleSelectAllCurrentPage(
-                                currentPageSessions,
-                              ),
-                              child: Text(
-                                _selectedIds.containsAll(
-                                      currentPageSessions.map(
-                                        (RecordingSession item) => item.id,
-                                      ),
-                                    )
-                                    ? '取消全选'
-                                    : '全选本页',
-                              ),
-                            ),
-                          const Spacer(),
-                          OutlinedButton(
-                            key: const Key('finish-managing-button'),
-                            onPressed: _toggleManaging,
-                            child: const Text('完成'),
-                          ),
-                        ],
+                      Expanded(
+                        child: FilledButton.tonalIcon(
+                          key: const Key('copy-selected-tracking-numbers'),
+                          onPressed: _selectedIds.isEmpty || _sharingSelection
+                              ? null
+                              : _copySelectedTrackingNumbers,
+                          style: _manageBarButtonStyle(),
+                          icon: const Icon(Icons.copy_rounded, size: 18),
+                          label: const Text('复制单号'),
+                        ),
                       ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: FilledButton.tonalIcon(
-                              key: const Key('copy-selected-tracking-numbers'),
-                              onPressed: _selectedIds.isEmpty
-                                  ? null
-                                  : _copySelectedTrackingNumbers,
-                              icon: const Icon(Icons.copy_rounded),
-                              label: const Text('复制单号'),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton.tonalIcon(
+                          key: const Key('share-selected-recordings'),
+                          onPressed: _selectedIds.isEmpty || _sharingSelection
+                              ? null
+                              : _shareSelected,
+                          style: _manageBarButtonStyle(),
+                          icon: _sharingSelection
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.ios_share_rounded, size: 18),
+                          label: const Text('分享'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton.icon(
+                          key: const Key('delete-selected-recordings'),
+                          onPressed: _selectedIds.isEmpty || _sharingSelection
+                              ? null
+                              : _deleteSelected,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: colors.error,
+                            foregroundColor: colors.onError,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            visualDensity: VisualDensity.compact,
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: FilledButton.icon(
-                              key: const Key('delete-selected-recordings'),
-                              onPressed: _selectedIds.isEmpty
-                                  ? null
-                                  : _deleteSelected,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: colors.error,
-                                foregroundColor: colors.onError,
-                              ),
-                              icon: const Icon(Icons.delete_outline_rounded),
-                              label: const Text('删除'),
-                            ),
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
                           ),
-                        ],
+                          label: const Text('删除'),
+                        ),
                       ),
                     ],
                   ),
@@ -1498,3 +1520,10 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     );
   }
 }
+
+/// 管理栏三枚动作按钮共用的紧凑样式：窄屏下也要放得下「复制单号」。
+ButtonStyle _manageBarButtonStyle() => FilledButton.styleFrom(
+  padding: const EdgeInsets.symmetric(horizontal: 8),
+  visualDensity: VisualDensity.compact,
+  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+);
