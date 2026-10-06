@@ -2275,18 +2275,40 @@ class _ScanGuidePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
+    final double radius = math.min(12.0, cornerLength / 2);
+    final Radius cornerRadius = Radius.circular(radius);
     final Path path = Path()
       ..moveTo(left, top + cornerLength)
-      ..lineTo(left, top)
+      ..lineTo(left, top + radius)
+      ..arcToPoint(
+        Offset(left + radius, top),
+        radius: cornerRadius,
+        clockwise: true,
+      )
       ..lineTo(left + cornerLength, top)
       ..moveTo(right - cornerLength, top)
-      ..lineTo(right, top)
+      ..lineTo(right - radius, top)
+      ..arcToPoint(
+        Offset(right, top + radius),
+        radius: cornerRadius,
+        clockwise: true,
+      )
       ..lineTo(right, top + cornerLength)
       ..moveTo(right, bottom - cornerLength)
-      ..lineTo(right, bottom)
+      ..lineTo(right, bottom - radius)
+      ..arcToPoint(
+        Offset(right - radius, bottom),
+        radius: cornerRadius,
+        clockwise: true,
+      )
       ..lineTo(right - cornerLength, bottom)
       ..moveTo(left + cornerLength, bottom)
-      ..lineTo(left, bottom)
+      ..lineTo(left + radius, bottom)
+      ..arcToPoint(
+        Offset(left, bottom - radius),
+        radius: cornerRadius,
+        clockwise: true,
+      )
       ..lineTo(left, bottom - cornerLength);
     canvas.drawPath(path, paint);
   }
