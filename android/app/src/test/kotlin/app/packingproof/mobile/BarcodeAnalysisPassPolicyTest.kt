@@ -38,6 +38,34 @@ class BarcodeAnalysisPassPolicyTest {
     }
 
     @Test
+    fun `超广角使用更短的识别间隔`() {
+        assertEquals(
+            150L,
+            BarcodeAnalysisPassPolicy.analysisIntervalMs(
+                zoomRatio = 0.7,
+                standardMs = 250L,
+                ultraWideMs = 150L,
+            ),
+        )
+        assertEquals(
+            250L,
+            BarcodeAnalysisPassPolicy.analysisIntervalMs(
+                zoomRatio = 1.0,
+                standardMs = 250L,
+                ultraWideMs = 150L,
+            ),
+        )
+        assertEquals(
+            250L,
+            BarcodeAnalysisPassPolicy.analysisIntervalMs(
+                zoomRatio = 5.0,
+                standardMs = 250L,
+                ultraWideMs = 150L,
+            ),
+        )
+    }
+
+    @Test
     fun `面单码制与 Dart 工作识别保持一致`() {
         assertTrue(BarcodeAnalysisFormatPolicy.isPreferredFormat("code128"))
         assertTrue(BarcodeAnalysisFormatPolicy.isPreferredFormat("code39"))

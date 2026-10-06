@@ -31,6 +31,12 @@ internal object BarcodeAnalysisPassPolicy {
         passCount: Int,
         foundPreferredBarcode: Boolean,
     ): Boolean = !foundPreferredBarcode && passIndex < passCount - 1
+
+    fun analysisIntervalMs(
+        zoomRatio: Double,
+        standardMs: Long,
+        ultraWideMs: Long,
+    ): Long = if (zoomRatio < 1.0) ultraWideMs else standardMs
 }
 
 /**

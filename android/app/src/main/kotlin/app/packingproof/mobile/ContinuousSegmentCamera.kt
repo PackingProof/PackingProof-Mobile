@@ -69,6 +69,7 @@ class ContinuousSegmentCamera(
 ) {
     companion object {
         private const val ANALYSIS_INTERVAL_MS = 250L
+        private const val ULTRA_WIDE_ANALYSIS_INTERVAL_MS = 150L
         private const val ANALYSIS_PERF_LOG_INTERVAL_TICKS = 40L
         private const val START_TIMEOUT_MS = 6_000L
         private const val SPLIT_TIMEOUT_MS = 3_000L
@@ -923,6 +924,11 @@ class ContinuousSegmentCamera(
         val analysisSizes = configuration.getOutputSizes(ImageFormat.YUV_420_888)
             ?.toList()
             .orEmpty()
+        Log.i(
+            CAMERA_LOG_TAG,
+            "analysis yuv sizes cameraId=$cameraId " +
+                analysisSizes.joinToString(",") { "${it.width}x${it.height}" },
+        )
         val availableFpsRanges = characteristics
             .get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
             ?.toList()
@@ -1479,7 +1485,7 @@ class ContinuousSegmentCamera(
                 workScanEnabled = workScanEnabled,
                 scannerBusy = scannerBusy,
                 elapsedSinceLastAnalysisMs = SystemClock.elapsedRealtime() - lastAnalysisElapsedMs,
-                analysisIntervalMs = ANALYSIS_INTERVAL_MS,
+                analysisIntervalMs = currentAnalysisIntervalMs(),
             )
         ) {
             image.close()
@@ -1498,6 +1504,13 @@ class ContinuousSegmentCamera(
             trace = BarcodeAnalysisTrace(),
         )
     }
+
+    private fun currentAnalysisIntervalMs(): Long =
+        BarcodeAnalysisPassPolicy.analysisIntervalMs(
+            zoomRatio = selectedZoomRatio,
+            standardMs = ANALYSIS_INTERVAL_MS,
+            ultraWideMs = ULTRA_WIDE_ANALYSIS_INTERVAL_MS,
+        )
 
     private class BarcodeAnalysisTrace {
         val summary = mutableListOf<String>()
@@ -1691,7 +1704,7 @@ class ContinuousSegmentCamera(
             analysisTickCount++
             analysisTickTotalMs += totalMs
             if (totalMs > analysisTickMaxMs) analysisTickMaxMs = totalMs
-            if (totalMs > ANALYSIS_INTERVAL_MS) analysisTickOverBudgetCount++
+            if (totalMs > currentAnalysisIntervalMs()) analysisTickOverBudgetCount++
             if (analysisTickCount % ANALYSIS_PERF_LOG_INTERVAL_TICKS == 0L) {
                 Log.i(CAMERA_LOG_TAG, "analysis perf ${analysisPerformanceLog()}")
             }
