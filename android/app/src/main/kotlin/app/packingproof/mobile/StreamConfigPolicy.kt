@@ -97,11 +97,13 @@ internal class StreamConfigPolicy(
     }
 
     /**
-     * 带镜头档位的识别流候选：档位小于 1 倍（超广角）时改用 1080p 级识别流。
+     * 带镜头档位的识别流候选：档位小于 1 倍（超广角）时优先 2560x1440，
+     * 其次 1920x1080、1280x720，再回退轻量阶梯。
      *
      * 同一距离下超广角画面宽度约为主摄的 2.5 倍，条码在识别帧里只剩约 1/2.5 的
-     * 像素宽度，720x480 下码元不足 1 像素，ML Kit 一维码会完全读不出来。
-     * 主摄与长焦仍用轻量识别流，避免白白多付识别功耗。
+     * 像素宽度；提高识别流分辨率能让 70% 中心裁剪拿到更多真实码元像素，
+     * 真机日志显示部分机型超广角支持到 4096x3072，因此先试 1440p。
+     * 会话带宽或发热不够时由候选阶梯自动降级。主摄与长焦仍用轻量识别流。
      */
     fun analysisCandidates(
         supportedSizes: List<StreamSize>,
@@ -109,7 +111,7 @@ internal class StreamConfigPolicy(
     ): List<StreamSize> {
         if (lensZoomRatio >= 1.0) return analysisCandidates(supportedSizes)
         val candidates = mutableListOf<StreamSize>()
-        for ((width, height) in listOf(1920 to 1080, 1280 to 720)) {
+        for ((width, height) in listOf(2560 to 1440, 1920 to 1080, 1280 to 720)) {
             supportedSizes.firstOrNull { it.width == width && it.height == height }
                 ?.let { candidates.add(it) }
         }

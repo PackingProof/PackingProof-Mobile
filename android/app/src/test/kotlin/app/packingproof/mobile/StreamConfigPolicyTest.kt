@@ -95,16 +95,18 @@ class StreamConfigPolicyTest {
     }
 
     @Test
-    fun `超广角档位优先1080p识别流并保留降级候选`() {
+    fun `超广角档位优先1440p识别流并保留降级候选`() {
         val sizes = listOf(
             StreamSize(320, 240),
             StreamSize(640, 480),
             StreamSize(960, 540),
             StreamSize(1280, 720),
             StreamSize(1920, 1080),
+            StreamSize(2560, 1440),
         )
         assertEquals(
             listOf(
+                StreamSize(2560, 1440),
                 StreamSize(1920, 1080),
                 StreamSize(1280, 720),
                 StreamSize(960, 540),
