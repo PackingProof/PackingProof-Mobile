@@ -5,7 +5,8 @@
 #
 # 只读检查，不构建、不上传、不修改任何东西，也不打印凭据内容。
 # 按当前机器实际具备的工具链分工，不假设 AI 固定在哪一台：
-# Android 工具链（Gradle、签名目录、Release 渠道）只在 Windows 上，iOS 工具链（Xcode、TestFlight）只在 Mac 上；
+# Android 工具链（Gradle、签名目录）只在 Windows 上，iOS 工具链（Xcode、TestFlight）只在 Mac 上；
+# Release 渠道凭据（gh / gitee）不绑定机器：哪一侧可用就在哪一侧创建 Release（Tools/Publish-Releases.ps1 与 .sh 等价）；
 # 属于本机那一半的缺失是阻断项，另一半只提示并指出要去哪台机器跑（可走局域网 SSH）。
 #
 # 完整发布顺序见 docs/android-release.md。
@@ -127,14 +128,12 @@ if [ "$HOST" = "mac" ]; then
 fi
 
 echo ""
-echo "== 发布渠道登录态（Release 需要在有 Android 工具链的 Windows 机器上创建）=="
-# Release 在那台机器上创建：APK 与发布笔记都在那边，不需要跨机拷贝；
-# 本机没有登录态时，走局域网 SSH 到那台机器跑 Tools/Publish-Releases.ps1 即可。
-if [ "$HOST" = "windows" ]; then
-  channel_issue() { fail "$1"; }
-else
-  channel_issue() { warn "$1（Release 在 Windows 侧创建，本机没有登录态属正常，可走局域网 SSH 到那台机器验证）"; }
-fi
+echo "== 发布渠道登录态（哪个机器的凭据可用就在哪个机器创建 Release）=="
+# Release 不绑定机器：本机渠道不可用时，去另一侧跑 Tools/Publish-Releases.ps1（Windows）
+# 或 Tools/Publish-Releases.sh（Mac）即可，两边脚本等价。
+channel_issue() {
+  warn "$1（本机渠道不可用时可改在另一侧创建 Release，两边脚本等价，可走局域网 SSH）"
+}
 
 if command -v gh >/dev/null 2>&1; then
   if gh auth status >/dev/null 2>&1; then

@@ -4,7 +4,8 @@
 #
 # 只读检查，不构建、不上传、不修改任何东西，也不打印凭据内容。
 # 按当前机器实际具备的工具链分工，不假设 AI 固定在哪一台：
-# 签名目录与渠道令牌在 Windows 上是阻断项，iOS 与 TestFlight 那半在 Mac 上（跑 Tools/Check-ReleasePrereqs.sh）；
+# 签名目录在 Windows 上是阻断项；渠道令牌（gh / gitee）不绑定机器，哪一侧可用就在哪一侧创建 Release
+# （Tools/Publish-Releases.ps1 与 .sh 等价）。iOS 与 TestFlight 那半在 Mac 上（跑 Tools/Check-ReleasePrereqs.sh）；
 # 不属于本机的那半只提示，并指出要去哪台机器跑（可走局域网 SSH）。
 # 完整发布顺序见 docs/android-release.md。
 
@@ -96,14 +97,15 @@ else {
 }
 
 Write-Host ""
-Write-Host "== 发布渠道登录态（Release 在 Windows 侧创建）=="
+# Release 不绑定机器：本机渠道不可用时改在另一侧创建即可，所以这里只提示不阻断。
+Write-Host "== 发布渠道登录态（哪个机器的凭据可用就在哪个机器创建 Release）=="
 if (Get-Command gh -ErrorAction SilentlyContinue) {
     gh auth status *> $null
     if ($LASTEXITCODE -eq 0) { Write-Ok "gh 已登录" }
-    else { Write-AndroidSide "gh 未登录，执行 gh auth login" }
+    else { Write-Warn "gh 未登录：可在本机执行 gh auth login，或改在另一侧创建 Release" }
 }
 else {
-    Write-AndroidSide "未安装 gh，GitHub Release 无法创建"
+    Write-Warn "未安装 gh：本机建不了 GitHub Release，可改在另一侧创建"
 }
 
 # Gitee 令牌固定来自 .env；`gitee auth status` 在令牌失效时仍返回 0，
@@ -115,14 +117,14 @@ if (Get-Command gitee -ErrorAction SilentlyContinue) {
         Write-Ok "gitee 令牌可用（来源：$giteeTokenLabel）"
     }
     elseif ($giteeTokenSource) {
-        Write-AndroidSide "gitee 令牌不可用（来源：$giteeTokenLabel），请核对 .env 的 GITEE_TOKEN"
+        Write-Warn "gitee 令牌不可用（来源：$giteeTokenLabel），请核对 .env 的 GITEE_TOKEN，或改在另一侧创建 Release"
     }
     else {
-        Write-AndroidSide "gitee 不可用：.env 里没有 GITEE_TOKEN，gitee CLI 登录态也不可用"
+        Write-Warn "gitee 不可用：.env 里没有 GITEE_TOKEN，gitee CLI 登录态也不可用，可改在另一侧创建 Release"
     }
 }
 else {
-    Write-AndroidSide "未安装 gitee CLI，Gitee Release 无法创建"
+    Write-Warn "未安装 gitee CLI：本机建不了 Gitee Release，可改在另一侧创建"
 }
 
 Write-Host ""
