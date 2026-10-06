@@ -1,6 +1,6 @@
 package app.packingproof.mobile
 
-/** 一次条码识别使用的输入通道：整帧，或按比例中心裁剪。 */
+/** 一次条码识别使用的输入通道：按比例裁剪出的中心正方形。 */
 internal data class BarcodeAnalysisPass(
     val label: String,
     val cropScale: Double?,
@@ -9,22 +9,22 @@ internal data class BarcodeAnalysisPass(
 /**
  * 超广角识别实验的通道编排。
  *
- * 主摄/长焦只跑整帧；超广角先跑整帧，整帧没有结果时再依次尝试中心裁剪，
- * 用于判断 ML Kit 在整帧输入上是否受到内部缩放影响。裁剪不会增加码元真实
- * 像素数，因此这里的结果只用于评估是否值得继续，不改变录像与预览。
+ * 超广角只分析短边 70% 的中心正方形；主摄/长焦只分析短边 100% 的
+ * 中心正方形（最大的居中正方形），都不再跑整帧。裁剪不会增加码元真实
+ * 像素数，只影响 ML Kit 的输入范围与开销；Dart 侧识别框覆盖比例必须与
+ * 这里的比例保持一致（见 lib/services/scan_guide_geometry.dart）。
  */
 internal object BarcodeAnalysisPassPolicy {
-    private val fullFrameOnly = listOf(
-        BarcodeAnalysisPass(label = "full", cropScale = null),
-    )
-    private val ultraWide = listOf(
-        BarcodeAnalysisPass(label = "full", cropScale = null),
-        BarcodeAnalysisPass(label = "crop85", cropScale = 0.85),
-        BarcodeAnalysisPass(label = "crop50", cropScale = 0.5),
-    )
+    private const val ULTRA_WIDE_CROP_SCALE = 0.7
+    private const val STANDARD_CROP_SCALE = 1.0
 
-    fun passesForLens(zoomRatio: Double): List<BarcodeAnalysisPass> =
-        if (zoomRatio < 1.0) ultraWide else fullFrameOnly
+    fun passesForLens(zoomRatio: Double): List<BarcodeAnalysisPass> = listOf(
+        if (zoomRatio < 1.0) {
+            BarcodeAnalysisPass(label = "crop70", cropScale = ULTRA_WIDE_CROP_SCALE)
+        } else {
+            BarcodeAnalysisPass(label = "crop100", cropScale = STANDARD_CROP_SCALE)
+        },
+    )
 
     fun shouldRunNextPass(
         passIndex: Int,

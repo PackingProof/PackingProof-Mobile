@@ -7,44 +7,30 @@ import org.junit.Test
 
 class BarcodeAnalysisPassPolicyTest {
     @Test
-    fun `主摄与长焦只跑整帧`() {
+    fun `主摄与长焦只跑短边100%的中心正方形`() {
         assertEquals(
-            listOf("full"),
+            listOf("crop100"),
             BarcodeAnalysisPassPolicy.passesForLens(1.0).map { it.label },
         )
         assertEquals(
-            listOf("full"),
+            listOf("crop100"),
             BarcodeAnalysisPassPolicy.passesForLens(2.0).map { it.label },
         )
     }
 
     @Test
-    fun `超广角按整帧到中心裁剪依次回退`() {
+    fun `超广角只跑短边70%的中心正方形`() {
         val passes = BarcodeAnalysisPassPolicy.passesForLens(0.5)
-        assertEquals(listOf("full", "crop85", "crop50"), passes.map { it.label })
-        assertEquals(listOf(null, 0.85, 0.5), passes.map { it.cropScale })
+        assertEquals(listOf("crop70"), passes.map { it.label })
+        assertEquals(listOf(0.7), passes.map { it.cropScale })
     }
 
     @Test
-    fun `已有面单码制或已是最后一档时不再继续`() {
+    fun `单通道识别链不会再往后继续`() {
         val passes = BarcodeAnalysisPassPolicy.passesForLens(0.5)
-        assertTrue(
-            BarcodeAnalysisPassPolicy.shouldRunNextPass(
-                passIndex = 0,
-                passCount = passes.size,
-                foundPreferredBarcode = false,
-            ),
-        )
         assertFalse(
             BarcodeAnalysisPassPolicy.shouldRunNextPass(
                 passIndex = 0,
-                passCount = passes.size,
-                foundPreferredBarcode = true,
-            ),
-        )
-        assertFalse(
-            BarcodeAnalysisPassPolicy.shouldRunNextPass(
-                passIndex = passes.lastIndex,
                 passCount = passes.size,
                 foundPreferredBarcode = false,
             ),

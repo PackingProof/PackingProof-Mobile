@@ -21,6 +21,7 @@ import '../models/order_info.dart';
 import '../models/storage_notice.dart';
 import '../models/lan_backup.dart';
 import '../services/preview_cover_transform.dart';
+import '../services/scan_guide_geometry.dart';
 import '../services/lan_backup_discovery_service.dart';
 import '../services/lan_backup_host_file_cache.dart';
 import '../services/continuous_camera_service.dart';
@@ -1499,6 +1500,32 @@ class PackingHomeView extends StatelessWidget {
   }
 }
 
+Size _previewSourceSize(PackingHomeView view) {
+  final Size? native = view.nativePreviewSize;
+  if (native != null && native.width > 0 && native.height > 0) {
+    return native;
+  }
+  final Size? preview = view.cameraController?.value.previewSize;
+  if (preview != null && preview.width > 0 && preview.height > 0) {
+    return preview.width > preview.height
+        ? Size(preview.height, preview.width)
+        : preview;
+  }
+  return Size.zero;
+}
+
+double _activeLensZoomRatio(PackingHomeView view) {
+  final String? activeCameraId = view.activeCameraId;
+  if (activeCameraId != null) {
+    for (final NativeCameraLens lens in view.backCameraLenses) {
+      if (lens.cameraId == activeCameraId) {
+        return lens.zoomRatio;
+      }
+    }
+  }
+  return 1.0;
+}
+
 class _CameraArea extends StatelessWidget {
   const _CameraArea(this.view, {required this.bottomOcclusion});
 
@@ -1543,14 +1570,27 @@ class _CameraArea extends StatelessWidget {
           Positioned.fill(child: preview),
           if (!view.nativeLiveWatermark)
             Positioned.fill(child: _CameraWatermarkPlacement(view: view)),
-          Positioned(
-            left: 24,
-            right: 24,
-            top: 64,
-            bottom: lowerOverlayInset + 2,
-            child: const SizedBox(
-              key: Key('scan-guide'),
-              child: CustomPaint(painter: _ScanGuidePainter()),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  return CustomPaint(
+                    key: const Key('scan-guide'),
+                    painter: _ScanGuidePainter(
+                      rect: scanGuideSquareRect(
+                        sourceSize: _previewSourceSize(view),
+                        canvasSize: Size(
+                          constraints.maxWidth,
+                          constraints.maxHeight,
+                        ),
+                        coverage: scanGuideCoverageForLens(
+                          _activeLensZoomRatio(view),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
           if (view.backCameraLenses.length >= 2 &&
@@ -2214,35 +2254,45 @@ class NativeCameraPreviewCover extends StatelessWidget {
 }
 
 class _ScanGuidePainter extends CustomPainter {
-  const _ScanGuidePainter();
+  const _ScanGuidePainter({required this.rect});
+
+  final Rect rect;
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (rect.width <= 0 || rect.height <= 0) return;
     const double inset = 1;
-    const double cornerLength = 28;
+    final double cornerLength = math.min(
+      28,
+      math.min(rect.width, rect.height) / 3,
+    );
+    final double left = rect.left + inset;
+    final double top = rect.top + inset;
+    final double right = rect.right - inset;
+    final double bottom = rect.bottom - inset;
     final Paint paint = Paint()
       ..color = Colors.white.withValues(alpha: 0.92)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
     final Path path = Path()
-      ..moveTo(inset, inset + cornerLength)
-      ..lineTo(inset, inset)
-      ..lineTo(inset + cornerLength, inset)
-      ..moveTo(size.width - inset - cornerLength, inset)
-      ..lineTo(size.width - inset, inset)
-      ..lineTo(size.width - inset, inset + cornerLength)
-      ..moveTo(size.width - inset, size.height - inset - cornerLength)
-      ..lineTo(size.width - inset, size.height - inset)
-      ..lineTo(size.width - inset - cornerLength, size.height - inset)
-      ..moveTo(inset + cornerLength, size.height - inset)
-      ..lineTo(inset, size.height - inset)
-      ..lineTo(inset, size.height - inset - cornerLength);
+      ..moveTo(left, top + cornerLength)
+      ..lineTo(left, top)
+      ..lineTo(left + cornerLength, top)
+      ..moveTo(right - cornerLength, top)
+      ..lineTo(right, top)
+      ..lineTo(right, top + cornerLength)
+      ..moveTo(right, bottom - cornerLength)
+      ..lineTo(right, bottom)
+      ..lineTo(right - cornerLength, bottom)
+      ..moveTo(left + cornerLength, bottom)
+      ..lineTo(left, bottom)
+      ..lineTo(left, bottom - cornerLength);
     canvas.drawPath(path, paint);
   }
 
   @override
-  bool shouldRepaint(_ScanGuidePainter oldDelegate) => false;
+  bool shouldRepaint(_ScanGuidePainter oldDelegate) => oldDelegate.rect != rect;
 }
 
 class CameraPreviewCover extends StatelessWidget {
