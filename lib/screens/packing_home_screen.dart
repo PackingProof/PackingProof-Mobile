@@ -1695,11 +1695,18 @@ class _CameraArea extends StatelessWidget {
                   const SizedBox(height: 8),
                 ],
                 if (view.scanWarningMessage != null)
-                  _ScanWarningToast(message: view.scanWarningMessage!)
+                  _StatusBanner(
+                    containerKey: const Key('scan-warning-toast'),
+                    message: view.scanWarningMessage!,
+                    tone: _StatusBannerTone.warning,
+                  )
                 else if (view.cameraNotice != null)
-                  _CameraNoticeBanner(
+                  _StatusBanner(
+                    containerKey: const Key('camera-notice-banner'),
                     message: view.cameraNotice!,
-                    warning: view.cameraNoticeWarning,
+                    tone: view.cameraNoticeWarning
+                        ? _StatusBannerTone.warning
+                        : _StatusBannerTone.info,
                   )
                 else if (view.lastMarker != null)
                   _RecognitionToast(marker: view.lastMarker!),
@@ -1709,9 +1716,10 @@ class _CameraArea extends StatelessWidget {
                     alignment: Alignment.centerRight,
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 340),
-                      child: _ScanWarningToast(
-                        key: const Key('rejected-barcode-toast'),
+                      child: _StatusBanner(
+                        containerKey: const Key('rejected-barcode-toast'),
                         message: view.rejectedBarcodeMessage!,
+                        tone: _StatusBannerTone.warning,
                       ),
                     ),
                   ),
@@ -2471,91 +2479,82 @@ class _RecognitionToast extends StatelessWidget {
   }
 }
 
-class _ScanWarningToast extends StatelessWidget {
-  const _ScanWarningToast({super.key, required this.message});
+enum _StatusBannerTone { info, warning, error }
+
+/// 统一的状态条幅：信息（深灰）、警告（黄色）、错误（红色）。
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({
+    required this.message,
+    required this.tone,
+    this.containerKey,
+    this.dense = false,
+  });
 
   final String message;
+  final _StatusBannerTone tone;
+  final Key? containerKey;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('scan-warning-toast'),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xEBB3261E),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x44000000),
-            blurRadius: 20,
-            offset: Offset(0, 8),
-          ),
-        ],
+    final (Color background, Color foreground, IconData icon) = switch (tone) {
+      _StatusBannerTone.info => (
+        const Color(0xE6323940),
+        Colors.white,
+        Icons.info_outline_rounded,
       ),
-      child: Row(
-        children: <Widget>[
-          const Icon(Icons.warning_amber_rounded, color: Colors.white),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
+      _StatusBannerTone.warning => (
+        const Color(0xFFFFC107),
+        const Color(0xFF3E2723),
+        Icons.warning_amber_rounded,
       ),
-    );
-  }
-}
-
-class _CameraNoticeBanner extends StatelessWidget {
-  const _CameraNoticeBanner({required this.message, this.warning = false});
-
-  final String message;
-  final bool warning;
-
-  @override
-  Widget build(BuildContext context) {
-    final Color background = warning
-        ? const Color(0xFFFFC107)
-        : const Color(0xE6323940);
-    final Color foreground = warning ? const Color(0xFF3E2723) : Colors.white;
-    return Container(
-      key: const Key('camera-notice-banner'),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      _StatusBannerTone.error => (
+        const Color(0xFFB3261E),
+        Colors.white,
+        Icons.error_outline_rounded,
+      ),
+    };
+    final Widget banner = Container(
+      key: containerKey,
+      padding: dense
+          ? const EdgeInsets.symmetric(horizontal: 8, vertical: 1)
+          : const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x44000000),
-            blurRadius: 20,
-            offset: Offset(0, 8),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(dense ? 7 : 16),
+        boxShadow: dense
+            ? null
+            : const <BoxShadow>[
+                BoxShadow(
+                  color: Color(0x44000000),
+                  blurRadius: 20,
+                  offset: Offset(0, 8),
+                ),
+              ],
       ),
       child: Row(
+        mainAxisSize: dense ? MainAxisSize.min : MainAxisSize.max,
         children: <Widget>[
-          Icon(
-            warning ? Icons.warning_amber_rounded : Icons.info_outline_rounded,
-            color: foreground,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
+          Icon(icon, color: foreground, size: dense ? 12 : null),
+          SizedBox(width: dense ? 4 : 10),
+          Flexible(
             child: Text(
               message,
+              maxLines: dense ? 1 : null,
+              overflow: dense ? TextOverflow.ellipsis : null,
+              textAlign: dense ? TextAlign.center : TextAlign.start,
               style: TextStyle(
                 color: foreground,
-                fontWeight: warning ? FontWeight.w700 : FontWeight.w600,
+                fontSize: dense ? 11 : null,
+                height: dense ? 1.2 : null,
+                fontWeight: dense ? FontWeight.w700 : FontWeight.w600,
               ),
             ),
           ),
         ],
       ),
     );
+    return banner;
   }
 }
 
@@ -2603,29 +2602,42 @@ class _ControlPanel extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 1),
-                      GestureDetector(
-                        key: const Key('active-order-summary'),
-                        onTap: view.orderInfo == null
-                            ? null
-                            : () =>
-                                  showOrderInfoSheet(context, view.orderInfo!),
-                        child: Text(
-                          view.orderInfo?.summary ?? _recordingHint(view),
-                          maxLines: 1,
-                          textAlign: TextAlign.center,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: view.orderInfo?.hasRefundWarning == true
-                                ? const Color(0xFFFF8A80)
-                                : Colors.white70,
-                            fontSize: 12,
-                            height: 1.25,
-                            fontWeight: view.orderInfo == null
-                                ? FontWeight.normal
-                                : FontWeight.w700,
+                      if (view.orderInfo?.hasRefundWarning == true)
+                        GestureDetector(
+                          key: const Key('active-order-summary'),
+                          onTap: () =>
+                              showOrderInfoSheet(context, view.orderInfo!),
+                          child: _StatusBanner(
+                            containerKey: const Key('refund-order-banner'),
+                            message: view.orderInfo!.summary,
+                            tone: _StatusBannerTone.error,
+                            dense: true,
+                          ),
+                        )
+                      else
+                        GestureDetector(
+                          key: const Key('active-order-summary'),
+                          onTap: view.orderInfo == null
+                              ? null
+                              : () => showOrderInfoSheet(
+                                  context,
+                                  view.orderInfo!,
+                                ),
+                          child: Text(
+                            view.orderInfo?.summary ?? _recordingHint(view),
+                            maxLines: 1,
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              height: 1.25,
+                              fontWeight: view.orderInfo == null
+                                  ? FontWeight.normal
+                                  : FontWeight.w700,
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),

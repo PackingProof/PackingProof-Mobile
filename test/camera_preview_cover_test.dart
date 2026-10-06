@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/models/barcode_marker.dart';
+import 'package:packing_proof_mobile/models/order_info.dart';
 import 'package:packing_proof_mobile/screens/packing_home_screen.dart';
 import 'package:packing_proof_mobile/services/preview_cover_transform.dart';
 
@@ -26,7 +27,7 @@ void main() {
     expect((image.image as AssetImage).assetName, 'assets/images/app-icon.png');
   });
 
-  testWidgets('重复单号使用醒目的录像内警告', (WidgetTester tester) async {
+  testWidgets('重复单号使用黄色警告条幅', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: PackingHomeView(
@@ -43,6 +44,42 @@ void main() {
 
     expect(find.byKey(const Key('scan-warning-toast')), findsOneWidget);
     expect(find.text('警告：重复单号，请确认'), findsOneWidget);
+    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+    final Container banner = tester.widget<Container>(
+      find.byKey(const Key('scan-warning-toast')),
+    );
+    final BoxDecoration decoration = banner.decoration! as BoxDecoration;
+    expect(decoration.color, const Color(0xFFFFC107));
+  });
+
+  testWidgets('退款订单使用红色错误条幅', (WidgetTester tester) async {
+    const OrderInfo info = OrderInfo(
+      trackingNumber: 'TRACK-1',
+      refundStatus: '退款处理中',
+      isPrintedRefund: true,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 5),
+          currentCode: 'TRACK-1',
+          orderInfo: info,
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('refund-order-banner')), findsOneWidget);
+    expect(find.text('退款：退款处理中'), findsOneWidget);
+    expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
+    final Container banner = tester.widget<Container>(
+      find.byKey(const Key('refund-order-banner')),
+    );
+    final BoxDecoration decoration = banner.decoration! as BoxDecoration;
+    expect(decoration.color, const Color(0xFFB3261E));
   });
 
   testWidgets('相机兼容提示显示中性信息横幅', (WidgetTester tester) async {
