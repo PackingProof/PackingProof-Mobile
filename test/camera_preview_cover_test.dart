@@ -62,7 +62,34 @@ void main() {
 
     expect(find.byKey(const Key('camera-notice-banner')), findsOneWidget);
     expect(find.text(notice), findsOneWidget);
+    expect(find.byIcon(Icons.info_outline_rounded), findsOneWidget);
     expect(find.byKey(const Key('scan-warning-toast')), findsNothing);
+  });
+
+  testWidgets('超广角硬件提示使用黄色警告横幅', (WidgetTester tester) async {
+    const String notice = '超广角受硬件限制，扫码识别质量与速度不如主摄';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.recording,
+          elapsed: const Duration(seconds: 5),
+          cameraNotice: notice,
+          cameraNoticeWarning: true,
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('camera-notice-banner')), findsOneWidget);
+    expect(find.text(notice), findsOneWidget);
+    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+    final Container banner = tester.widget<Container>(
+      find.byKey(const Key('camera-notice-banner')),
+    );
+    final BoxDecoration decoration = banner.decoration! as BoxDecoration;
+    expect(decoration.color, const Color(0xFFFFC107));
   });
 
   testWidgets('只有扫描警告时不渲染相机提示横幅', (WidgetTester tester) async {

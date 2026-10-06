@@ -221,6 +221,7 @@ class PackingSessionController extends ChangeNotifier
   String? _errorMessage;
   @override
   String? _cameraNotice;
+  bool _cameraNoticeWarning = false;
   String? _rejectedBarcodeMessage;
   @override
   bool _disposed = false;
@@ -287,6 +288,7 @@ class PackingSessionController extends ChangeNotifier
   String? get scanWarningMessage =>
       _storageWarningMessage ?? _scanWarningMessage;
   String? get cameraNotice => _cameraNotice;
+  bool get cameraNoticeWarning => _cameraNoticeWarning;
   String? get rejectedBarcodeMessage => _rejectedBarcodeMessage;
   int get storageNoticeRevision => _storageNoticeRevision;
   @override
@@ -436,7 +438,7 @@ class PackingSessionController extends ChangeNotifier
       if (_phase == PackingSessionPhase.error) return;
       _setPhase(PackingSessionPhase.ready);
       if (selectedLens.zoomRatio < 1.0) {
-        _showCameraNotice('超广角受硬件限制，扫码识别质量与速度不如主摄');
+        _showCameraNoticeWarning('超广角受硬件限制，扫码识别质量与速度不如主摄');
       }
       unawaited(_captureCameraDiagnosticsSnapshot('switch_lens'));
     } on Object {

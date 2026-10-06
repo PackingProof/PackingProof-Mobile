@@ -17,6 +17,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   @override
   bool get isBusy;
   set _cameraNotice(String? value);
+  set _cameraNoticeWarning(bool value);
 
   Future<void> _reloadRecentSessions();
   Future<void> _initializeBackgroundServices(AppSettings settings);
@@ -33,6 +34,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   Timer? _diagnosticsTimer;
   Timer? _microphoneBusyRetryTimer;
   int _microphoneBusyRetries = 0;
+
   /// 麦克风被其他应用占用时的自动重试节奏：先等 2 秒，再等 6 秒。
   static const List<Duration> _microphoneBusyRetryDelays = <Duration>[
     Duration(seconds: 2),
@@ -757,10 +759,21 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
 
   @override
   void _showCameraNotice(String message) {
+    _applyCameraNotice(message, warning: false);
+  }
+
+  /// 硬件限制类提示使用黄色警告横幅。
+  void _showCameraNoticeWarning(String message) {
+    _applyCameraNotice(message, warning: true);
+  }
+
+  void _applyCameraNotice(String message, {required bool warning}) {
     _cameraNotice = message;
+    _cameraNoticeWarning = warning;
     _cameraNoticeTimer?.cancel();
     _cameraNoticeTimer = Timer(const Duration(seconds: 5), () {
       _cameraNotice = null;
+      _cameraNoticeWarning = false;
       if (!_disposed) {
         notifyListeners();
       }
