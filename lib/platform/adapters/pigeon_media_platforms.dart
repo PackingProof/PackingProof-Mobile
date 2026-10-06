@@ -81,6 +81,9 @@ class PigeonSystemMediaPresenter implements SystemMediaPresenter {
   @override
   Future<void> openWithSystemPlayer(String path) =>
       _api.openWithSystemPlayer(path);
+
+  @override
+  Future<void> saveVideoToGallery(String path) => _api.saveVideoToGallery(path);
 }
 
 class PigeonAlertAudioSessionPlatform implements AlertAudioSessionPlatform {

@@ -23,10 +23,13 @@ import '../services/remote_playback_probe.dart';
 import '../services/system_video_player_service.dart';
 import '../services/video_share_service.dart';
 import '../services/remote_video_clip_service.dart';
+import '../platform/platform_capabilities.dart';
+import '../platform/platform_container.dart';
 import '../widgets/two_button_confirm_dialog.dart';
 import '../widgets/order_info_sheet.dart';
 import '../widgets/playback_error_panel.dart';
 import '../widgets/recording_info_card.dart';
+import '../widgets/share_options_sheet.dart';
 import 'video_trim_screen.dart';
 import 'remote_video_trim_screen.dart';
 
@@ -772,13 +775,27 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
     }
   }
 
-  Future<void> _share() async {
+  Future<void> _showShareOptions() async {
+    if (_sharing || !_video.value.isInitialized) return;
+    final bool canSaveToGallery = AppContainer.forCurrentPlatform().capabilities
+        .supports(PlatformCapability.saveVideoToGallery);
+    final ShareOption? option = await showShareOptionsSheet(
+      context,
+      canSaveToGallery: canSaveToGallery,
+    );
+    if (option == null || !mounted) return;
+    await _share(saveToGallery: option == ShareOption.gallery);
+  }
+
+  Future<void> _share({bool saveToGallery = false}) async {
     if (_sharing || !_video.value.isInitialized) return;
     await _video.pause();
     setState(() {
       _sharing = true;
       _shareProgress = 0;
-      _shareMessage = widget.remoteUri == null ? '正在准备分享' : '正在下载电脑录像';
+      _shareMessage = widget.remoteUri == null
+          ? (saveToGallery ? '正在准备保存' : '正在准备分享')
+          : '正在下载电脑录像';
     });
     try {
       final Duration total = _video.value.duration;
@@ -841,16 +858,26 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         );
       }
       final File shareFile = await _namedShareFile(file);
-      await SharePlus.instance.share(
-        ShareParams(
-          title: _session.displayCode,
-          files: <XFile>[XFile(shareFile.path, mimeType: 'video/mp4')],
-        ),
-      );
+      if (saveToGallery) {
+        await AppContainer.forCurrentPlatform().systemMediaPresenter
+            .saveVideoToGallery(shareFile.path);
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('已保存到相册')));
+        }
+      } else {
+        await SharePlus.instance.share(
+          ShareParams(
+            title: _session.displayCode,
+            files: <XFile>[XFile(shareFile.path, mimeType: 'video/mp4')],
+          ),
+        );
+      }
     } on Object catch (error) {
       unawaited(
         DiagnosticsLogService().log(
-          kind: 'share_failed',
+          kind: saveToGallery ? 'gallery_save_failed' : 'share_failed',
           extra: <String, Object?>{
             'source': widget.remoteUri == null ? 'local' : 'remote',
             'sessionId': _session.id,
@@ -862,7 +889,8 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '分享失败：${error.toString().replaceFirst('Exception: ', '')}',
+              '${saveToGallery ? '保存' : '分享'}失败：'
+              '${error.toString().replaceFirst('Exception: ', '')}',
             ),
           ),
         );
@@ -1219,7 +1247,7 @@ class _VideoPlaybackScreenState extends State<VideoPlaybackScreen> {
                           Expanded(
                             child: FilledButton.tonalIcon(
                               key: const Key('share-recording'),
-                              onPressed: _sharing ? null : _share,
+                              onPressed: _sharing ? null : _showShareOptions,
                               icon: const Icon(Icons.share_rounded),
                               label: Text(
                                 widget.remoteUri == null ? '分享' : '下载并分享',

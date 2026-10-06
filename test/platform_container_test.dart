@@ -40,6 +40,7 @@ void main() {
         PlatformCapability.orderInfoReceiver,
         PlatformCapability.videoWatermark,
         PlatformCapability.videoExport,
+        PlatformCapability.saveVideoToGallery,
         PlatformCapability.recordingThumbnail,
         PlatformCapability.systemVideoPlayer,
         PlatformCapability.alertAudioSession,
@@ -112,6 +113,9 @@ void main() {
       await expectUnavailable(() => camera.setPreviewActive(true));
       await expectUnavailable(media.exportProgress);
       await expectUnavailable(presenter.getVideoDecodeSupport);
+      await expectUnavailable(
+        () => presenter.saveVideoToGallery('/tmp/video.mp4'),
+      );
       await expectUnavailable(() => order.lookup('tracking'));
     },
   );

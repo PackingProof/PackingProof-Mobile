@@ -191,4 +191,7 @@ class _FakeSystemMediaPresenter implements SystemMediaPresenter {
 
   @override
   Future<void> openWithSystemPlayer(String path) async {}
+
+  @override
+  Future<void> saveVideoToGallery(String path) async {}
 }

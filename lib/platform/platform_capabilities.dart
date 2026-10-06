@@ -11,6 +11,7 @@ enum PlatformCapability {
   orderInfoReceiver,
   videoWatermark,
   videoExport,
+  saveVideoToGallery,
   recordingThumbnail,
   systemVideoPlayer,
   alertAudioSession,

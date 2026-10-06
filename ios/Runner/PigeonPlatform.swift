@@ -5,6 +5,7 @@ import Darwin
 import Flutter
 import ImageIO
 import Network
+import Photos
 import UIKit
 import UniformTypeIdentifiers
 import VideoToolbox
@@ -503,6 +504,43 @@ private final class IosSystemMediaPresenterHostApi: SystemMediaPresenterHostApi 
         root.present(controller, animated: true)
       }
       completion(.success(()))
+    }
+  }
+
+  func saveVideoToGallery(
+    path: String,
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    guard FileManager.default.fileExists(atPath: path) else {
+      completion(.failure(pigeonError("录像文件不存在")))
+      return
+    }
+    let url = URL(fileURLWithPath: path)
+    let save: () -> Void = {
+      PHPhotoLibrary.shared().performChanges {
+        PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+      } completionHandler: { success, error in
+        if success {
+          completion(.success(()))
+        } else {
+          completion(.failure(error ?? pigeonError("保存到相册失败")))
+        }
+      }
+    }
+    let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+    switch status {
+    case .authorized, .limited:
+      save()
+    case .notDetermined:
+      PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
+        if newStatus == .authorized || newStatus == .limited {
+          save()
+        } else {
+          completion(.failure(pigeonError("没有相册权限")))
+        }
+      }
+    default:
+      completion(.failure(pigeonError("没有相册权限")))
     }
   }
 }

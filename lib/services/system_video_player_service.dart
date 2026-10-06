@@ -141,4 +141,10 @@ class _LegacySystemMediaPresenter implements SystemMediaPresenter {
     'openWithSystemPlayer',
     <String, Object>{'path': path},
   );
+
+  @override
+  Future<void> saveVideoToGallery(String path) => channel.invokeMethod<void>(
+    'saveVideoToGallery',
+    <String, Object>{'path': path},
+  );
 }

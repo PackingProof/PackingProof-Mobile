@@ -1868,6 +1868,7 @@ protocol SystemMediaPresenterHostApi {
   func getVideoTrackMime(path: String, completion: @escaping (Result<String?, Error>) -> Void)
   func getVideoDecodeSupport(completion: @escaping (Result<VideoDecodeSupportDto?, Error>) -> Void)
   func openWithSystemPlayer(path: String, completion: @escaping (Result<Void, Error>) -> Void)
+  func saveVideoToGallery(path: String, completion: @escaping (Result<Void, Error>) -> Void)
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -1924,6 +1925,23 @@ class SystemMediaPresenterHostApiSetup {
       }
     } else {
       openWithSystemPlayerChannel.setMessageHandler(nil)
+    }
+    let saveVideoToGalleryChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.saveVideoToGallery\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      saveVideoToGalleryChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let pathArg = args[0] as! String
+        api.saveVideoToGallery(path: pathArg) { result in
+          switch result {
+          case .success:
+            reply(wrapResult(nil))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      saveVideoToGalleryChannel.setMessageHandler(nil)
     }
   }
 }

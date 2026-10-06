@@ -256,6 +256,8 @@ abstract class SystemMediaPresenterHostApi {
   VideoDecodeSupportDto? getVideoDecodeSupport();
   @async
   void openWithSystemPlayer(String path);
+  @async
+  void saveVideoToGallery(String path);
 }
 
 @HostApi()

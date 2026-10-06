@@ -1895,6 +1895,7 @@ interface SystemMediaPresenterHostApi {
   fun getVideoTrackMime(path: String, callback: (Result<String?>) -> Unit)
   fun getVideoDecodeSupport(callback: (Result<VideoDecodeSupportDto?>) -> Unit)
   fun openWithSystemPlayer(path: String, callback: (Result<Unit>) -> Unit)
+  fun saveVideoToGallery(path: String, callback: (Result<Unit>) -> Unit)
 
   companion object {
     /** The codec used by SystemMediaPresenterHostApi. */
@@ -1950,6 +1951,25 @@ interface SystemMediaPresenterHostApi {
             val args = message as List<Any?>
             val pathArg = args[0] as String
             api.openWithSystemPlayer(pathArg) { result: Result<Unit> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.saveVideoToGallery$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val pathArg = args[0] as String
+            api.saveVideoToGallery(pathArg) { result: Result<Unit> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(PlatformApiPigeonUtils.wrapError(error))

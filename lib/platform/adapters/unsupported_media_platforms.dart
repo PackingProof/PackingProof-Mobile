@@ -63,6 +63,14 @@ class UnsupportedSystemMediaPresenter implements SystemMediaPresenter {
   @override
   Future<void> openWithSystemPlayer(String path) => _unsupported();
 
+  @override
+  Future<void> saveVideoToGallery(String path) {
+    throw const CapabilityUnavailableException(
+      PlatformCapability.saveVideoToGallery,
+      reason: '当前平台暂不支持保存到相册',
+    );
+  }
+
   Never _unsupported() {
     throw const CapabilityUnavailableException(
       PlatformCapability.systemVideoPlayer,

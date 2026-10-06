@@ -53,6 +53,8 @@ abstract interface class SystemMediaPresenter {
   Future<SystemVideoDecodeSupport?> getVideoDecodeSupport();
 
   Future<void> openWithSystemPlayer(String path);
+
+  Future<void> saveVideoToGallery(String path);
 }
 
 abstract interface class AlertAudioSessionPlatform {

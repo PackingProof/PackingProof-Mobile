@@ -239,6 +239,20 @@ private class PigeonSystemMediaPresenterHostApi(
             callback,
         ) { }
     }
+
+    override fun saveVideoToGallery(
+        path: String,
+        callback: (Result<Unit>) -> Unit,
+    ) {
+        invokePlugin(
+            { method, arguments, result ->
+                plugin.onMethodCall(MethodCall(method, arguments), result)
+            },
+            "saveVideoToGallery",
+            mapOf("path" to path),
+            callback,
+        ) { }
+    }
 }
 
 private class PigeonAlertAudioSessionHostApi(
