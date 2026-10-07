@@ -82,6 +82,84 @@ void main() {
     expect(service.snapshot.message, isNot(contains('电脑端版本过低')));
   });
 
+  test('首次探测超时会自动重试一次并接受稍慢的主机', () async {
+    const String body =
+        '{"protocol":"packingproof","protocolVersion":1,'
+        '"nodeId":"host-retry","nodeName":"弱网主机","httpPort":5280,'
+        '"capabilities":["host","mobile-backup"],'
+        '"backupCompatibility":{"hostVersion":"0.0.74",'
+        '"protocol":"mobile-backup-v2","enrollmentVersion":2,"authVersion":3,'
+        '"minimumMobileVersion":"0.5.23","minimumMobileBuildNumber":11036}}';
+    final HttpServer server = await HttpServer.bind(
+      InternetAddress.loopbackIPv4,
+      0,
+    );
+    addTearDown(() => server.close(force: true));
+    int requests = 0;
+    server.listen((HttpRequest request) async {
+      requests++;
+      if (requests == 1) {
+        // 第一次拖过单次探测的响应预算，模拟弱网下丢一次包。
+        await Future<void>.delayed(const Duration(milliseconds: 1500));
+      }
+      try {
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..headers.contentType = ContentType.json
+          ..write(body);
+        await request.response.close();
+      } on Object {
+        // 首次请求已被客户端放弃，写入失败属于预期。
+      }
+    });
+    final LanBackupHostDiscoveryService service = LanBackupHostDiscoveryService(
+      candidateProvider: () async => <Uri>[
+        Uri.parse('http://127.0.0.1:${server.port}'),
+      ],
+    );
+    addTearDown(service.dispose);
+
+    await service.search();
+
+    expect(service.snapshot.hosts.single.nodeId, 'host-retry');
+    expect(requests, greaterThanOrEqualTo(2));
+  });
+
+  test('探测一次就成功时不会重复请求同一候选', () async {
+    const String body =
+        '{"protocol":"packingproof","protocolVersion":1,'
+        '"nodeId":"host-fast","nodeName":"正常主机","httpPort":5280,'
+        '"capabilities":["host","mobile-backup"],'
+        '"backupCompatibility":{"hostVersion":"0.0.74",'
+        '"protocol":"mobile-backup-v2","enrollmentVersion":2,"authVersion":3,'
+        '"minimumMobileVersion":"0.5.23","minimumMobileBuildNumber":11036}}';
+    final HttpServer server = await HttpServer.bind(
+      InternetAddress.loopbackIPv4,
+      0,
+    );
+    addTearDown(() => server.close(force: true));
+    int requests = 0;
+    server.listen((HttpRequest request) async {
+      requests++;
+      request.response
+        ..statusCode = HttpStatus.ok
+        ..headers.contentType = ContentType.json
+        ..write(body);
+      await request.response.close();
+    });
+    final LanBackupHostDiscoveryService service = LanBackupHostDiscoveryService(
+      candidateProvider: () async => <Uri>[
+        Uri.parse('http://127.0.0.1:${server.port}'),
+      ],
+    );
+    addTearDown(service.dispose);
+
+    await service.search();
+
+    expect(service.snapshot.hosts.single.nodeId, 'host-fast');
+    expect(requests, 1);
+  });
+
   test('搜索进度来自真实候选地址完成数并合并同一主机', () async {
     final LanBackupHostDiscoveryService service = LanBackupHostDiscoveryService(
       candidateProvider: () async => <Uri>[

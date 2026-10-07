@@ -365,6 +365,19 @@ class LanBackupHostDiscoveryService extends ChangeNotifier
   final LanBackupHostProbe? _probeOverride;
   final HttpClient _httpClient;
   final bool _ownsHttpClient;
+
+  /// 单次探测预算。早期版本用 450/650ms，弱网下一次丢包就会被判成"没找到
+  /// 主机"，这里放宽到 800/1000ms。
+  static const Duration _probeConnectTimeout = Duration(milliseconds: 800);
+  static const Duration _probeResponseTimeout = Duration(milliseconds: 1000);
+  /// 首次探测超时后重试一次，用更宽的预算换一次机会。
+  static const Duration _probeRetryConnectTimeout = Duration(
+    milliseconds: 1600,
+  );
+  static const Duration _probeRetryResponseTimeout = Duration(
+    milliseconds: 2000,
+  );
+
   final LanBackupHostCache? cache;
   int _revision = 0;
   Future<void>? _activeSearch;
@@ -610,19 +623,48 @@ class LanBackupHostDiscoveryService extends ChangeNotifier
   Future<LanBackupDiscoveredHost?> _probe(Uri uri) async {
     final LanBackupHostProbe? override = _probeOverride;
     if (override != null) return override(uri);
+    final _ProbeAttempt first = await _probeOnce(
+      uri,
+      connectTimeout: _probeConnectTimeout,
+      responseTimeout: _probeResponseTimeout,
+    );
+    if (first.host != null || !first.timedOut) {
+      return first.host;
+    }
+    // 弱网下首次探测超时多半是丢包或漫游，再给一次预算更宽的机会；
+    // 只有超时才重试，像"连接被立即拒绝"这种确定性失败不重复扫描。
+    return (await _probeOnce(
+      uri,
+      connectTimeout: _probeRetryConnectTimeout,
+      responseTimeout: _probeRetryResponseTimeout,
+    )).host;
+  }
+
+  Future<_ProbeAttempt> _probeOnce(
+    Uri uri, {
+    required Duration connectTimeout,
+    required Duration responseTimeout,
+  }) async {
     try {
       final HttpClientRequest request = await _httpClient
           .getUrl(uri.replace(path: '/api/node-info'))
-          .timeout(const Duration(milliseconds: 450));
+          .timeout(connectTimeout);
       request.followRedirects = false;
       final HttpClientResponse response = await request.close().timeout(
-        const Duration(milliseconds: 650),
+        responseTimeout,
       );
       final String body = await utf8.decoder.bind(response).join();
-      if (response.statusCode != HttpStatus.ok) return null;
-      return parseLanBackupDiscoveredHost(uri, body);
+      if (response.statusCode != HttpStatus.ok) {
+        return const _ProbeAttempt(host: null, timedOut: false);
+      }
+      return _ProbeAttempt(
+        host: parseLanBackupDiscoveredHost(uri, body),
+        timedOut: false,
+      );
+    } on TimeoutException {
+      return const _ProbeAttempt(host: null, timedOut: true);
     } on Object {
-      return null;
+      return const _ProbeAttempt(host: null, timedOut: false);
     }
   }
 
@@ -809,4 +851,12 @@ bool _isUuid(String value) {
     r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
   );
   return uuid.hasMatch(value);
+}
+
+/// 单次探测的结果：区分"明确没有主机"和"超时"——只有后者值得重试。
+class _ProbeAttempt {
+  const _ProbeAttempt({required this.host, required this.timedOut});
+
+  final LanBackupDiscoveredHost? host;
+  final bool timedOut;
 }
