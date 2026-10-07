@@ -20,7 +20,7 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
   bool _recordAudioEnabled = true;
   bool _manualTrackingValidationEnabled = true;
   @override
-  RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.hevc;
+  RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.h264;
   RecordingSpecPreset _recordingSpec = RecordingSpecPreset.hd1080p30;
   List<RecordingSpecPreset> _availableRecordingSpecs =
       const <RecordingSpecPreset>[

@@ -25,7 +25,7 @@ class AppSettings {
     this.manualTrackingValidationEnabled = true,
     this.cameraCapabilityPreference = CameraCapabilityPreference.full,
     this.cameraCapabilityState,
-    this.preferredVideoCodec = RecordingVideoCodec.hevc,
+    this.preferredVideoCodec = RecordingVideoCodec.h264,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.recordingOrientation = RecordingOrientation.portrait,
     this.startupNoticeVersion = 0,

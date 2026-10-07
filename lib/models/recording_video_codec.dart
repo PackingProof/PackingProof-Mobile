@@ -12,16 +12,17 @@ extension RecordingVideoCodecDetails on RecordingVideoCodec {
   };
 
   String get description => switch (this) {
-    RecordingVideoCodec.h264 => '兼容性最好，几乎所有手机都能播放；文件体积约增加 30–40%',
-    RecordingVideoCodec.hevc => '默认编码，文件更小；个别设备解码兼容性较差',
+    RecordingVideoCodec.h264 => '几乎所有设备都能播放，文件体积略大',
+    RecordingVideoCodec.hevc => '个别设备可能播放不了，文件体积更小',
   };
 }
 
 RecordingVideoCodec recordingVideoCodecFromStorage(Object? value) {
   final String normalized = '$value'.trim().toLowerCase();
+  // 只有明确存过 H.265 的用户继续用 H.265；缺失或未知值走新装默认 H.264。
   return switch (normalized) {
-    'h264' || 'avc' => RecordingVideoCodec.h264,
-    _ => RecordingVideoCodec.hevc,
+    'hevc' || 'h265' => RecordingVideoCodec.hevc,
+    _ => RecordingVideoCodec.h264,
   };
 }
 

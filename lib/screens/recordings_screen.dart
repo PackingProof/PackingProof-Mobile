@@ -147,7 +147,7 @@ class RecordingsScreen extends StatefulWidget {
     this.orderReceiverSnapshot = const OrderInfoReceiverSnapshot(),
     required this.maxVolumeEnabled,
     this.recordAudioEnabled = true,
-    this.preferredVideoCodec = RecordingVideoCodec.hevc,
+    this.preferredVideoCodec = RecordingVideoCodec.h264,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.availableRecordingSpecs = const <RecordingSpecPreset>[
       RecordingSpecPreset.hd1080p30,

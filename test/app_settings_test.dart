@@ -183,21 +183,21 @@ void main() {
     );
   });
 
-  test('录像编码默认 H.265 且可切换持久化', () async {
+  test('录像编码默认 H.264 且可切换持久化', () async {
     final SessionRepository repository = testRepository(root);
 
     final AppSettings defaults = await repository.loadSettings();
-    expect(defaults.preferredVideoCodec, RecordingVideoCodec.hevc);
+    expect(defaults.preferredVideoCodec, RecordingVideoCodec.h264);
 
-    await repository.savePreferredVideoCodec(RecordingVideoCodec.h264);
+    await repository.savePreferredVideoCodec(RecordingVideoCodec.hevc);
     final AppSettings updated = await repository.loadSettings();
-    expect(updated.preferredVideoCodec, RecordingVideoCodec.h264);
+    expect(updated.preferredVideoCodec, RecordingVideoCodec.hevc);
 
     final Map<String, Object?> persisted = Map<String, Object?>.from(
       jsonDecode(await File('${root.path}/settings.json').readAsString())
           as Map<Object?, Object?>,
     );
-    expect(persisted['preferredVideoCodec'], 'h264');
+    expect(persisted['preferredVideoCodec'], 'hevc');
   });
 
   test('录像规格默认高清且 4K 可切换持久化', () async {

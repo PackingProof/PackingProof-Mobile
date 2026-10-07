@@ -11,12 +11,14 @@ void main() {
     expect(RecordingVideoCodec.h264.description, isNotEmpty);
   });
 
-  test('未知编码回退到默认 H.265', () {
-    expect(recordingVideoCodecFromStorage(null), RecordingVideoCodec.hevc);
-    expect(recordingVideoCodecFromStorage(''), RecordingVideoCodec.hevc);
-    expect(recordingVideoCodecFromStorage('weird'), RecordingVideoCodec.hevc);
+  test('未知编码回退到默认 H.264，显式存过 H.265 的仍保留', () {
+    expect(recordingVideoCodecFromStorage(null), RecordingVideoCodec.h264);
+    expect(recordingVideoCodecFromStorage(''), RecordingVideoCodec.h264);
+    expect(recordingVideoCodecFromStorage('weird'), RecordingVideoCodec.h264);
     expect(recordingVideoCodecFromStorage('h264'), RecordingVideoCodec.h264);
     expect(recordingVideoCodecFromStorage('avc'), RecordingVideoCodec.h264);
+    expect(recordingVideoCodecFromStorage('hevc'), RecordingVideoCodec.hevc);
+    expect(recordingVideoCodecFromStorage('h265'), RecordingVideoCodec.hevc);
   });
 
   test('按实际视频轨道 MIME 反推编码', () {

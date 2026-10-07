@@ -1348,6 +1348,7 @@ void main() {
           workMode: WorkMode.continuousScan,
           speechEnabled: true,
           maxVolumeEnabled: true,
+          preferredVideoCodec: RecordingVideoCodec.hevc,
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
           onMaxVolumeEnabledChanged: (_) async {},
