@@ -3,9 +3,13 @@ part of 'recordings_screen.dart';
 mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
   final Set<String> _selectedIds = <String>{};
   final Set<String> _selectedLocalIds = <String>{};
-  final Map<String, String> _selectedTrackingNumbers = <String, String>{};
+  /// 勾选时就把录像来源记下来：翻页会回收更旧的页，靠 id 再去列表里
+  /// 反查可能已经查不到，分享/删除都依赖这份快照。
+  final Map<String, RecordingHistoryItem> _selectedItems =
+      <String, RecordingHistoryItem>{};
   bool _managing = false;
   bool _sharingSelection = false;
+  String? _shareProgressLabel;
 
   List<RecordingHistoryItem> get _visibleItems;
 
@@ -15,7 +19,8 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
       _managing = true;
       _selectedIds.clear();
       _selectedLocalIds.clear();
-      _selectedTrackingNumbers.clear();
+      _selectedItems.clear();
+      _shareProgressLabel = null;
       if (keepVisible != null) {
         final int index = _visibleItems.indexWhere(
           (item) => item.session.id == keepVisible.id,
@@ -36,7 +41,8 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
       _managing = false;
       _selectedIds.clear();
       _selectedLocalIds.clear();
-      _selectedTrackingNumbers.clear();
+      _selectedItems.clear();
+      _shareProgressLabel = null;
     });
     widget.onManagingChanged?.call(false);
   }
@@ -70,7 +76,7 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
           }
         }
         if (selected != null) {
-          _selectedTrackingNumbers[id] = selected.session.displayCode;
+          _selectedItems[id] = selected;
         }
         if (_sessions.any((RecordingSession session) => session.id == id)) {
           _selectedLocalIds.add(id);
@@ -78,26 +84,27 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
       } else {
         _selectedIds.remove(id);
         _selectedLocalIds.remove(id);
-        _selectedTrackingNumbers.remove(id);
+        _selectedItems.remove(id);
       }
     });
   }
 
-  void _toggleSelectAllCurrentPage(List<RecordingSession> currentPageSessions) {
-    final Set<String> pageIds = currentPageSessions
-        .map((RecordingSession item) => item.id)
+  void _toggleSelectAllCurrentPage(List<RecordingHistoryItem> currentPageItems) {
+    final Set<String> pageIds = currentPageItems
+        .map((RecordingHistoryItem item) => item.session.id)
         .toSet();
     setState(() {
       if (_selectedIds.containsAll(pageIds) && pageIds.isNotEmpty) {
         _selectedIds.removeAll(pageIds);
         _selectedLocalIds.removeAll(pageIds);
         for (final String id in pageIds) {
-          _selectedTrackingNumbers.remove(id);
+          _selectedItems.remove(id);
         }
       } else {
-        _selectedIds.addAll(pageIds);
-        for (final RecordingSession session in currentPageSessions) {
-          _selectedTrackingNumbers[session.id] = session.displayCode;
+        for (final RecordingHistoryItem item in currentPageItems) {
+          final RecordingSession session = item.session;
+          _selectedIds.add(session.id);
+          _selectedItems[session.id] = item;
           if (_sessions.any(
             (RecordingSession local) => local.id == session.id,
           )) {
@@ -154,7 +161,7 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
       _refreshLocalRecordingStats();
       _selectedIds.clear();
       _selectedLocalIds.clear();
-      _selectedTrackingNumbers.clear();
+      _selectedItems.clear();
       _managing = false;
     });
     widget.onManagingChanged?.call(false);
@@ -166,7 +173,7 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
     final Set<String> seen = <String>{};
     int duplicateRows = 0;
     for (final String id in _selectedIds) {
-      final String code = _selectedTrackingNumbers[id] ?? '';
+      final String code = _selectedItems[id]?.session.displayCode ?? '';
       if (code.isEmpty || code == RecordingSession.unrecognizedLabel) continue;
       if (!seen.add(code)) {
         duplicateRows++;
@@ -194,18 +201,24 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
     );
   }
 
-  /// 批量分享/保存所选录像：电脑上、本机缺失的文件跳过并在结果里说明。
+  /// 批量分享/保存所选录像：本机原片直接用；只在电脑上的先下载再处理，
+  /// 下载失败或电脑离线的条目跳过并在结果里说明。
   Future<void> _shareSelected() async {
     if (_selectedIds.isEmpty || _sharingSelection) return;
-    final List<RecordingSession> sessions = _sessions
-        .where(
-          (RecordingSession session) => _selectedLocalIds.contains(session.id),
-        )
-        .toList(growable: false);
-    if (sessions.isEmpty) {
+    final List<RecordingHistoryItem> items = <RecordingHistoryItem>[];
+    int staleRows = 0;
+    for (final String id in _selectedIds) {
+      final RecordingHistoryItem? item = _selectedItems[id];
+      if (item == null) {
+        staleRows++;
+        continue;
+      }
+      items.add(item);
+    }
+    if (items.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('电脑上的录像不在本机，无法分享或保存')));
+      ).showSnackBar(const SnackBar(content: Text('所选录像不在本机，无法分享或保存')));
       return;
     }
     final bool canSaveToGallery = AppContainer.forCurrentPlatform().capabilities
@@ -218,18 +231,54 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
     final bool saveToGallery = option == ShareOption.gallery;
     setState(() {
       _sharingSelection = true;
+      _shareProgressLabel = null;
     });
     try {
       final VideoShareService shareService = VideoShareService();
       final List<File> files = <File>[];
-      int prepareFailed = 0;
-      for (final RecordingSession session in sessions) {
-        try {
-          final File source = File(session.filePath);
-          if (!await source.exists()) {
-            prepareFailed++;
+      int missingLocal = 0;
+      int downloadFailed = 0;
+      int offline = 0;
+      final int remoteCount = items
+          .where((RecordingHistoryItem item) => item.remote != null)
+          .length;
+      int remoteDone = 0;
+      for (final RecordingHistoryItem item in items) {
+        final RecordingSession session = item.session;
+        File? source;
+        final String? localPath = item.local?.filePath;
+        if (localPath != null && localPath.isNotEmpty) {
+          final File local = File(localPath);
+          if (!await local.exists()) {
+            missingLocal++;
             continue;
           }
+          source = local;
+        } else if (item.remote != null) {
+          final int index = remoteDone + 1;
+          _setShareProgress('下载 $index/$remoteCount');
+          try {
+            source = await _downloadRemoteRecording(
+              item.remote!,
+              shareService: shareService,
+              onProgress: (double progress) => _setShareProgress(
+                '下载 $index/$remoteCount ${(progress * 100).round()}%',
+              ),
+            );
+          } on _RemoteRecordingUnavailable {
+            offline++;
+            continue;
+          } on Object {
+            downloadFailed++;
+            continue;
+          } finally {
+            remoteDone++;
+          }
+        } else {
+          missingLocal++;
+          continue;
+        }
+        try {
           files.add(
             await shareService.prepareForSharing(
               source,
@@ -237,13 +286,15 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
             ),
           );
         } on Object {
-          prepareFailed++;
+          downloadFailed++;
         }
       }
       if (!mounted) return;
       final String skippedNote = _shareSkipNote(
-        skippedRemote: _selectedIds.length - sessions.length,
-        failed: prepareFailed,
+        staleRows: staleRows,
+        missingLocal: missingLocal,
+        offline: offline,
+        failed: downloadFailed,
       );
       if (files.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -259,6 +310,7 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
         int saved = 0;
         int saveFailed = 0;
         for (final File file in files) {
+          _setShareProgress('保存 ${saved + saveFailed + 1}/${files.length}');
           try {
             await presenter.saveVideoToGallery(file.path);
             saved++;
@@ -268,9 +320,10 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
         }
         if (!mounted) return;
         final String note = _shareSkipNote(
-          skippedRemote: _selectedIds.length - sessions.length,
+          staleRows: staleRows,
+          missingLocal: missingLocal,
+          offline: offline,
           failed: saveFailed,
-          failedLabel: '保存失败',
         );
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -302,7 +355,7 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
           kind: saveToGallery ? 'gallery_save_failed' : 'share_failed',
           extra: <String, Object?>{
             'source': 'manage',
-            'count': sessions.length,
+            'count': items.length,
             'error': error.toString(),
           },
         ),
@@ -316,19 +369,64 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
       if (mounted) {
         setState(() {
           _sharingSelection = false;
+          _shareProgressLabel = null;
         });
       }
     }
   }
 
+  void _setShareProgress(String label) {
+    if (_shareProgressLabel == label || !mounted) return;
+    setState(() {
+      _shareProgressLabel = label;
+    });
+  }
+
+  /// 下载电脑上的录像；电脑离线或配对失效时抛 [_RemoteRecordingUnavailable]。
+  Future<File> _downloadRemoteRecording(
+    RemoteRecording remote, {
+    required VideoShareService shareService,
+    void Function(double progress)? onProgress,
+  }) async {
+    final Future<Uri?> Function(Uri remoteUri)? resolver =
+        widget.onResolveRemoteUri;
+    final Uri? resolved = resolver == null
+        ? remote.playUri
+        : await resolver(remote.playUri);
+    if (resolved == null) throw const _RemoteRecordingUnavailable();
+    final RemoteVideoClipSink? sink = widget.remoteClipServiceFactory?.call(
+      resolved,
+    );
+    if (sink != null) {
+      return sink.download(resolved, onProgress: onProgress);
+    }
+    return shareService.prepare(
+      sourcePath: '',
+      remoteUri: resolved,
+      remoteHeaders: widget.remotePlaybackHeaders,
+      mediaStart: Duration.zero,
+      mediaEnd: remote.duration,
+      sourceDuration: remote.duration,
+      onProgress: (double progress, String _) => onProgress?.call(progress),
+    );
+  }
+
   String _shareSkipNote({
-    required int skippedRemote,
+    required int staleRows,
+    required int missingLocal,
+    required int offline,
     required int failed,
-    String failedLabel = '准备失败',
   }) {
     return <String>[
-      if (skippedRemote > 0) '跳过电脑上的 $skippedRemote 条',
-      if (failed > 0) '$failed 段$failedLabel',
+      if (staleRows > 0) '跳过已不在列表的 $staleRows 条',
+      if (missingLocal > 0) '本机文件缺失 $missingLocal 条',
+      if (offline > 0) '电脑离线 $offline 条',
+      if (failed > 0) '失败 $failed 条',
     ].join('，');
   }
+}
+
+/// 电脑录像当前拿不到（电脑离线或配对失效）。
+class _RemoteRecordingUnavailable implements Exception {
+  const _RemoteRecordingUnavailable();
 }

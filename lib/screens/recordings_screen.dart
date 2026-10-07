@@ -1182,7 +1182,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                 key: const Key('select-all-recordings-button'),
                 onPressed: currentPageSessions.isEmpty
                     ? null
-                    : () => _toggleSelectAllCurrentPage(currentPageSessions),
+                    : () => _toggleSelectAllCurrentPage(pagination.items),
                 child: Text(
                   currentPageSessions.isNotEmpty &&
                           _selectedIds.containsAll(
@@ -1484,7 +1484,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
                                   ),
                                 )
                               : const Icon(Icons.ios_share_rounded, size: 18),
-                          label: const Text('分享'),
+                          label: Text(_shareProgressLabel ?? '分享'),
                         ),
                       ),
                       const SizedBox(width: 10),
