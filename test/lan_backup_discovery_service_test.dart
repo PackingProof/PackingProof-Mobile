@@ -109,7 +109,7 @@ void main() {
           ..write(body);
         await request.response.close();
       } on Object {
-        // 首次请求已被客户端放弃，写入失败属于预期。
+        // broad-catch: 首次请求已被客户端放弃，写入失败属于预期。
       }
     });
     final LanBackupHostDiscoveryService service = LanBackupHostDiscoveryService(

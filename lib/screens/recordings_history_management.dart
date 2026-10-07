@@ -269,6 +269,7 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
             offline++;
             continue;
           } on Object {
+            // broad-catch: 下载适配器异常类型不统一，按单条失败计数并继续处理其余录像。
             downloadFailed++;
             continue;
           } finally {
@@ -286,6 +287,7 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
             ),
           );
         } on Object {
+          // broad-catch: 分享文件名准备失败只影响这一条，计数后继续。
           downloadFailed++;
         }
       }
@@ -315,6 +317,7 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
             await presenter.saveVideoToGallery(file.path);
             saved++;
           } on Object {
+            // broad-catch: 单条写相册失败不阻断整批，最后统一汇总数量。
             saveFailed++;
           }
         }
@@ -350,6 +353,7 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
         ),
       );
     } on Object catch (error) {
+      // broad-catch: 分享/保存适配器异常类型不统一，统一记诊断日志并提示重试。
       unawaited(
         DiagnosticsLogService().log(
           kind: saveToGallery ? 'gallery_save_failed' : 'share_failed',
