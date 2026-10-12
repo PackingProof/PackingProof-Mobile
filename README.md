@@ -99,6 +99,8 @@
 
 两个平台首次打开都会请求相机与麦克风权限，请按系统提示允许；录像与识别全部在手机本地完成。
 
+iPhone 第一次连接电脑时，系统还会询问是否允许「包裹留证」查找并连接本地网络中的设备，请点「允许」；如果之前误点了「不允许」，到「设置 - 隐私与安全性 - 本地网络」里重新打开，否则手机会一直连不上电脑。
+
 ## 与电脑端配合
 
 手机端是 [PackingProof-Desktop](https://github.com/PackingProof/PackingProof-Desktop)（[Gitee 镜像](https://gitee.com/PackingProof/PackingProof-Desktop)，Windows / macOS）的多工位来源之一：同一局域网内，主机可以集中保存与回放手机录像，手机端也会按主机分配的设备名出现在列表里。整套系统还包含[扩展市场与扩展 API](https://gitee.com/PackingProof/PackingProof-Extensions)（[GitHub](https://github.com/PackingProof/PackingProof-Extensions)）、[快递助手联动脚本](https://gitee.com/PackingProof/PackingProof-KDZS)（[GitHub](https://github.com/PackingProof/PackingProof-KDZS)）和 [QQ 机器人](https://gitee.com/PackingProof/PackingProof-QQBot)（[GitHub](https://github.com/PackingProof/PackingProof-QQBot)）。
