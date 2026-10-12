@@ -18,6 +18,7 @@ import '../platform/device_platform.dart';
 import '../platform/generated/platform_api.g.dart';
 import 'lan_backup_compatibility.dart';
 import 'lan_backup_discovery_service.dart';
+import 'lan_backup_pairing_failure_policy.dart';
 import 'remote_video_clip_service.dart';
 
 class LanBackupUnsupportedException implements Exception {
@@ -239,6 +240,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     Future<void> Function(Duration)? retryDelay,
     Future<void> Function(String kind, Map<String, Object?> extra)? logEvent,
     LanBackupHostLocator? hostLocator,
+    bool? isIOS,
   }) : _platform = platform ?? PigeonBackupNativePlatform(),
        _httpClient = httpClient ?? HttpClient(),
        // Keep the public injection name readable while the stored callback remains private.
@@ -248,7 +250,8 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
        _retryDelay = retryDelay ?? Future<void>.delayed,
        // Keep the public injection name readable while the stored callback remains private.
        // ignore: prefer_initializing_formals
-       _logEvent = logEvent {
+       _logEvent = logEvent,
+       _isIOS = isIOS ?? Platform.isIOS {
     _hostLocator = hostLocator ?? LanBackupHostLocatorService();
     _ownsHostLocator = hostLocator == null;
     // 跨网段连接主机时，默认 connect 可能长时间挂起并累积半开 socket，
@@ -268,6 +271,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
   final Future<void> Function(Duration) _retryDelay;
   final Future<void> Function(String kind, Map<String, Object?> extra)?
   _logEvent;
+  final bool _isIOS;
   late final LanBackupHostLocator _hostLocator;
   late final bool _ownsHostLocator;
   Timer? _heartbeatTimer;
@@ -414,6 +418,12 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     Uri baseUri, {
     LanBackupPairingConfirmation? replacementConfirmation,
   }) async {
+    final String address = '${baseUri.host}:${baseUri.port}';
+    _log('computer_connect_attempt', <String, Object?>{
+      'address': address,
+      'platform': currentDevicePlatformId(),
+      'replacement': replacementConfirmation != null,
+    });
     await _ensureWifiConnected();
     final LanBackupEndpoint candidateEndpoint;
     try {
@@ -466,6 +476,7 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       message: '已向“${candidateEndpoint.computerName}”发送连接申请，请在电脑上点击“允许连接”',
     );
     notifyListeners();
+    final Stopwatch enrollmentStopwatch = Stopwatch()..start();
     try {
       final Uri enrollmentUri = baseUri.replace(
         path: '/api/mobile-backup/enroll',
@@ -668,10 +679,16 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       );
       notifyListeners();
       throw friendly;
-    } on SocketException {
+    } on SocketException catch (error) {
       if (revision != _pairingRevision) return;
+      _logConnectFailure(
+        error,
+        address: address,
+        stage: 'enroll',
+        stopwatch: enrollmentStopwatch,
+      );
       const friendly = LanBackupConnectionException(
-        '无法通过局域网连接电脑，请确认手机和电脑连接了同一个 Wi-Fi',
+        LanBackupPairingFailurePolicy.socketNotice,
       );
       _snapshot = restoreSnapshot.copyWith(
         connectionStatus: LanConnectionStatus.offline,
@@ -679,17 +696,29 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
       );
       notifyListeners();
       throw friendly;
-    } on TimeoutException {
+    } on TimeoutException catch (error) {
       if (revision != _pairingRevision) return;
-      const error = LanBackupApprovalTimeoutException();
+      _logConnectFailure(
+        error,
+        address: address,
+        stage: 'enroll',
+        stopwatch: enrollmentStopwatch,
+      );
+      const friendly = LanBackupApprovalTimeoutException();
       _snapshot = restoreSnapshot.copyWith(
         connectionStatus: LanConnectionStatus.approvalUnavailable,
-        message: error.message,
+        message: friendly.message,
       );
       notifyListeners();
-      throw error;
+      throw friendly;
     } on Object catch (error) {
       if (revision != _pairingRevision) return;
+      _logConnectFailure(
+        error,
+        address: address,
+        stage: 'enroll',
+        stopwatch: enrollmentStopwatch,
+      );
       const friendly = LanBackupApprovalUnavailableException(
         '电脑端暂时无法处理连接申请，请稍后再试',
       );
@@ -723,15 +752,53 @@ class LanBackupService extends ChangeNotifier implements LanBackupSink {
     return (code: '', message: '');
   }
 
+  /// 连接电脑失败时写一条诊断日志：地址、失败阶段、异常类型与耗时。
+  ///
+  /// 界面只拿得到中文提示，原始异常（例如 5 秒超时的 `TimeoutException`）必须
+  /// 落进导出日志，用户报「连不上电脑」时才能看清是哪一段、哪一个地址失败。
+  void _logConnectFailure(
+    Object error, {
+    required String address,
+    required String stage,
+    required Stopwatch stopwatch,
+  }) {
+    _log('computer_connect_failed', <String, Object?>{
+      'address': address,
+      'stage': stage,
+      'errorType': error.runtimeType.toString(),
+      'error': '$error',
+      'elapsedMs': stopwatch.elapsedMilliseconds,
+    });
+  }
+
   Future<LanBackupEndpoint> _readBackupHostIdentity(Uri baseUri) async {
-    final HttpClientRequest request = await _httpClient
-        .getUrl(baseUri.replace(path: '/api/node-info'))
-        .timeout(const Duration(seconds: 5));
-    request.followRedirects = false;
-    final HttpClientResponse response = await request.close().timeout(
-      const Duration(seconds: 8),
-    );
-    final String body = await utf8.decoder.bind(response).join();
+    final String address = '${baseUri.host}:${baseUri.port}';
+    final Stopwatch stopwatch = Stopwatch()..start();
+    final HttpClientRequest request;
+    final HttpClientResponse response;
+    final String body;
+    try {
+      request = await _httpClient
+          .getUrl(baseUri.replace(path: '/api/node-info'))
+          .timeout(const Duration(seconds: 5));
+      request.followRedirects = false;
+      response = await request.close().timeout(const Duration(seconds: 8));
+      body = await utf8.decoder.bind(response).join();
+    } on Object catch (error) {
+      // broad-catch: 三步都只是"把请求发出去并把响应读回来"，任何异常都等于
+      // 连不上电脑。必须在这里换成操作员看得懂、能照着做的提示：以前 5 秒超时
+      // 会把 `TimeoutException after 0:00:05.000000: Future not completed`
+      // 原样显示在「连接电脑失败」弹窗里，用户一头雾水。
+      _logConnectFailure(
+        error,
+        address: address,
+        stage: 'identity',
+        stopwatch: stopwatch,
+      );
+      throw LanBackupConnectionException(
+        LanBackupPairingFailurePolicy.noticeFor(error, isIOS: _isIOS),
+      );
+    }
     if (response.statusCode != HttpStatus.ok) {
       throw const LanBackupConnectionException('无法读取保存主机信息');
     }

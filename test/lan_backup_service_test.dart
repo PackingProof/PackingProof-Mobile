@@ -16,6 +16,7 @@ import 'package:packing_proof_mobile/platform/device_platform.dart';
 import 'package:packing_proof_mobile/platform/generated/platform_api.g.dart';
 import 'package:packing_proof_mobile/services/lan_backup_service.dart';
 import 'package:packing_proof_mobile/services/lan_backup_discovery_service.dart';
+import 'package:packing_proof_mobile/services/lan_backup_pairing_failure_policy.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -1936,6 +1937,81 @@ void main() {
     expect(saved.last['computerName'], '打包电脑');
   });
 
+  test('连接电脑无响应时给出可执行提示并写诊断日志', () async {
+    final List<({String kind, Map<String, Object?> extra})> logs =
+        <({String kind, Map<String, Object?> extra})>[];
+    final LanBackupService service = LanBackupService(
+      platform: _TrackingBackupPlatform(),
+      httpClient: _ThrowingHttpClient(
+        TimeoutException('Future not completed', const Duration(seconds: 5)),
+      ),
+      wifiConnected: () async => true,
+      isIOS: true,
+      logEvent: (String kind, Map<String, Object?> extra) async {
+        logs.add((kind: kind, extra: extra));
+      },
+    );
+    addTearDown(service.dispose);
+
+    Object? captured;
+    try {
+      await service.connectToHost(Uri.parse('http://192.168.1.20:5280'));
+    } on Object catch (error) {
+      captured = error;
+    }
+
+    // 这条 message 就是「连接电脑失败」弹窗里显示的内容：必须是操作员能照做
+    // 的提示，不能是 `TimeoutException after 0:00:05.000000` 这类 Dart 原文。
+    expect(captured, isA<LanBackupConnectionException>());
+    final String message = (captured! as LanBackupConnectionException).message;
+    expect(message, contains('电脑没有响应'));
+    expect(message, contains('本地网络'));
+    expect(message, isNot(contains('TimeoutException')));
+    expect(message, isNot(contains('Future not completed')));
+    expect(service.snapshot.endpoint, isNull);
+
+    final ({String kind, Map<String, Object?> extra}) attempt = logs
+        .firstWhere(
+          (({String kind, Map<String, Object?> extra}) item) =>
+              item.kind == 'computer_connect_attempt',
+        );
+    expect(attempt.extra['address'], '192.168.1.20:5280');
+    expect(attempt.extra.containsKey('platform'), isTrue);
+    expect(attempt.extra['replacement'], isFalse);
+
+    final Map<String, Object?> failed = logs
+        .firstWhere(
+          (({String kind, Map<String, Object?> extra}) item) =>
+              item.kind == 'computer_connect_failed',
+        )
+        .extra;
+    expect(failed['address'], '192.168.1.20:5280');
+    expect(failed['stage'], 'identity');
+    expect(failed['errorType'], 'TimeoutException');
+    expect(failed['elapsedMs'], isA<int>());
+  });
+
+  test('连接电脑被明确回绝时沿用同一句局域网提示', () async {
+    final LanBackupService service = LanBackupService(
+      platform: _TrackingBackupPlatform(),
+      httpClient: _ThrowingHttpClient(const SocketException('目标计算机积极拒绝')),
+      wifiConnected: () async => true,
+      isIOS: false,
+    );
+    addTearDown(service.dispose);
+
+    await expectLater(
+      service.connectToHost(Uri.parse('http://192.168.1.20:5280')),
+      throwsA(
+        isA<LanBackupConnectionException>().having(
+          (LanBackupConnectionException error) => error.message,
+          'message',
+          LanBackupPairingFailurePolicy.socketNotice,
+        ),
+      ),
+    );
+  });
+
   test('保存主机拒绝时不写入连接配置', () async {
     final MethodChannel channel = const MethodChannel(
       'app.packingproof.mobile/lan_backup_v3_denied_test',
@@ -2728,6 +2804,20 @@ class _SequenceHttpClient extends Fake implements HttpClient {
       onBytes: postBodies.add,
     );
   }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// 连不上电脑的客户端：把传输异常直接抛给调用方，用来验证提示与诊断日志。
+class _ThrowingHttpClient extends Fake implements HttpClient {
+  _ThrowingHttpClient(this.error);
+
+  final Object error;
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) =>
+      Future<HttpClientRequest>.error(error);
 
   @override
   void close({bool force = false}) {}
