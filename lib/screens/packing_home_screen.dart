@@ -135,23 +135,20 @@ const String mobileAppDownloadUrl = packingProofAndroidReleasesUrl;
 String _noticeVersionLabel(String version, int buildNumber) =>
     buildNumber > 0 ? 'v$version+$buildNumber' : 'v$version';
 
-/// 更新提示条就两行：第一行「要更新到哪个版本（含构建号）」，第二行说明原因。
-/// 原来的单独标题行和这两行是重复的，去掉之后高度也就下来了。
+/// 更新提示条就一两行：第一行直接说要更新到哪个版本（含构建号）。
+/// 提示条本身就是"手机 App 更新"这件事，不用再写一遍；只有需要更新时，
+/// 才补一行电脑端给的原因。
 @visibleForTesting
 String mobileUpdateNoticeText(MobileAppUpdateNotice notice) {
-  if (notice.message.isEmpty) {
-    return '手机 App 更新：电脑端要求 '
-        '${_noticeVersionLabel(notice.minimumVersion, notice.minimumBuildNumber)} 或更高\n'
-        '请更新后再继续使用';
-  }
   if (notice.updateRequired) {
-    return '手机 App 更新：最低 '
-        '${_noticeVersionLabel(notice.minimumVersion, notice.minimumBuildNumber)}\n'
-        '${notice.message}';
+    final String required =
+        _noticeVersionLabel(notice.minimumVersion, notice.minimumBuildNumber);
+    return notice.message.isEmpty
+        ? '电脑端要求 $required 或更高\n请更新后再继续使用'
+        : '最低 $required\n${notice.message}';
   }
-  return '手机 App 更新：最新 '
-      '${_noticeVersionLabel(notice.latestVersion, notice.latestBuildNumber)}\n'
-      '${notice.message}';
+  // 建议更新时不再复述"发现新版手机 App"：那正是提示条本身在说的事
+  return '最新 ${_noticeVersionLabel(notice.latestVersion, notice.latestBuildNumber)}';
 }
 
 @visibleForTesting

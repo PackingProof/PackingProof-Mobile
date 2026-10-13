@@ -180,9 +180,10 @@ void main() {
     await tester.tap(find.text('测试更新'));
     await tester.pumpAndSettle();
 
-    // 提示条就两行：第一行带构建号，第二行是原因；原来单独的标题行已经并进第一行
-    expect(find.textContaining('手机 App 更新：最低 v0.5.6+11006'), findsOneWidget);
+    // 第一行直接说版本（带构建号），不再重复"手机 App 更新"；第二行是电脑端给的原因
+    expect(find.textContaining('最低 v0.5.6+11006'), findsOneWidget);
     expect(find.textContaining('当前 APP 版本过低，需要更新'), findsOneWidget);
+    expect(find.textContaining('手机 App 更新'), findsNothing);
     expect(
       mobileUpdateNoticeText(
         const MobileAppUpdateNotice(
@@ -192,6 +193,20 @@ void main() {
         ),
       ).split('\n'),
       hasLength(2),
+    );
+    // 只是"建议更新"时一行就够：不再复述"发现新版手机 App，建议更新"
+    expect(
+      mobileUpdateNoticeText(
+        const MobileAppUpdateNotice(
+          minimumVersion: '0.5.6',
+          minimumBuildNumber: 11006,
+          message: '发现新版手机 App，建议更新',
+          latestVersion: '0.5.7',
+          latestBuildNumber: 11050,
+          updateRequired: false,
+        ),
+      ),
+      '最新 v0.5.7+11050',
     );
     expect(find.textContaining('继续识别面单和录像'), findsNothing);
     expect(find.byType(MaterialBanner), findsOneWidget);
