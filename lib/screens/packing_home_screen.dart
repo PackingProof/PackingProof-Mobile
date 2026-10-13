@@ -131,6 +131,29 @@ Future<bool> showComputerReplacementDialog(
 
 const String mobileAppDownloadUrl = packingProofAndroidReleasesUrl;
 
+/// 提示条上的版本号带构建号，跟「关于」页的 v1.2.3+11045 写法保持一致
+String _noticeVersionLabel(String version, int buildNumber) =>
+    buildNumber > 0 ? 'v$version+$buildNumber' : 'v$version';
+
+/// 更新提示条就两行：第一行「要更新到哪个版本（含构建号）」，第二行说明原因。
+/// 原来的单独标题行和这两行是重复的，去掉之后高度也就下来了。
+@visibleForTesting
+String mobileUpdateNoticeText(MobileAppUpdateNotice notice) {
+  if (notice.message.isEmpty) {
+    return '手机 App 更新：电脑端要求 '
+        '${_noticeVersionLabel(notice.minimumVersion, notice.minimumBuildNumber)} 或更高\n'
+        '请更新后再继续使用';
+  }
+  if (notice.updateRequired) {
+    return '手机 App 更新：最低 '
+        '${_noticeVersionLabel(notice.minimumVersion, notice.minimumBuildNumber)}\n'
+        '${notice.message}';
+  }
+  return '手机 App 更新：最新 '
+      '${_noticeVersionLabel(notice.latestVersion, notice.latestBuildNumber)}\n'
+      '${notice.message}';
+}
+
 @visibleForTesting
 Future<void> showMobileAppUpdateNotice(
   BuildContext context,
@@ -143,24 +166,10 @@ Future<void> showMobileAppUpdateNotice(
   controller = messenger.showMaterialBanner(
     MaterialBanner(
       leading: const Icon(Icons.system_update_rounded),
-      content: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          const Text(
-            '手机 App 更新',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            notice.message.isEmpty
-                ? '当前 APP 版本过低，需要更新\n'
-                      '电脑端要求使用 ${notice.minimumVersion} 或更高版本'
-                : notice.updateRequired
-                ? '${notice.message}\n最低兼容版本：${notice.minimumVersion}'
-                : '${notice.message}\n最新版本：${notice.latestVersion}',
-          ),
-        ],
+      // 就两行：合并了原来的标题行，高度也就降下来了
+      content: Text(
+        mobileUpdateNoticeText(notice),
+        style: const TextStyle(fontWeight: FontWeight.w600),
       ),
       actions: <Widget>[
         TextButton(
