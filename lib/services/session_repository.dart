@@ -998,6 +998,10 @@ class SessionRepository {
     (AppSettings value) => value.copyWith(recordAudioEnabled: enabled),
   );
 
+  Future<void> saveWatermarkEnabled(bool enabled) => _updateSettings(
+    (AppSettings value) => value.copyWith(watermarkEnabled: enabled),
+  );
+
   Future<void> saveManualTrackingValidationEnabled(bool enabled) =>
       _updateSettings(
         (AppSettings value) =>

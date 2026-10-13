@@ -573,6 +573,7 @@ class CameraInitializeRequest {
     required this.recordingSpec,
     required this.capabilityMode,
     required this.recordingOrientation,
+    required this.watermarkEnabled,
   });
 
   String videoCodec;
@@ -583,12 +584,15 @@ class CameraInitializeRequest {
 
   String recordingOrientation;
 
+  bool watermarkEnabled;
+
   List<Object?> _toList() {
     return <Object?>[
       videoCodec,
       recordingSpec,
       capabilityMode,
       recordingOrientation,
+      watermarkEnabled,
     ];
   }
 
@@ -603,6 +607,7 @@ class CameraInitializeRequest {
       recordingSpec: result[1]! as String,
       capabilityMode: result[2]! as String,
       recordingOrientation: result[3]! as String,
+      watermarkEnabled: result[4]! as bool,
     );
   }
 
@@ -618,7 +623,8 @@ class CameraInitializeRequest {
     return _deepEquals(videoCodec, other.videoCodec) &&
         _deepEquals(recordingSpec, other.recordingSpec) &&
         _deepEquals(capabilityMode, other.capabilityMode) &&
-        _deepEquals(recordingOrientation, other.recordingOrientation);
+        _deepEquals(recordingOrientation, other.recordingOrientation) &&
+        _deepEquals(watermarkEnabled, other.watermarkEnabled);
   }
 
   @override
@@ -627,7 +633,7 @@ class CameraInitializeRequest {
 
   @override
   String toString() {
-    return 'CameraInitializeRequest(videoCodec: $videoCodec, recordingSpec: $recordingSpec, capabilityMode: $capabilityMode, recordingOrientation: $recordingOrientation)';
+    return 'CameraInitializeRequest(videoCodec: $videoCodec, recordingSpec: $recordingSpec, capabilityMode: $capabilityMode, recordingOrientation: $recordingOrientation, watermarkEnabled: $watermarkEnabled)';
   }
 }
 

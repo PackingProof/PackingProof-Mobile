@@ -42,6 +42,28 @@ void main() {
     );
   });
 
+  test('关闭添加水印后原生结论一律按已完成成片处理', () {
+    for (final NativeWatermarkDisposition disposition
+        in NativeWatermarkDisposition.values) {
+      expect(
+        nativeWatermarkStatus(disposition, watermarkEnabled: false),
+        WatermarkProcessingStatus.completed,
+      );
+      expect(
+        nativeWatermarkNeedsPostProcess(disposition, watermarkEnabled: false),
+        isFalse,
+      );
+    }
+    expect(
+      flutterRecordingWatermarkStatus(watermarkEnabled: false),
+      WatermarkProcessingStatus.completed,
+    );
+    expect(
+      flutterRecordingWatermarkStatus(watermarkEnabled: true),
+      WatermarkProcessingStatus.pending,
+    );
+  });
+
   test('旧数据库迁移后录像默认已完成竖屏水印', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing-proof-watermark-migration-',

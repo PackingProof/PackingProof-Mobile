@@ -917,8 +917,14 @@ class PackingSessionController extends ChangeNotifier
     );
     final List<RecordingSession> sessions = drafts
         .map(
-          (RecordingSession draft) =>
-              _sessionWithPath(draft, savedPath, orderInfo: _activeOrderInfo),
+          (RecordingSession draft) => _sessionWithPath(
+            draft,
+            savedPath,
+            orderInfo: _activeOrderInfo,
+            watermarkStatus: flutterRecordingWatermarkStatus(
+              watermarkEnabled: _watermarkEnabled,
+            ),
+          ),
         )
         .toList(growable: false);
     _sessions = await _repository.addSessions(sessions);
@@ -954,10 +960,16 @@ class PackingSessionController extends ChangeNotifier
           path: savedPath,
           draft: draft,
         ).copyWith(
-          watermarkStatus: nativeWatermarkStatus(stopped.watermarkDisposition),
+          watermarkStatus: nativeWatermarkStatus(
+            stopped.watermarkDisposition,
+            watermarkEnabled: _watermarkEnabled,
+          ),
         );
     _sessions = await _repository.addSession(session);
-    if (nativeWatermarkNeedsPostProcess(stopped.watermarkDisposition)) {
+    if (nativeWatermarkNeedsPostProcess(
+      stopped.watermarkDisposition,
+      watermarkEnabled: _watermarkEnabled,
+    )) {
       await _resumePendingWatermarks();
     } else {
       _runInBackground(
@@ -1280,13 +1292,19 @@ class PackingSessionController extends ChangeNotifier
             draft: transition.completed,
             orderInfo: completedOrderInfo,
           ).copyWith(
-            watermarkStatus: nativeWatermarkStatus(split.watermarkDisposition),
+            watermarkStatus: nativeWatermarkStatus(
+              split.watermarkDisposition,
+              watermarkEnabled: _watermarkEnabled,
+            ),
           );
       _sessions = await timing.measure(
         'persistSession',
         () => _repository.addSession(completed),
       );
-      if (nativeWatermarkNeedsPostProcess(split.watermarkDisposition)) {
+      if (nativeWatermarkNeedsPostProcess(
+        split.watermarkDisposition,
+        watermarkEnabled: _watermarkEnabled,
+      )) {
         await timing.measure('watermarkRecovery', _resumePendingWatermarks);
       } else {
         _runInBackground(
@@ -1415,6 +1433,7 @@ class PackingSessionController extends ChangeNotifier
     RecordingSession session,
     String filePath, {
     OrderInfo? orderInfo,
+    WatermarkProcessingStatus? watermarkStatus,
   }) => RecordingSession(
     id: session.id,
     filePath: filePath,
@@ -1427,7 +1446,7 @@ class PackingSessionController extends ChangeNotifier
     operationMode: session.operationMode,
     recordingOrientation: session.recordingOrientation,
     videoCodec: session.videoCodec,
-    watermarkStatus: session.watermarkStatus,
+    watermarkStatus: watermarkStatus ?? session.watermarkStatus,
     watermarkAttemptCount: session.watermarkAttemptCount,
   );
 

@@ -109,6 +109,23 @@ void main() {
     expect(persisted['recordAudioEnabled'], isFalse);
   });
 
+  test('添加水印默认开启且可关闭并持久化', () async {
+    final SessionRepository repository = testRepository(root);
+
+    final AppSettings defaults = await repository.loadSettings();
+    expect(defaults.watermarkEnabled, isTrue);
+
+    await repository.saveWatermarkEnabled(false);
+    final AppSettings updated = await repository.loadSettings();
+    expect(updated.watermarkEnabled, isFalse);
+
+    final Map<String, Object?> persisted = Map<String, Object?>.from(
+      jsonDecode(await File('${root.path}/settings.json').readAsString())
+          as Map<Object?, Object?>,
+    );
+    expect(persisted['watermarkEnabled'], isFalse);
+  });
+
   test('手动输入校验开关默认开启且可持久化', () async {
     final SessionRepository repository = testRepository(root);
 

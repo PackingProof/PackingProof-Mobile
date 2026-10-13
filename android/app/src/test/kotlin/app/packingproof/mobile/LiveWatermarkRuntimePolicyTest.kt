@@ -315,4 +315,54 @@ class LiveWatermarkRuntimePolicyTest {
         assertEquals(1080, LiveWatermarkQuadPolicy.outputHeight(1920, 1080, "portrait"))
         assertEquals(1920, LiveWatermarkQuadPolicy.outputHeight(1920, 1080, "landscapeLeft"))
     }
+
+    @Test
+    fun `watermark switch off keeps the compositor free of watermark`() {
+        assertFalse(
+            LiveWatermarkActivationPolicy.useCompositorWatermark(
+                watermarkEnabled = false,
+                glPipeline = true,
+                hasCompositor = true,
+            ),
+        )
+        assertTrue(
+            LiveWatermarkActivationPolicy.useCompositorWatermark(
+                watermarkEnabled = true,
+                glPipeline = true,
+                hasCompositor = true,
+            ),
+        )
+        assertFalse(
+            LiveWatermarkActivationPolicy.useCompositorWatermark(
+                watermarkEnabled = true,
+                glPipeline = false,
+                hasCompositor = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `watermark switch off reports every segment as final cut`() {
+        assertEquals(
+            LiveWatermarkSegmentDisposition.COMPLETED,
+            LiveWatermarkActivationPolicy.effectiveDisposition(
+                watermarkEnabled = false,
+                disposition = LiveWatermarkSegmentDisposition.FAILED_PARTIAL,
+            ),
+        )
+        assertEquals(
+            LiveWatermarkSegmentDisposition.FAILED_PARTIAL,
+            LiveWatermarkActivationPolicy.effectiveDisposition(
+                watermarkEnabled = true,
+                disposition = LiveWatermarkSegmentDisposition.FAILED_PARTIAL,
+            ),
+        )
+        assertEquals(
+            LiveWatermarkSegmentDisposition.COMPLETED,
+            LiveWatermarkActivationPolicy.effectiveDisposition(
+                watermarkEnabled = true,
+                disposition = LiveWatermarkSegmentDisposition.COMPLETED,
+            ),
+        )
+    }
 }

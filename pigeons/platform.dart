@@ -75,6 +75,7 @@ class CameraInitializeRequest {
   String recordingSpec;
   String capabilityMode;
   String recordingOrientation;
+  bool watermarkEnabled;
 }
 
 class CameraInitializationDto {

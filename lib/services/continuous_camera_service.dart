@@ -355,6 +355,7 @@ class ContinuousCameraService {
     RecordingSpecPreset recordingSpec = RecordingSpecPreset.hd1080p30,
     RecordingOrientation recordingOrientation = RecordingOrientation.portrait,
     String capabilityMode = 'unverified',
+    bool watermarkEnabled = true,
   }) {
     if (_platform is PigeonCameraPlatform) {
       return _platform.initialize(
@@ -362,12 +363,14 @@ class ContinuousCameraService {
         recordingSpec: recordingSpec.storageValue,
         recordingOrientation: recordingOrientation,
         capabilityMode: capabilityMode,
+        watermarkEnabled: watermarkEnabled,
       );
     }
     return _platform.initialize(
       videoCodec: videoCodec.storageValue,
       recordingSpec: recordingSpec.storageValue,
       capabilityMode: capabilityMode,
+      watermarkEnabled: watermarkEnabled,
     );
   }
 
@@ -496,6 +499,7 @@ class _LegacyCameraPlatform implements CameraPlatform {
     String recordingSpec = 'hd1080p30',
     RecordingOrientation recordingOrientation = RecordingOrientation.portrait,
     String capabilityMode = 'unverified',
+    bool watermarkEnabled = true,
   }) async {
     final Map<Object?, Object?> values = (await _channel
         .invokeMethod<Map<Object?, Object?>>('initialize', <String, Object>{
@@ -503,6 +507,7 @@ class _LegacyCameraPlatform implements CameraPlatform {
           'recordingSpec': recordingSpec,
           'recordingOrientation': recordingOrientation.storageValue,
           'capabilityMode': capabilityMode,
+          'watermarkEnabled': watermarkEnabled,
         }))!;
     return ContinuousCameraInitialization.fromMap(values);
   }

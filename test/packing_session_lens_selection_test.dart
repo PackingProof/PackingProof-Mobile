@@ -58,6 +58,7 @@ class _FakeLensCameraPlatform implements CameraPlatform {
     String videoCodec = 'hevc',
     String recordingSpec = 'hd1080p30',
     String capabilityMode = 'unverified',
+    bool watermarkEnabled = true,
   }) async {
     initializeCalls++;
     requestedRecordingSpec = recordingSpec;

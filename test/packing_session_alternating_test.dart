@@ -38,6 +38,9 @@ class _FakeCameraPlatform implements CameraPlatform {
   Completer<NativeRecordingStop>? pendingStop;
   String lastMode = 'unverified';
   String lastInitializeMode = 'unverified';
+  bool? lastInitializeWatermarkEnabled;
+  NativeWatermarkDisposition stopWatermarkDisposition =
+      NativeWatermarkDisposition.completed;
   String? lastPath;
   int diagnosticsCalls = 0;
   Completer<void>? diagnosticsBlocker;
@@ -60,8 +63,10 @@ class _FakeCameraPlatform implements CameraPlatform {
     String videoCodec = 'hevc',
     String recordingSpec = 'hd1080p30',
     String capabilityMode = 'unverified',
+    bool watermarkEnabled = true,
   }) async {
     lastInitializeMode = capabilityMode;
+    lastInitializeWatermarkEnabled = watermarkEnabled;
     return const ContinuousCameraInitialization(
       textureId: 1,
       previewWidth: 1920,
@@ -127,7 +132,7 @@ class _FakeCameraPlatform implements CameraPlatform {
       path: lastPath ?? '',
       startedAt: DateTime.now(),
       endedAt: DateTime.now(),
-      watermarkDisposition: NativeWatermarkDisposition.completed,
+      watermarkDisposition: stopWatermarkDisposition,
     );
   }
 
@@ -472,13 +477,18 @@ class _FakeOrderReceiverSink implements OrderInfoReceiverSink {
 }
 
 class _FakeWatermarkSink implements VideoWatermarkSink {
+  int applyCalls = 0;
+
   @override
   Future<String> apply({
     required String inputPath,
     required DateTime startedAt,
     required String trackingNumber,
     RecordingVideoCodec videoCodec = RecordingVideoCodec.hevc,
-  }) async => inputPath;
+  }) async {
+    applyCalls++;
+    return inputPath;
+  }
 }
 
 class _FakeWakelock extends WakelockPlusPlatformInterface {
@@ -496,6 +506,7 @@ void main() {
   late _FakeOrderReceiverSink orderReceiver;
   late _FakeSpeechSink speech;
   late _TrackingDiagnosticsLogService runtimeLog;
+  late _FakeWatermarkSink watermarkSink;
   late PackingSessionController controller;
 
   setUp(() async {
@@ -508,13 +519,14 @@ void main() {
     orderReceiver = _FakeOrderReceiverSink();
     speech = _FakeSpeechSink();
     runtimeLog = _TrackingDiagnosticsLogService(root: root);
+    watermarkSink = _FakeWatermarkSink();
     controller = PackingSessionController(
       repository: repository,
       speechService: speech,
       maxVolumeService: _FakeMaxVolumeSink(),
       lanBackupService: LanBackupService(platform: backupPlatform),
       orderInfoReceiver: orderReceiver,
-      videoWatermarkService: _FakeWatermarkSink(),
+      videoWatermarkService: watermarkSink,
       runtimeLog: runtimeLog,
       capabilities: const PlatformCapabilities(<PlatformCapability>{
         PlatformCapability.continuousCameraRecording,
@@ -1578,6 +1590,74 @@ void main() {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 50)),
       );
+    }
+  });
+
+  testWidgets('关闭添加水印后原生要求补录也不再烧录水印', (WidgetTester tester) async {
+    camera.fullSupported = true;
+    try {
+      await tester.runAsync(() async {
+        await repository.saveWatermarkEnabled(false);
+        await controller.initialize();
+        await controller.retryCapabilityProbe();
+        await controller.startWork();
+      });
+
+      expect(controller.watermarkEnabled, isFalse);
+      expect(camera.lastInitializeWatermarkEnabled, isFalse);
+
+      // 原生即使上报"需要补录水印"，关闭开关后也直接按最终成片处理。
+      camera.stopWatermarkDisposition =
+          NativeWatermarkDisposition.postProcessRequired;
+      await _confirmBarcode(tester, controller, 'JD123456789012');
+      await _waitUntil(
+        tester,
+        () => camera.startWorkCalls == 1 && controller.isRecording,
+      );
+      await _stopWorkIfNeeded(tester, controller);
+      await _waitUntil(tester, () => controller.sessions.isNotEmpty);
+      // 补录水印若被触发会异步落库，这里给后台任务留出调度机会。
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+
+      expect(
+        controller.sessions.single.watermarkStatus,
+        WatermarkProcessingStatus.completed,
+      );
+      expect(watermarkSink.applyCalls, 0);
+    } finally {
+      await _stopWorkIfNeeded(tester, controller);
+      await tester.pump(const Duration(seconds: 4));
+    }
+  });
+
+  testWidgets('保留添加水印时原生要求补录会走水印导出', (WidgetTester tester) async {
+    camera.fullSupported = true;
+    try {
+      await tester.runAsync(() async {
+        await controller.initialize();
+        await controller.retryCapabilityProbe();
+        await controller.startWork();
+      });
+
+      expect(controller.watermarkEnabled, isTrue);
+      expect(camera.lastInitializeWatermarkEnabled, isTrue);
+
+      camera.stopWatermarkDisposition =
+          NativeWatermarkDisposition.postProcessRequired;
+      await _confirmBarcode(tester, controller, 'JD123456789012');
+      await _waitUntil(
+        tester,
+        () => camera.startWorkCalls == 1 && controller.isRecording,
+      );
+      await _stopWorkIfNeeded(tester, controller);
+      await _waitUntil(tester, () => watermarkSink.applyCalls == 1);
+
+      expect(watermarkSink.applyCalls, 1);
+    } finally {
+      await _stopWorkIfNeeded(tester, controller);
+      await tester.pump(const Duration(seconds: 4));
     }
   });
 }

@@ -862,6 +862,10 @@ final class IosCameraHostApi:
   private var currentPath: String?
   private var currentTrackingNumber = ""
   private var currentWatermarkFailed = false
+
+  /// 「添加水印」开关：相机初始化时确定，本次相机生命周期内保持不变。
+  /// 关闭时预览与成片都不绘制水印，水印结论直接按已完成上报。
+  private var liveWatermarkEnabled = true
   private var currentWatermarkError: String?
   private var watermarkPreparationPending = false
   private var preservesWatermarkDuringSplit = false
@@ -995,6 +999,7 @@ final class IosCameraHostApi:
     }
     recordingOrientationName = ["landscapeLeft", "landscapeRight"].contains(request.recordingOrientation)
       ? request.recordingOrientation : "portrait"
+    liveWatermarkEnabled = request.watermarkEnabled
     sessionQueue.async { [weak self] in
       guard let self else {
         completion(.failure(pigeonError("摄像头已经关闭")))
@@ -1964,7 +1969,7 @@ final class IosCameraHostApi:
       var transientWatermarkFailure = false
       // 支持实时水印时，预览和成片始终复用同一份已烧录像素；Flutter
       // 不再在空闲/停止状态切换到另一套水印布局。
-      let watermarkRequired = !currentWatermarkFailed
+      let watermarkRequired = liveWatermarkEnabled && !currentWatermarkFailed
       if watermarkRequired {
         do {
           try liveWatermarkRenderer.apply(
@@ -2006,7 +2011,7 @@ final class IosCameraHostApi:
         }
       }
       if IosLiveWatermarkHostPolicy.shouldPublishPreviewFrame(
-        watermarkRequired: !currentWatermarkFailed,
+        watermarkRequired: watermarkRequired,
         transientPreparationFailure: transientWatermarkFailure
       ) {
         bufferLock.lock()
@@ -2895,7 +2900,7 @@ final class IosCameraHostApi:
       bufferLock.lock()
       let source = latestPixelBuffer
       bufferLock.unlock()
-      if let source {
+      if let source, liveWatermarkEnabled {
         do {
           try liveWatermarkRenderer.prepare(
             to: source,
@@ -2952,7 +2957,7 @@ final class IosCameraHostApi:
     self.currentAudioPeak = 0
     // 常规路径已在 writer 对外可见前准备好首份完整水印。没有预览帧或
     // 同步准备瞬时失败时才走后台重试；就绪前不写入无水印视频帧。
-    if !watermarkPrepared, let watermarkSourceBuffer {
+    if liveWatermarkEnabled, !watermarkPrepared, let watermarkSourceBuffer {
       prepareInitialWatermarkPlanIfNeeded(from: watermarkSourceBuffer)
     }
   }
@@ -3125,8 +3130,9 @@ final class IosCameraHostApi:
     let completedStartedAt = currentStartedAtMs
     let completedSegmentId = currentSegmentId
     let completedSegmentSerial = currentSegmentSerial
+    // 关闭「添加水印」时片段生来就是最终成片：既不产生待补水印，也不按失败上报。
     let completedWatermarkDisposition: CameraWatermarkDisposition =
-      currentWatermarkFailed ? .failedPartial : .completed
+      liveWatermarkEnabled && currentWatermarkFailed ? .failedPartial : .completed
     let endedAt = Int64(Date().timeIntervalSince1970 * 1000)
     videoInput?.markAsFinished()
     audioInput?.markAsFinished()

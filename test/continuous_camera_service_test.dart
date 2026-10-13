@@ -535,6 +535,7 @@ void main() {
       'recordingSpec': 'smooth720p30',
       'recordingOrientation': 'portrait',
       'capabilityMode': 'unverified',
+      'watermarkEnabled': true,
     });
   });
 
@@ -574,6 +575,7 @@ void main() {
       'recordingSpec': 'hd1080p30',
       'recordingOrientation': 'portrait',
       'capabilityMode': 'encoder_analysis',
+      'watermarkEnabled': true,
     });
   });
 
@@ -614,6 +616,48 @@ void main() {
       'recordingSpec': 'hd1080p30',
       'recordingOrientation': 'portrait',
       'capabilityMode': 'unverified',
+      'watermarkEnabled': true,
+    });
+  });
+
+  test('初始化按开关传递水印设置', () async {
+    const MethodChannel channel = MethodChannel(
+      'app.packingproof.mobile/continuous_camera',
+    );
+    final List<MethodCall> calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+          calls.add(call);
+          return <Object?, Object?>{
+            'textureId': 1,
+            'previewWidth': 1920,
+            'previewHeight': 1080,
+            'sensorOrientation': 90,
+            'fps': 30,
+            'videoMime': 'video/avc',
+            'flashAvailable': false,
+            'lensDirection': 'back',
+            'canSwitchCamera': false,
+          };
+        });
+    final ContinuousCameraService service = ContinuousCameraService(
+      channel: channel,
+    );
+    addTearDown(() async {
+      await service.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    await service.initialize(watermarkEnabled: false);
+
+    expect(calls.single.method, 'initialize');
+    expect(calls.single.arguments, <String, Object>{
+      'videoCodec': 'hevc',
+      'recordingSpec': 'hd1080p30',
+      'recordingOrientation': 'portrait',
+      'capabilityMode': 'unverified',
+      'watermarkEnabled': false,
     });
   });
 

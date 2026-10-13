@@ -562,7 +562,8 @@ data class CameraInitializeRequest (
   val videoCodec: String,
   val recordingSpec: String,
   val capabilityMode: String,
-  val recordingOrientation: String
+  val recordingOrientation: String,
+  val watermarkEnabled: Boolean
 )
  {
   companion object {
@@ -571,7 +572,8 @@ data class CameraInitializeRequest (
       val recordingSpec = pigeonVar_list[1] as String
       val capabilityMode = pigeonVar_list[2] as String
       val recordingOrientation = pigeonVar_list[3] as String
-      return CameraInitializeRequest(videoCodec, recordingSpec, capabilityMode, recordingOrientation)
+      val watermarkEnabled = pigeonVar_list[4] as Boolean
+      return CameraInitializeRequest(videoCodec, recordingSpec, capabilityMode, recordingOrientation, watermarkEnabled)
     }
   }
   fun toList(): List<Any?> {
@@ -580,6 +582,7 @@ data class CameraInitializeRequest (
       recordingSpec,
       capabilityMode,
       recordingOrientation,
+      watermarkEnabled,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -590,7 +593,7 @@ data class CameraInitializeRequest (
       return true
     }
     val other = other as CameraInitializeRequest
-    return PlatformApiPigeonUtils.deepEquals(this.videoCodec, other.videoCodec) && PlatformApiPigeonUtils.deepEquals(this.recordingSpec, other.recordingSpec) && PlatformApiPigeonUtils.deepEquals(this.capabilityMode, other.capabilityMode) && PlatformApiPigeonUtils.deepEquals(this.recordingOrientation, other.recordingOrientation)
+    return PlatformApiPigeonUtils.deepEquals(this.videoCodec, other.videoCodec) && PlatformApiPigeonUtils.deepEquals(this.recordingSpec, other.recordingSpec) && PlatformApiPigeonUtils.deepEquals(this.capabilityMode, other.capabilityMode) && PlatformApiPigeonUtils.deepEquals(this.recordingOrientation, other.recordingOrientation) && PlatformApiPigeonUtils.deepEquals(this.watermarkEnabled, other.watermarkEnabled)
   }
 
   override fun hashCode(): Int {
@@ -599,10 +602,11 @@ data class CameraInitializeRequest (
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.recordingSpec)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.capabilityMode)
     result = 31 * result + PlatformApiPigeonUtils.deepHash(this.recordingOrientation)
+    result = 31 * result + PlatformApiPigeonUtils.deepHash(this.watermarkEnabled)
     return result
   }
   override fun toString(): String {
-    return "CameraInitializeRequest(videoCodec=$videoCodec, recordingSpec=$recordingSpec, capabilityMode=$capabilityMode, recordingOrientation=$recordingOrientation)"
+    return "CameraInitializeRequest(videoCodec=$videoCodec, recordingSpec=$recordingSpec, capabilityMode=$capabilityMode, recordingOrientation=$recordingOrientation, watermarkEnabled=$watermarkEnabled)"
   }
 }
 

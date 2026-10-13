@@ -1011,6 +1011,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
                       nativeLiveWatermark: _controller.capabilities.supports(
                         PlatformCapability.liveRecordingWatermark,
                       ),
+                      watermarkEnabled: _controller.watermarkEnabled,
                       capabilityMode: _controller.capabilityMode,
                       capabilityProbeMessage:
                           _controller.capabilityProbeMessage,
@@ -1189,6 +1190,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       orderReceiverSnapshot: _controller.orderReceiverSnapshot,
       maxVolumeEnabled: _controller.maxVolumeEnabled,
       recordAudioEnabled: _controller.recordAudioEnabled,
+      watermarkEnabled: _controller.watermarkEnabled,
       preferredVideoCodec: _controller.preferredVideoCodec,
       recordingSpec: _controller.recordingSpec,
       availableRecordingSpecs: _controller.availableRecordingSpecs,
@@ -1216,6 +1218,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       onRetryOrderReceiver: _controller.retryOrderReceiver,
       onMaxVolumeEnabledChanged: _controller.setMaxVolumeEnabled,
       onRecordAudioEnabledChanged: _controller.setRecordAudioEnabled,
+      onWatermarkEnabledChanged: _controller.setWatermarkEnabled,
       onPreferredVideoCodecChanged: _controller.setPreferredVideoCodec,
       onRecordingSpecChanged: _controller.setRecordingSpec,
       onRecordingOrientationChanged: _controller.setRecordingOrientation,
@@ -1357,6 +1360,7 @@ class PackingHomeView extends StatelessWidget {
     this.onFinishOrder,
     this.previewOverride,
     this.watermarkTimestamp,
+    this.watermarkEnabled = true,
     this.elapsedListenable,
     super.key,
   });
@@ -1374,6 +1378,9 @@ class PackingHomeView extends StatelessWidget {
   final RecordingOperationMode operationMode;
   final RecordingOrientation recordingOrientation;
   final bool nativeLiveWatermark;
+
+  /// 关闭「添加水印」后，Flutter 回退水印也不再绘制。
+  final bool watermarkEnabled;
   final CameraCapabilityMode? capabilityMode;
   final String? capabilityProbeMessage;
   final bool canFinishCurrentOrder;
@@ -1571,7 +1578,7 @@ class _CameraArea extends StatelessWidget {
         fit: StackFit.expand,
         children: <Widget>[
           Positioned.fill(child: preview),
-          if (!view.nativeLiveWatermark)
+          if (!view.nativeLiveWatermark && view.watermarkEnabled)
             Positioned.fill(child: _CameraWatermarkPlacement(view: view)),
           Positioned.fill(
             child: IgnorePointer(

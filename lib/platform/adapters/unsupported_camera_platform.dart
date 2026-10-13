@@ -24,6 +24,7 @@ class UnsupportedCameraPlatform implements CameraPlatform {
     String recordingSpec = 'hd1080p30',
     String capabilityMode = 'unverified',
     RecordingOrientation recordingOrientation = RecordingOrientation.portrait,
+    bool watermarkEnabled = true,
   }) {
     throw const CapabilityUnavailableException(
       PlatformCapability.continuousCameraRecording,

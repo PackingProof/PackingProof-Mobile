@@ -34,6 +34,7 @@ class PigeonCameraPlatform implements CameraPlatform {
     String recordingSpec = 'hd1080p30',
     String capabilityMode = 'unverified',
     RecordingOrientation recordingOrientation = RecordingOrientation.portrait,
+    bool watermarkEnabled = true,
   }) async {
     return _initializationFromDto(
       await _hostApi.initialize(
@@ -42,6 +43,7 @@ class PigeonCameraPlatform implements CameraPlatform {
           recordingSpec: recordingSpec,
           capabilityMode: capabilityMode,
           recordingOrientation: recordingOrientation.storageValue,
+          watermarkEnabled: watermarkEnabled,
         ),
       ),
     );

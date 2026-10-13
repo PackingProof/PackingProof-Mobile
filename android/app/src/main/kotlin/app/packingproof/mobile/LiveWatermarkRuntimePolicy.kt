@@ -86,6 +86,25 @@ internal enum class LiveWatermarkSegmentDisposition {
     FAILED_PARTIAL,
 }
 
+/**
+ * 「添加水印」开关的判定口径：关闭时预览与成片都不绘制水印。
+ *
+ * 此时片段本身就是最终成片，既不产生"待补录"，也不该按水印失败上报。
+ */
+internal object LiveWatermarkActivationPolicy {
+    fun useCompositorWatermark(
+        watermarkEnabled: Boolean,
+        glPipeline: Boolean,
+        hasCompositor: Boolean,
+    ): Boolean = watermarkEnabled && glPipeline && hasCompositor
+
+    fun effectiveDisposition(
+        watermarkEnabled: Boolean,
+        disposition: LiveWatermarkSegmentDisposition,
+    ): LiveWatermarkSegmentDisposition =
+        if (watermarkEnabled) disposition else LiveWatermarkSegmentDisposition.COMPLETED
+}
+
 /** Sticky fail-open state: a watermark error never makes the underlying recording unusable. */
 internal class LiveWatermarkSegmentState {
     private var renderedFrameCount = 0L

@@ -108,6 +108,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       _returnBackedRetention = settings.returnBackedRetention;
       _storagePressurePolicy = settings.storagePressurePolicy;
       _recordAudioEnabled = settings.recordAudioEnabled;
+      _watermarkEnabled = settings.watermarkEnabled;
       _manualTrackingValidationEnabled =
           settings.manualTrackingValidationEnabled;
       _capabilityPreference = settings.cameraCapabilityPreference;
@@ -177,6 +178,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
                 recordingSpec: _recordingSpec,
                 recordingOrientation: _recordingOrientation,
                 capabilityMode: _provisionalCapabilityMode().wireValue,
+                watermarkEnabled: _watermarkEnabled,
               )
               .timeout(
                 const Duration(seconds: 15),

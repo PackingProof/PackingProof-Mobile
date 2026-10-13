@@ -147,6 +147,7 @@ class RecordingsScreen extends StatefulWidget {
     this.orderReceiverSnapshot = const OrderInfoReceiverSnapshot(),
     required this.maxVolumeEnabled,
     this.recordAudioEnabled = true,
+    this.watermarkEnabled = true,
     this.preferredVideoCodec = RecordingVideoCodec.h264,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.availableRecordingSpecs = const <RecordingSpecPreset>[
@@ -163,6 +164,7 @@ class RecordingsScreen extends StatefulWidget {
     this.onRetryOrderReceiver,
     required this.onMaxVolumeEnabledChanged,
     this.onRecordAudioEnabledChanged,
+    this.onWatermarkEnabledChanged,
     this.onPreferredVideoCodecChanged,
     this.onRecordingSpecChanged,
     this.onRecordingOrientationChanged,
@@ -231,6 +233,7 @@ class RecordingsScreen extends StatefulWidget {
   final OrderInfoReceiverSnapshot orderReceiverSnapshot;
   final bool maxVolumeEnabled;
   final bool recordAudioEnabled;
+  final bool watermarkEnabled;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
   final List<RecordingSpecPreset> availableRecordingSpecs;
@@ -245,6 +248,7 @@ class RecordingsScreen extends StatefulWidget {
   final Future<void> Function()? onRetryOrderReceiver;
   final Future<void> Function(bool enabled) onMaxVolumeEnabledChanged;
   final Future<void> Function(bool enabled)? onRecordAudioEnabledChanged;
+  final Future<void> Function(bool enabled)? onWatermarkEnabledChanged;
   final Future<void> Function(RecordingVideoCodec codec)?
   onPreferredVideoCodecChanged;
   final Future<void> Function(RecordingSpecPreset spec)? onRecordingSpecChanged;
@@ -374,6 +378,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
   late bool _orderSpeechEnabled;
   late bool _maxVolumeEnabled;
   late bool _recordAudioEnabled;
+  late bool _watermarkEnabled;
   late RecordingVideoCodec _preferredVideoCodec;
   late RecordingSpecPreset _recordingSpec;
   late RecordingOrientation _recordingOrientation;
@@ -444,6 +449,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _orderSpeechEnabled = widget.orderSpeechEnabled;
     _maxVolumeEnabled = widget.maxVolumeEnabled;
     _recordAudioEnabled = widget.recordAudioEnabled;
+    _watermarkEnabled = widget.watermarkEnabled;
     _preferredVideoCodec = widget.preferredVideoCodec;
     _recordingSpec = widget.recordingSpec;
     _recordingOrientation = widget.recordingOrientation;
@@ -518,6 +524,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _orderSpeechEnabled = widget.orderSpeechEnabled;
     _maxVolumeEnabled = widget.maxVolumeEnabled;
     _recordAudioEnabled = widget.recordAudioEnabled;
+    _watermarkEnabled = widget.watermarkEnabled;
     _preferredVideoCodec = widget.preferredVideoCodec;
     _recordingSpec = widget.recordingSpec;
     _recordingOrientation = widget.recordingOrientation;
@@ -694,6 +701,14 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     }
     setState(() => _recordAudioEnabled = enabled);
     await widget.onRecordAudioEnabledChanged?.call(enabled);
+  }
+
+  Future<void> _setWatermarkEnabled(bool enabled) async {
+    if (_watermarkEnabled == enabled) {
+      return;
+    }
+    setState(() => _watermarkEnabled = enabled);
+    await widget.onWatermarkEnabledChanged?.call(enabled);
   }
 
   Future<void> _setPreferredVideoCodec(RecordingVideoCodec codec) async {

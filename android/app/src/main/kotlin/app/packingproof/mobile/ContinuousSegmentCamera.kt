@@ -190,6 +190,12 @@ class ContinuousSegmentCamera(
     private var pendingSplitPath: String? = null
     private var pendingNextTrackingNumber: String? = null
     private var activeWatermarkTrackingNumber: String = ""
+
+    /**
+     * 「添加水印」开关：相机初始化时确定，本次相机生命周期内保持不变。
+     * 关闭时预览与成片都不绘制水印，水印结论直接按已完成上报。
+     */
+    @Volatile private var liveWatermarkEnabled = true
     @Volatile private var pendingWatermarkTransitionPtsUs: Long? = null
     private val liveWatermarkSegmentState = LiveWatermarkSegmentState()
     internal val encodedWatermarkFrameTracker = EncodedWatermarkFrameTracker()
@@ -281,6 +287,7 @@ class ContinuousSegmentCamera(
         recordingSpecName: String? = null,
         capabilityModeName: String? = null,
         recordingOrientationName: String? = null,
+        watermarkEnabled: Boolean = true,
     ) {
         if (disposed) {
             result.error("disposed", "摄像头已经关闭", null)
@@ -301,6 +308,7 @@ class ContinuousSegmentCamera(
             "landscapeLeft", "landscapeRight" -> recordingOrientationName
             else -> "portrait"
         }
+        liveWatermarkEnabled = watermarkEnabled
         sessionConfigStage = null
         sessionConfigAttempts = 0
         workingStreamConfig = null
@@ -390,12 +398,18 @@ class ContinuousSegmentCamera(
             liveWatermarkSegmentState.reset()
             encodedWatermarkFrameTracker.reset()
             activeWatermarkTrackingNumber = trackingNumber
-            if (cameraSurfacePipeline == CameraSurfacePipeline.GL_COMPOSITOR &&
-                cameraGlCompositor != null
+            if (LiveWatermarkActivationPolicy.useCompositorWatermark(
+                    watermarkEnabled = liveWatermarkEnabled,
+                    glPipeline = cameraSurfacePipeline == CameraSurfacePipeline.GL_COMPOSITOR,
+                    hasCompositor = cameraGlCompositor != null,
+                )
             ) {
                 cameraGlCompositor?.setWatermark(trackingNumber)
-            } else {
+            } else if (liveWatermarkEnabled) {
                 liveWatermarkSegmentState.markWatermarkFailure()
+            } else {
+                // 关闭「添加水印」：合成器不绘制水印，成片保持相机原始画面。
+                cameraGlCompositor?.clearWatermark()
             }
             cameraGlCompositor?.setEncoderEnabled(true)
             recordingVideoEncoder.setSuspended(false)
@@ -483,7 +497,9 @@ class ContinuousSegmentCamera(
             splitResult = result
             recordingMuxPipeline.beginSplit()
             val compositor = cameraGlCompositor
-            if (cameraSurfacePipeline == CameraSurfacePipeline.GL_COMPOSITOR &&
+            // 关闭「添加水印」时既不准备下一段水印，也不等关键帧。
+            if (liveWatermarkEnabled &&
+                cameraSurfacePipeline == CameraSurfacePipeline.GL_COMPOSITOR &&
                 compositor != null
             ) {
                 compositor.prepareWatermarkTransition(
@@ -513,7 +529,9 @@ class ContinuousSegmentCamera(
                     splitResult = null
                     liveWatermarkSegmentState.markWatermarkFailure()
                     encodedWatermarkFrameTracker.reset()
-                    cameraGlCompositor?.setWatermark(activeWatermarkTrackingNumber)
+                    if (liveWatermarkEnabled) {
+                        cameraGlCompositor?.setWatermark(activeWatermarkTrackingNumber)
+                    }
                     replyError(result, "split_timeout", "等待关键帧超时，当前录像仍在继续")
                 }
             }, SPLIT_TIMEOUT_MS)
@@ -1344,7 +1362,12 @@ class ContinuousSegmentCamera(
             }
             // 预览与编码共用同一个 GL 水印渲染器。空闲时只显示时间，
             // 开始录像后在同一图层加入面单号，避免 Flutter/原生两套水印跳变。
-            compositor.setWatermark("")
+            // 关闭「添加水印」时合成器保持无水印状态。
+            if (liveWatermarkEnabled) {
+                compositor.setWatermark("")
+            } else {
+                compositor.clearWatermark()
+            }
             compositor.setEncoderEnabled(recordingRequested || recordingActive)
             Log.i(
                 CAMERA_LOG_TAG,
@@ -2471,7 +2494,9 @@ class ContinuousSegmentCamera(
             pendingWatermarkTransitionPtsUs = null
             liveWatermarkSegmentState.markWatermarkFailure()
             encodedWatermarkFrameTracker.reset()
-            cameraGlCompositor?.setWatermark(activeWatermarkTrackingNumber)
+            if (liveWatermarkEnabled) {
+                cameraGlCompositor?.setWatermark(activeWatermarkTrackingNumber)
+            }
             replyError(result, "split_failed", "录像分段保存失败")
             notifyNativeError("录像分段保存失败", error)
         }
@@ -2496,7 +2521,12 @@ class ContinuousSegmentCamera(
     }
 
     private fun liveWatermarkDispositionWire(): String =
-        when (liveWatermarkSegmentState.disposition()) {
+        when (
+            LiveWatermarkActivationPolicy.effectiveDisposition(
+                watermarkEnabled = liveWatermarkEnabled,
+                disposition = liveWatermarkSegmentState.disposition(),
+            )
+        ) {
             LiveWatermarkSegmentDisposition.COMPLETED -> "completed"
             LiveWatermarkSegmentDisposition.FAILED_PARTIAL -> "failedPartial"
         }

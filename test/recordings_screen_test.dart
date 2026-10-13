@@ -621,13 +621,14 @@ void main() {
       findsNothing,
     );
 
-    // 进入二级页后四项设置齐全。
+    // 进入二级页后五项设置齐全。
     await tester.tap(find.byKey(const Key('recording-settings-open')));
     await tester.pumpAndSettle();
     expect(find.text('录像设置'), findsOneWidget);
     expect(find.byKey(const Key('video-codec-settings')), findsOneWidget);
     expect(find.byKey(const Key('recording-spec-settings')), findsOneWidget);
     expect(find.byKey(const Key('record-audio-settings')), findsOneWidget);
+    expect(find.byKey(const Key('watermark-settings')), findsOneWidget);
     expect(
       find.byKey(const Key('recording-orientation-settings')),
       findsOneWidget,
@@ -1334,6 +1335,42 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('record-audio-enabled-switch')));
+    await tester.pump();
+    expect(enabled, isFalse);
+  });
+
+  testWidgets('添加水印默认开启且可关闭', (WidgetTester tester) async {
+    bool enabled = true;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          sessions: const [],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          watermarkEnabled: enabled,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onWatermarkEnabledChanged: (bool value) async {
+            enabled = value;
+          },
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+
+    await _openSettingsEntry(tester, 'recording-settings-open');
+    expect(find.text('添加水印'), findsOneWidget);
+    expect(find.text('关闭后录像不带时间和单号水印'), findsOneWidget);
+    await tester.ensureVisible(
+      find.byKey(const Key('watermark-enabled-switch')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('watermark-enabled-switch')));
     await tester.pump();
     expect(enabled, isFalse);
   });
@@ -5604,10 +5641,7 @@ void main() {
       find.byKey(const Key('exit-managing-appbar-button')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const Key('share-selected-recordings')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('share-selected-recordings')), findsOneWidget);
     expect(find.byType(Checkbox), findsNWidgets(2));
     await tester.tap(find.text('A-1111'));
     await tester.pump();

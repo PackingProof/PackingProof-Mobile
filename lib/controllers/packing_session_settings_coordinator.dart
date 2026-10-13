@@ -18,6 +18,9 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
   bool _orderSpeechEnabled = true;
   bool _maxVolumeEnabled = true;
   bool _recordAudioEnabled = true;
+
+  /// 关闭后既不在预览里画水印，也不给成片烧录水印；默认开启。
+  bool _watermarkEnabled = true;
   bool _manualTrackingValidationEnabled = true;
   @override
   RecordingVideoCodec _preferredVideoCodec = RecordingVideoCodec.h264;
@@ -129,6 +132,23 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
       unawaited(_requestRecordingAudioPermission());
     }
     await _repository.saveRecordAudioEnabled(enabled);
+  }
+
+  /// 水印由相机在采集时烧录，所以切换后要重建相机；
+  /// 正在录制的片段会先正常保存结束，与切换编码/方向的处理一致。
+  Future<void> setWatermarkEnabled(bool enabled) async {
+    if (_watermarkEnabled == enabled) {
+      return;
+    }
+    _watermarkEnabled = enabled;
+    notifyListeners();
+    await _repository.saveWatermarkEnabled(enabled);
+    if (_supportsNativeCamera && _phase != PackingSessionPhase.saving) {
+      if (isWorking) {
+        await stopWork();
+      }
+      await retryInitialize();
+    }
   }
 
   Future<void> setPreferredVideoCodec(RecordingVideoCodec codec) async {

@@ -570,6 +570,7 @@ struct CameraInitializeRequest: Hashable, CustomStringConvertible {
   var recordingSpec: String
   var capabilityMode: String
   var recordingOrientation: String
+  var watermarkEnabled: Bool
 
 
   // swift-format-ignore: AlwaysUseLowerCamelCase
@@ -578,12 +579,14 @@ struct CameraInitializeRequest: Hashable, CustomStringConvertible {
     let recordingSpec = pigeonVar_list[1] as! String
     let capabilityMode = pigeonVar_list[2] as! String
     let recordingOrientation = pigeonVar_list[3] as! String
+    let watermarkEnabled = pigeonVar_list[4] as! Bool
 
     return CameraInitializeRequest(
       videoCodec: videoCodec,
       recordingSpec: recordingSpec,
       capabilityMode: capabilityMode,
-      recordingOrientation: recordingOrientation
+      recordingOrientation: recordingOrientation,
+      watermarkEnabled: watermarkEnabled
     )
   }
   func toList() -> [Any?] {
@@ -592,13 +595,14 @@ struct CameraInitializeRequest: Hashable, CustomStringConvertible {
       recordingSpec,
       capabilityMode,
       recordingOrientation,
+      watermarkEnabled,
     ]
   }
   static func == (lhs: CameraInitializeRequest, rhs: CameraInitializeRequest) -> Bool {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return PlatformApiPigeonInternal.deepEquals(lhs.videoCodec, rhs.videoCodec) && PlatformApiPigeonInternal.deepEquals(lhs.recordingSpec, rhs.recordingSpec) && PlatformApiPigeonInternal.deepEquals(lhs.capabilityMode, rhs.capabilityMode) && PlatformApiPigeonInternal.deepEquals(lhs.recordingOrientation, rhs.recordingOrientation)
+    return PlatformApiPigeonInternal.deepEquals(lhs.videoCodec, rhs.videoCodec) && PlatformApiPigeonInternal.deepEquals(lhs.recordingSpec, rhs.recordingSpec) && PlatformApiPigeonInternal.deepEquals(lhs.capabilityMode, rhs.capabilityMode) && PlatformApiPigeonInternal.deepEquals(lhs.recordingOrientation, rhs.recordingOrientation) && PlatformApiPigeonInternal.deepEquals(lhs.watermarkEnabled, rhs.watermarkEnabled)
   }
 
   func hash(into hasher: inout Hasher) {
@@ -607,10 +611,11 @@ struct CameraInitializeRequest: Hashable, CustomStringConvertible {
     PlatformApiPigeonInternal.deepHash(value: recordingSpec, hasher: &hasher)
     PlatformApiPigeonInternal.deepHash(value: capabilityMode, hasher: &hasher)
     PlatformApiPigeonInternal.deepHash(value: recordingOrientation, hasher: &hasher)
+    PlatformApiPigeonInternal.deepHash(value: watermarkEnabled, hasher: &hasher)
   }
 
   public var description: String {
-    return "CameraInitializeRequest(videoCodec: \(String(describing: videoCodec)), recordingSpec: \(String(describing: recordingSpec)), capabilityMode: \(String(describing: capabilityMode)), recordingOrientation: \(String(describing: recordingOrientation)))"
+    return "CameraInitializeRequest(videoCodec: \(String(describing: videoCodec)), recordingSpec: \(String(describing: recordingSpec)), capabilityMode: \(String(describing: capabilityMode)), recordingOrientation: \(String(describing: recordingOrientation)), watermarkEnabled: \(String(describing: watermarkEnabled)))"
   }
 }
 

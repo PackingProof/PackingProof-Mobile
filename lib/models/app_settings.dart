@@ -22,6 +22,7 @@ class AppSettings {
     this.orderSpeechEnabled = true,
     this.maxVolumeEnabled = true,
     this.recordAudioEnabled = true,
+    this.watermarkEnabled = true,
     this.manualTrackingValidationEnabled = true,
     this.cameraCapabilityPreference = CameraCapabilityPreference.full,
     this.cameraCapabilityState,
@@ -56,6 +57,7 @@ class AppSettings {
       ..remove('speechEnabled')
       ..remove('orderSpeechEnabled')
       ..remove('maxVolumeEnabled')
+      ..remove('watermarkEnabled')
       ..remove('manualTrackingValidationEnabled')
       // 旧版本把「录像降级为两路」单独记成一个标记键，用户改回完整模式也甩不掉；
       // 现在降级结论统一记在 cameraCapabilityPreference 里，这里顺手丢掉历史键。
@@ -103,6 +105,9 @@ class AppSettings {
           : true,
       recordAudioEnabled: json['recordAudioEnabled'] is bool
           ? json['recordAudioEnabled']! as bool
+          : true,
+      watermarkEnabled: json['watermarkEnabled'] is bool
+          ? json['watermarkEnabled']! as bool
           : true,
       manualTrackingValidationEnabled:
           json['manualTrackingValidationEnabled'] is bool
@@ -206,6 +211,9 @@ class AppSettings {
   final bool orderSpeechEnabled;
   final bool maxVolumeEnabled;
   final bool recordAudioEnabled;
+
+  /// 是否给录像添加水印，默认开启；关闭后预览和成片都不再绘制水印。
+  final bool watermarkEnabled;
   final bool manualTrackingValidationEnabled;
   final CameraCapabilityPreference cameraCapabilityPreference;
   final Map<String, Object?>? cameraCapabilityState;
@@ -243,6 +251,7 @@ class AppSettings {
     bool? orderSpeechEnabled,
     bool? maxVolumeEnabled,
     bool? recordAudioEnabled,
+    bool? watermarkEnabled,
     bool? manualTrackingValidationEnabled,
     CameraCapabilityPreference? cameraCapabilityPreference,
     Map<String, Object?>? cameraCapabilityState,
@@ -275,6 +284,7 @@ class AppSettings {
       orderSpeechEnabled: orderSpeechEnabled ?? this.orderSpeechEnabled,
       maxVolumeEnabled: maxVolumeEnabled ?? this.maxVolumeEnabled,
       recordAudioEnabled: recordAudioEnabled ?? this.recordAudioEnabled,
+      watermarkEnabled: watermarkEnabled ?? this.watermarkEnabled,
       manualTrackingValidationEnabled:
           manualTrackingValidationEnabled ??
           this.manualTrackingValidationEnabled,
@@ -323,6 +333,7 @@ class AppSettings {
     'orderSpeechEnabled': orderSpeechEnabled,
     'maxVolumeEnabled': maxVolumeEnabled,
     'recordAudioEnabled': recordAudioEnabled,
+    'watermarkEnabled': watermarkEnabled,
     'manualTrackingValidationEnabled': manualTrackingValidationEnabled,
     'cameraCapabilityPreference': cameraCapabilityPreference.storageValue,
     'cameraCapabilityState': cameraCapabilityState,

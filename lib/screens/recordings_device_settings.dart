@@ -411,6 +411,8 @@ class _RecordingSettingsScreen extends StatefulWidget {
     required this.onOrientationChanged,
     required this.recordAudio,
     required this.onRecordAudioChanged,
+    required this.watermark,
+    required this.onWatermarkChanged,
   });
 
   final RecordingVideoCodec codec;
@@ -425,6 +427,8 @@ class _RecordingSettingsScreen extends StatefulWidget {
   final ValueChanged<RecordingOrientation> onOrientationChanged;
   final bool recordAudio;
   final ValueChanged<bool> onRecordAudioChanged;
+  final bool watermark;
+  final ValueChanged<bool> onWatermarkChanged;
 
   @override
   State<_RecordingSettingsScreen> createState() =>
@@ -437,6 +441,7 @@ class _RecordingSettingsScreenState extends State<_RecordingSettingsScreen> {
   late RecordingSpecPreset _spec = widget.spec;
   late RecordingOrientation _orientation = widget.orientation;
   late bool _recordAudio = widget.recordAudio;
+  late bool _watermark = widget.watermark;
 
   @override
   Widget build(BuildContext context) {
@@ -484,6 +489,14 @@ class _RecordingSettingsScreenState extends State<_RecordingSettingsScreen> {
                 onChanged: (bool value) {
                   setState(() => _recordAudio = value);
                   widget.onRecordAudioChanged(value);
+                },
+              ),
+              Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+              _WatermarkSettings(
+                enabled: _watermark,
+                onChanged: (bool value) {
+                  setState(() => _watermark = value);
+                  widget.onWatermarkChanged(value);
                 },
               ),
             ],
@@ -1236,6 +1249,51 @@ class _RecordAudioSettings extends StatelessWidget {
   }
 }
 
+class _WatermarkSettings extends StatelessWidget {
+  const _WatermarkSettings({required this.enabled, required this.onChanged});
+
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Padding(
+      key: const Key('watermark-settings'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  '添加水印',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  '关闭后录像不带时间和单号水印',
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            key: const Key('watermark-enabled-switch'),
+            value: enabled,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MinimumBarcodeLengthSettings extends StatelessWidget {
   const _MinimumBarcodeLengthSettings({
     required this.value,
@@ -1570,7 +1628,7 @@ extension _RecordingsSettingsView on _RecordingsScreenState {
         tileKey: const Key('recording-settings-open'),
         icon: Icons.video_settings_rounded,
         title: '录像设置',
-        subtitle: '编码、规格、方向与声音',
+        subtitle: '编码、规格、方向、声音与水印',
         onOpen: () => Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
             builder: (_) => _RecordingSettingsScreen(
@@ -1592,6 +1650,8 @@ extension _RecordingsSettingsView on _RecordingsScreenState {
               },
               recordAudio: _recordAudioEnabled,
               onRecordAudioChanged: _setRecordAudioEnabled,
+              watermark: _watermarkEnabled,
+              onWatermarkChanged: _setWatermarkEnabled,
             ),
           ),
         ),

@@ -994,6 +994,23 @@ void main() {
     expect(find.byKey(const Key('camera-watermark-preview')), findsOneWidget);
   });
 
+  testWidgets('关闭添加水印后回退预览也不显示水印', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PackingHomeView(
+          phase: PackingSessionPhase.ready,
+          elapsed: const Duration(seconds: 8),
+          watermarkEnabled: false,
+          previewOverride: const ColoredBox(color: Colors.black),
+          onPrimaryPressed: () {},
+          onRetryPressed: () {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('camera-watermark-preview')), findsNothing);
+  });
+
   testWidgets('水印时钟只重建水印而不重建相机预览', (WidgetTester tester) async {
     int previewBuilds = 0;
     await tester.pumpWidget(

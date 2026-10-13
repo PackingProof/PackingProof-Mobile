@@ -11,6 +11,7 @@ abstract interface class CameraPlatform {
     String videoCodec,
     String recordingSpec,
     String capabilityMode,
+    bool watermarkEnabled = true,
   });
 
   Future<bool> ensurePermissions({required bool recordAudio});
