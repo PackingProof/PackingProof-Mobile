@@ -203,49 +203,69 @@ class StartupNoticeScreen extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Center(
-                child: Image.asset(
-                  'assets/images/app-icon.png',
-                  key: const Key('startup-notice-app-icon'),
-                  width: 72,
-                  height: 72,
-                  filterQuality: FilterQuality.high,
-                ),
-              ),
-              const SizedBox(height: 14),
-              const Text(
-                '欢迎使用包裹留证',
-                key: Key('startup-notice-title'),
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                key: const Key('startup-notice-card'),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: colors.surfaceContainer,
-                  border: Border.all(color: colors.outlineVariant),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    Text(
-                      'PackingProof-Mobile（包裹留证）\n'
-                      '是一款开源且免费的包裹录像留证工具\n\n'
-                      '录像和面单号仅保存在本机，不会上传到互联网\n\n'
-                      '只有你主动连接电脑后，才会通过局域网备份录像',
-                      textAlign: TextAlign.left,
-                      style: const TextStyle(fontSize: 15, height: 1.65),
+              // 系统字体放大时正文会高于屏幕，说明内容改为可滚动，
+              // 确认按钮固定在底部，保证任何字体缩放下都能点到。
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    key: const Key('startup-notice-scroll'),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        Center(
+                          child: Image.asset(
+                            'assets/images/app-icon.png',
+                            key: const Key('startup-notice-app-icon'),
+                            width: 72,
+                            height: 72,
+                            filterQuality: FilterQuality.high,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        const Text(
+                          '欢迎使用包裹留证',
+                          key: Key('startup-notice-title'),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Container(
+                          key: const Key('startup-notice-card'),
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: colors.surfaceContainer,
+                            border: Border.all(color: colors.outlineVariant),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              Text(
+                                'PackingProof-Mobile（包裹留证）\n'
+                                '是一款开源且免费的包裹录像留证工具\n\n'
+                                '录像和面单号仅保存在本机，不会上传到互联网\n\n'
+                                '只有你主动连接电脑后，才会通过局域网备份录像',
+                                textAlign: TextAlign.left,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  height: 1.65,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               FilledButton(
                 key: const Key('startup-notice-confirm'),
                 onPressed: onConfirm,

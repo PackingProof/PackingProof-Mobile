@@ -62,4 +62,73 @@ void main() {
     expect(find.textContaining('开源且免费'), findsOneWidget);
     expect(find.textContaining('才会通过局域网备份录像'), findsOneWidget);
   });
+
+  testWidgets('系统字体放大时欢迎页不溢出且确认按钮仍可点击', (WidgetTester tester) async {
+    const double viewportHeight = 568;
+    tester.view.physicalSize = const Size(320, viewportHeight);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    var confirmCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (BuildContext context, Widget? child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: StartupNoticeScreen(
+          buildConfig: const AppBuildConfig(),
+          confirmLabel: '关闭',
+          onConfirm: () async => confirmCount++,
+        ),
+      ),
+    );
+
+    final Finder scrollView = find.byKey(const Key('startup-notice-scroll'));
+    expect(scrollView, findsOneWidget);
+    // 说明内容高于可视区域时改为滚动查看，不再溢出屏幕。
+    expect(tester.getSize(scrollView).height, lessThan(viewportHeight));
+    expect(
+      tester.getRect(find.byKey(const Key('startup-notice-card'))).top,
+      lessThan(viewportHeight),
+    );
+
+    final Finder confirm = find.byKey(const Key('startup-notice-confirm'));
+    expect(tester.getRect(confirm).bottom, lessThanOrEqualTo(viewportHeight));
+    await tester.tap(confirm);
+    await tester.pump();
+    expect(confirmCount, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('默认字体下欢迎页内容与确认按钮完整显示', (WidgetTester tester) async {
+    const double viewportHeight = 568;
+    tester.view.physicalSize = const Size(320, viewportHeight);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StartupNoticeScreen(
+          buildConfig: const AppBuildConfig(),
+          onConfirm: () async {},
+        ),
+      ),
+    );
+
+    final Rect card = tester.getRect(
+      find.byKey(const Key('startup-notice-card')),
+    );
+    final Rect confirm = tester.getRect(
+      find.byKey(const Key('startup-notice-confirm')),
+    );
+    expect(card.top, greaterThanOrEqualTo(0));
+    expect(card.bottom, lessThanOrEqualTo(confirm.top));
+    expect(confirm.bottom, lessThanOrEqualTo(viewportHeight));
+    expect(tester.takeException(), isNull);
+  });
 }
