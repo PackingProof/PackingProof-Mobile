@@ -16,7 +16,7 @@ Android 工具链（Gradle/JVM 测试、签名目录、APK 构建）只在 Windo
 | `Tools/Publish-Android.ps1` | Windows | 构建并校验正式签名 APK |
 | `Tools/Publish-iOS.sh` | Mac | 构建并校验 App Store IPA（不上传） |
 | `双击发布Release.bat` | Windows | 发布入口，调用 `Tools/Publish-Releases.ps1` |
-| `Tools/Publish-Releases.ps1` / `.sh` | 本机渠道可用的一侧 | 创建 GitHub + Gitee Release 并上传 APK（两份脚本等价） |
+| `Tools/Publish-Releases.ps1` / `.sh` | 本机渠道可用的一侧 | 创建 GitHub + Gitee Release 并上传 APK 与 build-manifest.json（两份脚本等价） |
 | `Tools/Upload-TestFlight.sh` | Mac | 上传 IPA 到 TestFlight |
 
 本机配置集中在仓库根目录 `.env`，模板是已跟踪的 `.env.example`；真实凭据只存在于本机与持有发布权限的人手里，仓库内不保存。
@@ -89,7 +89,7 @@ pwsh -NoProfile -File Tools\Publish-Android.ps1
 
 ## 产物与发布平台
 
-正式构建目录输出必须包含（仅用于本地校验，不全部上传）：
+正式构建目录输出必须包含：
 
 ```text
 dist/android/PackingProof-Mobile-v<versionName>+<versionCode>.apk
@@ -101,9 +101,9 @@ build-manifest.json
 - 只有固定语音资源、元数据、Git revision、正式签名和 SHA256 全部验证通过，才算构建成功
 - keystore、`签名凭据.txt`、证书和其他签名配置必须位于仓库外，禁止打印、提交、复制或打包
 
-GitHub/Gitee Release 只上传 Android APK。iOS 不再上传 IPA，只发布到 TestFlight。`SHA256SUMS.txt` 和 `build-manifest.json` 仅用于本地发布门禁与问题追踪，不作为 Release 附件。
+GitHub/Gitee Release 上传 Android APK 和它同名的 `build-manifest.json` 两份附件。清单里带 `versionName` / `versionCode`，是**电脑端给手机端显示"最新构建号"的唯一来源** —— 电脑端只从 Release 附件里找这份清单并校验版本名一致，缺了它，手机端更新提示就只有版本号、没有构建号（历史上就是这么缺的）。清单只放这两个字段给电脑端读，其余字段仍属于本地发布门禁用途。iOS 不再上传 IPA，只发布到 TestFlight；`SHA256SUMS.txt` 仅用于本地发布门禁与问题追踪，不作为 Release 附件。
 
-两个平台的 Release 用哪一侧的渠道凭据就在哪一侧创建：`Tools/Publish-Releases.ps1`（Windows）与 `Tools/Publish-Releases.sh`（Mac）是等价实现，改动其一时必须同步另一处。它按当前精确 tag 找 `dist/android/` 下的 APK，先建 GitHub Release（连不上时自动重试），再建 Gitee Release 并上传同一个 APK；已存在的 Release 会跳过创建，可安全重跑：
+两个平台的 Release 用哪一侧的渠道凭据就在哪一侧创建：`Tools/Publish-Releases.ps1`（Windows）与 `Tools/Publish-Releases.sh`（Mac）是等价实现，改动其一时必须同步另一处。它按当前精确 tag 找 `dist/android/` 下的 APK 和 `build-manifest.json`（两者缺一即失败），先建 GitHub Release（连不上时自动重试），再建 Gitee Release 并逐个上传这两份附件；已存在的 Release 会跳过创建，可安全重跑：
 
 ```powershell
 pwsh -NoProfile -File Tools\Publish-Releases.ps1 dist\android\RELEASE_NOTES-v<versionName>+<versionCode>.md `

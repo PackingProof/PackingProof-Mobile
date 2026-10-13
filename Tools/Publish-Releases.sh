@@ -4,8 +4,9 @@
 #   ./Tools/Publish-Releases.sh <release-notes-file> [--title "<一句话内容>"] [--prerelease]
 #
 # 约定：
-# - 只上传 Android APK，iOS 走 TestFlight（Tools/Upload-TestFlight.sh），不附 IPA
-# - APK 必须已经由 Tools/Publish-Android.ps1 生成在 dist/android/ 下
+# - 上传 Android APK 和 build-manifest.json 两份附件：电脑端要从清单里读 versionCode，
+#   才能给手机端显示"最新构建号"；iOS 走 TestFlight（Tools/Upload-TestFlight.sh），不附 IPA
+# - APK 与清单必须已经由 Tools/Publish-Android.ps1 生成在 dist/android/ 下
 # - 标题固定 `v<X.Y.Z+VVVV> <一句话内容>`，两个平台内容保持一致
 # - GitHub 用 gh、Gitee 用 gitee CLI；Gitee 令牌固定取 .env 的 GITEE_TOKEN
 #   导出到环境变量后交给 CLI，脚本不打印也不落盘凭据
@@ -54,6 +55,14 @@ if [ ! -f "$APK" ]; then
   exit 1
 fi
 
+# 清单必须一起传：电脑端只从 Release 附件里找 build-manifest.json 来取 versionCode，
+# 缺了它，手机端更新提示就只有版本号、没有构建号。
+MANIFEST="dist/android/build-manifest.json"
+if [ ! -f "$MANIFEST" ]; then
+  echo "找不到构建清单：${MANIFEST}，请先在 Windows 编译机执行 Tools/Publish-Android.ps1 并取回产物" >&2
+  exit 1
+fi
+
 TITLE="$TAG"
 [ -n "$TITLE_SUFFIX" ] && TITLE="${TAG} ${TITLE_SUFFIX}"
 
@@ -72,13 +81,14 @@ fi
 
 echo "发布 ${TAG}"
 echo "  APK    ${APK}"
+echo "  清单   ${MANIFEST}"
 echo "  笔记   ${NOTES_FILE}"
 echo "  标题   ${TITLE}"
 echo "  Gitee 令牌   ${GITEE_TOKEN_SOURCE:-gitee CLI 登录态}"
 
 echo ""
 echo "==> GitHub Release"
-gh_args=(release create "$TAG" "$APK" --repo "$REPO_SLUG" --title "$TITLE" --notes-file "$NOTES_FILE")
+gh_args=(release create "$TAG" "$APK" "$MANIFEST" --repo "$REPO_SLUG" --title "$TITLE" --notes-file "$NOTES_FILE")
 [ "$PRERELEASE" -eq 1 ] && gh_args+=(--prerelease)
 if gh release view "$TAG" --repo "$REPO_SLUG" >/dev/null 2>&1; then
   echo "GitHub 上 ${TAG} 已存在，跳过创建"
@@ -100,8 +110,10 @@ if gitee release view "$TAG" --repo "$REPO_SLUG" >/dev/null 2>&1; then
 else
   gitee "${gitee_args[@]}" >/dev/null
 fi
-gitee release upload --repo "$REPO_SLUG" "$TAG" "$APK" >/dev/null
-echo "Gitee 附件已上传（Gitee 会把文件名里的 + 显示成空格，属正常）"
+for asset in "$APK" "$MANIFEST"; do
+  gitee release upload --repo "$REPO_SLUG" "$TAG" "$asset" >/dev/null
+done
+echo "Gitee 附件已上传：APK 与 build-manifest.json（Gitee 会把文件名里的 + 显示成空格，属正常）"
 
 echo ""
 echo "GitHub 与 Gitee Release 均已就绪：${TAG}"

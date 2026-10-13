@@ -5,8 +5,9 @@
 # 也可以双击仓库根目录的「双击发布Release.bat」。
 #
 # 约定：
-# - 只上传 Android APK，iOS 走 TestFlight（Mac 上执行 Tools/Upload-TestFlight.sh），不附 IPA
-# - APK 必须已经由 Tools/Publish-Android.ps1 生成在 dist/android/ 下，不需要跨机拷贝
+# - 上传 Android APK 和 build-manifest.json 两份附件：电脑端要从清单里读 versionCode，
+#   才能给手机端显示"最新构建号"；iOS 走 TestFlight（Mac 上执行 Tools/Upload-TestFlight.sh），不附 IPA
+# - APK 与清单必须已经由 Tools/Publish-Android.ps1 生成在 dist/android/ 下，不需要跨机拷贝
 # - 标题固定 `v<X.Y.Z+VVVV> <一句话内容>`，两个平台内容保持一致
 # - GitHub 用 gh、Gitee 用 gitee CLI；Gitee 令牌固定取 .env 的 GITEE_TOKEN
 #   注入环境变量后交给 CLI，脚本不打印也不落盘凭据
@@ -48,6 +49,13 @@ if (-not (Test-Path -LiteralPath $apkPath -PathType Leaf)) {
     throw "找不到 APK：$apkPath，请先执行 Tools\Publish-Android.ps1"
 }
 
+# 清单必须一起传：电脑端只从 Release 附件里找 build-manifest.json 来取 versionCode，
+# 缺了它，手机端更新提示就只有版本号、没有构建号。
+$manifestPath = Join-Path $repoRoot "dist\android\build-manifest.json"
+if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+    throw "找不到构建清单：$manifestPath，请先执行 Tools\Publish-Android.ps1"
+}
+
 $releaseTitle = if ([string]::IsNullOrWhiteSpace($Title)) { $tag } else { "$tag $Title" }
 
 # Gitee 令牌固定来自 .env；CLI 的登录态可能停在失效的旧身份上，
@@ -64,6 +72,7 @@ if (-not (Test-GiteeAuthentication -Repository $repoSlug -RepoRoot $repoRoot)) {
 
 Write-Host "发布 $tag"
 Write-Host "  APK    $apkPath"
+Write-Host "  清单   $manifestPath"
 Write-Host "  笔记   $notesFullPath"
 Write-Host "  标题   $releaseTitle"
 Write-Host "  Gitee 令牌   $(if ($giteeTokenSource) { $giteeTokenSource } else { 'gitee CLI 登录态' })"
@@ -75,7 +84,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "GitHub 上 $tag 已存在，跳过创建"
 }
 else {
-    $ghArgs = @("release", "create", $tag, $apkPath, "--repo", $repoSlug, "--title", $releaseTitle, "--notes-file", $notesFullPath)
+    $ghArgs = @("release", "create", $tag, $apkPath, $manifestPath, "--repo", $repoSlug, "--title", $releaseTitle, "--notes-file", $notesFullPath)
     if ($Prerelease) { $ghArgs += "--prerelease" }
 
     # 公网到 GitHub 偶发连不上，重试几次再判失败。
@@ -113,11 +122,13 @@ else {
     }
 }
 
-& gitee release upload --repo $repoSlug $tag $apkPath *> $null
-if ($LASTEXITCODE -ne 0) {
-    throw "Gitee 附件上传失败：$(Split-Path -Leaf $apkPath)"
+foreach ($asset in @($apkPath, $manifestPath)) {
+    & gitee release upload --repo $repoSlug $tag $asset *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Gitee 附件上传失败：$(Split-Path -Leaf $asset)"
+    }
 }
-Write-Host "Gitee 附件已上传（Gitee 会把文件名里的 + 显示成空格，属正常）"
+Write-Host "Gitee 附件已上传：APK 与 build-manifest.json（Gitee 会把文件名里的 + 显示成空格，属正常）"
 
 Write-Host ""
 Write-Host "GitHub 与 Gitee Release 均已就绪：$tag"
