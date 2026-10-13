@@ -108,7 +108,22 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       _returnBackedRetention = settings.returnBackedRetention;
       _storagePressurePolicy = settings.storagePressurePolicy;
       _recordAudioEnabled = settings.recordAudioEnabled;
+      // 诊断：相机初始化会从设置文件回填这个开关，如果和内存里的值不同，
+      // 说明有人（多半是不该动的）把它改回去了 —— 记一笔好定位。
+      final bool watermarkBeforeInit = _watermarkEnabled;
       _watermarkEnabled = settings.watermarkEnabled;
+      if (watermarkBeforeInit != _watermarkEnabled) {
+        unawaited(
+          _runtimeLog.log(
+            kind: 'watermark_flag',
+            extra: <String, Object?>{
+              'where': 'camera_init_refill',
+              'before': watermarkBeforeInit,
+              'after': _watermarkEnabled,
+            },
+          ),
+        );
+      }
       _manualTrackingValidationEnabled =
           settings.manualTrackingValidationEnabled;
       _capabilityPreference = settings.cameraCapabilityPreference;

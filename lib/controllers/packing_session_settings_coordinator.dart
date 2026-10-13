@@ -141,6 +141,12 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
       return;
     }
     _watermarkEnabled = enabled;
+    unawaited(
+      _runtimeLog.log(
+        kind: 'watermark_flag',
+        extra: <String, Object?>{'where': 'user_toggle', 'after': enabled},
+      ),
+    );
     notifyListeners();
     await _repository.saveWatermarkEnabled(enabled);
     if (_supportsNativeCamera && _phase != PackingSessionPhase.saving) {
@@ -148,10 +154,29 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
         await stopWork();
       }
       await retryInitialize();
+      unawaited(
+        _runtimeLog.log(
+          kind: 'watermark_flag',
+          extra: <String, Object?>{
+            'where': 'toggle_reinit_done',
+            'flag': _watermarkEnabled,
+          },
+        ),
+      );
       // 相机初始化会从设置文件回填这个开关（见 _initializeCamera）。如果在途的那次
       // 初始化是在我们存盘之前读的配置，就会把刚关掉的水印又打开 —— 预览会跟着
       // 显示水印，而成片里没有（录制走的是存盘后的值）。重建完按用户意图确认一次。
       if (_watermarkEnabled != enabled) {
+        unawaited(
+          _runtimeLog.log(
+            kind: 'watermark_flag',
+            extra: <String, Object?>{
+              'where': 'toggle_reassert',
+              'before': _watermarkEnabled,
+              'after': enabled,
+            },
+          ),
+        );
         _watermarkEnabled = enabled;
         notifyListeners();
       }
