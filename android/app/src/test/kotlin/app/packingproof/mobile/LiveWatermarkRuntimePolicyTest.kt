@@ -365,4 +365,18 @@ class LiveWatermarkRuntimePolicyTest {
             ),
         )
     }
+
+    @Test
+    fun `idle preview clears the watermark whenever the switch is off`() {
+        assertEquals(
+            LiveWatermarkIdleAction.SHOW_TIMESTAMP,
+            LiveWatermarkActivationPolicy.idleAction(watermarkEnabled = true),
+        )
+        // 结束工作、重建会话都会回到空闲水印：关掉开关时必须清空，
+        // 否则预览会重新出现只有时间的水印。
+        assertEquals(
+            LiveWatermarkIdleAction.CLEAR,
+            LiveWatermarkActivationPolicy.idleAction(watermarkEnabled = false),
+        )
+    }
 }

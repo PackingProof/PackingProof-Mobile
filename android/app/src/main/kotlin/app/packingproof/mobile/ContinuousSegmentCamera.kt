@@ -1365,11 +1365,7 @@ class ContinuousSegmentCamera(
             // 预览与编码共用同一个 GL 水印渲染器。空闲时只显示时间，
             // 开始录像后在同一图层加入面单号，避免 Flutter/原生两套水印跳变。
             // 关闭「添加水印」时合成器保持无水印状态。
-            if (liveWatermarkEnabled) {
-                compositor.setWatermark("")
-            } else {
-                compositor.clearWatermark()
-            }
+            applyIdleWatermark()
             compositor.setEncoderEnabled(recordingRequested || recordingActive)
             Log.i(
                 CAMERA_LOG_TAG,
@@ -2533,6 +2529,18 @@ class ContinuousSegmentCamera(
             LiveWatermarkSegmentDisposition.FAILED_PARTIAL -> "failedPartial"
         }
 
+    /**
+     * 回到空闲预览的水印状态：开关开着只显示时间，关掉就必须彻底清空。
+     * 结束工作/会话重建都走这里 —— 以前这里无条件贴时间戳，关掉的水印会在
+     * 预览里重新冒出来（成片反而是干净的）。
+     */
+    private fun applyIdleWatermark() {
+        when (LiveWatermarkActivationPolicy.idleAction(liveWatermarkEnabled)) {
+            LiveWatermarkIdleAction.SHOW_TIMESTAMP -> cameraGlCompositor?.setWatermark("")
+            LiveWatermarkIdleAction.CLEAR -> cameraGlCompositor?.clearWatermark()
+        }
+    }
+
     private fun finishStop() {
         val result = stopResult ?: return
         try {
@@ -2540,7 +2548,7 @@ class ContinuousSegmentCamera(
             val watermarkDisposition = liveWatermarkDispositionWire()
             encodedWatermarkFrameTracker.reset()
             cameraGlCompositor?.setEncoderEnabled(false)
-            cameraGlCompositor?.setWatermark("")
+            applyIdleWatermark()
             activeWatermarkTrackingNumber = ""
             recordingVideoEncoder.setSuspended(true)
             stopResult = null
@@ -2561,7 +2569,7 @@ class ContinuousSegmentCamera(
             stopResult = null
             pendingNextTrackingNumber = null
             cameraGlCompositor?.setEncoderEnabled(false)
-            cameraGlCompositor?.setWatermark("")
+            applyIdleWatermark()
             activeWatermarkTrackingNumber = ""
             replyError(result, "muxer_stop", "录像文件保存失败")
             notifyNativeError("录像文件保存失败", error)

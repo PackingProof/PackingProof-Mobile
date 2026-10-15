@@ -86,6 +86,12 @@ internal enum class LiveWatermarkSegmentDisposition {
     FAILED_PARTIAL,
 }
 
+/** 空闲预览的水印动作：`SHOW_TIMESTAMP` 只贴时间，`CLEAR` 完全不绘制。 */
+internal enum class LiveWatermarkIdleAction {
+    SHOW_TIMESTAMP,
+    CLEAR,
+}
+
 /**
  * 「添加水印」开关的判定口径：关闭时预览与成片都不绘制水印。
  *
@@ -97,6 +103,17 @@ internal object LiveWatermarkActivationPolicy {
         glPipeline: Boolean,
         hasCompositor: Boolean,
     ): Boolean = watermarkEnabled && glPipeline && hasCompositor
+
+    /**
+     * 未录像（空闲预览、结束工作、会话重建）时合成器该做什么。开关开着只贴时间戳，
+     * 关掉必须彻底清空 —— 无条件贴时间戳会让关掉的开关在预览里「复活」。
+     */
+    fun idleAction(watermarkEnabled: Boolean): LiveWatermarkIdleAction =
+        if (watermarkEnabled) {
+            LiveWatermarkIdleAction.SHOW_TIMESTAMP
+        } else {
+            LiveWatermarkIdleAction.CLEAR
+        }
 
     fun effectiveDisposition(
         watermarkEnabled: Boolean,
