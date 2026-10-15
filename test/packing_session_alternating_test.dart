@@ -1660,6 +1660,45 @@ void main() {
       await tester.pump(const Duration(seconds: 4));
     }
   });
+
+  test('运行中关闭添加水印后按关闭状态重建相机', () async {
+    camera.fullSupported = true;
+    // 切换开关会重建相机（先释放再初始化），所以这里要给出可重建的服务工厂。
+    final PackingSessionController reconfiguring = PackingSessionController(
+      repository: testRepository(root),
+      speechService: _FakeSpeechSink(),
+      maxVolumeService: _FakeMaxVolumeSink(),
+      orderInfoReceiver: _FakeOrderReceiverSink(),
+      videoWatermarkService: _FakeWatermarkSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{
+        PlatformCapability.continuousCameraRecording,
+        PlatformCapability.cameraCapabilityNegotiation,
+      }),
+      cameraService: ContinuousCameraService(platform: camera),
+      cameraServiceFactory: () => ContinuousCameraService(platform: camera),
+    );
+    addTearDown(() async {
+      await reconfiguring.shutdown();
+      reconfiguring.dispose();
+    });
+    await reconfiguring.initialize();
+    await reconfiguring.retryCapabilityProbe();
+    expect(reconfiguring.watermarkEnabled, isTrue);
+    expect(camera.lastInitializeWatermarkEnabled, isTrue);
+
+    await reconfiguring.setWatermarkEnabled(false);
+
+    // 开关一旦关闭，重建后的相机必须收到关闭状态：相机初始化会从设置文件回填
+    // 这个开关，回填结果不能把用户刚关闭的水印又打开。
+    expect(reconfiguring.watermarkEnabled, isFalse);
+    expect(camera.lastInitializeWatermarkEnabled, isFalse);
+    expect((await repository.loadSettings()).watermarkEnabled, isFalse);
+
+    await reconfiguring.setWatermarkEnabled(true);
+
+    expect(reconfiguring.watermarkEnabled, isTrue);
+    expect(camera.lastInitializeWatermarkEnabled, isTrue);
+  });
 }
 
 Future<void> _confirmBarcode(
