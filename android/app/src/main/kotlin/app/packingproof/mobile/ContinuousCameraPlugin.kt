@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCharacteristics
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.plugin.common.BinaryMessenger
@@ -45,7 +46,12 @@ class ContinuousCameraPlugin(
                 call.argument<String>("recordingSpec"),
                 call.argument<String>("capabilityMode"),
                 call.argument<String>("recordingOrientation"),
-                call.argument<Boolean>("watermarkEnabled") != false,
+                // 参数缺省按"开"处理（跟设置里的默认一致），但缺了要留痕：
+                // 这个字段以前能被静默漏掉，现场只看到"水印自己回来了"。
+                (call.argument<Boolean>("watermarkEnabled") ?: run {
+                    Log.w("PackingProof.Camera", "initialize 没带 watermarkEnabled，按默认开启处理")
+                    true
+                }),
             )
             "ensurePermissions" -> ensurePermissions(
                 call.argument<Boolean>("recordAudio") == true,

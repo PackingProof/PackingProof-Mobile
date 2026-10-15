@@ -287,7 +287,9 @@ class ContinuousSegmentCamera(
         recordingSpecName: String? = null,
         capabilityModeName: String? = null,
         recordingOrientationName: String? = null,
-        watermarkEnabled: Boolean = true,
+        // 刻意不给默认值：这个开关以前"缺省就是开"，任何漏传参数的调用点都会
+        // 悄悄把水印打开。现在漏传直接编译不过，免得再踩。
+        watermarkEnabled: Boolean,
     ) {
         if (disposed) {
             result.error("disposed", "摄像头已经关闭", null)
