@@ -22,18 +22,28 @@ internal object CameraOpenRetryPolicy {
     }
 
     // 对应 CameraDevice.StateCallback 的瞬时错误码（值为编译期常量）。
-    private const val ERROR_CAMERA_DISCONNECTED = 1
-    private const val ERROR_CAMERA_IN_USE = 2
-    private const val ERROR_MAX_CAMERAS_IN_USE = 3
-    private const val ERROR_CAMERA_DISABLED = 4
-    private const val ERROR_CAMERA_SERVICE_DISCONNECTED = 6
+    private const val ERROR_CAMERA_IN_USE = 1
+    private const val ERROR_MAX_CAMERAS_IN_USE = 2
+    private const val ERROR_CAMERA_DISABLED = 3
+    private const val ERROR_CAMERA_DEVICE = 4
+    private const val ERROR_CAMERA_SERVICE = 5
 
     fun isTransientStateError(errorCode: Int): Boolean = when (errorCode) {
-        ERROR_CAMERA_DISCONNECTED,
         ERROR_CAMERA_IN_USE,
         ERROR_MAX_CAMERAS_IN_USE,
         ERROR_CAMERA_DISABLED,
-        ERROR_CAMERA_SERVICE_DISCONNECTED -> true
+        ERROR_CAMERA_DEVICE,
+        ERROR_CAMERA_SERVICE -> true
         else -> false
     }
+
+    fun shouldRestartActivePreview(
+        previewActive: Boolean,
+        recording: Boolean,
+        restartAttempts: Int,
+    ): Boolean =
+        previewActive &&
+            !recording &&
+            restartAttempts >= 0 &&
+            restartAttempts < MAX_ATTEMPTS
 }

@@ -7,19 +7,51 @@ import org.junit.Test
 
 class CameraOpenRetryPolicyTest {
     @Test
-    fun `camera in use and service disconnects are transient`() {
+    fun `all Camera2 state callback errors are transient`() {
         assertTrue(CameraOpenRetryPolicy.isTransientStateError(1))
         assertTrue(CameraOpenRetryPolicy.isTransientStateError(2))
         assertTrue(CameraOpenRetryPolicy.isTransientStateError(3))
         assertTrue(CameraOpenRetryPolicy.isTransientStateError(4))
-        assertTrue(CameraOpenRetryPolicy.isTransientStateError(6))
+        assertTrue(CameraOpenRetryPolicy.isTransientStateError(5))
     }
 
     @Test
-    fun `fatal device errors are not retried`() {
-        assertFalse(CameraOpenRetryPolicy.isTransientStateError(5))
+    fun `unknown device errors are not retried`() {
         assertFalse(CameraOpenRetryPolicy.isTransientStateError(0))
+        assertFalse(CameraOpenRetryPolicy.isTransientStateError(6))
         assertFalse(CameraOpenRetryPolicy.isTransientStateError(-1))
+    }
+
+    @Test
+    fun `active preview restarts after transient camera errors`() {
+        assertTrue(
+            CameraOpenRetryPolicy.shouldRestartActivePreview(
+                previewActive = true,
+                recording = false,
+                restartAttempts = 0,
+            ),
+        )
+        assertFalse(
+            CameraOpenRetryPolicy.shouldRestartActivePreview(
+                previewActive = false,
+                recording = false,
+                restartAttempts = 0,
+            ),
+        )
+        assertFalse(
+            CameraOpenRetryPolicy.shouldRestartActivePreview(
+                previewActive = true,
+                recording = true,
+                restartAttempts = 0,
+            ),
+        )
+        assertFalse(
+            CameraOpenRetryPolicy.shouldRestartActivePreview(
+                previewActive = true,
+                recording = false,
+                restartAttempts = CameraOpenRetryPolicy.MAX_ATTEMPTS,
+            ),
+        )
     }
 
     @Test
