@@ -702,11 +702,11 @@ void main() {
     camera.previewDeactivationBlocker = Completer<void>();
 
     final Future<void> first = controller.setPreviewActive(false);
-    await camera.previewDeactivationStarted.future;
     final Future<void> second = controller.setPreviewActive(true);
     final Future<void> third = controller.setPreviewActive(false);
     final Future<void> fourth = controller.setPreviewActive(true);
 
+    await camera.previewDeactivationStarted.future;
     camera.previewDeactivationBlocker!.complete();
     await Future.wait(<Future<void>>[first, second, third, fourth]);
 

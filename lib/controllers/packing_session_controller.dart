@@ -174,6 +174,7 @@ class PackingSessionController extends ChangeNotifier
   Future<void> _previewStateTail = Future<void>.value();
   Future<void>? _previewTransitionDrain;
   int _previewTransitionRevision = 0;
+  bool _previewPauseRequested = false;
   int _pendingPreviewTransitions = 0;
   final Set<Future<void>> _backgroundTasks = <Future<void>>{};
   Future<void>? _shutdownFuture;
@@ -1082,6 +1083,7 @@ class PackingSessionController extends ChangeNotifier
   Future<void> setPreviewActive(bool active) async {
     if (!_supportsNativeCamera) return;
     _previewActive = active;
+    if (!active) _previewPauseRequested = true;
     _previewTransitionRevision++;
     unawaited(_syncWakelock());
     _pendingPreviewTransitions++;
@@ -1098,18 +1100,35 @@ class PackingSessionController extends ChangeNotifier
   Future<void> _runPreviewTransitionDrain() async {
     try {
       while (true) {
-        // 只保证最终状态，快速来回切页产生的中间开/关直接合并丢弃。
+        // 等点击停下来，只处理这一批操作最终需要的状态。
+        int observedRevision;
+        do {
+          observedRevision = _previewTransitionRevision;
+          await Future<void>.delayed(transitionSettleDelay);
+        } while (observedRevision != _previewTransitionRevision);
         final int revision = _previewTransitionRevision;
         final bool target = _previewActive;
-        try {
-          await _nativeCamera?.setPreviewActive(target);
-        } on Object {
-          // Preview power tuning must never block navigation or recording.
+        final bool pauseRequested = _previewPauseRequested;
+        _previewPauseRequested = false;
+        if (target && pauseRequested) {
+          // 这一批操作曾进入历史页。即使最终马上回到录制页，也强制走一次
+          // 暂停/恢复，确保相机和预览纹理在同一批结束后确实重建。
+          await _setNativePreviewState(false);
+          if (revision != _previewTransitionRevision) continue;
         }
+        await _setNativePreviewState(target);
         if (revision == _previewTransitionRevision) return;
       }
     } finally {
       _previewTransitionDrain = null;
+    }
+  }
+
+  Future<void> _setNativePreviewState(bool active) async {
+    try {
+      await _nativeCamera?.setPreviewActive(active);
+    } on Object {
+      // Preview power tuning must never block navigation or recording.
     }
   }
 
