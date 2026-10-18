@@ -137,6 +137,9 @@ class PackingSessionController extends ChangeNotifier
 
   static const Duration analysisInterval = Duration(milliseconds: 200);
   static const Duration transitionSettleDelay = Duration(milliseconds: 120);
+  static const Duration _previewTransitionQuietPeriod = Duration(
+    milliseconds: 350,
+  );
   static const Duration initialModeAnnouncementDelay = Duration(
     milliseconds: 250,
   );
@@ -1104,7 +1107,7 @@ class PackingSessionController extends ChangeNotifier
         int observedRevision;
         do {
           observedRevision = _previewTransitionRevision;
-          await Future<void>.delayed(transitionSettleDelay);
+          await Future<void>.delayed(_previewTransitionQuietPeriod);
         } while (observedRevision != _previewTransitionRevision);
         final int revision = _previewTransitionRevision;
         final bool target = _previewActive;
