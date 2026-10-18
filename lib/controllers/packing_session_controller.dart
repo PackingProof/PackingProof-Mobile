@@ -172,6 +172,8 @@ class PackingSessionController extends ChangeNotifier
   late final DiagnosticsLogService _runtimeLog;
   Future<Map<String, Object?>>? _runtimeMetadataFuture;
   Future<void> _previewStateTail = Future<void>.value();
+  Future<void>? _previewTransitionDrain;
+  int _previewTransitionRevision = 0;
   int _pendingPreviewTransitions = 0;
   final Set<Future<void>> _backgroundTasks = <Future<void>>{};
   Future<void>? _shutdownFuture;
@@ -1080,20 +1082,35 @@ class PackingSessionController extends ChangeNotifier
   Future<void> setPreviewActive(bool active) async {
     if (!_supportsNativeCamera) return;
     _previewActive = active;
+    _previewTransitionRevision++;
     unawaited(_syncWakelock());
     _pendingPreviewTransitions++;
-    final Future<void> next = _previewStateTail.then((_) async {
-      try {
-        await _nativeCamera?.setPreviewActive(active);
-      } on Object {
-        // Preview power tuning must never block navigation or recording.
+    final Future<void> drain = _previewTransitionDrain ??=
+        _runPreviewTransitionDrain();
+    _previewStateTail = drain;
+    try {
+      await drain;
+    } finally {
+      _pendingPreviewTransitions--;
+    }
+  }
+
+  Future<void> _runPreviewTransitionDrain() async {
+    try {
+      while (true) {
+        // 只保证最终状态，快速来回切页产生的中间开/关直接合并丢弃。
+        final int revision = _previewTransitionRevision;
+        final bool target = _previewActive;
+        try {
+          await _nativeCamera?.setPreviewActive(target);
+        } on Object {
+          // Preview power tuning must never block navigation or recording.
+        }
+        if (revision == _previewTransitionRevision) return;
       }
-    });
-    final Future<void> tracked = next.whenComplete(
-      () => _pendingPreviewTransitions--,
-    );
-    _previewStateTail = tracked;
-    await tracked;
+    } finally {
+      _previewTransitionDrain = null;
+    }
   }
 
   Future<void> _setNativeWorkScanEnabled(bool enabled) async {

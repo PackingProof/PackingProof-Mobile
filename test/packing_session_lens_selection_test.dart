@@ -695,4 +695,26 @@ void main() {
       'preview:true:end',
     ]);
   });
+
+  test('快速来回切页只应用最新预览状态并丢弃中间排队', () async {
+    await controller.initialize();
+    camera.scanStateEvents.clear();
+    camera.previewDeactivationBlocker = Completer<void>();
+
+    final Future<void> first = controller.setPreviewActive(false);
+    await camera.previewDeactivationStarted.future;
+    final Future<void> second = controller.setPreviewActive(true);
+    final Future<void> third = controller.setPreviewActive(false);
+    final Future<void> fourth = controller.setPreviewActive(true);
+
+    camera.previewDeactivationBlocker!.complete();
+    await Future.wait(<Future<void>>[first, second, third, fourth]);
+
+    expect(camera.scanStateEvents, <String>[
+      'preview:false:start',
+      'preview:false:end',
+      'preview:true:start',
+      'preview:true:end',
+    ]);
+  });
 }
