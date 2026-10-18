@@ -1957,6 +1957,7 @@ void main() {
     try {
       await service.connectToHost(Uri.parse('http://192.168.1.20:5280'));
     } on Object catch (error) {
+      // broad-catch: 测试需要保留任意异常原文，确认它不会泄漏给操作员。
       captured = error;
     }
 
