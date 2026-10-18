@@ -593,6 +593,26 @@ void main() {
     expect(camera.lastMode, 'full');
   });
 
+  test('录像期间忽略工作模式切换，避免中断当前录制', () async {
+    await controller.initialize();
+    await controller.setCameraCapabilityPreference(
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    await controller.startWork();
+
+    expect(controller.isWorking, isTrue);
+    await controller.setCameraCapabilityPreference(
+      CameraCapabilityPreference.alternating,
+    );
+
+    expect(
+      controller.cameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(controller.capabilityMode, CameraCapabilityMode.encoderAnalysis);
+    expect(camera.lastMode, 'encoder_analysis');
+  });
+
   test('工作模式写进设置：新会话沿用用户选过的模式', () async {
     await controller.initialize();
     await controller.setCameraCapabilityPreference(

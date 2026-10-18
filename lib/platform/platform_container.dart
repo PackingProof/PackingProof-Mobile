@@ -72,6 +72,7 @@ class AppContainer {
           ? const PlatformCapabilities(<PlatformCapability>{
               PlatformCapability.continuousCameraRecording,
               PlatformCapability.liveRecordingWatermark,
+              PlatformCapability.cameraCapabilityNegotiation,
               PlatformCapability.lanBackup,
               PlatformCapability.orderInfoReceiver,
               PlatformCapability.videoWatermark,

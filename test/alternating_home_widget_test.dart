@@ -62,22 +62,33 @@ void main() {
     expect(find.text('再次扫描相同面单后结束'), findsNothing);
   });
 
-  testWidgets('完成本单按钮与工作模式 pills 位于同一行', (WidgetTester tester) async {
-    await tester.pumpWidget(buildHome(alternating: true, canFinish: true));
-    await tester.pump();
+  for (final Size size in const <Size>[Size(390, 844), Size(320, 640)]) {
+    testWidgets('完成本单按钮不会挤偏工作模式胶囊 ${size.width.toInt()}px', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final Finder pills = find.byKey(
-      const Key('recording-operation-mode-pills'),
-    );
-    final Finder finish = find.byKey(const Key('finish-current-order-button'));
-    expect(pills, findsOneWidget);
-    expect(finish, findsOneWidget);
-    final Finder row = find
-        .ancestor(of: pills, matching: find.byType(Row))
-        .first;
-    expect(row, findsOneWidget);
-    expect(find.descendant(of: row, matching: finish), findsOneWidget);
-  });
+      await tester.pumpWidget(buildHome(alternating: true, canFinish: true));
+      await tester.pump();
+
+      final Finder pills = find.byKey(
+        const Key('recording-operation-mode-pills'),
+      );
+      final Finder finish = find.byKey(
+        const Key('finish-current-order-button'),
+      );
+      expect(pills, findsOneWidget);
+      expect(finish, findsOneWidget);
+
+      final Rect pillsRect = tester.getRect(pills);
+      final Rect finishRect = tester.getRect(finish);
+      expect(pillsRect.center.dx, closeTo(size.width / 2, 1));
+      expect(finishRect.left, greaterThan(pillsRect.right));
+    });
+  }
 
   testWidgets('非轮换模式不显示完成本单按钮与横幅', (WidgetTester tester) async {
     await tester.pumpWidget(buildHome(alternating: false, canFinish: false));

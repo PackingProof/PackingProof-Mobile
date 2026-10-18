@@ -36,6 +36,7 @@ void main() {
       containsAll(<PlatformCapability>{
         PlatformCapability.continuousCameraRecording,
         PlatformCapability.liveRecordingWatermark,
+        PlatformCapability.cameraCapabilityNegotiation,
         PlatformCapability.lanBackup,
         PlatformCapability.orderInfoReceiver,
         PlatformCapability.videoWatermark,
@@ -52,7 +53,7 @@ void main() {
     );
     expect(
       ios.capabilities.supports(PlatformCapability.cameraCapabilityNegotiation),
-      isFalse,
+      isTrue,
     );
 
     for (final String operatingSystem in <String>[

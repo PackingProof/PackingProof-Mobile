@@ -1634,8 +1634,8 @@ class _CameraArea extends StatelessWidget {
               bottom: lowerOverlayInset,
               child: Align(
                 alignment: Alignment.bottomCenter,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                child: Stack(
+                  alignment: Alignment.center,
                   children: <Widget>[
                     _OperationModePills(
                       mode: view.operationMode,
@@ -1643,19 +1643,23 @@ class _CameraArea extends StatelessWidget {
                       enabled: !view._isBusy,
                       onChanged: view.onOperationModeChanged,
                     ),
-                    if (view.canFinishCurrentOrder) ...<Widget>[
-                      const SizedBox(width: 10),
-                      FilledButton.icon(
-                        key: const Key('finish-current-order-button'),
-                        onPressed: view.onFinishOrder,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFFFA726),
-                          foregroundColor: const Color(0xFF3E2723),
+                    if (view.canFinishCurrentOrder)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.icon(
+                          key: const Key('finish-current-order-button'),
+                          onPressed: view.onFinishOrder,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFFFA726),
+                            foregroundColor: const Color(0xFF3E2723),
+                            minimumSize: const Size(0, 48),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          icon: const Icon(Icons.check_circle_outline_rounded),
+                          label: const Text('完成本单'),
                         ),
-                        icon: const Icon(Icons.check_circle_outline_rounded),
-                        label: const Text('完成本单'),
                       ),
-                    ],
                   ],
                 ),
               ),

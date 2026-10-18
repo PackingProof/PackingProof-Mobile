@@ -311,28 +311,54 @@ enum IosAudioSampleEnergyProbe {
   }
 }
 
-/// iOS 始终使用同一个 AVFoundation 完整管线，不提供 Android 的三档
-/// surface 组合探测或运行时模式切换。
+enum IosCameraCapabilityMode: String {
+  case full
+  case encoderAnalysis = "encoder_analysis"
+  case alternating
+
+  var wireValue: String { rawValue }
+}
+
+/// iOS 使用同一个 AVFoundation 采集管线，但可按初始化时选定的工作模式
+/// 控制预览发布和录像期间的扫码，不需要重建 capture session。
 enum IosCameraCapabilityPolicy {
-  static func validateInitializationMode(_ mode: String) throws {
-    guard mode == "unverified" || mode == "full" else {
-      throw pigeonError(
-        "iOS 相机不支持能力模式 \(mode)",
-        code: "camera_capability_mode_unsupported"
-      )
+  static func mode(named rawMode: String) throws -> IosCameraCapabilityMode {
+    switch rawMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+    case "", "unverified", "full":
+      return .full
+    case IosCameraCapabilityMode.encoderAnalysis.wireValue:
+      return .encoderAnalysis
+    case IosCameraCapabilityMode.alternating.wireValue:
+      return .alternating
+    default:
+      throw unsupportedModeError(rawMode)
     }
+  }
+
+  static func shouldPublishPreview(
+    mode: IosCameraCapabilityMode,
+    recordingActive: Bool
+  ) -> Bool {
+    !(mode == .encoderAnalysis && recordingActive)
+  }
+
+  static func allowsWorkScan(
+    mode: IosCameraCapabilityMode,
+    recordingActive: Bool
+  ) -> Bool {
+    !(mode == .alternating && recordingActive)
   }
 
   static func probeUnsupportedError(sequence: String) -> PigeonError {
     pigeonError(
-      "iOS 相机使用固定完整管线，不支持能力序列探测：\(sequence)",
+      "iOS 相机不支持能力序列探测：\(sequence)",
       code: "camera_capability_probe_unsupported"
     )
   }
 
-  static func modeSwitchUnsupportedError(mode: String) -> PigeonError {
+  static func unsupportedModeError(_ mode: String) -> PigeonError {
     pigeonError(
-      "iOS 相机使用固定完整管线，不支持能力模式切换：\(mode)",
+      "iOS 相机不支持能力模式：\(mode)",
       code: "camera_capability_mode_unsupported"
     )
   }
@@ -811,6 +837,7 @@ final class IosCameraHostApi:
   )
   private let bufferLock = NSLock()
   private let stateLock = NSLock()
+  private let capabilityStateLock = NSLock()
   private let performanceLock = NSLock()
   private let visionStateLock = NSLock()
   private let videoFrameStateLock = NSLock()
@@ -826,6 +853,8 @@ final class IosCameraHostApi:
   private var barcodeBatchGate =
     IosLatestPendingGate<[BarcodeCandidateDto]>(minimumInterval: 0.1)
   private var barcodeGeneration: UInt64 = 0
+  private var capabilityMode = IosCameraCapabilityMode.full
+  private var capabilityRecordingActive = false
 
   private var textureId: Int64 = -1
   private var latestPixelBuffer: CVPixelBuffer?
@@ -979,9 +1008,10 @@ final class IosCameraHostApi:
     completion: @escaping (Result<CameraInitializationDto, Error>) -> Void
   ) {
     do {
-      try IosCameraCapabilityPolicy.validateInitializationMode(
-        request.capabilityMode
+      let mode = try IosCameraCapabilityPolicy.mode(
+        named: request.capabilityMode
       )
+      setCapabilityModeState(mode)
     } catch {
       completion(.failure(error))
       return
@@ -1433,6 +1463,34 @@ final class IosCameraHostApi:
     }
   }
 
+  private func setCapabilityModeState(_ mode: IosCameraCapabilityMode) {
+    capabilityStateLock.lock()
+    capabilityMode = mode
+    capabilityStateLock.unlock()
+  }
+
+  private func capabilitySnapshot() -> (
+    mode: IosCameraCapabilityMode,
+    recordingActive: Bool
+  ) {
+    capabilityStateLock.lock()
+    defer { capabilityStateLock.unlock() }
+    return (capabilityMode, capabilityRecordingActive)
+  }
+
+  private func setCapabilityRecordingActive(_ active: Bool) {
+    capabilityStateLock.lock()
+    capabilityRecordingActive = active
+    let shouldResetBarcodeGate = capabilityMode == .alternating
+    capabilityStateLock.unlock()
+    guard shouldResetBarcodeGate else { return }
+    metadataQueue.async { [weak self] in
+      guard let self else { return }
+      self.barcodeGeneration &+= 1
+      self.barcodeBatchGate.reset()
+    }
+  }
+
   func getDiagnostics(
     completion: @escaping (Result<[String?: Any?]?, Error>) -> Void
   ) {
@@ -1481,6 +1539,7 @@ final class IosCameraHostApi:
     let lastSegment = lastSegmentDiagnosticsSnapshot()
     let performance = performanceDiagnosticsSnapshot()
     let videoFrames = videoFrameDiagnosticsSnapshot()
+    let capability = capabilitySnapshot()
     completion(.success([
       "device": [
         "manufacturer": "Apple",
@@ -1494,6 +1553,8 @@ final class IosCameraHostApi:
         "sessionRunning": session.isRunning,
         "previewActive": previewActive,
         "disposed": isDisposed,
+        "capabilityMode": capability.mode.wireValue,
+        "capabilityRecordingActive": capability.recordingActive,
         "workScanEnabled": metadataDiagnostics.1,
         "pairingScanEnabled": metadataDiagnostics.0,
         "metadataOutputAttached": metadataOutput != nil,
@@ -1867,7 +1928,22 @@ final class IosCameraHostApi:
   }
 
   func setCapabilityMode(mode: String) throws {
-    throw IosCameraCapabilityPolicy.modeSwitchUnsupportedError(mode: mode)
+    let parsed = try IosCameraCapabilityPolicy.mode(named: mode)
+    capabilityStateLock.lock()
+    guard !capabilityRecordingActive else {
+      capabilityStateLock.unlock()
+      throw pigeonError(
+        "录像期间不能切换工作模式",
+        code: "camera_busy"
+      )
+    }
+    capabilityMode = parsed
+    capabilityStateLock.unlock()
+    metadataQueue.async { [weak self] in
+      guard let self else { return }
+      self.barcodeGeneration &+= 1
+      self.barcodeBatchGate.reset()
+    }
   }
 
   func dispose(completion: @escaping (Result<Void, Error>) -> Void) {
@@ -1963,6 +2039,7 @@ final class IosCameraHostApi:
       guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
         return
       }
+      let capability = capabilitySnapshot()
       recordVideoFrameReceived()
       scheduleVisionFallback(for: pixelBuffer)
       var shouldAppendVideo = true
@@ -2010,7 +2087,10 @@ final class IosCameraHostApi:
           }
         }
       }
-      if IosLiveWatermarkHostPolicy.shouldPublishPreviewFrame(
+      if IosCameraCapabilityPolicy.shouldPublishPreview(
+        mode: capability.mode,
+        recordingActive: capability.recordingActive
+      ) && IosLiveWatermarkHostPolicy.shouldPublishPreviewFrame(
         watermarkRequired: watermarkRequired,
         transientPreparationFailure: transientWatermarkFailure
       ) {
@@ -2036,7 +2116,13 @@ final class IosCameraHostApi:
     from connection: AVCaptureConnection
   ) {
     guard !isDisposed else { return }
-    guard pairingScanEnabled || workScanEnabled else { return }
+    let capability = capabilitySnapshot()
+    let effectiveWorkScan = workScanEnabled &&
+      IosCameraCapabilityPolicy.allowsWorkScan(
+        mode: capability.mode,
+        recordingActive: capability.recordingActive
+      )
+    guard pairingScanEnabled || effectiveWorkScan else { return }
     guard scanEngine != .vision else { return }
     let detectedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
     let now = ProcessInfo.processInfo.systemUptime
@@ -2071,7 +2157,7 @@ final class IosCameraHostApi:
       if IosBarcodeVisionFallbackPolicy.hasUsableCandidate(
         formats: candidates.map(\.format),
         pairingScan: pairingScanEnabled,
-        workScan: workScanEnabled
+        workScan: effectiveWorkScan
       ) {
         markVisionCandidate(at: now)
       }
@@ -2092,7 +2178,13 @@ final class IosCameraHostApi:
     let (pairingScan, workScan) = metadataQueue.sync {
       (pairingScanEnabled, workScanEnabled)
     }
-    let scanningEnabled = pairingScan || workScan
+    let capability = capabilitySnapshot()
+    let effectiveWorkScan = workScan &&
+      IosCameraCapabilityPolicy.allowsWorkScan(
+        mode: capability.mode,
+        recordingActive: capability.recordingActive
+      )
+    let scanningEnabled = pairingScan || effectiveWorkScan
     guard scanningEnabled else { return }
     let now = ProcessInfo.processInfo.systemUptime
     let benchmarkMinimumInterval =
@@ -2124,7 +2216,7 @@ final class IosCameraHostApi:
         orientation: orientation,
         submittedAt: now,
         pairingScan: pairingScan,
-        workScan: workScan
+        workScan: effectiveWorkScan
       )
     }
   }
@@ -2199,11 +2291,16 @@ final class IosCameraHostApi:
         markVisionCandidate(at: ProcessInfo.processInfo.systemUptime)
       }
       metadataQueue.async { [weak self] in
-        guard let self,
-              !self.isDisposed,
-              self.pairingScanEnabled || self.workScanEnabled else {
+        guard let self, !self.isDisposed else {
           return
         }
+        let capability = self.capabilitySnapshot()
+        let effectiveWorkScan = self.workScanEnabled &&
+          IosCameraCapabilityPolicy.allowsWorkScan(
+            mode: capability.mode,
+            recordingActive: capability.recordingActive
+          )
+        guard self.pairingScanEnabled || effectiveWorkScan else { return }
         self.handleBarcodeBatchAction(self.barcodeBatchGate.submit(
           candidates,
           now: ProcessInfo.processInfo.systemUptime
@@ -2934,6 +3031,7 @@ final class IosCameraHostApi:
     self.audioInput = audioInput
     self.pixelBufferAdaptor = adaptor
     self.currentPath = path
+    self.setCapabilityRecordingActive(true)
     self.currentTrackingNumber = trackingNumber
     // 同步首帧准备失败时仍允许专用队列重试；只有异步准备也失败才把本段
     // 标记为 partial，避免一次瞬时栅格化失败让整段永久失去水印。
@@ -3125,6 +3223,7 @@ final class IosCameraHostApi:
       completion(.failure(IosCameraWriterFinishPolicy.missingWriterError()))
       return
     }
+    setCapabilityRecordingActive(false)
     firstWrittenFrameTiming.cancelIfNeeded()
     let completedPath = currentPath
     let completedStartedAt = currentStartedAtMs

@@ -399,7 +399,13 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   Future<void> setCameraCapabilityPreference(
     CameraCapabilityPreference preference,
   ) async {
-    if (_disposed || _capabilityPreference == preference) return;
+    if (_disposed ||
+        isWorking ||
+        isBusy ||
+        _capabilityProbeRunning ||
+        _capabilityPreference == preference) {
+      return;
+    }
     _capabilityPreference = preference;
     _capabilityMode = preference.lockedMode;
     notifyListeners();

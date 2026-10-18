@@ -519,17 +519,31 @@ class RunnerTests: XCTestCase {
     wait(for: [firstCancelled], timeout: 1)
   }
 
-  func testIosCameraCapabilityPolicyAcceptsOnlyFixedPipelineInitialization() {
-    XCTAssertNoThrow(
-      try IosCameraCapabilityPolicy.validateInitializationMode("unverified")
+  func testIosCameraCapabilityPolicyParsesAllWorkModes() throws {
+    XCTAssertEqual(
+      try IosCameraCapabilityPolicy.mode(named: "unverified"),
+      .full
     )
-    XCTAssertNoThrow(
-      try IosCameraCapabilityPolicy.validateInitializationMode("full")
+    XCTAssertEqual(
+      try IosCameraCapabilityPolicy.mode(named: "full"),
+      .full
+    )
+    XCTAssertEqual(
+      try IosCameraCapabilityPolicy.mode(named: "encoder_analysis"),
+      .encoderAnalysis
+    )
+    XCTAssertEqual(
+      try IosCameraCapabilityPolicy.mode(named: "alternating"),
+      .alternating
+    )
+    XCTAssertEqual(
+      try IosCameraCapabilityPolicy.mode(named: ""),
+      .full
     )
 
-    for mode in ["encoder_analysis", "alternating", "unknown"] {
+    for mode in ["unknown", "two_way"] {
       XCTAssertThrowsError(
-        try IosCameraCapabilityPolicy.validateInitializationMode(mode)
+        try IosCameraCapabilityPolicy.mode(named: mode)
       ) { error in
         XCTAssertEqual(
           (error as? PigeonError)?.code,
@@ -537,6 +551,58 @@ class RunnerTests: XCTestCase {
         )
       }
     }
+  }
+
+  func testIosCameraCapabilityPolicyGatesPreviewAndWorkScan() {
+    XCTAssertTrue(
+      IosCameraCapabilityPolicy.shouldPublishPreview(
+        mode: .encoderAnalysis,
+        recordingActive: false
+      )
+    )
+    XCTAssertFalse(
+      IosCameraCapabilityPolicy.shouldPublishPreview(
+        mode: .encoderAnalysis,
+        recordingActive: true
+      )
+    )
+    XCTAssertTrue(
+      IosCameraCapabilityPolicy.shouldPublishPreview(
+        mode: .full,
+        recordingActive: true
+      )
+    )
+    XCTAssertTrue(
+      IosCameraCapabilityPolicy.shouldPublishPreview(
+        mode: .alternating,
+        recordingActive: true
+      )
+    )
+
+    XCTAssertTrue(
+      IosCameraCapabilityPolicy.allowsWorkScan(
+        mode: .alternating,
+        recordingActive: false
+      )
+    )
+    XCTAssertFalse(
+      IosCameraCapabilityPolicy.allowsWorkScan(
+        mode: .alternating,
+        recordingActive: true
+      )
+    )
+    XCTAssertTrue(
+      IosCameraCapabilityPolicy.allowsWorkScan(
+        mode: .full,
+        recordingActive: true
+      )
+    )
+    XCTAssertTrue(
+      IosCameraCapabilityPolicy.allowsWorkScan(
+        mode: .encoderAnalysis,
+        recordingActive: true
+      )
+    )
   }
 
   func testIosCameraStartRetryPolicyIsBounded() {
@@ -563,18 +629,16 @@ class RunnerTests: XCTestCase {
     )
   }
 
-  func testIosCameraCapabilityOperationsFailWithTypedErrors() {
+  func testIosCameraCapabilityProbeAndInvalidModeFailWithTypedErrors() {
     let probeError = IosCameraCapabilityPolicy.probeUnsupportedError(
       sequence: "full"
     )
     XCTAssertEqual(probeError.code, "camera_capability_probe_unsupported")
 
-    for mode in ["full", "encoder_analysis", "alternating", "unknown"] {
-      XCTAssertEqual(
-        IosCameraCapabilityPolicy.modeSwitchUnsupportedError(mode: mode).code,
-        "camera_capability_mode_unsupported"
-      )
-    }
+    XCTAssertEqual(
+      IosCameraCapabilityPolicy.unsupportedModeError("unknown").code,
+      "camera_capability_mode_unsupported"
+    )
   }
 
   func testIosBarcodeVisionFallbackPolicyWaitsForMetadataAndThrottles() {
