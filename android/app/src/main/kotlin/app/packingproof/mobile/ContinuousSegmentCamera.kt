@@ -2313,18 +2313,22 @@ class ContinuousSegmentCamera(
                 previewResumeResult = null
                 initialized = false
                 cameraHandler?.removeCallbacks(previewStallCheck)
+                val session = captureSession
+                val camera = cameraDevice
+                captureSession = null
+                cameraDevice = null
                 try {
-                    captureSession?.stopRepeating()
-                    captureSession?.abortCaptures()
+                    session?.stopRepeating()
                 } catch (_: Throwable) {
                 }
-                captureSession?.close()
-                captureSession = null
+                // abortCaptures 会让部分 Android 8.x HAL 在请求线程仍在提交时
+                // 强制 flush，并在 Camera2 回调线程触发设备错误。预览不是录像
+                // 收尾，停止重复请求后直接关闭会话即可。
+                session?.close()
                 sessionHasPreview = false
                 sessionHasEncoder = false
                 sessionHasAnalysis = false
-                cameraDevice?.close()
-                cameraDevice = null
+                camera?.close()
                 lastCaptureStartedAtMs = 0L
                 lastCaptureCompletedAtMs = 0L
                 stallActive = false
