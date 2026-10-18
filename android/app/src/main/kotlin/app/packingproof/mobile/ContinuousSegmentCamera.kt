@@ -187,6 +187,8 @@ class ContinuousSegmentCamera(
     private var previewResumeResult: MethodChannel.Result? = null
     private var pendingPreviewSuspend: PendingPreviewSuspend? = null
     private var openCameraAttempts = 0
+    private var previewRecoveryAttempts = 0
+    private var previewRecoveryScheduled = false
     private var audioOutputFormat: MediaFormat? = null
 
     @Volatile internal var recordingRequested = false
@@ -851,6 +853,8 @@ class ContinuousSegmentCamera(
                         openCameraAttempts < CameraOpenRetryPolicy.MAX_ATTEMPTS
                     ) {
                         retryCameraOpen()
+                    } else if (recoverActivePreviewAfterCameraError("disconnected")) {
+                        return
                     } else {
                         failInitialization("camera_disconnected", "摄像头连接已断开", null)
                     }
@@ -863,6 +867,11 @@ class ContinuousSegmentCamera(
                         openCameraAttempts < CameraOpenRetryPolicy.MAX_ATTEMPTS
                     ) {
                         retryCameraOpen()
+                    } else if (
+                        CameraOpenRetryPolicy.isTransientStateError(error) &&
+                        recoverActivePreviewAfterCameraError("device_error_$error")
+                    ) {
+                        return
                     } else {
                         failInitialization(
                             "camera_error",
@@ -903,6 +912,44 @@ class ContinuousSegmentCamera(
             camera.close()
         } catch (_: Throwable) {
         }
+    }
+
+    private fun recoverActivePreviewAfterCameraError(reason: String): Boolean {
+        if (previewRecoveryScheduled) return true
+        if (!CameraOpenRetryPolicy.shouldRestartActivePreview(
+                previewActive = previewActive,
+                recording = recordingRequested || recordingActive,
+                restartAttempts = previewRecoveryAttempts,
+            )
+        ) {
+            return false
+        }
+        val attempt = previewRecoveryAttempts
+        previewRecoveryAttempts++
+        previewRecoveryScheduled = true
+        initialized = false
+        cameraHandler?.removeCallbacks(previewStallCheck)
+        Log.w(
+            CAMERA_LOG_TAG,
+            "preview recovery restarting camera reason=$reason attempt=${attempt + 1}",
+        )
+        closeCameraResourcesForRetry()
+        cameraHandler?.postDelayed(
+            {
+                previewRecoveryScheduled = false
+                if (disposed || !previewActive || recordingRequested || recordingActive) {
+                    return@postDelayed
+                }
+                openCameraAttempts = 0
+                Log.i(
+                    CAMERA_LOG_TAG,
+                    "preview recovery reopening camera reason=$reason",
+                )
+                openCamera()
+            },
+            CameraOpenRetryPolicy.retryDelayMs(attempt),
+        )
+        return true
     }
 
     private fun retryCameraOpen() {
@@ -1016,6 +1063,7 @@ class ContinuousSegmentCamera(
             candidates = candidates,
             onConfigured = { session ->
                 captureSession = session
+                previewRecoveryAttempts = 0
                 try {
                     if (!previewActive) {
                         initialized = true
@@ -1931,6 +1979,14 @@ class ContinuousSegmentCamera(
                     recreateCaptureSession()
                 }
             }
+            PreviewStallRecoveryAction.RESTART_CAMERA -> {
+                if (lastCaptureStartedAtMs == stallRecoveryBaseCaptureMs) {
+                    stallRecoveryStage = 3
+                    stallRecoveryBaseCaptureMs = lastCaptureStartedAtMs
+                    Log.w(CAMERA_LOG_TAG, "preview recovery stage=restart camera")
+                    recoverActivePreviewAfterCameraError("preview_stall")
+                }
+            }
             PreviewStallRecoveryAction.LOG_FAILURE -> {
                 if (nowMs - stallRecoveryLastLogAtMs >= 10_000L) {
                     stallRecoveryLastLogAtMs = nowMs
@@ -2345,6 +2401,7 @@ class ContinuousSegmentCamera(
             }
             if (!active) {
                 previewActive = false
+                previewRecoveryAttempts = 0
                 // Closing Camera2 can leave the ML Kit task for the last frame
                 // unresolved. Invalidate that task so it cannot permanently keep
                 // the next camera session in the busy state or emit a stale code.

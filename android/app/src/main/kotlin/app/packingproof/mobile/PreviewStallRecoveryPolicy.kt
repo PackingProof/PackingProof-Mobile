@@ -4,6 +4,7 @@ internal enum class PreviewStallRecoveryAction {
     NONE,
     REAPPLY_REQUEST,
     RECREATE_SESSION,
+    RESTART_CAMERA,
     LOG_FAILURE,
 }
 
@@ -23,6 +24,7 @@ internal class PreviewStallRecoveryPolicy {
         return when (stage) {
             0 -> PreviewStallRecoveryAction.REAPPLY_REQUEST
             1 -> PreviewStallRecoveryAction.RECREATE_SESSION
+            2 -> PreviewStallRecoveryAction.RESTART_CAMERA
             else -> PreviewStallRecoveryAction.LOG_FAILURE
         }
     }
