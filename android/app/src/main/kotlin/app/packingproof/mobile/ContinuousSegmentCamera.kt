@@ -2322,6 +2322,9 @@ class ContinuousSegmentCamera(
         // 仍提交时被强制 flush，并在 Camera2 回调线程触发设备错误。
         pending.session.close()
         pending.camera.close()
+        // 部分厂商的 SurfaceTexture producer 断开后不会重新触发帧监听，
+        // 继续复用旧 GL 合成器会出现相机仍在采集但预览停在最后一帧。
+        releaseCameraGlCompositor()
         Log.i(
             CAMERA_LOG_TAG,
             "previewActive=false camera suspended trigger=$reason",
@@ -2388,6 +2391,7 @@ class ContinuousSegmentCamera(
                 }
                 session?.close()
                 camera?.close()
+                releaseCameraGlCompositor()
                 Log.i(CAMERA_LOG_TAG, "previewActive=false camera suspended")
                 replySuccess(result, null)
                 return@post
