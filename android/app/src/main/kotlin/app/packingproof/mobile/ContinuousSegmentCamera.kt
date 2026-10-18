@@ -423,7 +423,7 @@ class ContinuousSegmentCamera(
                     failPendingStart("capability_unsupported", "此设备不支持持续录像")
                 }
                 CameraCapabilityMode.ENCODER_ANALYSIS -> {
-                    // 用户选中了「仅扫码」，或者本次运行已经降级过一次：
+                    // 用户选中了「不预览」，或者本次运行已经降级过一次：
                     // 直接以“编码器 + 识别”两路会话开始，不再先尝试三路。
                     recreateEncoderAnalysisSession(
                         onError = { message ->
@@ -2027,7 +2027,7 @@ class ContinuousSegmentCamera(
 
     /**
      * 重建为“编码器 + 识别”两路会话：录像与条码识别继续工作，预览画面暂停。
-     * 用于启动阶段三路停摆后的自动降级，以及用户选择的「仅扫码」模式。
+     * 用于启动阶段三路停摆后的自动降级，以及用户选择的「不预览」模式。
      */
     private fun recreateEncoderAnalysisSession(
         onConfigured: (() -> Unit)? = null,

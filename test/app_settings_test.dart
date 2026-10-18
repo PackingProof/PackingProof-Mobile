@@ -164,39 +164,88 @@ void main() {
     expect(persisted['futureOption'], <String, Object>{'enabled': true});
   });
 
-  test('摄像头工作模式默认扫码预览且可持久化', () async {
+  test('发货和退货摄像头工作模式默认扫码预览且可分别持久化', () async {
     final SessionRepository repository = testRepository(root);
 
+    final AppSettings defaults = await repository.loadSettings();
     expect(
-      (await repository.loadSettings()).cameraCapabilityPreference,
+      defaults.shippingCameraCapabilityPreference,
+      CameraCapabilityPreference.full,
+    );
+    expect(
+      defaults.returnCameraCapabilityPreference,
       CameraCapabilityPreference.full,
     );
 
     await repository.saveCameraCapabilityPreference(
+      RecordingOperationMode.shipping,
       CameraCapabilityPreference.encoderAnalysis,
+    );
+    await repository.saveCameraCapabilityPreference(
+      RecordingOperationMode.returnGoods,
+      CameraCapabilityPreference.alternating,
     );
 
     final AppSettings updated = await repository.loadSettings();
     expect(
-      updated.cameraCapabilityPreference,
+      updated.shippingCameraCapabilityPreference,
       CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(
+      updated.returnCameraCapabilityPreference,
+      CameraCapabilityPreference.alternating,
+    );
+    expect(
+      updated.cameraCapabilityPreferenceFor(RecordingOperationMode.shipping),
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(
+      updated.cameraCapabilityPreferenceFor(RecordingOperationMode.returnGoods),
+      CameraCapabilityPreference.alternating,
     );
     final Map<String, Object?> persisted = Map<String, Object?>.from(
       jsonDecode(await File('${root.path}/settings.json').readAsString())
           as Map<Object?, Object?>,
     );
-    expect(persisted['cameraCapabilityPreference'], 'encoder_analysis');
+    expect(persisted['shippingCameraCapabilityPreference'], 'encoder_analysis');
+    expect(persisted['returnCameraCapabilityPreference'], 'alternating');
+    expect(persisted.containsKey('cameraCapabilityPreference'), isFalse);
+  });
+
+  test('旧版单一工作模式迁移到发货和退货', () async {
+    await File('${root.path}/settings.json').writeAsString(
+      jsonEncode(<String, Object>{'cameraCapabilityPreference': 'alternating'}),
+    );
+    final SessionRepository repository = testRepository(root);
+    final AppSettings settings = await repository.loadSettings();
+
+    expect(
+      settings.shippingCameraCapabilityPreference,
+      CameraCapabilityPreference.alternating,
+    );
+    expect(
+      settings.returnCameraCapabilityPreference,
+      CameraCapabilityPreference.alternating,
+    );
   });
 
   test('存坏的工作模式值回落到默认的扫码预览', () async {
     await File('${root.path}/settings.json').writeAsString(
-      jsonEncode(<String, Object>{'cameraCapabilityPreference': '来路不明'}),
+      jsonEncode(<String, Object>{
+        'shippingCameraCapabilityPreference': '来路不明',
+        'returnCameraCapabilityPreference': 'alternating',
+      }),
     );
     final SessionRepository repository = testRepository(root);
+    final AppSettings settings = await repository.loadSettings();
 
     expect(
-      (await repository.loadSettings()).cameraCapabilityPreference,
+      settings.shippingCameraCapabilityPreference,
       CameraCapabilityPreference.full,
+    );
+    expect(
+      settings.returnCameraCapabilityPreference,
+      CameraCapabilityPreference.alternating,
     );
   });
 

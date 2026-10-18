@@ -45,6 +45,10 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   @override
   CameraCapabilityMode _capabilityMode = CameraCapabilityMode.unverified;
   Map<String, Object?>? _capabilityState;
+  CameraCapabilityPreference _shippingCapabilityPreference =
+      CameraCapabilityPreference.full;
+  CameraCapabilityPreference _returnCapabilityPreference =
+      CameraCapabilityPreference.full;
   CameraCapabilityPreference _capabilityPreference =
       CameraCapabilityPreference.full;
   bool _capabilityProbeRunning = false;
@@ -126,7 +130,10 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       }
       _manualTrackingValidationEnabled =
           settings.manualTrackingValidationEnabled;
-      _capabilityPreference = settings.cameraCapabilityPreference;
+      _shippingCapabilityPreference =
+          settings.shippingCameraCapabilityPreference;
+      _returnCapabilityPreference = settings.returnCameraCapabilityPreference;
+      _capabilityPreference = _cameraCapabilityPreferenceFor(_operationMode);
       _capabilityState = settings.cameraCapabilityState;
       _scanBeepEnabled = settings.scanBeepEnabled;
       _scanQrCodes = settings.scanQrCodes;
@@ -373,8 +380,12 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
     }
     if (isWorking || isBusy || _capabilityProbeRunning) return;
     if (_capabilityPreference != CameraCapabilityPreference.full) {
-      // 手动锁定会让探测结果无法生效，重新检测即回到默认（工作模式不跨重启保留）。
+      // 手动锁定会让探测结果无法生效，重新检测前把当前业务模式恢复到扫码预览。
       _capabilityPreference = CameraCapabilityPreference.full;
+      _setCameraCapabilityPreference(
+        _operationMode,
+        CameraCapabilityPreference.full,
+      );
     }
     _errorMessage = null;
     _setPhase(PackingSessionPhase.initializing);
@@ -398,19 +409,59 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
   /// 下一次开始工作时按它重建会话，所以不需要退出设置页就能生效。
   Future<void> setCameraCapabilityPreference(
     CameraCapabilityPreference preference,
+  ) => setCameraCapabilityPreferenceFor(_operationMode, preference);
+
+  /// 设置页：分别保存发货与退货对应的工作模式。
+  Future<void> setCameraCapabilityPreferenceFor(
+    RecordingOperationMode mode,
+    CameraCapabilityPreference preference,
   ) async {
+    final bool currentMode = mode == _operationMode;
     if (_disposed ||
         isWorking ||
         isBusy ||
         _capabilityProbeRunning ||
-        _capabilityPreference == preference) {
+        _cameraCapabilityPreferenceFor(mode) == preference) {
       return;
     }
-    _capabilityPreference = preference;
-    _capabilityMode = preference.lockedMode;
+    _setCameraCapabilityPreference(mode, preference);
+    if (currentMode) {
+      _capabilityPreference = preference;
+      _capabilityMode = preference.lockedMode;
+      notifyListeners();
+    }
+    await _repository.saveCameraCapabilityPreference(mode, preference);
+    if (currentMode) {
+      await _pushCapabilityModeToNative();
+    }
+  }
+
+  @override
+  Future<void> _syncCameraPreferenceForOperationMode() async {
+    if (_disposed || isWorking || isBusy || _capabilityProbeRunning) return;
+    _capabilityPreference = _cameraCapabilityPreferenceFor(_operationMode);
+    _capabilityMode = _capabilityPreference.lockedMode;
     notifyListeners();
-    await _repository.saveCameraCapabilityPreference(preference);
-    await _pushCapabilityModeToNative();
+    if (_supportsCameraCapabilityNegotiation) {
+      await _pushCapabilityModeToNative();
+    }
+  }
+
+  CameraCapabilityPreference _cameraCapabilityPreferenceFor(
+    RecordingOperationMode mode,
+  ) => mode == RecordingOperationMode.returnGoods
+      ? _returnCapabilityPreference
+      : _shippingCapabilityPreference;
+
+  void _setCameraCapabilityPreference(
+    RecordingOperationMode mode,
+    CameraCapabilityPreference preference,
+  ) {
+    if (mode == RecordingOperationMode.returnGoods) {
+      _returnCapabilityPreference = preference;
+    } else {
+      _shippingCapabilityPreference = preference;
+    }
   }
 
   Future<void> _pushCapabilityModeToNative() async {
@@ -458,14 +509,21 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
     if (mode == 'encoder_analysis') {
       _capabilityMode = CameraCapabilityMode.encoderAnalysis;
       if (_capabilityPreference == CameraCapabilityPreference.full) {
-        // 用户要的是「扫码预览」，原生真的停摆降级：把选择落到「仅扫码」，
+        // 用户要的是「扫码预览」，原生真的停摆降级：把当前操作模式落到「不预览」，
         // 让界面和实际跑的一致，并顺手存进设置，下次启动直接按降级后的模式开始。
         // 误判也不要紧：用户在下拉里改回来就会覆盖它。
         degradedFromFull = true;
         _capabilityPreference = CameraCapabilityPreference.encoderAnalysis;
-        // 降级结论和用户手动选择写进同一个设置项：下次启动直接按它开始
+        _setCameraCapabilityPreference(
+          _operationMode,
+          CameraCapabilityPreference.encoderAnalysis,
+        );
+        // 降级结论只影响当前发货或退货设置，另一类业务保持用户原来的选择。
         unawaited(
-          _repository.saveCameraCapabilityPreference(_capabilityPreference),
+          _repository.saveCameraCapabilityPreference(
+            _operationMode,
+            _capabilityPreference,
+          ),
         );
         unawaited(_pushCapabilityModeToNative());
       }
@@ -479,7 +537,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
       return;
     }
     if (!degradedFromFull) {
-      // 用户自己选的「仅扫码」不是硬件结论，不要谎报成「受硬件限制」。
+      // 用户自己选的「不预览」不是硬件结论，不要谎报成「受硬件限制」。
       return;
     }
     _showCameraNotice('受硬件限制，录像时预览画面会暂停，扫码和录像不受影响');

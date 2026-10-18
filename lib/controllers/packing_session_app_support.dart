@@ -78,6 +78,8 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
   bool get _maxVolumeEnabled;
   CameraCapabilityMode get _capabilityMode;
   CameraCapabilityPreference get _capabilityPreference;
+  CameraCapabilityPreference get _shippingCapabilityPreference;
+  CameraCapabilityPreference get _returnCapabilityPreference;
   bool get _capabilityProbeRunning;
   String? get _capabilityProbeMessage;
   bool get _supportsCameraCapabilityNegotiation;
@@ -115,6 +117,11 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
   CameraCapabilityMode get capabilityMode => _capabilityMode;
   CameraCapabilityPreference get cameraCapabilityPreference =>
       _capabilityPreference;
+  CameraCapabilityPreference cameraCapabilityPreferenceFor(
+    RecordingOperationMode mode,
+  ) => mode == RecordingOperationMode.returnGoods
+      ? _returnCapabilityPreference
+      : _shippingCapabilityPreference;
   bool get capabilityProbeRunning => _capabilityProbeRunning;
   String? get capabilityProbeMessage => _capabilityProbeMessage;
 

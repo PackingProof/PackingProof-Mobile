@@ -30,6 +30,7 @@ class _NoDiskCameraPreferenceRepository extends SessionRepository {
 
   @override
   Future<void> saveCameraCapabilityPreference(
+    RecordingOperationMode operationMode,
     CameraCapabilityPreference preference,
   ) async {}
 }
@@ -1158,7 +1159,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     expect(first.cameraNotice, isNull);
 
-    // 再遇到一次降级时提示重新计时。降级会把工作模式落成「仅扫码」，
+    // 再遇到一次降级时提示重新计时。降级会把工作模式落成「不预览」，
     // 同一次运行里不会再提示，所以这里用新的控制器模拟下一次运行。
     final SessionRepository secondRepository =
         _NoDiskCameraPreferenceRepository(rootDirectory: root);

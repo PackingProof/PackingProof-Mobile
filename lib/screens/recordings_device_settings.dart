@@ -183,8 +183,12 @@ class _ScanSettingsScreen extends StatefulWidget {
 
 class _ScanSettingsScreenState extends State<_ScanSettingsScreen> {
   late WorkMode _workMode = widget.workMode;
-  late CameraCapabilityPreference _cameraPreference =
-      widget.cameraCapability?.preference ?? CameraCapabilityPreference.full;
+  late CameraCapabilityPreference _shippingCameraPreference =
+      widget.cameraCapability?.shippingPreference ??
+      CameraCapabilityPreference.full;
+  late CameraCapabilityPreference _returnCameraPreference =
+      widget.cameraCapability?.returnPreference ??
+      CameraCapabilityPreference.full;
   late bool _scanQrCodes = widget.scanPreferences?.scanQrCodes ?? false;
   late bool _scanBeepEnabled = widget.scanPreferences?.scanBeepEnabled ?? false;
   late int _minimumBarcodeLength = widget.minimumBarcodeLength;
@@ -207,11 +211,24 @@ class _ScanSettingsScreenState extends State<_ScanSettingsScreen> {
               key: const Key('camera-work-mode-card'),
               children: <Widget>[
                 _CameraWorkModeSettings(
-                  preference: _cameraPreference,
-                  onChanged: (CameraCapabilityPreference value) {
-                    setState(() => _cameraPreference = value);
-                    unawaited(cameraCapability.onPreferenceChanged(value));
-                  },
+                  shippingPreference: _shippingCameraPreference,
+                  returnPreference: _returnCameraPreference,
+                  onChanged:
+                      (
+                        RecordingOperationMode mode,
+                        CameraCapabilityPreference value,
+                      ) {
+                        setState(() {
+                          if (mode == RecordingOperationMode.returnGoods) {
+                            _returnCameraPreference = value;
+                          } else {
+                            _shippingCameraPreference = value;
+                          }
+                        });
+                        unawaited(
+                          cameraCapability.onPreferenceChanged(mode, value),
+                        );
+                      },
                 ),
               ],
             ),
@@ -818,13 +835,18 @@ class _SettingsCard extends StatelessWidget {
 /// 聚成一个对象传进 RecordingsScreen，避免这个超大 widget 的构造参数继续膨胀。
 class CameraCapabilitySettings {
   const CameraCapabilitySettings({
-    required this.preference,
+    required this.shippingPreference,
+    required this.returnPreference,
     required this.onPreferenceChanged,
     this.showCard = true,
   });
 
-  final CameraCapabilityPreference preference;
-  final Future<void> Function(CameraCapabilityPreference preference)
+  final CameraCapabilityPreference shippingPreference;
+  final CameraCapabilityPreference returnPreference;
+  final Future<void> Function(
+    RecordingOperationMode mode,
+    CameraCapabilityPreference preference,
+  )
   onPreferenceChanged;
   final bool showCard;
 }
@@ -895,60 +917,113 @@ class _SettingSwitch extends StatelessWidget {
   }
 }
 
-/// 「工作模式」区块：三段的胶囊 + 选中项说明，和「扫码模式」同一套写法。
+/// 「工作模式」区块：发货与退货各用一个下拉框设置。
 ///
-/// 放在「扫码与提示音」页里，和「扫码模式」挨着，用户要在同一处决定扫码怎么跑。
+/// 放在「扫码与提示音」页里，和「扫码模式」挨着。
 class _CameraWorkModeSettings extends StatelessWidget {
   const _CameraWorkModeSettings({
+    required this.shippingPreference,
+    required this.returnPreference,
+    required this.onChanged,
+  });
+
+  final CameraCapabilityPreference shippingPreference;
+  final CameraCapabilityPreference returnPreference;
+  final void Function(
+    RecordingOperationMode mode,
+    CameraCapabilityPreference preference,
+  )
+  onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: const Key('camera-work-mode-settings'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        _CameraWorkModeDropdown(
+          mode: RecordingOperationMode.shipping,
+          preference: shippingPreference,
+          onChanged: onChanged,
+        ),
+        const Divider(height: 1, indent: 16, endIndent: 16),
+        _CameraWorkModeDropdown(
+          mode: RecordingOperationMode.returnGoods,
+          preference: returnPreference,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+class _CameraWorkModeDropdown extends StatelessWidget {
+  const _CameraWorkModeDropdown({
+    required this.mode,
     required this.preference,
     required this.onChanged,
   });
 
+  final RecordingOperationMode mode;
   final CameraCapabilityPreference preference;
-  final ValueChanged<CameraCapabilityPreference> onChanged;
+  final void Function(
+    RecordingOperationMode mode,
+    CameraCapabilityPreference preference,
+  )
+  onChanged;
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
     return Padding(
-      key: const Key('camera-work-mode-settings'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      key: Key('${mode.storageValue}-camera-work-mode-setting'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(
         children: <Widget>[
-          const Text(
-            '工作模式',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<CameraCapabilityPreference>(
-              key: const Key('camera-work-mode-segments'),
-              showSelectedIcon: false,
-              segments: CameraCapabilityPreference.values
-                  .map(
-                    (CameraCapabilityPreference option) =>
-                        ButtonSegment<CameraCapabilityPreference>(
-                          value: option,
-                          label: Text(option.label),
-                        ),
-                  )
-                  .toList(growable: false),
-              selected: <CameraCapabilityPreference>{preference},
-              onSelectionChanged: (Set<CameraCapabilityPreference> values) {
-                onChanged(values.single);
-              },
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '${mode.label}工作模式',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  preference.description,
+                  key: Key(
+                    '${mode.storageValue}-camera-work-mode-description',
+                  ),
+                  style: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          Text(
-            preference.description,
-            style: TextStyle(
-              color: colors.onSurfaceVariant,
-              fontSize: 13,
-              height: 1.5,
-            ),
+          const SizedBox(width: 8),
+          DropdownButton<CameraCapabilityPreference>(
+            key: Key('${mode.storageValue}-camera-work-mode-dropdown'),
+            value: preference,
+            isDense: true,
+            underline: const SizedBox.shrink(),
+            items: CameraCapabilityPreference.values
+                .map(
+                  (CameraCapabilityPreference option) =>
+                      DropdownMenuItem<CameraCapabilityPreference>(
+                        value: option,
+                        child: Text(option.label),
+                      ),
+                )
+                .toList(growable: false),
+            onChanged: (CameraCapabilityPreference? value) {
+              if (value != null) onChanged(mode, value);
+            },
           ),
         ],
       ),

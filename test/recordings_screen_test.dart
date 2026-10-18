@@ -993,8 +993,9 @@ void main() {
           speechEnabled: true,
           maxVolumeEnabled: true,
           cameraCapability: CameraCapabilitySettings(
-            preference: CameraCapabilityPreference.full,
-            onPreferenceChanged: (_) async {},
+            shippingPreference: CameraCapabilityPreference.full,
+            returnPreference: CameraCapabilityPreference.full,
+            onPreferenceChanged: (_, _) async {},
           ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
@@ -1104,7 +1105,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    CameraCapabilityPreference? selected;
+    (RecordingOperationMode, CameraCapabilityPreference)? selected;
     await tester.pumpWidget(
       MaterialApp(
         home: RecordingsScreen(
@@ -1118,10 +1119,15 @@ void main() {
           speechEnabled: true,
           maxVolumeEnabled: true,
           cameraCapability: CameraCapabilitySettings(
-            preference: CameraCapabilityPreference.full,
-            onPreferenceChanged: (CameraCapabilityPreference value) async {
-              selected = value;
-            },
+            shippingPreference: CameraCapabilityPreference.full,
+            returnPreference: CameraCapabilityPreference.full,
+            onPreferenceChanged:
+                (
+                  RecordingOperationMode mode,
+                  CameraCapabilityPreference value,
+                ) async {
+                  selected = (mode, value);
+                },
           ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
@@ -1147,27 +1153,53 @@ void main() {
       ),
     );
     expect(find.text('扫码模式'), findsOneWidget);
-    expect(find.text('工作模式'), findsOneWidget);
+    expect(find.text('摄像头工作模式'), findsNothing);
 
-    final Finder segments = find.byKey(const Key('camera-work-mode-segments'));
-    await tester.ensureVisible(segments);
-    await tester.tap(find.text(CameraCapabilityPreference.alternating.label));
+    final Finder dropdown = find.byKey(
+      const Key('shipping-camera-work-mode-dropdown'),
+    );
+    expect(dropdown, findsOneWidget);
+    await tester.ensureVisible(dropdown);
+    await tester.tap(dropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.text(CameraCapabilityPreference.alternating.label).last,
+    );
     await tester.pumpAndSettle();
 
-    expect(selected, CameraCapabilityPreference.alternating);
+    expect(selected, (
+      RecordingOperationMode.shipping,
+      CameraCapabilityPreference.alternating,
+    ));
     // 选完立即在页面上体现，不需要退出重进
     expect(
-      find.text(CameraCapabilityPreference.alternating.description),
+      find.byKey(const Key('shipping-camera-work-mode-description')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const Key('shipping-camera-work-mode-description')),
+          )
+          .data,
+      CameraCapabilityPreference.alternating.description,
+    );
+    expect(
+      find.descendant(
+        of: dropdown,
+        matching: find.text(CameraCapabilityPreference.alternating.label),
+      ),
       findsOneWidget,
     );
   });
 
-  testWidgets('工作模式是三段胶囊，三段同时可见且能直接切换', (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(800, 2600);
+  testWidgets('发货和退货工作模式使用独立下拉框并分别回调', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    CameraCapabilityPreference? selected;
+    final List<(RecordingOperationMode, CameraCapabilityPreference)> selected =
+        <(RecordingOperationMode, CameraCapabilityPreference)>[];
     await tester.pumpWidget(
       MaterialApp(
         home: RecordingsScreen(
@@ -1181,10 +1213,15 @@ void main() {
           speechEnabled: true,
           maxVolumeEnabled: true,
           cameraCapability: CameraCapabilitySettings(
-            preference: CameraCapabilityPreference.encoderAnalysis,
-            onPreferenceChanged: (CameraCapabilityPreference value) async {
-              selected = value;
-            },
+            shippingPreference: CameraCapabilityPreference.encoderAnalysis,
+            returnPreference: CameraCapabilityPreference.alternating,
+            onPreferenceChanged:
+                (
+                  RecordingOperationMode mode,
+                  CameraCapabilityPreference value,
+                ) async {
+                  selected.add((mode, value));
+                },
           ),
           onWorkModeChanged: (_) async {},
           onSpeechEnabledChanged: (_) async {},
@@ -1198,50 +1235,91 @@ void main() {
     await tester.pump();
     await _openSettingsEntry(tester, 'scan-settings-open');
 
-    final Finder title = find.text('工作模式');
-    final Finder segments = find.byKey(const Key('camera-work-mode-segments'));
-    final Finder description = find.text(
-      CameraCapabilityPreference.encoderAnalysis.description,
+    final Finder shippingDropdown = find.byKey(
+      const Key('shipping-camera-work-mode-dropdown'),
     );
-    expect(title, findsOneWidget);
-    expect(segments, findsOneWidget);
-    expect(description, findsOneWidget);
-
-    // 标题在上、胶囊在中、说明在下；胶囊占满卡片宽度
-    expect(
-      tester.getTopLeft(title).dy,
-      lessThan(tester.getTopLeft(segments).dy),
+    final Finder returnDropdown = find.byKey(
+      const Key('return-camera-work-mode-dropdown'),
     );
-    expect(
-      tester.getBottomLeft(segments).dy,
-      lessThanOrEqualTo(tester.getTopLeft(description).dy),
+    final Finder shippingDescription = find.byKey(
+      const Key('shipping-camera-work-mode-description'),
     );
-    expect(
-      tester.getTopLeft(title).dx,
-      closeTo(tester.getTopLeft(segments).dx, 1),
+    final Finder returnDescription = find.byKey(
+      const Key('return-camera-work-mode-description'),
     );
+    expect(find.text('摄像头工作模式'), findsNothing);
+    expect(find.text('发货工作模式'), findsOneWidget);
+    expect(find.text('退货工作模式'), findsOneWidget);
+    expect(shippingDropdown, findsOneWidget);
+    expect(returnDropdown, findsOneWidget);
+    final Rect shippingLabelRect = tester.getRect(find.text('发货工作模式'));
+    final Rect returnLabelRect = tester.getRect(find.text('退货工作模式'));
+    final Rect shippingDropdownRect = tester.getRect(shippingDropdown);
+    final Rect returnDropdownRect = tester.getRect(returnDropdown);
     expect(
-      tester.getSize(segments).width,
-      greaterThan(tester.getSize(title).width * 2),
-    );
-    // 三段文案同时可见，不用展开
-    for (final CameraCapabilityPreference option
-        in CameraCapabilityPreference.values) {
-      expect(find.text(option.label), findsOneWidget, reason: option.label);
-    }
-    // 不再有「恢复默认」这类按钮
-    expect(find.text('恢复默认'), findsNothing);
-
-    // 三段一律可选：真跑不动时只是选择落到「仅扫码」，用户随时能改回来
-    await tester.ensureVisible(segments);
-    await tester.tap(find.text(CameraCapabilityPreference.full.label));
-    await tester.pumpAndSettle();
-
-    expect(selected, CameraCapabilityPreference.full);
-    expect(
-      find.text(CameraCapabilityPreference.full.description),
+      find.descendant(
+        of: find
+            .ancestor(of: shippingDropdown, matching: find.byType(Row))
+            .first,
+        matching: find.text('发货工作模式'),
+      ),
       findsOneWidget,
     );
+    expect(
+      find.descendant(
+        of: find
+            .ancestor(of: returnDropdown, matching: find.byType(Row))
+            .first,
+        matching: find.text('退货工作模式'),
+      ),
+      findsOneWidget,
+    );
+    expect(shippingLabelRect.right, lessThan(shippingDropdownRect.left));
+    expect(returnLabelRect.right, lessThan(returnDropdownRect.left));
+    expect(
+      tester.widget<Text>(shippingDescription).data,
+      CameraCapabilityPreference.encoderAnalysis.description,
+    );
+    expect(
+      tester.widget<Text>(returnDescription).data,
+      CameraCapabilityPreference.alternating.description,
+    );
+
+    await tester.ensureVisible(shippingDropdown);
+    await tester.tap(shippingDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(CameraCapabilityPreference.full.label).last);
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(returnDropdown);
+    await tester.tap(returnDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.text(CameraCapabilityPreference.encoderAnalysis.label).last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: shippingDropdown,
+        matching: find.text(CameraCapabilityPreference.full.label),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: returnDropdown,
+        matching: find.text(CameraCapabilityPreference.encoderAnalysis.label),
+      ),
+      findsOneWidget,
+    );
+    expect(selected, <(RecordingOperationMode, CameraCapabilityPreference)>[
+      (RecordingOperationMode.shipping, CameraCapabilityPreference.full),
+      (
+        RecordingOperationMode.returnGoods,
+        CameraCapabilityPreference.encoderAnalysis,
+      ),
+    ]);
   });
 
   testWidgets('扫二维码与扫码提示音开关默认关闭并可切换', (WidgetTester tester) async {

@@ -7,6 +7,8 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
   Future<void> retryInitialize();
   Future<void> _beginMaxVolumeIfNeeded();
   Future<void> _disableMaxVolume();
+  @override
+  Future<void> _syncCameraPreferenceForOperationMode();
 
   @override
   WorkMode _workMode = WorkMode.continuousScan;
@@ -82,6 +84,7 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
     notifyListeners();
     _speechService.enqueue(_speechForOperationMode(mode));
     await _repository.saveOperationMode(mode);
+    await _syncCameraPreferenceForOperationMode();
   }
 
   SpeechPrompt _speechForOperationMode(RecordingOperationMode mode) =>

@@ -24,7 +24,8 @@ class AppSettings {
     this.recordAudioEnabled = true,
     this.watermarkEnabled = true,
     this.manualTrackingValidationEnabled = true,
-    this.cameraCapabilityPreference = CameraCapabilityPreference.full,
+    this.shippingCameraCapabilityPreference = CameraCapabilityPreference.full,
+    this.returnCameraCapabilityPreference = CameraCapabilityPreference.full,
     this.cameraCapabilityState,
     this.preferredVideoCodec = RecordingVideoCodec.h264,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
@@ -60,9 +61,11 @@ class AppSettings {
       ..remove('watermarkEnabled')
       ..remove('manualTrackingValidationEnabled')
       // 旧版本把「录像降级为两路」单独记成一个标记键，用户改回完整模式也甩不掉；
-      // 现在降级结论统一记在 cameraCapabilityPreference 里，这里顺手丢掉历史键。
+      // 现在发货和退货分别保存工作模式，这里顺手丢掉历史键。
       ..remove('nativeRecordingFallback')
       ..remove('cameraCapabilityPreference')
+      ..remove('shippingCameraCapabilityPreference')
+      ..remove('returnCameraCapabilityPreference')
       ..remove('cameraCapabilityState')
       ..remove('preferredVideoCodec')
       ..remove('recordingSpec')
@@ -91,6 +94,8 @@ class AppSettings {
             .where((value) => value > 0)
             .toSet();
     extraValues.remove('hiddenRemoteRecordingIds');
+    final Object? legacyCameraCapabilityPreference =
+        json['cameraCapabilityPreference'];
     return AppSettings(
       workMode: workModeFromStorage(json['workMode']),
       operationMode: recordingOperationModeFromStorage(json['operationMode']),
@@ -113,8 +118,13 @@ class AppSettings {
           json['manualTrackingValidationEnabled'] is bool
           ? json['manualTrackingValidationEnabled']! as bool
           : true,
-      cameraCapabilityPreference: cameraCapabilityPreferenceFromStorage(
-        json['cameraCapabilityPreference'],
+      shippingCameraCapabilityPreference: cameraCapabilityPreferenceFromStorage(
+        json['shippingCameraCapabilityPreference'] ??
+            legacyCameraCapabilityPreference,
+      ),
+      returnCameraCapabilityPreference: cameraCapabilityPreferenceFromStorage(
+        json['returnCameraCapabilityPreference'] ??
+            legacyCameraCapabilityPreference,
       ),
       cameraCapabilityState: json['cameraCapabilityState'] is Map
           ? Map<String, Object?>.from(
@@ -215,7 +225,8 @@ class AppSettings {
   /// 是否给录像添加水印，默认开启；关闭后预览和成片都不再绘制水印。
   final bool watermarkEnabled;
   final bool manualTrackingValidationEnabled;
-  final CameraCapabilityPreference cameraCapabilityPreference;
+  final CameraCapabilityPreference shippingCameraCapabilityPreference;
+  final CameraCapabilityPreference returnCameraCapabilityPreference;
   final Map<String, Object?>? cameraCapabilityState;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
@@ -244,6 +255,16 @@ class AppSettings {
   final bool scanQrCodes;
   final Map<String, Object?> extraValues;
 
+  CameraCapabilityPreference cameraCapabilityPreferenceFor(
+    RecordingOperationMode mode,
+  ) => mode == RecordingOperationMode.returnGoods
+      ? returnCameraCapabilityPreference
+      : shippingCameraCapabilityPreference;
+
+  /// 当前发货/退货模式的兼容读取入口。
+  CameraCapabilityPreference get cameraCapabilityPreference =>
+      cameraCapabilityPreferenceFor(operationMode);
+
   AppSettings copyWith({
     WorkMode? workMode,
     RecordingOperationMode? operationMode,
@@ -253,7 +274,8 @@ class AppSettings {
     bool? recordAudioEnabled,
     bool? watermarkEnabled,
     bool? manualTrackingValidationEnabled,
-    CameraCapabilityPreference? cameraCapabilityPreference,
+    CameraCapabilityPreference? shippingCameraCapabilityPreference,
+    CameraCapabilityPreference? returnCameraCapabilityPreference,
     Map<String, Object?>? cameraCapabilityState,
     RecordingVideoCodec? preferredVideoCodec,
     RecordingSpecPreset? recordingSpec,
@@ -288,8 +310,12 @@ class AppSettings {
       manualTrackingValidationEnabled:
           manualTrackingValidationEnabled ??
           this.manualTrackingValidationEnabled,
-      cameraCapabilityPreference:
-          cameraCapabilityPreference ?? this.cameraCapabilityPreference,
+      shippingCameraCapabilityPreference:
+          shippingCameraCapabilityPreference ??
+          this.shippingCameraCapabilityPreference,
+      returnCameraCapabilityPreference:
+          returnCameraCapabilityPreference ??
+          this.returnCameraCapabilityPreference,
       cameraCapabilityState:
           cameraCapabilityState ?? this.cameraCapabilityState,
       preferredVideoCodec: preferredVideoCodec ?? this.preferredVideoCodec,
@@ -335,7 +361,10 @@ class AppSettings {
     'recordAudioEnabled': recordAudioEnabled,
     'watermarkEnabled': watermarkEnabled,
     'manualTrackingValidationEnabled': manualTrackingValidationEnabled,
-    'cameraCapabilityPreference': cameraCapabilityPreference.storageValue,
+    'shippingCameraCapabilityPreference':
+        shippingCameraCapabilityPreference.storageValue,
+    'returnCameraCapabilityPreference':
+        returnCameraCapabilityPreference.storageValue,
     'cameraCapabilityState': cameraCapabilityState,
     'preferredVideoCodec': preferredVideoCodec.storageValue,
     'recordingSpec': recordingSpec.storageValue,

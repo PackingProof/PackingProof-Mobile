@@ -1248,8 +1248,14 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
             PlatformCapability.continuousCameraRecording,
           )
           ? CameraCapabilitySettings(
-              preference: _controller.cameraCapabilityPreference,
-              onPreferenceChanged: _controller.setCameraCapabilityPreference,
+              shippingPreference: _controller.cameraCapabilityPreferenceFor(
+                RecordingOperationMode.shipping,
+              ),
+              returnPreference: _controller.cameraCapabilityPreferenceFor(
+                RecordingOperationMode.returnGoods,
+              ),
+              onPreferenceChanged:
+                  _controller.setCameraCapabilityPreferenceFor,
               showCard: _controller.showCameraCapabilityCard,
             )
           : null,

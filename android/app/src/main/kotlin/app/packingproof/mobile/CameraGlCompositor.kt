@@ -145,7 +145,7 @@ internal class CameraGlCompositor(
     private val started = AtomicBoolean(false)
     private val released = AtomicBoolean(false)
     private val encoderEnabled = AtomicBoolean(false)
-    // 「仅扫码」模式录像时要求可见预览停住：编码输出照常，只停预览纹理出帧。
+    // 「不预览」模式录像时要求可见预览停住：编码输出照常，只停预览纹理出帧。
     private val previewEnabled = AtomicBoolean(true)
     private val thread = HandlerThread("packing-camera-gl")
     private val rasterThread = HandlerThread("packing-watermark-raster")

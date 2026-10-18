@@ -1016,10 +1016,12 @@ class SessionRepository {
       );
 
   Future<void> saveCameraCapabilityPreference(
+    RecordingOperationMode operationMode,
     CameraCapabilityPreference preference,
   ) => _updateSettings(
-    (AppSettings value) =>
-        value.copyWith(cameraCapabilityPreference: preference),
+    (AppSettings value) => operationMode == RecordingOperationMode.returnGoods
+        ? value.copyWith(returnCameraCapabilityPreference: preference)
+        : value.copyWith(shippingCameraCapabilityPreference: preference),
   );
 
   Future<void> saveScanBeepEnabled(bool enabled) => _updateSettings(

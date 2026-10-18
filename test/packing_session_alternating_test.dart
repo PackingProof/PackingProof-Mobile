@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
+import 'package:packing_proof_mobile/models/app_settings.dart';
 import 'package:packing_proof_mobile/models/order_info.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
@@ -559,7 +560,7 @@ void main() {
     expect(controller.phase, PackingSessionPhase.ready);
     expect(camera.lastMode, 'alternating');
     expect(controller.takeCapabilityNoticeForDisplay(), isNotNull);
-    expect(controller.capabilityStatusText, contains('仅预览'));
+    expect(controller.capabilityStatusText, contains('不扫码'));
     expect(controller.capabilityProbedAtMs, greaterThan(0));
 
     // 未工作时完成本单是安全的空操作。
@@ -591,6 +592,54 @@ void main() {
       CameraCapabilityPreference.full,
     );
     expect(camera.lastMode, 'full');
+  });
+
+  test('发货和退货分别保存工作模式，切换操作模式时同步原生相机', () async {
+    await controller.initialize();
+
+    await controller.setCameraCapabilityPreferenceFor(
+      RecordingOperationMode.returnGoods,
+      CameraCapabilityPreference.alternating,
+    );
+    expect(
+      controller.cameraCapabilityPreferenceFor(RecordingOperationMode.shipping),
+      CameraCapabilityPreference.full,
+    );
+    expect(
+      controller.cameraCapabilityPreferenceFor(
+        RecordingOperationMode.returnGoods,
+      ),
+      CameraCapabilityPreference.alternating,
+    );
+    expect(controller.capabilityMode, CameraCapabilityMode.full);
+    expect(camera.lastMode, 'full');
+
+    await controller.setOperationMode(RecordingOperationMode.returnGoods);
+    expect(controller.operationMode, RecordingOperationMode.returnGoods);
+    expect(controller.capabilityMode, CameraCapabilityMode.alternating);
+    expect(camera.lastMode, 'alternating');
+
+    await controller.setCameraCapabilityPreferenceFor(
+      RecordingOperationMode.shipping,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(controller.capabilityMode, CameraCapabilityMode.alternating);
+    expect(camera.lastMode, 'alternating');
+
+    await controller.setOperationMode(RecordingOperationMode.shipping);
+    expect(controller.operationMode, RecordingOperationMode.shipping);
+    expect(controller.capabilityMode, CameraCapabilityMode.encoderAnalysis);
+    expect(camera.lastMode, 'encoder_analysis');
+
+    final AppSettings settings = await repository.loadSettings();
+    expect(
+      settings.shippingCameraCapabilityPreference,
+      CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(
+      settings.returnCameraCapabilityPreference,
+      CameraCapabilityPreference.alternating,
+    );
   });
 
   test('录像期间忽略工作模式切换，避免中断当前录制', () async {
@@ -651,7 +700,7 @@ void main() {
     expect(camera.lastInitializeMode, 'encoder_analysis');
   });
 
-  test('原生自动降级也写进同一个设置项，下次启动直接按降级后的模式开始', () async {
+  test('原生自动降级只更新当前业务模式，下次启动沿用该模式设置', () async {
     await controller.initialize();
 
     controller.handleNativeRecordingFallbackForTesting(<String, Object?>{
@@ -667,6 +716,12 @@ void main() {
     expect(
       (await repository.loadSettings()).cameraCapabilityPreference,
       CameraCapabilityPreference.encoderAnalysis,
+    );
+    expect(
+      controller.cameraCapabilityPreferenceFor(
+        RecordingOperationMode.returnGoods,
+      ),
+      CameraCapabilityPreference.full,
     );
 
     camera.lastInitializeMode = 'stale';
@@ -697,7 +752,7 @@ void main() {
     expect(camera.lastInitializeMode, 'encoder_analysis');
   });
 
-  test('真降级后选择落到「仅扫码」，用户还能手动改回完整模式', () async {
+  test('真降级后选择落到「不预览」，用户还能手动改回完整模式', () async {
     await controller.initialize();
     expect(
       controller.cameraCapabilityPreference,
@@ -710,7 +765,7 @@ void main() {
     });
     await pumpEventQueue();
 
-    // 用户要的是完整模式，原生真的降级：选择落到「仅扫码」，界面和实际一致
+    // 用户要的是完整模式，原生真的降级：选择落到「不预览」，界面和实际一致
     expect(
       controller.cameraCapabilityPreference,
       CameraCapabilityPreference.encoderAnalysis,
@@ -740,7 +795,7 @@ void main() {
     );
   });
 
-  test('用户自己选「仅扫码」不弹硬件限制提示，选择保持不变', () async {
+  test('用户自己选「不预览」不弹硬件限制提示，选择保持不变', () async {
     await controller.initialize();
 
     await controller.setCameraCapabilityPreference(

@@ -24,6 +24,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   bool get _pairingScanActive;
   bool get _pairingBusy;
   bool get torchEnabled;
+  Future<void> _syncCameraPreferenceForOperationMode();
 
   Future<void> _tryPairComputer(String value);
   void _showRejectedBarcodeNotice(
@@ -916,6 +917,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
           }
           _speechService.enqueue(SpeechPrompt.shippingMode);
           _runInBackground(_repository.saveOperationMode(_operationMode));
+          await _syncCameraPreferenceForOperationMode();
         }
         break;
       case MobileBarcodeCommand.switchReturn:
@@ -926,6 +928,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
           }
           _speechService.enqueue(SpeechPrompt.returnMode);
           _runInBackground(_repository.saveOperationMode(_operationMode));
+          await _syncCameraPreferenceForOperationMode();
         }
         break;
       case MobileBarcodeCommand.startWork:

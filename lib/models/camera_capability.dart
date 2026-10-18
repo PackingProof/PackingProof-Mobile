@@ -16,16 +16,16 @@ enum CameraCapabilityMode {
 
   String get label => switch (this) {
     CameraCapabilityMode.full => '扫码预览',
-    CameraCapabilityMode.encoderAnalysis => '仅扫码',
-    CameraCapabilityMode.alternating => '仅预览',
+    CameraCapabilityMode.encoderAnalysis => '不预览',
+    CameraCapabilityMode.alternating => '不扫码',
     CameraCapabilityMode.unsupported => '不支持',
     CameraCapabilityMode.unverified => '未检测',
   };
 
   String get description => switch (this) {
     CameraCapabilityMode.full => '录像时预览和扫码同时可用',
-    CameraCapabilityMode.encoderAnalysis => '录像时预览画面会停住，扫码照常',
-    CameraCapabilityMode.alternating => '录像时不能扫码，录完一单点「完成本单」再扫码',
+    CameraCapabilityMode.encoderAnalysis => '录像时不更新预览画面，正常扫码',
+    CameraCapabilityMode.alternating => '录像时暂停扫码，结束本单后恢复',
     CameraCapabilityMode.unsupported => '此设备无法同时预览和扫码，暂时无法工作',
     CameraCapabilityMode.unverified => '还没检测过，先按常规方式工作，可以点「重新检测」',
   };
