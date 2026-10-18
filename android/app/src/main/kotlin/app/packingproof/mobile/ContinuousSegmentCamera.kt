@@ -55,6 +55,12 @@ internal object ContinuousCameraInitProbeCache {
     @Volatile var inProgress = false
 }
 
+private data class PendingPreviewSuspend(
+    val result: MethodChannel.Result,
+    val session: CameraCaptureSession,
+    val camera: CameraDevice,
+)
+
 /**
  * Keeps one Camera2 session and one hardware video encoder alive while work is active.
  * Barcode boundaries only rotate the MP4 muxer, so preview and camera capture
@@ -77,6 +83,7 @@ class ContinuousSegmentCamera(
         private const val CAMERA_LOG_TAG = "PackingProof.Camera"
         private const val PREVIEW_STALL_THRESHOLD_MS = 1_500L
         private const val PREVIEW_STALL_CHECK_INTERVAL_MS = 2_000L
+        private const val PREVIEW_SUSPEND_TIMEOUT_MS = 500L
         private const val MUX_WRITE_STALL_THRESHOLD_MS = 100L
         private const val CAMERA_DISABLED_MESSAGE =
             "摄像头被系统或设备策略禁用，请检查摄像头访问开关"
@@ -178,6 +185,7 @@ class ContinuousSegmentCamera(
     internal var disposed = false
     private var initializeResult: MethodChannel.Result? = null
     private var previewResumeResult: MethodChannel.Result? = null
+    private var pendingPreviewSuspend: PendingPreviewSuspend? = null
     private var openCameraAttempts = 0
     private var audioOutputFormat: MediaFormat? = null
 
@@ -722,6 +730,11 @@ class ContinuousSegmentCamera(
         probeInProgress = false
         initializeResult?.let { replyError(it, "disposed", "摄像头初始化已取消") }
         previewResumeResult?.let { replyError(it, "disposed", "摄像头恢复已取消") }
+        val pendingSuspend = pendingPreviewSuspend
+        pendingPreviewSuspend = null
+        pendingSuspend?.result?.let {
+            replyError(it, "disposed", "摄像头暂停已取消")
+        }
         startResult?.let { replyError(it, "disposed", "录像启动已取消") }
         splitResult?.let { replyError(it, "disposed", "录像分段已取消") }
         stopResult?.let { replyError(it, "disposed", "录像保存已取消") }
@@ -752,6 +765,9 @@ class ContinuousSegmentCamera(
             finishCleanup()
         } else finishCleanup()
         if (activeCameraHandler != null) activeCameraHandler.post {
+            cameraHandler?.removeCallbacks(previewSuspendTimeout)
+            pendingSuspend?.session?.close()
+            pendingSuspend?.camera?.close()
             scannerBusy = false
             workScanEnabled = false
             pairingScanEnabled = false
@@ -1083,6 +1099,12 @@ class ContinuousSegmentCamera(
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
                         onConfigureFailed()
+                    }
+
+                    override fun onReady(session: CameraCaptureSession) {
+                        if (pendingPreviewSuspend?.session === session) {
+                            finishPreviewSuspend("ready")
+                        }
                     }
                 },
                 cameraHandler,
@@ -2288,6 +2310,25 @@ class ContinuousSegmentCamera(
         }
     }
 
+    private val previewSuspendTimeout = Runnable {
+        finishPreviewSuspend("timeout")
+    }
+
+    private fun finishPreviewSuspend(reason: String) {
+        val pending = pendingPreviewSuspend ?: return
+        pendingPreviewSuspend = null
+        cameraHandler?.removeCallbacks(previewSuspendTimeout)
+        // 等最后一次重复请求真正退出后再关闭会话，避免旧 HAL 在请求线程
+        // 仍提交时被强制 flush，并在 Camera2 回调线程触发设备错误。
+        pending.session.close()
+        pending.camera.close()
+        Log.i(
+            CAMERA_LOG_TAG,
+            "previewActive=false camera suspended trigger=$reason",
+        )
+        replySuccess(pending.result, null)
+    }
+
     fun setPreviewActive(active: Boolean, result: MethodChannel.Result) {
         val handler = cameraHandler
         if (disposed || handler == null) {
@@ -2317,22 +2358,31 @@ class ContinuousSegmentCamera(
                 val camera = cameraDevice
                 captureSession = null
                 cameraDevice = null
+                sessionHasPreview = false
+                sessionHasEncoder = false
+                sessionHasAnalysis = false
                 try {
                     session?.stopRepeating()
                 } catch (_: Throwable) {
                 }
-                // abortCaptures 会让部分 Android 8.x HAL 在请求线程仍在提交时
-                // 强制 flush，并在 Camera2 回调线程触发设备错误。预览不是录像
-                // 收尾，停止重复请求后直接关闭会话即可。
-                session?.close()
-                sessionHasPreview = false
-                sessionHasEncoder = false
-                sessionHasAnalysis = false
-                camera?.close()
                 lastCaptureStartedAtMs = 0L
                 lastCaptureCompletedAtMs = 0L
                 stallActive = false
                 resetStallRecovery()
+                if (session != null && camera != null) {
+                    pendingPreviewSuspend = PendingPreviewSuspend(
+                        result = result,
+                        session = session,
+                        camera = camera,
+                    )
+                    handler.postDelayed(
+                        previewSuspendTimeout,
+                        PREVIEW_SUSPEND_TIMEOUT_MS,
+                    )
+                    return@post
+                }
+                session?.close()
+                camera?.close()
                 Log.i(CAMERA_LOG_TAG, "previewActive=false camera suspended")
                 replySuccess(result, null)
                 return@post
