@@ -2363,7 +2363,12 @@ class ContinuousSegmentCamera(
                 sessionHasAnalysis = false
                 try {
                     session?.stopRepeating()
-                } catch (_: Throwable) {
+                } catch (error: Throwable) {
+                    Log.w(
+                        CAMERA_LOG_TAG,
+                        "stop repeating failed while suspending preview",
+                        error,
+                    )
                 }
                 lastCaptureStartedAtMs = 0L
                 lastCaptureCompletedAtMs = 0L
