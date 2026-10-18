@@ -18,6 +18,11 @@ internal fun shouldAnalyzeBarcodeFrame(
     !scannerBusy &&
     elapsedSinceLastAnalysisMs >= analysisIntervalMs
 
+internal fun shouldAcquireBarcodeImage(
+    scannerBusy: Boolean,
+    previewActive: Boolean,
+): Boolean = previewActive && !scannerBusy
+
 internal fun shouldAcceptBarcodeAnalysisResult(
     resultGeneration: Long,
     activeGeneration: Long,

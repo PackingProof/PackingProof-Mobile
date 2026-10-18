@@ -1501,7 +1501,18 @@ class ContinuousSegmentCamera(
     }
 
     private fun analyzeImage(reader: ImageReader) {
-        val image = reader.acquireLatestImage() ?: return
+        // 上一帧仍由 ML Kit 持有时继续取帧，会让 Android 8.x 的
+        // ImageReader 超过 maxImages 并在相机回调线程抛异常，直接杀进程。
+        if (!shouldAcquireBarcodeImage(scannerBusy, previewActive)) return
+        val image = try {
+            reader.acquireLatestImage()
+        } catch (error: IllegalStateException) {
+            analysisFailureCount++
+            lastAnalysisFailure =
+                "${error.javaClass.simpleName}: ${error.message.orEmpty()}"
+            Log.w(CAMERA_LOG_TAG, "analysis image acquisition failed", error)
+            null
+        } ?: return
         if (!shouldAnalyzeBarcodeFrame(
                 previewActive = previewActive,
                 pairingScanEnabled = pairingScanEnabled,

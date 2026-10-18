@@ -122,4 +122,26 @@ class CameraBarcodeDispatchTest {
             ),
         )
     }
+
+    @Test
+    fun acquiresAnalysisImagesOnlyWhenNoFrameIsInFlight() {
+        assertTrue(
+            shouldAcquireBarcodeImage(
+                scannerBusy = false,
+                previewActive = true,
+            ),
+        )
+        assertFalse(
+            shouldAcquireBarcodeImage(
+                scannerBusy = true,
+                previewActive = true,
+            ),
+        )
+        assertFalse(
+            shouldAcquireBarcodeImage(
+                scannerBusy = false,
+                previewActive = false,
+            ),
+        )
+    }
 }
