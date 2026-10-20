@@ -518,7 +518,10 @@ private final class IosSystemMediaPresenterHostApi: SystemMediaPresenterHostApi 
     let url = URL(fileURLWithPath: path)
     let save: () -> Void = {
       PHPhotoLibrary.shared().performChanges {
-        PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+        let creationRequest = PHAssetCreationRequest.forAsset()
+        let options = PHAssetResourceCreationOptions()
+        options.shouldMoveFile = false
+        creationRequest.addResource(with: .video, fileURL: url, options: options)
       } completionHandler: { success, error in
         if success {
           completion(.success(()))
