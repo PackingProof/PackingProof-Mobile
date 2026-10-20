@@ -240,6 +240,32 @@ private class PigeonSystemMediaPresenterHostApi(
         ) { }
     }
 
+    override fun supportsGalleryAutoBackup(
+        callback: (Result<Boolean>) -> Unit,
+    ) {
+        invokePlugin(
+            { method, arguments, result ->
+                plugin.onMethodCall(MethodCall(method, arguments), result)
+            },
+            "supportsGalleryAutoBackup",
+            null,
+            callback,
+        ) { it as Boolean }
+    }
+
+    override fun requestGalleryWritePermission(
+        callback: (Result<Boolean>) -> Unit,
+    ) {
+        invokePlugin(
+            { method, arguments, result ->
+                plugin.onMethodCall(MethodCall(method, arguments), result)
+            },
+            "requestGalleryWritePermission",
+            null,
+            callback,
+        ) { it as Boolean }
+    }
+
     override fun saveVideoToGallery(
         path: String,
         callback: (Result<Unit>) -> Unit,
