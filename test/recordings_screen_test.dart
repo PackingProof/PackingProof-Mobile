@@ -69,6 +69,50 @@ void main() {
     );
   });
 
+  testWidgets('自动备份到相册开关仅在支持时显示并说明额外占用存储', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    bool? requestedValue;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RecordingsScreen(
+          mode: RecordingsScreenMode.settings,
+          sessions: const [],
+          workMode: WorkMode.continuousScan,
+          speechEnabled: true,
+          maxVolumeEnabled: true,
+          galleryAutoBackupSupported: true,
+          onWorkModeChanged: (_) async {},
+          onSpeechEnabledChanged: (_) async {},
+          onMaxVolumeEnabledChanged: (_) async {},
+          onGalleryAutoBackupChanged: (bool enabled) async {
+            requestedValue = enabled;
+            return true;
+          },
+          onSpeechPreview: () async {},
+          onSessionUpdated: (_) async {},
+          onDeleteSessions: (_) async {},
+        ),
+      ),
+    );
+
+    await _openSettingsEntry(tester, 'recording-settings-open');
+    final Finder setting = find.byKey(
+      const Key('gallery-auto-backup-settings'),
+    );
+    expect(setting, findsOneWidget);
+    expect(find.text('每段新录像完成后复制一份到系统相册，会额外占用一份存储空间'), findsOneWidget);
+
+    final Switch toggle = tester.widget<Switch>(
+      find.descendant(of: setting, matching: find.byType(Switch)),
+    );
+    toggle.onChanged?.call(true);
+    await tester.pumpAndSettle();
+    expect(requestedValue, isTrue);
+  });
+
   testWidgets('待处理和失败水印录像显示状态且失败原片可播放', (WidgetTester tester) async {
     final DateTime startedAt = DateTime(2026, 8, 21, 10);
     await tester.pumpWidget(
@@ -629,6 +673,7 @@ void main() {
     expect(find.byKey(const Key('recording-spec-settings')), findsOneWidget);
     expect(find.byKey(const Key('record-audio-settings')), findsOneWidget);
     expect(find.byKey(const Key('watermark-settings')), findsOneWidget);
+    expect(find.byKey(const Key('gallery-auto-backup-settings')), findsNothing);
     expect(
       find.byKey(const Key('recording-orientation-settings')),
       findsOneWidget,

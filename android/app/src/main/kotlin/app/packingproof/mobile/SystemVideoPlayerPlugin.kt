@@ -71,6 +71,12 @@ class SystemVideoPlayerPlugin(
                 call.argument<String>("path"),
                 result,
             )
+            "supportsGalleryAutoBackup" -> result.success(
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
+            )
+            "requestGalleryWritePermission" -> result.success(
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q,
+            )
             "saveVideoToGallery" -> saveVideoToGallery(
                 call.argument<String>("path"),
                 result,

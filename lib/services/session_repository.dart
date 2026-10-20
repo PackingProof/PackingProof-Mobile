@@ -1178,6 +1178,10 @@ class SessionRepository {
     (AppSettings value) => value.copyWith(lanBackupAutoEnabled: enabled),
   );
 
+  Future<void> saveGalleryAutoBackupEnabled(bool enabled) => _updateSettings(
+    (AppSettings value) => value.copyWith(galleryAutoBackupEnabled: enabled),
+  );
+
   Future<void> saveHiddenRemoteRecordingIds(Set<int> ids) => _updateSettings(
     (AppSettings value) => value.copyWith(hiddenRemoteRecordingIds: ids),
   );

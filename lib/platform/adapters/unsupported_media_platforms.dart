@@ -64,6 +64,12 @@ class UnsupportedSystemMediaPresenter implements SystemMediaPresenter {
   Future<void> openWithSystemPlayer(String path) => _unsupported();
 
   @override
+  Future<bool> supportsGalleryAutoBackup() async => false;
+
+  @override
+  Future<bool> requestGalleryWritePermission() async => false;
+
+  @override
   Future<void> saveVideoToGallery(String path) {
     throw const CapabilityUnavailableException(
       PlatformCapability.saveVideoToGallery,

@@ -430,6 +430,9 @@ class _RecordingSettingsScreen extends StatefulWidget {
     required this.onRecordAudioChanged,
     required this.watermark,
     required this.onWatermarkChanged,
+    required this.galleryAutoBackupSupported,
+    required this.galleryAutoBackup,
+    required this.onGalleryAutoBackupChanged,
   });
 
   final RecordingVideoCodec codec;
@@ -446,6 +449,9 @@ class _RecordingSettingsScreen extends StatefulWidget {
   final ValueChanged<bool> onRecordAudioChanged;
   final bool watermark;
   final ValueChanged<bool> onWatermarkChanged;
+  final bool galleryAutoBackupSupported;
+  final bool galleryAutoBackup;
+  final Future<bool> Function(bool enabled) onGalleryAutoBackupChanged;
 
   @override
   State<_RecordingSettingsScreen> createState() =>
@@ -459,6 +465,7 @@ class _RecordingSettingsScreenState extends State<_RecordingSettingsScreen> {
   late RecordingOrientation _orientation = widget.orientation;
   late bool _recordAudio = widget.recordAudio;
   late bool _watermark = widget.watermark;
+  late bool _galleryAutoBackup = widget.galleryAutoBackup;
 
   @override
   Widget build(BuildContext context) {
@@ -516,6 +523,28 @@ class _RecordingSettingsScreenState extends State<_RecordingSettingsScreen> {
                   widget.onWatermarkChanged(value);
                 },
               ),
+              if (widget.galleryAutoBackupSupported) ...<Widget>[
+                Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+                _SettingSwitch(
+                  key: const Key('gallery-auto-backup-settings'),
+                  title: '自动备份到相册',
+                  subtitle: '每段新录像完成后复制一份到系统相册，会额外占用一份存储空间',
+                  value: _galleryAutoBackup,
+                  onChanged: (bool value) async {
+                    final ScaffoldMessengerState messenger =
+                        ScaffoldMessenger.of(context);
+                    final bool accepted = await widget
+                        .onGalleryAutoBackupChanged(value);
+                    if (!mounted) return;
+                    setState(() => _galleryAutoBackup = accepted && value);
+                    if (value && !accepted) {
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('未获得相册权限，自动备份未开启')),
+                      );
+                    }
+                  },
+                ),
+              ],
             ],
           ),
         ],
@@ -1703,7 +1732,7 @@ extension _RecordingsSettingsView on _RecordingsScreenState {
         tileKey: const Key('recording-settings-open'),
         icon: Icons.video_settings_rounded,
         title: '录像设置',
-        subtitle: '编码、规格、方向、声音与水印',
+        subtitle: '编码、规格、方向、声音、水印与相册备份',
         onOpen: () => Navigator.of(context).push<void>(
           MaterialPageRoute<void>(
             builder: (_) => _RecordingSettingsScreen(
@@ -1727,6 +1756,9 @@ extension _RecordingsSettingsView on _RecordingsScreenState {
               onRecordAudioChanged: _setRecordAudioEnabled,
               watermark: _watermarkEnabled,
               onWatermarkChanged: _setWatermarkEnabled,
+              galleryAutoBackupSupported: widget.galleryAutoBackupSupported,
+              galleryAutoBackup: _galleryAutoBackupEnabled,
+              onGalleryAutoBackupChanged: _setGalleryAutoBackupEnabled,
             ),
           ),
         ),

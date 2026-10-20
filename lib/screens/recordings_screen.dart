@@ -148,6 +148,8 @@ class RecordingsScreen extends StatefulWidget {
     required this.maxVolumeEnabled,
     this.recordAudioEnabled = true,
     this.watermarkEnabled = true,
+    this.galleryAutoBackupEnabled = false,
+    this.galleryAutoBackupSupported = false,
     this.preferredVideoCodec = RecordingVideoCodec.h264,
     this.recordingSpec = RecordingSpecPreset.hd1080p30,
     this.availableRecordingSpecs = const <RecordingSpecPreset>[
@@ -165,6 +167,7 @@ class RecordingsScreen extends StatefulWidget {
     required this.onMaxVolumeEnabledChanged,
     this.onRecordAudioEnabledChanged,
     this.onWatermarkEnabledChanged,
+    this.onGalleryAutoBackupChanged,
     this.onPreferredVideoCodecChanged,
     this.onRecordingSpecChanged,
     this.onRecordingOrientationChanged,
@@ -234,6 +237,8 @@ class RecordingsScreen extends StatefulWidget {
   final bool maxVolumeEnabled;
   final bool recordAudioEnabled;
   final bool watermarkEnabled;
+  final bool galleryAutoBackupEnabled;
+  final bool galleryAutoBackupSupported;
   final RecordingVideoCodec preferredVideoCodec;
   final RecordingSpecPreset recordingSpec;
   final List<RecordingSpecPreset> availableRecordingSpecs;
@@ -249,6 +254,7 @@ class RecordingsScreen extends StatefulWidget {
   final Future<void> Function(bool enabled) onMaxVolumeEnabledChanged;
   final Future<void> Function(bool enabled)? onRecordAudioEnabledChanged;
   final Future<void> Function(bool enabled)? onWatermarkEnabledChanged;
+  final Future<bool> Function(bool enabled)? onGalleryAutoBackupChanged;
   final Future<void> Function(RecordingVideoCodec codec)?
   onPreferredVideoCodecChanged;
   final Future<void> Function(RecordingSpecPreset spec)? onRecordingSpecChanged;
@@ -379,6 +385,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
   late bool _maxVolumeEnabled;
   late bool _recordAudioEnabled;
   late bool _watermarkEnabled;
+  late bool _galleryAutoBackupEnabled;
   late RecordingVideoCodec _preferredVideoCodec;
   late RecordingSpecPreset _recordingSpec;
   late RecordingOrientation _recordingOrientation;
@@ -450,6 +457,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _maxVolumeEnabled = widget.maxVolumeEnabled;
     _recordAudioEnabled = widget.recordAudioEnabled;
     _watermarkEnabled = widget.watermarkEnabled;
+    _galleryAutoBackupEnabled = widget.galleryAutoBackupEnabled;
     _preferredVideoCodec = widget.preferredVideoCodec;
     _recordingSpec = widget.recordingSpec;
     _recordingOrientation = widget.recordingOrientation;
@@ -525,6 +533,7 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     _maxVolumeEnabled = widget.maxVolumeEnabled;
     _recordAudioEnabled = widget.recordAudioEnabled;
     _watermarkEnabled = widget.watermarkEnabled;
+    _galleryAutoBackupEnabled = widget.galleryAutoBackupEnabled;
     _preferredVideoCodec = widget.preferredVideoCodec;
     _recordingSpec = widget.recordingSpec;
     _recordingOrientation = widget.recordingOrientation;
@@ -709,6 +718,15 @@ class _RecordingsScreenState extends State<RecordingsScreen>
     }
     setState(() => _watermarkEnabled = enabled);
     await widget.onWatermarkEnabledChanged?.call(enabled);
+  }
+
+  Future<bool> _setGalleryAutoBackupEnabled(bool enabled) async {
+    final bool accepted =
+        await widget.onGalleryAutoBackupChanged?.call(enabled) ?? false;
+    if (accepted && mounted && _galleryAutoBackupEnabled != enabled) {
+      setState(() => _galleryAutoBackupEnabled = enabled);
+    }
+    return accepted;
   }
 
   Future<void> _setPreferredVideoCodec(RecordingVideoCodec codec) async {

@@ -1899,6 +1899,8 @@ interface SystemMediaPresenterHostApi {
   fun getVideoTrackMime(path: String, callback: (Result<String?>) -> Unit)
   fun getVideoDecodeSupport(callback: (Result<VideoDecodeSupportDto?>) -> Unit)
   fun openWithSystemPlayer(path: String, callback: (Result<Unit>) -> Unit)
+  fun supportsGalleryAutoBackup(callback: (Result<Boolean>) -> Unit)
+  fun requestGalleryWritePermission(callback: (Result<Boolean>) -> Unit)
   fun saveVideoToGallery(path: String, callback: (Result<Unit>) -> Unit)
 
   companion object {
@@ -1960,6 +1962,42 @@ interface SystemMediaPresenterHostApi {
                 reply.reply(PlatformApiPigeonUtils.wrapError(error))
               } else {
                 reply.reply(PlatformApiPigeonUtils.wrapResult(null))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.supportsGalleryAutoBackup$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.supportsGalleryAutoBackup{ result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
+              }
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.requestGalleryWritePermission$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            api.requestGalleryWritePermission{ result: Result<Boolean> ->
+              val error = result.exceptionOrNull()
+              if (error != null) {
+                reply.reply(PlatformApiPigeonUtils.wrapError(error))
+              } else {
+                val data = result.getOrNull()
+                reply.reply(PlatformApiPigeonUtils.wrapResult(data))
               }
             }
           }

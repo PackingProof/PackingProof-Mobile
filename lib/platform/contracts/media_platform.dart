@@ -54,6 +54,10 @@ abstract interface class SystemMediaPresenter {
 
   Future<void> openWithSystemPlayer(String path);
 
+  Future<bool> supportsGalleryAutoBackup();
+
+  Future<bool> requestGalleryWritePermission();
+
   Future<void> saveVideoToGallery(String path);
 }
 

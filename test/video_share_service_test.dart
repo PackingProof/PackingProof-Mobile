@@ -193,5 +193,11 @@ class _FakeSystemMediaPresenter implements SystemMediaPresenter {
   Future<void> openWithSystemPlayer(String path) async {}
 
   @override
+  Future<bool> supportsGalleryAutoBackup() async => false;
+
+  @override
+  Future<bool> requestGalleryWritePermission() async => false;
+
+  @override
   Future<void> saveVideoToGallery(String path) async {}
 }

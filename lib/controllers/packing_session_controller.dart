@@ -26,6 +26,7 @@ import '../models/recording_orientation.dart';
 import '../models/speech_prompt.dart';
 import '../models/storage_notice.dart';
 import '../models/work_mode.dart';
+import '../platform/contracts/media_platform.dart';
 import '../platform/platform_capabilities.dart';
 import '../platform/platform_container.dart';
 import '../services/barcode_candidate_policy.dart';
@@ -90,6 +91,7 @@ class PackingSessionController extends ChangeNotifier
     LanBackupSink? lanBackupService,
     VideoWatermarkSink? videoWatermarkService,
     OrderInfoReceiverSink? orderInfoReceiver,
+    SystemMediaPresenter? systemMediaPresenter,
     DiagnosticsLogService? runtimeLog,
     CameraDiagnosticsService? cameraDiagnostics,
     PlatformCapabilities? capabilities,
@@ -111,6 +113,9 @@ class PackingSessionController extends ChangeNotifier
        _videoWatermarkService =
            videoWatermarkService ?? VideoWatermarkService(),
        _orderInfoReceiver = orderInfoReceiver ?? OrderInfoReceiverService(),
+       _systemMediaPresenter =
+           systemMediaPresenter ??
+           AppContainer.forCurrentPlatform().systemMediaPresenter,
        _capabilities =
            capabilities ?? AppContainer.forCurrentPlatform().capabilities,
        _nativeCamera = cameraService,
@@ -161,6 +166,8 @@ class PackingSessionController extends ChangeNotifier
   final PlatformCapabilities _capabilities;
   @override
   final OrderInfoReceiverSink _orderInfoReceiver;
+  @override
+  final SystemMediaPresenter _systemMediaPresenter;
   @override
   final BarcodeScanner _barcodeScanner;
   final Future<PackageInfo> Function() _packageInfoLoader;
@@ -324,6 +331,7 @@ class PackingSessionController extends ChangeNotifier
       // Runtime metadata is diagnostic and must not delay camera availability.
     }
     await _resumePendingWatermarks();
+    await _initializeGalleryAutoBackup(settings);
     if (_capabilities.supports(PlatformCapability.lanBackup)) {
       if (!_backupListenerAttached) {
         _lanBackupService.addListener(_handleBackupChanged);

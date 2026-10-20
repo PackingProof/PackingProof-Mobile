@@ -42,6 +42,7 @@ void main() {
     expect(settings.maxVolumeEnabled, isTrue);
     expect(settings.startupNoticeVersion, 0);
     expect(settings.lanBackupAutoEnabled, isTrue);
+    expect(settings.galleryAutoBackupEnabled, isFalse);
     expect(settings.unbackedRetention, UnbackedRetentionPolicy.days30);
     expect(settings.backedRetention, BackedRetentionPolicy.days7);
     expect(settings.returnUnbackedRetention, UnbackedRetentionPolicy.days3);
@@ -124,6 +125,23 @@ void main() {
           as Map<Object?, Object?>,
     );
     expect(persisted['watermarkEnabled'], isFalse);
+  });
+
+  test('自动备份到相册默认关闭且可持久化', () async {
+    final SessionRepository repository = testRepository(root);
+
+    final AppSettings defaults = await repository.loadSettings();
+    expect(defaults.galleryAutoBackupEnabled, isFalse);
+
+    await repository.saveGalleryAutoBackupEnabled(true);
+    final AppSettings updated = await repository.loadSettings();
+    expect(updated.galleryAutoBackupEnabled, isTrue);
+
+    final Map<String, Object?> persisted = Map<String, Object?>.from(
+      jsonDecode(await File('${root.path}/settings.json').readAsString())
+          as Map<Object?, Object?>,
+    );
+    expect(persisted['galleryAutoBackupEnabled'], isTrue);
   });
 
   test('手动输入校验开关默认开启且可持久化', () async {

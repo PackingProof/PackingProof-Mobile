@@ -37,6 +37,7 @@ class AppSettings {
     this.mobileUpdatePromptDate = '',
     this.mobileUpdatePromptCount = 0,
     this.lanBackupAutoEnabled = true,
+    this.galleryAutoBackupEnabled = false,
     this.unbackedRetention = UnbackedRetentionPolicy.days30,
     this.backedRetention = BackedRetentionPolicy.days7,
     this.returnUnbackedRetention = UnbackedRetentionPolicy.days3,
@@ -77,6 +78,7 @@ class AppSettings {
       ..remove('mobileUpdatePromptDate')
       ..remove('mobileUpdatePromptCount')
       ..remove('lanBackupAutoEnabled')
+      ..remove('galleryAutoBackupEnabled')
       ..remove('unbackedRetention')
       ..remove('backedRetention');
     extraValues.remove('returnUnbackedRetention');
@@ -159,6 +161,9 @@ class AppSettings {
       lanBackupAutoEnabled: json['lanBackupAutoEnabled'] is bool
           ? json['lanBackupAutoEnabled']! as bool
           : true,
+      galleryAutoBackupEnabled: json['galleryAutoBackupEnabled'] is bool
+          ? json['galleryAutoBackupEnabled']! as bool
+          : false,
       unbackedRetention: unbackedRetentionFromStorage(
         json['unbackedRetention'],
       ),
@@ -238,6 +243,7 @@ class AppSettings {
   final String mobileUpdatePromptDate;
   final int mobileUpdatePromptCount;
   final bool lanBackupAutoEnabled;
+  final bool galleryAutoBackupEnabled;
   final UnbackedRetentionPolicy unbackedRetention;
   final BackedRetentionPolicy backedRetention;
   final UnbackedRetentionPolicy returnUnbackedRetention;
@@ -287,6 +293,7 @@ class AppSettings {
     String? mobileUpdatePromptDate,
     int? mobileUpdatePromptCount,
     bool? lanBackupAutoEnabled,
+    bool? galleryAutoBackupEnabled,
     UnbackedRetentionPolicy? unbackedRetention,
     BackedRetentionPolicy? backedRetention,
     UnbackedRetentionPolicy? returnUnbackedRetention,
@@ -332,6 +339,8 @@ class AppSettings {
       mobileUpdatePromptCount:
           mobileUpdatePromptCount ?? this.mobileUpdatePromptCount,
       lanBackupAutoEnabled: lanBackupAutoEnabled ?? this.lanBackupAutoEnabled,
+      galleryAutoBackupEnabled:
+          galleryAutoBackupEnabled ?? this.galleryAutoBackupEnabled,
       unbackedRetention: unbackedRetention ?? this.unbackedRetention,
       backedRetention: backedRetention ?? this.backedRetention,
       returnUnbackedRetention:
@@ -376,6 +385,7 @@ class AppSettings {
     'mobileUpdatePromptDate': mobileUpdatePromptDate,
     'mobileUpdatePromptCount': mobileUpdatePromptCount,
     'lanBackupAutoEnabled': lanBackupAutoEnabled,
+    'galleryAutoBackupEnabled': galleryAutoBackupEnabled,
     'unbackedRetention': unbackedRetention.storageValue,
     'backedRetention': backedRetention.storageValue,
     'returnUnbackedRetention': returnUnbackedRetention.storageValue,

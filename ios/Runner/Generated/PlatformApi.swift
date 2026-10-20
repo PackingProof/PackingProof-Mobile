@@ -1873,6 +1873,8 @@ protocol SystemMediaPresenterHostApi {
   func getVideoTrackMime(path: String, completion: @escaping (Result<String?, Error>) -> Void)
   func getVideoDecodeSupport(completion: @escaping (Result<VideoDecodeSupportDto?, Error>) -> Void)
   func openWithSystemPlayer(path: String, completion: @escaping (Result<Void, Error>) -> Void)
+  func supportsGalleryAutoBackup(completion: @escaping (Result<Bool, Error>) -> Void)
+  func requestGalleryWritePermission(completion: @escaping (Result<Bool, Error>) -> Void)
   func saveVideoToGallery(path: String, completion: @escaping (Result<Void, Error>) -> Void)
 }
 
@@ -1930,6 +1932,36 @@ class SystemMediaPresenterHostApiSetup {
       }
     } else {
       openWithSystemPlayerChannel.setMessageHandler(nil)
+    }
+    let supportsGalleryAutoBackupChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.supportsGalleryAutoBackup\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      supportsGalleryAutoBackupChannel.setMessageHandler { _, reply in
+        api.supportsGalleryAutoBackup { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      supportsGalleryAutoBackupChannel.setMessageHandler(nil)
+    }
+    let requestGalleryWritePermissionChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.requestGalleryWritePermission\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      requestGalleryWritePermissionChannel.setMessageHandler { _, reply in
+        api.requestGalleryWritePermission { result in
+          switch result {
+          case .success(let res):
+            reply(wrapResult(res))
+          case .failure(let error):
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      requestGalleryWritePermissionChannel.setMessageHandler(nil)
     }
     let saveVideoToGalleryChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.packing_proof_mobile.SystemMediaPresenterHostApi.saveVideoToGallery\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {

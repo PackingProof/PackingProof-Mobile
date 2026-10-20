@@ -11,6 +11,7 @@ import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
+import 'package:packing_proof_mobile/platform/contracts/media_platform.dart';
 import 'package:packing_proof_mobile/platform/platform_capabilities.dart';
 import 'package:packing_proof_mobile/services/diagnostics_log_service.dart';
 import 'package:packing_proof_mobile/services/lan_backup_service.dart';
@@ -33,6 +34,57 @@ Future<void> deleteTemporaryRoot(Directory root) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('自动相册备份需先授权且同一录像只保存一次', () async {
+    final Directory root = await Directory.systemTemp.createTemp(
+      'packing-proof-gallery-backup-',
+    );
+    final SessionRepository repository = testRepository(root);
+    await repository.initialize();
+    final _RecordingSystemMediaPresenter presenter =
+        _RecordingSystemMediaPresenter();
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _NoopSpeechSink(),
+      lanBackupService: _RecordingLanBackupSink(),
+      systemMediaPresenter: presenter,
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+    );
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+      await deleteTemporaryRoot(root);
+    });
+
+    await controller.initialize();
+    expect(controller.galleryAutoBackupSupported, isTrue);
+    expect(controller.galleryAutoBackupEnabled, isFalse);
+
+    presenter.permissionGranted = false;
+    expect(await controller.setGalleryAutoBackupEnabled(true), isFalse);
+    expect(controller.galleryAutoBackupEnabled, isFalse);
+
+    presenter.permissionGranted = true;
+    expect(await controller.setGalleryAutoBackupEnabled(true), isTrue);
+    expect(controller.galleryAutoBackupEnabled, isTrue);
+
+    final File video = File('${root.path}/gallery.mp4');
+    await video.writeAsBytes(<int>[1, 2, 3]);
+    final DateTime startedAt = DateTime.utc(2026, 10, 21, 9);
+    final RecordingSession session = RecordingSession(
+      id: 'gallery-session',
+      filePath: video.path,
+      startedAt: startedAt,
+      endedAt: startedAt.add(const Duration(seconds: 1)),
+      markers: const <Never>[],
+    );
+    await controller.enqueueGalleryBackupForTesting(video.path, session);
+    await controller.enqueueGalleryBackupForTesting(video.path, session);
+
+    expect(presenter.savedPaths, <String>[video.path]);
+    expect((await repository.loadSettings()).galleryAutoBackupEnabled, isTrue);
+  });
 
   test('备份公共入口保持手动重启与自动续传语义', () async {
     final Directory root = await Directory.systemTemp.createTemp(
@@ -1209,6 +1261,31 @@ void main() {
     controller.clearStoragePolicyHint();
     expect(controller.storagePolicyHintPending, isFalse);
   });
+}
+
+class _RecordingSystemMediaPresenter implements SystemMediaPresenter {
+  bool permissionGranted = true;
+  final List<String> savedPaths = <String>[];
+
+  @override
+  Future<String?> getVideoTrackMime(String path) async => null;
+
+  @override
+  Future<SystemVideoDecodeSupport?> getVideoDecodeSupport() async => null;
+
+  @override
+  Future<void> openWithSystemPlayer(String path) async {}
+
+  @override
+  Future<bool> supportsGalleryAutoBackup() async => true;
+
+  @override
+  Future<bool> requestGalleryWritePermission() async => permissionGranted;
+
+  @override
+  Future<void> saveVideoToGallery(String path) async {
+    savedPaths.add(path);
+  }
 }
 
 Future<void> _verifyCleanupReplayAroundRepositoryFailure() async {

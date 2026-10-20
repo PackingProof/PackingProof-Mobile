@@ -4,6 +4,7 @@ part of 'packing_session_controller.dart';
 mixin _PackingSessionBackupCoordinator on ChangeNotifier {
   SessionRepository get _repository;
   LanBackupSink get _lanBackupService;
+  SystemMediaPresenter get _systemMediaPresenter;
   DiagnosticsLogService get _runtimeLog;
   // Declared for mixins constrained by this coordinator.
   // ignore: unused_element
@@ -31,6 +32,11 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
   bool _autoRetrySweepRunning = false;
   DateTime? _lastAutoRetrySweepAt;
   Timer? _autoRetrySweepTimer;
+  bool _galleryAutoBackupEnabled = false;
+  bool _galleryAutoBackupSupported = false;
+  final Set<String> _queuedGalleryBackupPaths = <String>{};
+  final Set<String> _galleryBackupSuccessfulSessionIds = <String>{};
+  Future<void> _galleryBackupTail = Future<void>.value();
 
   /// 整文件重传类失败的自动重排计数：任务一旦有进展（或需要人工处理）就清空。
   final Map<String, int> _limitedAutoRetryAttempts = <String, int>{};
@@ -57,6 +63,58 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
       _automaticFullBackupPending = false;
       _automaticIncrementalBackupPending = false;
     }
+  }
+
+  bool get galleryAutoBackupEnabled => _galleryAutoBackupEnabled;
+  bool get galleryAutoBackupSupported => _galleryAutoBackupSupported;
+
+  Future<void> _initializeGalleryAutoBackup(AppSettings settings) async {
+    try {
+      _galleryAutoBackupSupported = await _systemMediaPresenter
+          .supportsGalleryAutoBackup();
+    } on Object catch (error) {
+      _galleryAutoBackupSupported = false;
+      unawaited(
+        _runtimeLog.log(
+          kind: 'gallery_auto_backup_probe_failed',
+          extra: <String, Object?>{'error': error.toString()},
+        ),
+      );
+    }
+    _galleryAutoBackupEnabled =
+        _galleryAutoBackupSupported && settings.galleryAutoBackupEnabled;
+    if (!_galleryAutoBackupSupported && settings.galleryAutoBackupEnabled) {
+      try {
+        await _repository.saveGalleryAutoBackupEnabled(false);
+      } on Object {
+        // 不支持自动相册备份的平台仍可继续使用，设置清理失败不影响录像。
+      }
+    }
+    if (!_disposed) notifyListeners();
+  }
+
+  /// 开启时先请求相册写入权限；返回 false 表示未开启。
+  Future<bool> setGalleryAutoBackupEnabled(bool enabled) async {
+    if (enabled && !_galleryAutoBackupSupported) return false;
+    if (_galleryAutoBackupEnabled == enabled) return true;
+    if (enabled) {
+      bool granted = false;
+      try {
+        granted = await _systemMediaPresenter.requestGalleryWritePermission();
+      } on Object catch (error) {
+        unawaited(
+          _runtimeLog.log(
+            kind: 'gallery_permission_failed',
+            extra: <String, Object?>{'error': error.toString()},
+          ),
+        );
+      }
+      if (!granted) return false;
+    }
+    _galleryAutoBackupEnabled = enabled;
+    if (!_disposed) notifyListeners();
+    await _repository.saveGalleryAutoBackupEnabled(enabled);
+    return true;
   }
 
   Future<void> setBackupRetention({
@@ -319,6 +377,7 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
         )
         .toList(growable: false);
     if (finalized.isEmpty) return;
+    _enqueueGalleryAutoBackupIfNeeded(filePath, finalized);
     try {
       await _lanBackupService.enqueueFinalizedFile(filePath, finalized);
     } on Object catch (error) {
@@ -336,6 +395,56 @@ mixin _PackingSessionBackupCoordinator on ChangeNotifier {
         ),
       );
     }
+  }
+
+  void _enqueueGalleryAutoBackupIfNeeded(
+    String filePath,
+    List<RecordingSession> sessions,
+  ) {
+    if (_disposed ||
+        !_galleryAutoBackupSupported ||
+        !_galleryAutoBackupEnabled ||
+        sessions.isEmpty ||
+        _galleryBackupSuccessfulSessionIds.contains(sessions.first.id) ||
+        !_queuedGalleryBackupPaths.add(filePath)) {
+      return;
+    }
+    final Future<void> next = _galleryBackupTail.then(
+      (_) => _saveGalleryAutoBackup(filePath, sessions.first.id),
+    );
+    _galleryBackupTail = next.catchError((Object _) {});
+    _runInBackground(next);
+  }
+
+  Future<void> _saveGalleryAutoBackup(String filePath, String sessionId) async {
+    try {
+      await _systemMediaPresenter.saveVideoToGallery(filePath);
+      _galleryBackupSuccessfulSessionIds.add(sessionId);
+      await _runtimeLog.log(
+        kind: 'gallery_auto_backup_completed',
+        extra: <String, Object?>{'sessionId': sessionId},
+      );
+    } on Object catch (error) {
+      // broad-catch: 相册副本是可选备份，失败不得影响已保存的原片和记录。
+      await _runtimeLog.log(
+        kind: 'gallery_auto_backup_failed',
+        extra: <String, Object?>{
+          'sessionId': sessionId,
+          'error': error.toString(),
+        },
+      );
+    } finally {
+      _queuedGalleryBackupPaths.remove(filePath);
+    }
+  }
+
+  @visibleForTesting
+  Future<void> enqueueGalleryBackupForTesting(
+    String filePath,
+    RecordingSession session,
+  ) async {
+    _enqueueGalleryAutoBackupIfNeeded(filePath, <RecordingSession>[session]);
+    await _galleryBackupTail;
   }
 
   void _handleBackupChanged() {

@@ -507,6 +507,28 @@ private final class IosSystemMediaPresenterHostApi: SystemMediaPresenterHostApi 
     }
   }
 
+  func supportsGalleryAutoBackup(
+    completion: @escaping (Result<Bool, Error>) -> Void
+  ) {
+    completion(.success(true))
+  }
+
+  func requestGalleryWritePermission(
+    completion: @escaping (Result<Bool, Error>) -> Void
+  ) {
+    let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+    switch status {
+    case .authorized, .limited:
+      completion(.success(true))
+    case .notDetermined:
+      PHPhotoLibrary.requestAuthorization(for: .addOnly) { newStatus in
+        completion(.success(newStatus == .authorized || newStatus == .limited))
+      }
+    default:
+      completion(.success(false))
+    }
+  }
+
   func saveVideoToGallery(
     path: String,
     completion: @escaping (Result<Void, Error>) -> Void

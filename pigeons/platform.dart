@@ -258,6 +258,10 @@ abstract class SystemMediaPresenterHostApi {
   @async
   void openWithSystemPlayer(String path);
   @async
+  bool supportsGalleryAutoBackup();
+  @async
+  bool requestGalleryWritePermission();
+  @async
   void saveVideoToGallery(String path);
 }
 

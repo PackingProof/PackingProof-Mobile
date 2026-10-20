@@ -83,6 +83,13 @@ class PigeonSystemMediaPresenter implements SystemMediaPresenter {
       _api.openWithSystemPlayer(path);
 
   @override
+  Future<bool> supportsGalleryAutoBackup() => _api.supportsGalleryAutoBackup();
+
+  @override
+  Future<bool> requestGalleryWritePermission() =>
+      _api.requestGalleryWritePermission();
+
+  @override
   Future<void> saveVideoToGallery(String path) => _api.saveVideoToGallery(path);
 }
 

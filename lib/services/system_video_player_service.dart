@@ -98,6 +98,24 @@ class SystemVideoPlayerService {
   Future<void> openWithSystemPlayer(String path) async {
     await _platform.openWithSystemPlayer(path);
   }
+
+  /// 自动备份到相册只在 iOS 与 Android 10+ 提供。
+  Future<bool> supportsGalleryAutoBackup() async {
+    try {
+      return await _platform.supportsGalleryAutoBackup();
+    } on Object {
+      return false;
+    }
+  }
+
+  /// 用户开启开关时提前请求相册写入权限，避免首次录像结束时弹出权限框。
+  Future<bool> requestGalleryWritePermission() async {
+    try {
+      return await _platform.requestGalleryWritePermission();
+    } on Object {
+      return false;
+    }
+  }
 }
 
 class _LegacySystemMediaPresenter implements SystemMediaPresenter {
@@ -141,6 +159,15 @@ class _LegacySystemMediaPresenter implements SystemMediaPresenter {
     'openWithSystemPlayer',
     <String, Object>{'path': path},
   );
+
+  @override
+  Future<bool> supportsGalleryAutoBackup() async =>
+      await channel.invokeMethod<bool>('supportsGalleryAutoBackup') ?? false;
+
+  @override
+  Future<bool> requestGalleryWritePermission() async =>
+      await channel.invokeMethod<bool>('requestGalleryWritePermission') ??
+      false;
 
   @override
   Future<void> saveVideoToGallery(String path) => channel.invokeMethod<void>(
