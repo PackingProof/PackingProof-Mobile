@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/models/app_settings.dart';
+import 'package:packing_proof_mobile/models/lan_backup.dart';
 import 'package:packing_proof_mobile/models/order_info.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
@@ -716,6 +717,87 @@ void main() {
     } finally {
       await _stopWorkIfNeeded(tester, controller);
     }
+  });
+
+  test('并发开始工作只允许一次启动且共用存储检查', () async {
+    final Completer<Map<Object?, Object?>?> storageCheck =
+        Completer<Map<Object?, Object?>?>();
+    backupPlatform.pendingStorageCheck = storageCheck;
+    try {
+      await controller.initialize();
+
+      final Future<void> first = controller.startWork();
+      while (backupPlatform.storageCheckCalls == 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(backupPlatform.storageCheckCalls, 1);
+      expect(controller.isBusy, isTrue);
+      expect(controller.phase, PackingSessionPhase.starting);
+
+      final Future<void> duplicate = controller.startWork();
+      await duplicate;
+      expect(backupPlatform.storageCheckCalls, 1);
+      expect(
+        runtimeLog.events.where((event) => event.kind == 'start_work'),
+        hasLength(1),
+      );
+
+      storageCheck.complete(<Object?, Object?>{
+        'availableBytes': 4 * 1024 * 1024 * 1024,
+        'availableBytesBefore': 4 * 1024 * 1024 * 1024,
+        'freedBytes': 0,
+        'deletedCount': 0,
+        'warning': false,
+        'insufficient': false,
+      });
+      await first;
+
+      expect(controller.isWorking, isTrue);
+      expect(controller.phase, PackingSessionPhase.waitingForBarcode);
+      expect(camera.startWorkCalls, 0);
+      expect(
+        runtimeLog.events.where((event) => event.kind == 'start_work_done'),
+        hasLength(1),
+      );
+    } finally {
+      if (!storageCheck.isCompleted) {
+        storageCheck.complete(null);
+      }
+      if (controller.isWorking) await controller.stopWork();
+    }
+  });
+
+  test('并发存储检查等待同一结果而不是伪造空间充足', () async {
+    final Completer<Map<Object?, Object?>?> storageCheck =
+        Completer<Map<Object?, Object?>?>();
+    backupPlatform.pendingStorageCheck = storageCheck;
+
+    final Future<StorageSpaceResult> first = controller
+        .checkStorageForTesting();
+    while (backupPlatform.storageCheckCalls == 0) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    final Future<StorageSpaceResult> second = controller
+        .checkStorageForTesting();
+
+    storageCheck.complete(<Object?, Object?>{
+      'availableBytes': 900 * 1024 * 1024,
+      'availableBytesBefore': 900 * 1024 * 1024,
+      'freedBytes': 0,
+      'deletedCount': 0,
+      'warning': true,
+      'insufficient': true,
+    });
+    final List<StorageSpaceResult> results = await Future.wait(
+      <Future<StorageSpaceResult>>[first, second],
+    );
+
+    expect(results.map((result) => result.insufficient), <bool>[true, true]);
+    expect(results.map((result) => result.availableBytes), <int>[
+      900 * 1024 * 1024,
+      900 * 1024 * 1024,
+    ]);
+    expect(backupPlatform.storageCheckCalls, 1);
   });
 
   test('工作模式写进设置：新会话沿用用户选过的模式', () async {

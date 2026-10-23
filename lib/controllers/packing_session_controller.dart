@@ -245,6 +245,7 @@ class PackingSessionController extends ChangeNotifier
   int _segmentIndex = 1;
   bool _torchEnabled = false;
   bool _workActive = false;
+  bool _workStarting = false;
   int _operationGeneration = 0;
   Set<int> _hiddenRemoteRecordingIdItems = <int>{};
   Set<int> _hiddenRemoteRecordingIdSnapshot = const <int>{};
@@ -312,6 +313,7 @@ class PackingSessionController extends ChangeNotifier
   Set<int> get hiddenRemoteRecordingIds => _hiddenRemoteRecordingIdSnapshot;
   @override
   bool get isBusy =>
+      _workStarting ||
       _phase == PackingSessionPhase.initializing ||
       _phase == PackingSessionPhase.starting ||
       _phase == PackingSessionPhase.saving;
@@ -488,13 +490,15 @@ class PackingSessionController extends ChangeNotifier
     final bool cameraUnavailable = _supportsNativeCamera
         ? _nativeInitialization == null
         : camera == null || !camera.value.isInitialized;
-    if (cameraUnavailable || isBusy || isWorking) {
+    final bool alreadyStarting = _workStarting;
+    if (cameraUnavailable || alreadyStarting || isBusy || isWorking) {
       unawaited(
         _runtimeLog.log(
           kind: 'start_work_skipped',
           extra: <String, Object?>{
             'generation': generation,
             'cameraUnavailable': cameraUnavailable,
+            'alreadyStarting': alreadyStarting,
             'isBusy': isBusy,
             'isWorking': isWorking,
             'phase': _phase.name,
@@ -504,10 +508,12 @@ class PackingSessionController extends ChangeNotifier
       );
       return;
     }
-    await _repository.pauseSharedFileMigration();
+    _workStarting = true;
+    _setPhase(PackingSessionPhase.starting);
     final _PackingOperationTiming timing = _PackingOperationTiming();
     String timingOutcome = 'error';
     try {
+      await _repository.pauseSharedFileMigration();
       unawaited(
         _runtimeLog.log(
           kind: 'start_work',
@@ -542,7 +548,7 @@ class PackingSessionController extends ChangeNotifier
         } else {
           _errorMessage = storage.insufficientMessage;
         }
-        notifyListeners();
+        _setPhase(PackingSessionPhase.ready);
         await _resumeSharedFileMigrationIfIdle();
         return;
       }
@@ -637,6 +643,8 @@ class PackingSessionController extends ChangeNotifier
       _speakErrorMessage(error.toString());
       await _resumeSharedFileMigrationIfIdle();
     } finally {
+      _workStarting = false;
+      if (!_disposed) notifyListeners();
       unawaited(
         _runtimeLog.log(
           kind: 'start_work_stage_timing',

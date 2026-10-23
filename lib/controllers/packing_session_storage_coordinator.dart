@@ -18,12 +18,13 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
     _storagePolicyHintPending = false;
     if (!_disposed) notifyListeners();
   }
+
   Future<RecordingSession?> stopWork();
   Future<void> _syncWorkScanForCamera();
 
   Timer? _storageMonitorTimer;
   String? _storageWarningMessage;
-  bool _storageCheckRunning = false;
+  Future<StorageSpaceResult>? _storageCheckFuture;
   StorageSpaceResult? _lastStorageResult;
   int _queuedStorageNoticePriority = -1;
   StorageNotice? _storageNoticeToShow;
@@ -117,18 +118,24 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
   }
 
   /// 单次检查与回收；不做停止决定，空间是否够用、要不要停由调用方判断。
-  Future<StorageSpaceResult> _reclaimStorageOnce() async {
-    if (_storageCheckRunning || _disposed) {
-      return const StorageSpaceResult(
-        availableBytes: 1 << 62,
-        availableBytesBefore: 1 << 62,
-        freedBytes: 0,
-        deletedCount: 0,
-        warning: false,
-        insufficient: false,
-      );
+  Future<StorageSpaceResult> _reclaimStorageOnce() {
+    if (_disposed) {
+      return Future<StorageSpaceResult>.value(_storageNotApplicable);
     }
-    _storageCheckRunning = true;
+    final Future<StorageSpaceResult>? running = _storageCheckFuture;
+    if (running != null) return running;
+
+    late final Future<StorageSpaceResult> task;
+    task = _performStorageReclaimOnce().whenComplete(() {
+      if (identical(_storageCheckFuture, task)) {
+        _storageCheckFuture = null;
+      }
+    });
+    _storageCheckFuture = task;
+    return task;
+  }
+
+  Future<StorageSpaceResult> _performStorageReclaimOnce() async {
     try {
       final StorageSpaceResult result = await _lanBackupService
           .checkAndReclaimStorage();
@@ -181,18 +188,18 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
     } on Object {
       // broad-catch: Storage inspection failure must not delete files or stop
       // an otherwise healthy recording; the next periodic check retries it.
-      return const StorageSpaceResult(
-        availableBytes: 1 << 62,
-        availableBytesBefore: 1 << 62,
-        freedBytes: 0,
-        deletedCount: 0,
-        warning: false,
-        insufficient: false,
-      );
-    } finally {
-      _storageCheckRunning = false;
+      return _storageNotApplicable;
     }
   }
+
+  static const StorageSpaceResult _storageNotApplicable = StorageSpaceResult(
+    availableBytes: 1 << 62,
+    availableBytesBefore: 1 << 62,
+    freedBytes: 0,
+    deletedCount: 0,
+    warning: false,
+    insufficient: false,
+  );
 
   Future<void> _queueStorageNotice(StorageNotice notice) async {
     if (notice.priority <= _queuedStorageNoticePriority) return;
