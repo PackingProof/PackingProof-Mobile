@@ -149,12 +149,12 @@ class BarcodeCandidatePolicy {
     if (normalized.contains('START') ||
         normalized.contains('开始工作') ||
         normalized.contains('开始录制')) {
-      return MobileBarcodeCommand.startWork;
+      return MobileBarcodeCommand.startRecording;
     }
     if (normalized.contains('STOP') ||
         normalized.contains('停止工作') ||
         normalized.contains('停止录制')) {
-      return MobileBarcodeCommand.stopWork;
+      return MobileBarcodeCommand.stopRecording;
     }
     return null;
   }
@@ -246,6 +246,6 @@ enum MobileBarcodeCommand {
   openFlash,
   switchShipping,
   switchReturn,
-  startWork,
-  stopWork,
+  startRecording,
+  stopRecording,
 }

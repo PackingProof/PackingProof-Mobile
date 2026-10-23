@@ -35,14 +35,14 @@ void main() {
       BarcodeWorkAction.ignore,
     );
   });
-  test('连续扫码会将下一次识别切成新视频', () {
+  test('无面单自动片段和后续识别都切换为新视频', () {
     expect(
       BarcodeWorkModePolicy.decide(
         mode: WorkMode.continuousScan,
         currentCode: '',
         scannedCode: 'JT1234567890',
       ),
-      BarcodeWorkAction.bindCurrentVideo,
+      BarcodeWorkAction.startNextVideo,
     );
     expect(
       BarcodeWorkModePolicy.decide(

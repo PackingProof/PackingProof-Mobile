@@ -722,9 +722,13 @@ class SessionRepository {
       p.join(_recordingsDirectory.path, _dateDirectoryName(startedAt)),
     );
     await dateDirectory.create(recursive: true);
+    final String tracking = trackingNumber.trim();
     final String baseName = _sanitizeFileName(
-      '${trackingNumber.trim().isEmpty ? '未识别面单' : trackingNumber.trim()}_'
-      '${_timestamp(startedAt)}_${operationMode.label}',
+      tracking.isEmpty
+          ? '${RecordingSession.automaticName(startedAt)}_'
+                '${operationMode.fileNameLabel}'
+          : '${tracking}_${_timestamp(startedAt)}_'
+                '${operationMode.fileNameLabel}',
     );
     String destinationPath = p.join(dateDirectory.path, '$baseName.mp4');
     final File source = File(sourcePath);

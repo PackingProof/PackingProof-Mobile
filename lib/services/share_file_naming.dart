@@ -9,15 +9,24 @@ import '../models/recording_session.dart';
 /// 命名规则补一个可读名称，避免分享出去的文件名只是一串内部 ID。
 String shareFileNameStem(RecordingSession session) {
   final String sourceStem = p.basenameWithoutExtension(session.filePath);
+  if (session.markers.isEmpty) {
+    final bool hasAutomaticNaming = RegExp(
+      r'^(?:MAN_)?\d{8}_\d{6}_(Ship|Return|发货|退货)(_.+)?$',
+    ).hasMatch(sourceStem);
+    if (hasAutomaticNaming) return sourceStem;
+    return '${RecordingSession.automaticName(session.startedAt)}_'
+        '${session.operationMode.fileNameLabel}';
+  }
   final bool hasComputerNaming = RegExp(
-    r'^.+_\d{8}_\d{6}_(发货|退货)(_.+)?$',
+    r'^.+_\d{8}_\d{6}_(Ship|Return|发货|退货)(_.+)?$',
   ).hasMatch(sourceStem);
   if (hasComputerNaming) return sourceStem;
   final DateTime value = session.startedAt;
   final String date =
       '${value.year.toString().padLeft(4, '0')}${value.month.toString().padLeft(2, '0')}${value.day.toString().padLeft(2, '0')}_'
       '${value.hour.toString().padLeft(2, '0')}${value.minute.toString().padLeft(2, '0')}${value.second.toString().padLeft(2, '0')}';
-  return '${session.displayCode}_${date}_${session.operationMode.label}';
+  return '${session.displayCode}_${date}_'
+      '${session.operationMode.fileNameLabel}';
 }
 
 /// 分享或保存到相册时使用的完整文件名。

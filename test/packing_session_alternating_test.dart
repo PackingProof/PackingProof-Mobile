@@ -662,6 +662,62 @@ void main() {
     expect(camera.lastMode, 'encoder_analysis');
   });
 
+  testWidgets('开始录制入口立即开录，无面单时按日期时间命名', (
+    WidgetTester tester,
+  ) async {
+    try {
+      await tester.runAsync(controller.initialize);
+
+      final Future<void> starting = controller.startRecording();
+      await _waitUntil(
+        tester,
+        () => controller.isRecording,
+        reason: '点击开始录像后应立即进入录制',
+      );
+      await starting;
+
+      expect(controller.isWorking, isTrue);
+      expect(controller.currentCode, isEmpty);
+      expect(camera.startWorkCalls, 1);
+
+      bool stopped = false;
+      final Future<RecordingSession?> stopping = controller.stopWork().whenComplete(
+        () => stopped = true,
+      );
+      await _waitUntil(tester, () => stopped, reason: '录像应能正常停止');
+      final RecordingSession? saved = await stopping;
+      expect(saved, isNotNull);
+      expect(
+        saved!.filePath,
+      matches(RegExp(r'\d{8}_\d{6}_Ship\.mp4$')),
+      );
+    } finally {
+      await _stopWorkIfNeeded(tester, controller);
+    }
+  });
+
+  testWidgets('START 指令与开始录制按钮使用同一立即开录语义', (
+    WidgetTester tester,
+  ) async {
+    try {
+      await tester.runAsync(controller.initialize);
+
+      controller.handleNativeBarcodeFrameForTesting(<NativeBarcodeCandidate>[
+        const NativeBarcodeCandidate(value: 'START', area: 100),
+      ]);
+      await _waitUntil(
+        tester,
+        () => controller.isRecording,
+        reason: 'START 指令应立即开始录像',
+      );
+
+      expect(controller.isWorking, isTrue);
+      expect(camera.startWorkCalls, 1);
+    } finally {
+      await _stopWorkIfNeeded(tester, controller);
+    }
+  });
+
   test('工作模式写进设置：新会话沿用用户选过的模式', () async {
     await controller.initialize();
     await controller.setCameraCapabilityPreference(

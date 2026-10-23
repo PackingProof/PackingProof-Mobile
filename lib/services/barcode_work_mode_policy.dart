@@ -1,7 +1,7 @@
 import '../models/work_mode.dart';
 import 'jd_barcode_policy.dart';
 
-enum BarcodeWorkAction { bindCurrentVideo, startNextVideo, stopVideo, ignore }
+enum BarcodeWorkAction { startNextVideo, stopVideo, ignore }
 
 class BarcodeWorkModePolicy {
   const BarcodeWorkModePolicy._();
@@ -12,7 +12,7 @@ class BarcodeWorkModePolicy {
     required String scannedCode,
   }) {
     if (currentCode.isEmpty) {
-      return BarcodeWorkAction.bindCurrentVideo;
+      return BarcodeWorkAction.startNextVideo;
     }
     return switch (mode) {
       WorkMode.continuousScan =>

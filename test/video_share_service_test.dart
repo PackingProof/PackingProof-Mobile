@@ -170,10 +170,10 @@ void main() {
 
     final File result = await service.prepareForSharing(
       source,
-      fileName: 'JT1234567890_20260901_010918_发货.mp4',
+      fileName: 'JT1234567890_20260901_010918_Ship.mp4',
     );
 
-    expect(result.path, endsWith('JT1234567890_20260901_010918_发货.mp4'));
+    expect(result.path, endsWith('JT1234567890_20260901_010918_Ship.mp4'));
     expect(await result.readAsBytes(), <int>[7, 8, 9]);
   });
 }

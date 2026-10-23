@@ -77,7 +77,7 @@ void main() {
       videoPath,
       endsWith(
         '${Platform.pathSeparator}recordings${Platform.pathSeparator}2026-07-16'
-        '${Platform.pathSeparator}JT1234567890_20260716_100000_发货.mp4',
+        '${Platform.pathSeparator}JT1234567890_20260716_100000_Ship.mp4',
       ),
     );
   });
@@ -130,7 +130,7 @@ void main() {
       ).toJson(),
     );
 
-    expect(videoPath, endsWith('RET123_20260731_090807_退货.mp4'));
+    expect(videoPath, endsWith('RET123_20260731_090807_Return.mp4'));
     expect(restored.operationMode, RecordingOperationMode.returnGoods);
     expect(restored.toJson()['operationMode'], 'return');
   });
@@ -403,7 +403,7 @@ void main() {
     expect(sessions, hasLength(1));
     expect(sessions.single.id, startsWith('recovered-'));
     expect(sessions.single.startedAt, DateTime(2026, 7, 23, 12, 13, 14, 123));
-    expect(sessions.single.displayCode, '未识别面单');
+    expect(sessions.single.displayCode, '20260723_121314');
     expect(sessions.single.filePath, contains('异常恢复'));
     expect(File(sessions.single.filePath).readAsBytesSync(), videoBytes);
     expect(recoverable.existsSync(), isFalse);
@@ -450,7 +450,7 @@ void main() {
     expect(await repository.loadSessions(), hasLength(1));
   });
 
-  test('未识别面单和非法字符使用安全业务文件名且冲突追加会话后缀', () async {
+  test('无面单时按日期时间命名且非法字符仍安全转义', () async {
     final Directory root = await Directory.systemTemp.createTemp(
       'packing_proof_mobile_name_test',
     );
@@ -483,9 +483,9 @@ void main() {
       trackingNumber: '',
     );
 
-    expect(first, endsWith('SF_12_34_20260719_090807_发货.mp4'));
-    expect(second, endsWith('SF_12_34_20260719_090807_发货_onsecond.mp4'));
-    expect(unknown, endsWith('未识别面单_20260719_090808_发货.mp4'));
+    expect(first, endsWith('SF_12_34_20260719_090807_Ship.mp4'));
+    expect(second, endsWith('SF_12_34_20260719_090807_Ship_onsecond.mp4'));
+    expect(unknown, endsWith('20260719_090808_Ship.mp4'));
     expect(await repository.recordingPath('pending'), contains('.pending'));
   });
 

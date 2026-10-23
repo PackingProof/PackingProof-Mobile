@@ -69,7 +69,7 @@ void main() {
     );
   });
 
-  test('没有识别到面单时保留完整工作录像', () {
+  test('没有关联面单时保留完整录像并按开始时间命名', () {
     final RecordingTimeline timeline = RecordingTimeline();
     final DateTime startedAt = DateTime(2026, 7, 18, 9);
     timeline.start(startedAt);
@@ -81,7 +81,7 @@ void main() {
     );
 
     expect(sessions, hasLength(1));
-    expect(sessions.single.displayCode, '未识别面单');
+    expect(sessions.single.displayCode, '20260718_090000');
     expect(sessions.single.duration, const Duration(seconds: 8));
     expect(sessions.single.mediaStart, Duration.zero);
     expect(sessions.single.playbackEnd, const Duration(seconds: 8));

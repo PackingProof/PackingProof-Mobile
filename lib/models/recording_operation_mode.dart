@@ -10,6 +10,11 @@ extension RecordingOperationModeDetails on RecordingOperationMode {
     RecordingOperationMode.shipping => '发货',
     RecordingOperationMode.returnGoods => '退货',
   };
+
+  String get fileNameLabel => switch (this) {
+    RecordingOperationMode.shipping => 'Ship',
+    RecordingOperationMode.returnGoods => 'Return',
+  };
 }
 
 RecordingOperationMode recordingOperationModeFromStorage(Object? value) {

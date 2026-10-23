@@ -232,7 +232,7 @@ void main() {
   });
 
   group('手机版指令码', () {
-    test('切发货/切退货/开始工作/停止工作被识别', () {
+    test('切发货/切退货/开始录像/停止录像被识别', () {
       expect(
         BarcodeCandidatePolicy.mobileCommandFor('SHIP'),
         MobileBarcodeCommand.switchShipping,
@@ -259,27 +259,27 @@ void main() {
       );
       expect(
         BarcodeCandidatePolicy.mobileCommandFor('START'),
-        MobileBarcodeCommand.startWork,
+        MobileBarcodeCommand.startRecording,
       );
       expect(
         BarcodeCandidatePolicy.mobileCommandFor('开始工作'),
-        MobileBarcodeCommand.startWork,
+        MobileBarcodeCommand.startRecording,
       );
       expect(
         BarcodeCandidatePolicy.mobileCommandFor('开始录制'),
-        MobileBarcodeCommand.startWork,
+        MobileBarcodeCommand.startRecording,
       );
       expect(
         BarcodeCandidatePolicy.mobileCommandFor('STOP'),
-        MobileBarcodeCommand.stopWork,
+        MobileBarcodeCommand.stopRecording,
       );
       expect(
         BarcodeCandidatePolicy.mobileCommandFor('停止工作'),
-        MobileBarcodeCommand.stopWork,
+        MobileBarcodeCommand.stopRecording,
       );
       expect(
         BarcodeCandidatePolicy.mobileCommandFor('停止录制'),
-        MobileBarcodeCommand.stopWork,
+        MobileBarcodeCommand.stopRecording,
       );
     });
 

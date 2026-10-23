@@ -39,9 +39,9 @@ void main() {
       ),
     );
 
-    expect(find.text('开始工作'), findsOneWidget);
+    expect(find.text('开始录制'), findsOneWidget);
     expect(find.text('查看历史'), findsNothing);
-    expect(find.text('对准条码'), findsOneWidget);
+    expect(find.text('点击开始录制，或直接扫描面单'), findsOneWidget);
     expect(find.text('摄像头已就绪'), findsNothing);
     expect(find.text('连续录像 · 面单自动标记 · 仅存本机'), findsNothing);
     expect(find.byKey(const Key('scan-guide')), findsOneWidget);
@@ -547,11 +547,11 @@ void main() {
     expect(find.text('正在保存录像'), findsOneWidget);
   });
 
-  testWidgets('开始工作后等待面单且不显示录像计时', (WidgetTester tester) async {
+  testWidgets('开始录制后立即计时并等待面单切单', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: PackingHomeView(
-          phase: PackingSessionPhase.waitingForBarcode,
+          phase: PackingSessionPhase.recording,
           elapsed: Duration.zero,
           cameraSwitchAvailable: true,
           previewOverride: const ColoredBox(color: Colors.black),
@@ -561,10 +561,10 @@ void main() {
       ),
     );
 
-    expect(find.text('等待面单'), findsOneWidget);
-    expect(find.text('识别面单后自动开始录像'), findsOneWidget);
-    expect(find.text('结束工作'), findsOneWidget);
-    expect(find.byKey(const Key('recording-duration-pill')), findsNothing);
+    expect(find.text('录制中，等待面单'), findsOneWidget);
+    expect(find.text('扫描面单可关联本段录像'), findsOneWidget);
+    expect(find.text('停止录制'), findsOneWidget);
+    expect(find.byKey(const Key('recording-duration-pill')), findsOneWidget);
     expect(find.byKey(const Key('switch-camera-button')), findsNothing);
   });
 
@@ -712,7 +712,7 @@ void main() {
     expect(find.byKey(const Key('recording-duration-pill')), findsOneWidget);
     expect(find.text('00:08'), findsOneWidget);
     expect(find.text('770017871213193'), findsOneWidget);
-    expect(find.text('结束工作'), findsOneWidget);
+    expect(find.text('停止录制'), findsOneWidget);
     expect(find.byKey(const Key('recording-button-shimmer')), findsOneWidget);
     expect(find.byKey(const Key('camera-watermark-preview')), findsOneWidget);
     expect(find.textContaining('770017871213193'), findsNWidgets(3));
@@ -972,7 +972,7 @@ void main() {
     await pumpPhase(PackingSessionPhase.recording);
     expect(find.byKey(const Key('camera-watermark-preview')), findsNothing);
     expect(find.byKey(const Key('recording-duration-pill')), findsOneWidget);
-    expect(find.text('结束工作'), findsOneWidget);
+    expect(find.text('停止录制'), findsOneWidget);
 
     await pumpPhase(PackingSessionPhase.ready);
     expect(find.byKey(const Key('camera-watermark-preview')), findsNothing);

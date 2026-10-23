@@ -28,12 +28,12 @@ void main() {
     final RecordingSession session = _session(
       id: 'clip-1',
       code: '773419525017866',
-      filePath: '/storage/videos/773419525017866_20261007_060623_发货.mp4',
+      filePath: '/storage/videos/773419525017866_20261007_060623_Ship.mp4',
       startedAt: DateTime(2026, 10, 7, 6, 6, 23),
     );
 
-    expect(shareFileNameStem(session), '773419525017866_20261007_060623_发货');
-    expect(shareFileName(session), '773419525017866_20261007_060623_发货.mp4');
+    expect(shareFileNameStem(session), '773419525017866_20261007_060623_Ship');
+    expect(shareFileName(session), '773419525017866_20261007_060623_Ship.mp4');
   });
 
   test('本机命名按单号、时间与模式生成可读文件名', () {
@@ -45,10 +45,10 @@ void main() {
       operationMode: RecordingOperationMode.returnGoods,
     );
 
-    expect(shareFileName(session), '773419525017866_20261007_055605_退货.mp4');
+    expect(shareFileName(session), '773419525017866_20261007_055605_Return.mp4');
   });
 
-  test('未识别单号也能生成安全文件名', () {
+  test('未识别单号按日期时间生成安全文件名', () {
     final RecordingSession session = RecordingSession(
       id: 'clip-3',
       filePath: 'clip-3.mov',
@@ -59,7 +59,20 @@ void main() {
 
     expect(
       shareFileName(session),
-      '${RecordingSession.unrecognizedLabel}_20260102_030405_发货.mp4',
+      '20260102_030405_Ship.mp4',
     );
+  });
+
+  test('历史 MAN 前缀文件仍可沿用原名', () {
+    final RecordingSession session = RecordingSession(
+      id: 'clip-4',
+      filePath: 'MAN_20260102_030405_Return.mp4',
+      startedAt: DateTime(2026, 1, 2, 3, 4, 5),
+      endedAt: DateTime(2026, 1, 2, 3, 4, 13),
+      markers: const <BarcodeMarker>[],
+      operationMode: RecordingOperationMode.returnGoods,
+    );
+
+    expect(shareFileName(session), 'MAN_20260102_030405_Return.mp4');
   });
 }

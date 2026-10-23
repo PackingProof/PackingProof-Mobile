@@ -68,7 +68,7 @@ enum SpeechPrompt {
     priority: SpeechPromptPriority.warning,
   ),
   recordingFailed(
-    text: '无法开始录像，请重新对准面单',
+    text: '无法开始录制，请重新对准面单',
     assetName: 'recording_failed.mp3',
     priority: SpeechPromptPriority.warning,
   ),

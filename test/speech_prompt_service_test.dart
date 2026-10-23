@@ -26,7 +26,7 @@ void main() {
     service.enqueue(SpeechPrompt.recordingFailed);
     await service.waitUntilIdle();
 
-    expect(output.systemTexts, <String>['无法开始录像，请重新对准面单']);
+    expect(output.systemTexts, <String>['无法开始录制，请重新对准面单']);
     expect(output.offlineOnlyRequests, <bool>[true]);
     await service.dispose();
   });

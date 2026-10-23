@@ -87,7 +87,7 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
         ),
       );
       _storageWarningMessage =
-          '存储空间不足 ${BackupStoragePolicy.minimumLabel}，正在停止录像';
+          '存储空间不足 ${BackupStoragePolicy.minimumLabel}，正在停止录制';
       if (!_disposed) notifyListeners();
     }
     return result;
@@ -209,7 +209,7 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
         message: '存储空间不足导致录像写入失败，当前录像已停止。请清理手机空间或连接电脑完成备份',
       ),
     );
-    _storageWarningMessage = '存储空间不足，正在停止录像';
+    _storageWarningMessage = '存储空间不足，正在停止录制';
     if (!_disposed) notifyListeners();
     if (isWorking) await _requestStorageStopWhenIdle();
   }

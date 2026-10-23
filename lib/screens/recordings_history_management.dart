@@ -173,8 +173,14 @@ mixin _RecordingsHistoryManagement on _RecordingsHistoryDataCoordinator {
     final Set<String> seen = <String>{};
     int duplicateRows = 0;
     for (final String id in _selectedIds) {
-      final String code = _selectedItems[id]?.session.displayCode ?? '';
-      if (code.isEmpty || code == RecordingSession.unrecognizedLabel) continue;
+      final RecordingSession? session = _selectedItems[id]?.session;
+      final String code = session?.displayCode.trim() ?? '';
+      if (code.isEmpty ||
+          session == null ||
+          session.markers.isEmpty ||
+          code == RecordingSession.unrecognizedLabel) {
+        continue;
+      }
       if (!seen.add(code)) {
         duplicateRows++;
         continue;

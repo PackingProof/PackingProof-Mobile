@@ -37,6 +37,13 @@ class RecordingSession {
 
   static const String unrecognizedLabel = '未识别面单';
 
+  static String automaticName(DateTime value) {
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${value.year.toString().padLeft(4, '0')}'
+        '${two(value.month)}${two(value.day)}_'
+        '${two(value.hour)}${two(value.minute)}${two(value.second)}';
+  }
+
   final String id;
   final String filePath;
   final DateTime startedAt;
@@ -58,7 +65,7 @@ class RecordingSession {
   Duration get playbackDuration => playbackEnd - mediaStart;
 
   String get displayCode =>
-      markers.isEmpty ? unrecognizedLabel : markers.first.code;
+      markers.isEmpty ? automaticName(startedAt) : markers.first.code;
 
   RecordingSession copyWith({
     String? filePath,

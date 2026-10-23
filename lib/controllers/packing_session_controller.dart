@@ -482,7 +482,7 @@ class PackingSessionController extends ChangeNotifier
   }
 
   @override
-  Future<void> startWork() async {
+  Future<void> startWork({bool startRecordingImmediately = false}) async {
     final int generation = ++_operationGeneration;
     final CameraController? camera = _cameraController;
     final bool cameraUnavailable = _supportsNativeCamera
@@ -576,8 +576,12 @@ class PackingSessionController extends ChangeNotifier
         'orderReceiver',
         () => _orderInfoReceiver.setBackgroundKeepAlive(false),
       );
-      _setElapsed(Duration.zero);
-      _setPhase(PackingSessionPhase.waitingForBarcode);
+      if (startRecordingImmediately) {
+        await timing.measure('recording', () => _startRecording(''));
+      } else {
+        _setElapsed(Duration.zero);
+        _setPhase(PackingSessionPhase.waitingForBarcode);
+      }
       timingOutcome = 'success';
       unawaited(
         _runtimeLog.log(
@@ -628,7 +632,7 @@ class PackingSessionController extends ChangeNotifier
       _timeline.reset();
       await _syncWakelock();
       await _endMaxVolumeSession();
-      _errorMessage = '无法开始录像，请重新检查摄像头\n$error';
+      _errorMessage = '无法开始录制，请重新检查摄像头\n$error';
       _setPhase(PackingSessionPhase.error);
       _speakErrorMessage(error.toString());
       await _resumeSharedFileMigrationIfIdle();
@@ -640,6 +644,16 @@ class PackingSessionController extends ChangeNotifier
         ),
       );
     }
+  }
+
+  /// 开始录制按钮与 START 指令共用的入口：立即开录，不再等待面单。
+  Future<void> startRecording() async {
+    if (!isWorking) {
+      await startWork(startRecordingImmediately: true);
+      return;
+    }
+    if (!isWorking || isRecording || isBusy) return;
+    await _startRecording('');
   }
 
   @override
@@ -1052,7 +1066,7 @@ class PackingSessionController extends ChangeNotifier
     if (_workStoppedByInactive) {
       _workStoppedByInactive = false;
       // 让操作员知道录像为什么只录了一半：锁屏/切后台会停录。
-      _showCameraNotice('锁屏或切到后台会停止录像，请保持屏幕常亮');
+      _showCameraNotice('锁屏或切到后台会停止录制，请保持屏幕常亮');
     }
     unawaited(
       _runtimeLog.log(

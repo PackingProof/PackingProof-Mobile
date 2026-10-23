@@ -725,7 +725,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       await _controller.stopWork();
       return;
     }
-    await _controller.startWork();
+    await _controller.startRecording();
   }
 
   void _selectTab(int value) {
@@ -736,7 +736,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
       to: value,
     )) {
       _resetExitIntent();
-      _showBackMessage('工作进行中，请先结束工作');
+      _showBackMessage('录制中，请先停止录制');
       return;
     }
     _resetExitIntent();
@@ -861,7 +861,7 @@ class _PackingHomeScreenState extends State<PackingHomeScreen>
         return;
       case PackingBackAction.keepWorking:
         _resetExitIntent();
-        _showBackMessage('工作进行中，请先结束工作');
+        _showBackMessage('录制中，请先停止录制');
         return;
       case PackingBackAction.showHome:
         _selectTab(1);
@@ -2615,7 +2615,7 @@ class _ControlPanel extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       Text(
-                        view.currentCode.isEmpty ? '等待面单' : view.currentCode,
+                        view.currentCode.isEmpty ? '录制中，等待面单' : view.currentCode,
                         key: const Key('current-shipping-code'),
                         maxLines: 1,
                         textAlign: TextAlign.center,
@@ -2677,8 +2677,7 @@ class _ControlPanel extends StatelessWidget {
                         ? '正在连接电脑'
                         : isError
                         ? (view.errorMessage ?? '请重新检查摄像头权限')
-                        // 待机时也能直接扫码：扫到面单会自动开始工作。
-                        : '对准条码',
+                        : '点击开始录制，或直接扫描面单',
                     maxLines: 1,
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
@@ -2892,8 +2891,8 @@ class _PrimaryWorkButtonState extends State<_PrimaryWorkButton>
                       : widget.isError
                       ? '重新检查'
                       : view._isWorking
-                      ? '结束工作'
-                      : '开始工作',
+                      ? '停止录制'
+                      : '开始录制',
                 ),
               ],
             ),
@@ -2935,7 +2934,7 @@ class _RecordingButtonShimmerPainter extends CustomPainter {
 
 String _recordingHint(PackingHomeView view) {
   if (view.currentCode.isEmpty) {
-    return '识别面单后自动开始录像';
+    return '扫描面单可关联本段录像';
   }
   if (view._alternatingRecording) {
     // 轮换模式录像时识别是关掉的，不能提示用户去扫下一张

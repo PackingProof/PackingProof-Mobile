@@ -50,7 +50,8 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
     required OrderInfo? nextOrderInfo,
     required void Function(BarcodeMarker marker) onSegmentStarted,
   });
-  Future<void> startWork();
+  Future<void> startWork({bool startRecordingImmediately = false});
+  Future<void> startRecording();
   Future<void> toggleTorch();
 
   final BarcodeStabilityTracker _stabilityTracker = BarcodeStabilityTracker();
@@ -713,7 +714,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
             // 不能播报「录制失败」，否则用户会以为软件有问题。
             _errorMessage = '录像已终止：应用切到后台或锁屏\n请保持屏幕常亮后重新开始';
           } else {
-            _errorMessage = '无法开始录像，请重新对准面单\n$error';
+            _errorMessage = '无法开始录制，请重新对准面单\n$error';
             _speechService.enqueue(
               SpeechPrompt.recordingFailed,
               incidentKey: SpeechPrompt.recordingFailed.name,
@@ -731,9 +732,6 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       scannedCode: code,
     );
     switch (action) {
-      case BarcodeWorkAction.bindCurrentVideo:
-        _bindCurrentCode(code, now);
-        return;
       case BarcodeWorkAction.ignore:
         _candidateCode = '';
         if (_workMode == WorkMode.sameCodeStop &&
@@ -931,10 +929,10 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
           await _syncCameraPreferenceForOperationMode();
         }
         break;
-      case MobileBarcodeCommand.startWork:
-        await startWork();
+      case MobileBarcodeCommand.startRecording:
+        await startRecording();
         break;
-      case MobileBarcodeCommand.stopWork:
+      case MobileBarcodeCommand.stopRecording:
         if (isWorking) {
           await stopWork();
         }

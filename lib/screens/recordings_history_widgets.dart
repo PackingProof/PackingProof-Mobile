@@ -149,7 +149,7 @@ class _EmptyRecordings extends StatelessWidget {
             ),
             const SizedBox(height: 7),
             Text(
-              '返回首页点“开始工作”，录像会自动保存在这里',
+              '返回首页点“开始录制”，录像会自动保存在这里',
               textAlign: TextAlign.center,
               style: TextStyle(color: colors.onSurfaceVariant, height: 1.5),
             ),

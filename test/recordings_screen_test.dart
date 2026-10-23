@@ -5238,7 +5238,7 @@ void main() {
     await tester.tap(find.text('B-2222'));
     await tester.pump();
     expect(find.text('已选 3 项'), findsOneWidget);
-    await tester.tap(find.text('未识别面单'));
+    await tester.tap(find.text('20260718_120000'));
     await tester.pump();
 
     expect(find.text('已选 4 项'), findsOneWidget);
@@ -5296,7 +5296,7 @@ void main() {
     await tester.pump();
     await tester.drag(find.byType(ListView), const Offset(0, -520));
     await tester.pump();
-    await tester.tap(find.text('未识别面单'));
+    await tester.tap(find.text('20260718_120000'));
     await tester.pump();
 
     expect(find.text('已选 1 项'), findsOneWidget);
