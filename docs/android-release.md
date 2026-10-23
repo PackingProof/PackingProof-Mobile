@@ -112,6 +112,7 @@ pwsh -NoProfile -File Tools\Publish-Releases.ps1 dist\android\RELEASE_NOTES-v<ve
 
 - Gitee 令牌固定取仓库根目录 `.env` 的 `GITEE_TOKEN`，由脚本注入成同名环境变量后交给 CLI，脚本不打印也不落盘；CLI 自己保存的登录态只作回退，而且它按身份字符串各存一份、`gitee auth status` 在令牌失效时仍返回 0，不能用来判断可用性。GitHub 登录态由 `gh` 自己维护
 - 两个发布脚本在创建任何 Release 之前都会先校验 Gitee 令牌，认证不可用时直接失败并指出令牌来源，避免 GitHub 建好之后才在 Gitee 这一步断掉
+- Gitee 返回空间不足或附件配额不足时，先列出当前仓库的 Release，按发布时间从旧到新确认最老版本，再仅删除该 Release 及其附件，然后重试本次上传；不得为了腾空间删除当前最新版本、源码标签或本地构建产物
 - Gitee 会把附件名里的 `+` 显示成空格，属于平台行为，不是构建问题
 - 建 Gitee Release 必须带 `--target main`，否则接口会报 `target_commitish is missing`
 
