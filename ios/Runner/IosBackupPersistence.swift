@@ -632,6 +632,47 @@ final class IosBackupJobStore {
     return jobs
   }
 
+  /// 只做一次有界判断，避免未配置电脑时在每次摘要刷新都启动整轮清理扫描；
+  /// 未备份录像的保留期清理不依赖电脑，到期后仍必须触发。
+  func hasDueUnbackedCleanupCandidate(
+    unbackedRetentionDays: Int,
+    returnUnbackedRetentionDays: Int,
+    now: Date = Date()
+  ) throws -> Bool {
+    let activeDays = [unbackedRetentionDays, returnUnbackedRetentionDays]
+      .filter { $0 >= 0 }
+    guard let shortestRetentionDays = activeDays.min() else { return false }
+    let cutoff = Self.isoFormatter.string(
+      from: now.addingTimeInterval(
+        -Double(shortestRetentionDays) * 24 * 60 * 60
+      )
+    )
+    lock.lock()
+    defer { lock.unlock() }
+    var statement: OpaquePointer?
+    try prepare(
+      """
+      SELECT 1 FROM backup_jobs
+      WHERE local_deleted_at IS NULL
+        AND backup_completed_at IS NULL
+        AND state NOT IN ('pending', 'uploading', 'completed')
+        AND file_created_at IS NOT NULL
+        AND file_created_at <= ?
+      LIMIT 1
+      """,
+      statement: &statement,
+      operation: "检查到期未备份录像"
+    )
+    defer { sqlite3_finalize(statement) }
+    try bindText(statement, 1, cutoff, operation: "绑定未备份录像保留期限")
+    let code = sqlite3_step(statement)
+    if code == SQLITE_ROW { return true }
+    guard code == SQLITE_DONE else {
+      throw databaseError(operation: "检查到期未备份录像", code: code)
+    }
+    return false
+  }
+
   func cleanupCandidateJobsSlice(
     unbackedRetentionDays: Int, backedRetentionDays: Int, limit: Int = 100
   ) throws -> IosBackupCleanupSlice {
@@ -1280,7 +1321,7 @@ final class IosBackupJobStore {
     if try !columnExistsUnlocked(table: "backup_jobs", column: "revision") {
       try execute("ALTER TABLE backup_jobs ADD COLUMN revision INTEGER NOT NULL DEFAULT 0", operation: "升级任务修订号")
     }
-    try execute("DROP INDEX IF EXISTS idx_backup_jobs_resumable_scan; DROP INDEX IF EXISTS idx_backup_jobs_cleanup; CREATE INDEX IF NOT EXISTS idx_backup_jobs_file_path ON backup_jobs(file_path); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state ON backup_jobs(state); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state_id ON backup_jobs(state, id); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state_local_revision ON backup_jobs(state, local_deleted_at, revision DESC); CREATE INDEX IF NOT EXISTS idx_backup_jobs_failure_revision ON backup_jobs(state, failure_kind, revision DESC); CREATE INDEX IF NOT EXISTS idx_backup_jobs_storage_recovery ON backup_jobs(state, local_deleted_at, COALESCE(file_created_at, '9999-12-31T23:59:59Z'), id); CREATE INDEX IF NOT EXISTS idx_backup_jobs_revision ON backup_jobs(revision); CREATE INDEX IF NOT EXISTS idx_backup_jobs_cleanup_scan ON backup_jobs(id) WHERE local_deleted_at IS NULL AND state NOT IN ('pending', 'uploading');", operation: "创建备份索引")
+    try execute("DROP INDEX IF EXISTS idx_backup_jobs_resumable_scan; DROP INDEX IF EXISTS idx_backup_jobs_cleanup; CREATE INDEX IF NOT EXISTS idx_backup_jobs_file_path ON backup_jobs(file_path); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state ON backup_jobs(state); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state_id ON backup_jobs(state, id); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state_local_revision ON backup_jobs(state, local_deleted_at, revision DESC); CREATE INDEX IF NOT EXISTS idx_backup_jobs_failure_revision ON backup_jobs(state, failure_kind, revision DESC); CREATE INDEX IF NOT EXISTS idx_backup_jobs_storage_recovery ON backup_jobs(state, local_deleted_at, COALESCE(file_created_at, '9999-12-31T23:59:59Z'), id); CREATE INDEX IF NOT EXISTS idx_backup_jobs_revision ON backup_jobs(revision); CREATE INDEX IF NOT EXISTS idx_backup_jobs_cleanup_scan ON backup_jobs(id) WHERE local_deleted_at IS NULL AND state NOT IN ('pending', 'uploading'); CREATE INDEX IF NOT EXISTS idx_backup_jobs_retention_unbacked ON backup_jobs(file_created_at) WHERE local_deleted_at IS NULL AND backup_completed_at IS NULL AND state NOT IN ('pending', 'uploading', 'completed');", operation: "创建备份索引")
     try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_backup_cleanup_intents_active_job ON backup_cleanup_intents(job_id) WHERE phase IN ('claimed','moving','renamed')", operation: "创建清理意图索引")
     try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_backup_cleanup_intents_active_path ON backup_cleanup_intents(original_path) WHERE phase IN ('claimed','moving','renamed')", operation: "创建清理路径索引")
     for key in ["global_revision", "completed_revision", "cleanup_high_watermark", "cleanup_ack_revision", "cleanup_input_sequence"] {

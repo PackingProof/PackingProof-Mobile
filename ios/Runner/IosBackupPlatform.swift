@@ -2962,7 +2962,13 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private func cleanupMaintenanceNeeded() -> Bool {
     if hasConfiguredBackupHost() { return true }
     guard case .success(let store) = jobStore else { return false }
-    return ((try? store.cleanupIntents(limit: 1, recoverableOnly: true))?.isEmpty == false)
+    if (try? store.cleanupIntents(limit: 1, recoverableOnly: true))?.isEmpty == false {
+      return true
+    }
+    return (try? store.hasDueUnbackedCleanupCandidate(
+      unbackedRetentionDays: unbackedRetentionDays(),
+      returnUnbackedRetentionDays: returnUnbackedRetentionDays()
+    )) == true
   }
 
   /// Must be called with cleanupLock held.
@@ -3164,10 +3170,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
         cleanupSliceHasMore = recovery.hasMore || configured
       }
       if configured && !recovery.hasMore { requestUploadDispatch() }
-      return
-    }
-    guard configured else {
-      withCleanupLock { cleanupSliceHasMore = false }
       return
     }
     let root = recordingsDirectory().path + "/"

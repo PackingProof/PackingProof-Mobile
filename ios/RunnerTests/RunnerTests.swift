@@ -3419,6 +3419,10 @@ class RunnerTests: XCTestCase {
     let store = try IosBackupJobStore(
       databaseURL: fixture.databaseURL, defaults: fixture.defaults
     )
+    var futureJob = makeBackupJob(id: "unconfigured-future-recording")
+    futureJob["state"] = "paused"
+    futureJob["fileCreatedAt"] = ISO8601DateFormatter().string(from: Date())
+    try store.upsert(futureJob)
     let tracker = AsyncMaintenanceTracker()
     let api = makeBackupApi(
       defaults: fixture.defaults,
@@ -3449,6 +3453,34 @@ class RunnerTests: XCTestCase {
     let counts = await tracker.counts()
     XCTAssertEqual(counts.started, 0)
     api.drainSummaryQueueForTesting()
+  }
+
+  func testUnconfiguredBackupStillCleansExpiredUnbackedRecording() async throws {
+    let cleaned = expectation(description: "未配置电脑时仍按保留期清理未备份录像")
+    let fixture = try makeRetentionCleanupFixture(
+      id: "cleanup-unconfigured-unbacked",
+      cleanupConfigured: false,
+      onSnapshot: { summary in
+        if summary.localDeletedCount > 0 { cleaned.fulfill() }
+      }
+    )
+    defer { removeRetentionCleanupFixture(fixture) }
+    let file = try addUnbackedStorageReclaimJob(
+      fixture,
+      id: "cleanup-unconfigured-unbacked",
+      state: "paused",
+      fileCreatedAt: "2020-01-01T00:00:00Z"
+    )
+
+    _ = try await awaitInitializeResult(fixture.api)
+    await fulfillment(of: [cleaned], timeout: 5)
+
+    XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    let job = try XCTUnwrap(
+      fixture.store.readJob(id: "cleanup-unconfigured-unbacked")
+    )
+    XCTAssertNotNil(job["localDeletedAt"])
+    XCTAssertEqual(job["cleanupReason"] as? String, "未备份录像保留策略清理")
   }
 
   func testTenThousandCleanupTriggersDuringRecordingSharePausedRunner()
@@ -5271,6 +5303,7 @@ class RunnerTests: XCTestCase {
   private func makeRetentionCleanupFixture(
     id: String,
     autoEnabled: Bool = false,
+    cleanupConfigured: Bool = true,
     availableStorageBytesOverride: (() -> Int64)? = nil,
     storageAttestationOverride:
       (([String: Any], String, Int64) async -> String?)? = nil,
@@ -5321,7 +5354,7 @@ class RunnerTests: XCTestCase {
       availableStorageBytesOverride: availableStorageBytesOverride,
       storageAttestationOverride: storageAttestationOverride,
       storageReclaimConfirmationLimitOverride: storageReclaimConfirmationLimitOverride,
-      cleanupConfigurationOverride: { true },
+      cleanupConfigurationOverride: { cleanupConfigured },
       beforeCleanupFileProofForTesting: beforeCleanupFileProofForTesting,
       beforeCleanupIntentClaimForTesting: beforeCleanupIntentClaimForTesting,
       beforeCleanupRenameForTesting: beforeCleanupRenameForTesting,
@@ -5384,7 +5417,8 @@ class RunnerTests: XCTestCase {
   private func addUnbackedStorageReclaimJob(
     _ fixture: RetentionCleanupFixture,
     id: String,
-    state: String = "failed"
+    state: String = "failed",
+    fileCreatedAt: String? = nil
   ) throws -> URL {
     let file = fixture.root.appendingPathComponent("recordings/\(id).mp4")
     let contents = Data("unbacked-reclaim-fixture-\(id)".utf8)
@@ -5395,6 +5429,7 @@ class RunnerTests: XCTestCase {
     job["state"] = state
     job["totalBytes"] = snapshot.byteCount
     job["lastModified"] = snapshot.modifiedAtMilliseconds
+    if let fileCreatedAt { job["fileCreatedAt"] = fileCreatedAt }
     try fixture.store.upsert(job)
     return file
   }
