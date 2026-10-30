@@ -96,6 +96,7 @@ class SessionRepository {
   Directory? _rootDirectory;
   final Future<int?> Function()? _availableRecordingStorageBytes;
   final bool Function()? _configuredSharedFileMigrationAllowed;
+  Future<void> Function(AppSettings settings)? settingsChanged;
   bool _sharedFileMigrationAllowed = false;
   late Directory _recordingsDirectory;
   late Directory _pendingRecordingsDirectory;
@@ -1260,6 +1261,11 @@ class SessionRepository {
     }
     if (await backupFile.exists()) {
       await backupFile.delete();
+    }
+    try {
+      await settingsChanged?.call(settings);
+    } on Object {
+      // Diagnostics must never make a persisted setting look failed.
     }
   }
 

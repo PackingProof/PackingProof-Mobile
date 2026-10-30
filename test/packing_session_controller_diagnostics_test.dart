@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -7,12 +8,16 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:packing_proof_mobile/app/app_build_config.dart';
 import 'package:packing_proof_mobile/controllers/packing_session_controller.dart';
 import 'package:packing_proof_mobile/models/app_settings.dart';
+import 'package:packing_proof_mobile/models/backup_retention_policy.dart';
+import 'package:packing_proof_mobile/models/backup_storage_policy.dart';
 import 'package:packing_proof_mobile/models/recording_orientation.dart';
+import 'package:packing_proof_mobile/models/recording_spec.dart';
 import 'package:packing_proof_mobile/models/camera_capability.dart';
 import 'package:packing_proof_mobile/models/recording_session.dart';
 import 'package:packing_proof_mobile/models/recording_operation_mode.dart';
 import 'package:packing_proof_mobile/models/recording_video_codec.dart';
 import 'package:packing_proof_mobile/models/speech_prompt.dart';
+import 'package:packing_proof_mobile/models/work_mode.dart';
 import 'package:packing_proof_mobile/services/camera_diagnostics_service.dart';
 import 'package:packing_proof_mobile/services/continuous_camera_service.dart';
 import 'package:packing_proof_mobile/services/diagnostics_log_service.dart';
@@ -833,6 +838,97 @@ void main() {
     expect(settings.lastLoggedBuildIdentity, '0.5.23|11030|def5678');
   });
 
+  test('启动时记录全部实际生效配置并排除运行状态', () async {
+    final SessionRepository repository = testRepository(root);
+    await repository.initialize();
+    const AppSettings expected = AppSettings(
+      workMode: WorkMode.continuousScan,
+      operationMode: RecordingOperationMode.returnGoods,
+      speechEnabled: false,
+      orderSpeechEnabled: false,
+      maxVolumeEnabled: false,
+      recordAudioEnabled: false,
+      watermarkEnabled: false,
+      manualTrackingValidationEnabled: false,
+      shippingCameraCapabilityPreference: CameraCapabilityPreference.full,
+      returnCameraCapabilityPreference: CameraCapabilityPreference.alternating,
+      cameraCapabilityState: <String, Object?>{'probe': 'completed'},
+      preferredVideoCodec: RecordingVideoCodec.h264,
+      recordingSpec: RecordingSpecPreset.hd1080p30,
+      recordingOrientation: RecordingOrientation.landscapeLeft,
+      lanBackupAutoEnabled: false,
+      galleryAutoBackupEnabled: true,
+      unbackedRetention: UnbackedRetentionPolicy.days7,
+      backedRetention: BackedRetentionPolicy.days1,
+      returnUnbackedRetention: UnbackedRetentionPolicy.days3,
+      returnBackedRetention: BackedRetentionPolicy.days1,
+      storagePressurePolicy: StoragePressurePolicy.preserveFootage,
+      minimumBarcodeLength: 13,
+      historyPageSize: 10,
+      scanBeepEnabled: true,
+      scanQrCodes: true,
+      extraValues: <String, Object?>{'futureSetting': 'enabled'},
+    );
+    await repository.saveSettings(expected);
+    final PackingSessionController controller = PackingSessionController(
+      repository: repository,
+      speechService: _FakeSpeechSink(),
+      capabilities: const PlatformCapabilities(<PlatformCapability>{}),
+      runtimeLog: DiagnosticsLogService(rootProvider: () async => root),
+      cameraDiagnostics: CameraDiagnosticsService(
+        rootProvider: () async => root,
+      ),
+    );
+
+    trackController(controller);
+    await controller.initialize();
+
+    final File file = File('${root.path}/diagnostics/runtime.jsonl');
+    final String content = await _waitForRuntimeKind(file, 'effective_config');
+    final Map<String, Object?> event =
+        (jsonDecode(
+                  content
+                      .trim()
+                      .split('\n')
+                      .lastWhere(
+                        (String line) =>
+                            line.contains('"kind":"effective_config"'),
+                      ),
+                )
+                as Map<Object?, Object?>)
+            .cast<String, Object?>();
+    final Map<Object?, Object?> config =
+        event['config']! as Map<Object?, Object?>;
+    expect(config.keys.toSet(), expected.toDiagnosticJson().keys.toSet());
+    expect(config['preferredVideoCodec'], 'h264');
+    expect(config['recordingSpec'], 'hd1080p30');
+    expect(config['recordingOrientation'], 'landscapeLeft');
+    expect(config['unbackedRetention'], 'days7');
+    expect(config['backedRetention'], 'days1');
+    expect(config['storagePressurePolicy'], 'preserveFootage');
+    expect(config['minimumBarcodeLength'], 13);
+    expect(config['historyPageSize'], 10);
+    expect(config['futureSetting'], 'enabled');
+    expect(config, isNot(contains('hiddenRemoteRecordingIds')));
+    expect(config, isNot(contains('storageNoticeState')));
+
+    await controller.setPreferredVideoCodec(RecordingVideoCodec.hevc);
+    final String updated = await _waitForRuntimeKindCount(
+      file,
+      'effective_config',
+      2,
+    );
+    expect(
+      updated
+          .trim()
+          .split('\n')
+          .lastWhere(
+            (String line) => line.contains('"kind":"effective_config"'),
+          ),
+      contains('"preferredVideoCodec":"hevc"'),
+    );
+  });
+
   test('构建身份变化时写 app_upgrade 且同版本不重复写', () async {
     final SessionRepository repository = testRepository(root);
     await repository.saveLastLoggedAppIdentity(
@@ -1136,8 +1232,9 @@ void main() {
   testWidgets('录像兼容提示 5 秒独立计时且新事件重新计时', (WidgetTester tester) async {
     const String notice = '受硬件限制，录像时预览画面会暂停，扫码和录像不受影响';
     // 一次运行里第一次真降级：提示 5 秒后自动消失
-    final SessionRepository firstRepository =
-        _NoDiskCameraPreferenceRepository(rootDirectory: root);
+    final SessionRepository firstRepository = _NoDiskCameraPreferenceRepository(
+      rootDirectory: root,
+    );
     addTearDown(firstRepository.dispose);
     final PackingSessionController first = PackingSessionController(
       repository: firstRepository,
@@ -1220,6 +1317,26 @@ Future<String> _waitForRuntimeKind(
     await Future<void>.delayed(const Duration(milliseconds: 50));
   }
   fail('runtime.jsonl 未在 $timeout 内记录 $kind 事件');
+}
+
+Future<String> _waitForRuntimeKindCount(
+  File file,
+  String kind,
+  int minimumCount, {
+  Duration timeout = const Duration(seconds: 3),
+}) async {
+  final DateTime deadline = DateTime.now().add(timeout);
+  final String needle = '"kind":"$kind"';
+  while (DateTime.now().isBefore(deadline)) {
+    if (await file.exists()) {
+      final String content = await file.readAsString();
+      if (_countOccurrences(content, needle) >= minimumCount) {
+        return content;
+      }
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+  fail('runtime.jsonl 未在 $timeout 内记录 $minimumCount 条 $kind 事件');
 }
 
 Future<void> _waitForWatermarkStatus(

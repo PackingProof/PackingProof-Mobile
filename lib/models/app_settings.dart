@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'backup_retention_policy.dart';
 import 'backup_storage_policy.dart';
 import 'camera_capability.dart';
@@ -359,6 +361,28 @@ class AppSettings {
       extraValues: extraValues,
     );
   }
+
+  /// 日志必须跟随设置模型自动扩展；这里只剔除与用户配置无关的运行状态。
+  Map<String, Object?> toDiagnosticJson() {
+    final Map<String, Object?> config = Map<String, Object?>.of(toJson());
+    config.removeWhere(
+      (String key, Object? _) => _runtimeOnlySettingKeys.contains(key),
+    );
+    return config;
+  }
+
+  String get diagnosticSignature => jsonEncode(toDiagnosticJson());
+
+  static const Set<String> _runtimeOnlySettingKeys = <String>{
+    'startupNoticeVersion',
+    'lastLoggedAppVersion',
+    'lastLoggedAppBuildNumber',
+    'lastLoggedBuildIdentity',
+    'mobileUpdatePromptDate',
+    'mobileUpdatePromptCount',
+    'hiddenRemoteRecordingIds',
+    'storageNoticeState',
+  };
 
   Map<String, Object?> toJson() => <String, Object?>{
     ...extraValues,

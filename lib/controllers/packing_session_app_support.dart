@@ -208,6 +208,8 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
   }
 
   Future<void> _logAppUpgradeIfNeeded(AppSettings settings) async {
+    _repository.settingsChanged = _handleSettingsChangedForDiagnostics;
+    await _logEffectiveConfig(settings);
     final Map<String, Object?> metadata = await _loadRuntimeMetadata();
     final String version = '${metadata['appVersion'] ?? ''}';
     final int buildNumber = (metadata['appBuildNumber'] as num?)?.toInt() ?? 0;
@@ -240,6 +242,25 @@ mixin _PackingSessionAppSupport on ChangeNotifier {
       version: version,
       buildNumber: buildNumber,
       buildIdentity: buildIdentity,
+    );
+  }
+
+  String? _lastDiagnosticConfigSignature;
+
+  Future<void> _handleSettingsChangedForDiagnostics(AppSettings settings) =>
+      _logEffectiveConfig(settings, source: 'change');
+
+  Future<void> _logEffectiveConfig(
+    AppSettings settings, {
+    String source = 'startup',
+  }) async {
+    final Map<String, Object?> config = settings.toDiagnosticJson();
+    final String signature = settings.diagnosticSignature;
+    if (signature == _lastDiagnosticConfigSignature) return;
+    _lastDiagnosticConfigSignature = signature;
+    await _runtimeLog.log(
+      kind: 'effective_config',
+      extra: <String, Object?>{'source': source, 'config': config},
     );
   }
 
