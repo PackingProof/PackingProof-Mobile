@@ -612,7 +612,7 @@ final class IosBackupJobStore {
     }
     let cursorClause = afterId == nil ? "" : " AND id > ?"
     let sql = "SELECT * FROM backup_jobs WHERE local_deleted_at IS NULL "
-      + "AND state NOT IN ('pending', 'uploading')\(cursorClause) "
+      + "AND state != 'uploading'\(cursorClause) "
       + "AND NOT EXISTS (SELECT 1 FROM backup_cleanup_intents i WHERE i.job_id = backup_jobs.id AND i.phase IN ('claimed','moving','renamed')) "
       + "AND NOT EXISTS (SELECT 1 FROM backup_cleanup_intents i WHERE i.original_path = backup_jobs.file_path AND i.phase IN ('claimed','moving','renamed')) "
       + "ORDER BY id ASC LIMIT \(limit)"
@@ -655,7 +655,7 @@ final class IosBackupJobStore {
       SELECT 1 FROM backup_jobs
       WHERE local_deleted_at IS NULL
         AND backup_completed_at IS NULL
-        AND state NOT IN ('pending', 'uploading', 'completed')
+        AND state NOT IN ('uploading', 'completed')
         AND file_created_at IS NOT NULL
         AND file_created_at <= ?
       LIMIT 1
@@ -698,7 +698,7 @@ final class IosBackupJobStore {
       }
       let current = checkpoint!
       let cursorClause = current.afterId == nil ? "" : " AND id > ?"
-      let predicate = "local_deleted_at IS NULL AND state NOT IN ('pending', 'uploading') "
+      let predicate = "local_deleted_at IS NULL AND state != 'uploading' "
         + "AND NOT EXISTS (SELECT 1 FROM backup_cleanup_intents i WHERE i.job_id = backup_jobs.id AND i.phase IN ('claimed','moving','renamed')) "
         + "AND NOT EXISTS (SELECT 1 FROM backup_cleanup_intents i WHERE i.original_path = backup_jobs.file_path AND i.phase IN ('claimed','moving','renamed'))"
       var statement: OpaquePointer?
@@ -1321,7 +1321,7 @@ final class IosBackupJobStore {
     if try !columnExistsUnlocked(table: "backup_jobs", column: "revision") {
       try execute("ALTER TABLE backup_jobs ADD COLUMN revision INTEGER NOT NULL DEFAULT 0", operation: "升级任务修订号")
     }
-    try execute("DROP INDEX IF EXISTS idx_backup_jobs_resumable_scan; DROP INDEX IF EXISTS idx_backup_jobs_cleanup; CREATE INDEX IF NOT EXISTS idx_backup_jobs_file_path ON backup_jobs(file_path); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state ON backup_jobs(state); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state_id ON backup_jobs(state, id); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state_local_revision ON backup_jobs(state, local_deleted_at, revision DESC); CREATE INDEX IF NOT EXISTS idx_backup_jobs_failure_revision ON backup_jobs(state, failure_kind, revision DESC); CREATE INDEX IF NOT EXISTS idx_backup_jobs_storage_recovery ON backup_jobs(state, local_deleted_at, COALESCE(file_created_at, '9999-12-31T23:59:59Z'), id); CREATE INDEX IF NOT EXISTS idx_backup_jobs_revision ON backup_jobs(revision); CREATE INDEX IF NOT EXISTS idx_backup_jobs_cleanup_scan ON backup_jobs(id) WHERE local_deleted_at IS NULL AND state NOT IN ('pending', 'uploading'); CREATE INDEX IF NOT EXISTS idx_backup_jobs_retention_unbacked ON backup_jobs(file_created_at) WHERE local_deleted_at IS NULL AND backup_completed_at IS NULL AND state NOT IN ('pending', 'uploading', 'completed');", operation: "创建备份索引")
+    try execute("DROP INDEX IF EXISTS idx_backup_jobs_resumable_scan; DROP INDEX IF EXISTS idx_backup_jobs_cleanup; CREATE INDEX IF NOT EXISTS idx_backup_jobs_file_path ON backup_jobs(file_path); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state ON backup_jobs(state); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state_id ON backup_jobs(state, id); CREATE INDEX IF NOT EXISTS idx_backup_jobs_state_local_revision ON backup_jobs(state, local_deleted_at, revision DESC); CREATE INDEX IF NOT EXISTS idx_backup_jobs_failure_revision ON backup_jobs(state, failure_kind, revision DESC); CREATE INDEX IF NOT EXISTS idx_backup_jobs_storage_recovery ON backup_jobs(state, local_deleted_at, COALESCE(file_created_at, '9999-12-31T23:59:59Z'), id); CREATE INDEX IF NOT EXISTS idx_backup_jobs_revision ON backup_jobs(revision); CREATE INDEX IF NOT EXISTS idx_backup_jobs_cleanup_scan ON backup_jobs(id) WHERE local_deleted_at IS NULL AND state NOT IN ('pending', 'uploading'); CREATE INDEX IF NOT EXISTS idx_backup_jobs_retention_cleanup_scan ON backup_jobs(id) WHERE local_deleted_at IS NULL AND state != 'uploading'; CREATE INDEX IF NOT EXISTS idx_backup_jobs_retention_unbacked ON backup_jobs(file_created_at) WHERE local_deleted_at IS NULL AND backup_completed_at IS NULL AND state NOT IN ('uploading', 'completed');", operation: "创建备份索引")
     try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_backup_cleanup_intents_active_job ON backup_cleanup_intents(job_id) WHERE phase IN ('claimed','moving','renamed')", operation: "创建清理意图索引")
     try execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_backup_cleanup_intents_active_path ON backup_cleanup_intents(original_path) WHERE phase IN ('claimed','moving','renamed')", operation: "创建清理路径索引")
     for key in ["global_revision", "completed_revision", "cleanup_high_watermark", "cleanup_ack_revision", "cleanup_input_sequence"] {

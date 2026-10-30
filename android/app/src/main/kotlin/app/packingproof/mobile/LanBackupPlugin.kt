@@ -99,6 +99,9 @@ internal class LanBackupPlugin(
         }
         store.setUploadsEnabled(enabled)
         if (enabled) schedulePending()
+        // 上传与保留期清理共用 lan-backup 标签；暂停上传会取消清理任务，
+        // 这里必须恢复调度，避免“暂停上传”连带停掉到期录像清理。
+        LanBackupCleanupScheduler.resumeRefreshOrScheduleNext(context, store)
     }
 
     fun loadAccessKey(): String = credentials.load() ?: ""

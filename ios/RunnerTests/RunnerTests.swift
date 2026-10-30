@@ -1657,7 +1657,7 @@ class RunnerTests: XCTestCase {
       cleanupCount += page.count
       afterId = page.last?["id"] as? String
     } while page.count == 100
-    XCTAssertEqual(cleanupCount, 5_000)
+    XCTAssertEqual(cleanupCount, 7_500)
 
     var createdAt: String?
     afterId = nil
@@ -1687,7 +1687,7 @@ class RunnerTests: XCTestCase {
       """
       SELECT * FROM backup_jobs
       WHERE local_deleted_at IS NULL
-        AND state NOT IN ('pending', 'uploading')
+        AND state != 'uploading'
         AND id > 'cursor'
         AND NOT EXISTS (
           SELECT 1 FROM backup_cleanup_intents i
@@ -1704,7 +1704,7 @@ class RunnerTests: XCTestCase {
       databaseURL: fixture.databaseURL
     )
     let details = plan.joined(separator: "\n")
-    XCTAssertTrue(details.contains("idx_backup_jobs_cleanup_scan"), details)
+    XCTAssertTrue(details.contains("idx_backup_jobs_retention_cleanup_scan"), details)
     XCTAssertTrue(details.contains("idx_backup_cleanup_intents_active_job"), details)
     XCTAssertTrue(details.contains("idx_backup_cleanup_intents_active_path"), details)
     XCTAssertFalse(details.contains("USE TEMP B-TREE"), details)
@@ -3468,7 +3468,7 @@ class RunnerTests: XCTestCase {
     let file = try addUnbackedStorageReclaimJob(
       fixture,
       id: "cleanup-unconfigured-unbacked",
-      state: "paused",
+      state: "pending",
       fileCreatedAt: "2020-01-01T00:00:00Z"
     )
 

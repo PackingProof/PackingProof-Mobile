@@ -3232,7 +3232,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
       else { continue }
       if job["localDeletedAt"] as? String != nil { continue }
       let state = job["state"] as? String ?? ""
-      if state == "pending" || state == "uploading" { continue }
+      if state == "uploading" { continue }
       guard let due = dueAt(
         job, unbackedDays: slice.unbackedRetentionDays,
         backedDays: slice.backedRetentionDays

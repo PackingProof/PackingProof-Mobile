@@ -187,8 +187,9 @@ internal object LanBackupCleanupScheduler {
         ?.trim()
         ?.takeIf { it.isNotEmpty() && it != "null" }
 
+    /** 只有真正占用文件的传输需要推迟；pending 是排队状态，不会自行上传。 */
     internal fun shouldDeferForBackupState(state: String): Boolean =
-        state == "pending" || state == "uploading"
+        state == "uploading"
 
     internal fun isConfirmationFresh(
         lastAttestedAt: String?,

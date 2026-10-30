@@ -37,8 +37,8 @@ class LanBackupCleanupSchedulerTest {
     }
 
     @Test
-    fun pendingAndUploadingJobsAreNeverCleanedWhileBackupCanOwnTheFile() {
-        assertTrue(LanBackupCleanupScheduler.shouldDeferForBackupState("pending"))
+    fun onlyUploadingJobsAreDeferredWhileQueuedJobsCanExpire() {
+        assertFalse(LanBackupCleanupScheduler.shouldDeferForBackupState("pending"))
         assertTrue(LanBackupCleanupScheduler.shouldDeferForBackupState("uploading"))
         assertFalse(LanBackupCleanupScheduler.shouldDeferForBackupState("paused"))
     }
