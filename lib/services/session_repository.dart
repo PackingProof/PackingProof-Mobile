@@ -1265,7 +1265,7 @@ class SessionRepository {
     try {
       await settingsChanged?.call(settings);
     } on Object {
-      // Diagnostics must never make a persisted setting look failed.
+      // broad-catch: 诊断回调失败不得把已落盘的设置伪装成保存失败。
     }
   }
 
