@@ -3472,7 +3472,10 @@ class RunnerTests: XCTestCase {
       fileCreatedAt: "2020-01-01T00:00:00Z"
     )
 
-    _ = try await awaitInitializeResult(fixture.api)
+    _ = try await awaitInitializeResult(
+      fixture.api,
+      unbackedRetentionDays: 30
+    )
     await fulfillment(of: [cleaned], timeout: 5)
 
     XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
@@ -5462,10 +5465,15 @@ class RunnerTests: XCTestCase {
 
   private func awaitInitializeResult(
     _ api: IosBackupHostApi,
-    autoEnabled: Bool = false
+    autoEnabled: Bool = false,
+    unbackedRetentionDays: Int? = nil
   ) async throws -> BackupSummaryDto {
     try await withCheckedThrowingContinuation { continuation in
-      api.initialize(request: ["autoEnabled": autoEnabled]) { result in
+      var request: [String?: Any?] = ["autoEnabled": autoEnabled]
+      if let unbackedRetentionDays {
+        request["unbackedRetentionDays"] = unbackedRetentionDays
+      }
+      api.initialize(request: request) { result in
         continuation.resume(with: result)
       }
     }
