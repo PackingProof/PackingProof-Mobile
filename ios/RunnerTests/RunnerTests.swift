@@ -629,6 +629,16 @@ class RunnerTests: XCTestCase {
     )
   }
 
+  func testIosCameraFirstStartUsesOneCompleteSessionConfiguration() {
+    let firstStart = IosCameraSessionSetupPlan.make(sessionConfigured: false)
+    XCTAssertTrue(firstStart.configuresFullSession)
+    XCTAssertFalse(firstStart.appliesIncrementalSettings)
+
+    let restored = IosCameraSessionSetupPlan.make(sessionConfigured: true)
+    XCTAssertFalse(restored.configuresFullSession)
+    XCTAssertTrue(restored.appliesIncrementalSettings)
+  }
+
   func testIosCameraCapabilityProbeAndInvalidModeFailWithTypedErrors() {
     let probeError = IosCameraCapabilityPolicy.probeUnsupportedError(
       sequence: "full"

@@ -375,6 +375,22 @@ enum IosCameraStartRetryPolicy {
   }
 }
 
+/// 首次启动在权限完成后一次配置完整会话；只有已配置过的会话才做增量调整。
+///
+/// iOS 16 上先创建输出、授权后再补麦克风输入并立即启动，会让 CoreMedia 的
+/// 异步提交通知与采集管线启动交错，在 AVFCapture 内触发断言。
+struct IosCameraSessionSetupPlan: Equatable {
+  let configuresFullSession: Bool
+  let appliesIncrementalSettings: Bool
+
+  static func make(sessionConfigured: Bool) -> IosCameraSessionSetupPlan {
+    IosCameraSessionSetupPlan(
+      configuresFullSession: !sessionConfigured,
+      appliesIncrementalSettings: sessionConfigured
+    )
+  }
+}
+
 /// 为 metadata 输出提供低频的 Vision 兜底，避免旧设备的 AVFoundation
 /// 条码回调偶发停摆时完全没有识别结果。
 enum IosBarcodeVisionFallbackPolicy {
@@ -865,6 +881,7 @@ final class IosCameraHostApi:
   private var metadataOutput: AVCaptureMetadataOutput?
   private var sessionPresetName = "hd1920x1080"
   private var captureSize = (width: 1080, height: 1920)
+  private var sessionConfigured = false
 
   private var recordingSpecName = "hd1080p30"
   private var recordingFps = 30
@@ -966,7 +983,6 @@ final class IosCameraHostApi:
         self?.recoveryRuntimeError = true
       }
     }
-    configureSession()
   }
 
   deinit {
@@ -1036,10 +1052,17 @@ final class IosCameraHostApi:
         return
       }
       self.requestedRecordingSpecName = request.recordingSpec
-      self.applyCapturePreset(requestedSpec: request.recordingSpec)
       do {
         try self.acquireRecordingAudioSessionIfNeeded()
-        try self.addAudioInputIfNeeded()
+        let setupPlan = IosCameraSessionSetupPlan.make(
+          sessionConfigured: self.sessionConfigured
+        )
+        if setupPlan.configuresFullSession {
+          try self.configureSessionForInitialization()
+        } else if setupPlan.appliesIncrementalSettings {
+          self.applyCapturePreset(requestedSpec: request.recordingSpec)
+          try self.addAudioInputIfNeeded()
+        }
       } catch {
         completion(.failure(error))
         return
@@ -2475,74 +2498,116 @@ final class IosCameraHostApi:
     ) ?? 30
   }
 
-  private func configureSession() {
-    sessionQueue.async { [weak self] in
-      guard let self else { return }
-      self.session.beginConfiguration()
+  /// 首次初始化必须在权限完成后调用，并且必须在 sessionQueue 上执行。
+  ///
+  /// 视频、麦克风和全部输出放在同一个配置事务中提交，避免首次授权时先挂
+  /// 音频输出、再补麦克风输入，与随后的 startRunning 形成 CoreMedia 配置
+  /// 通知竞态（崩溃点 BpvNbXN9ExAYg8G8VBQcnq）。
+  private func configureSessionForInitialization() throws {
+    guard !sessionConfigured else { return }
+    guard let videoDevice = Self.defaultVideoDevice(position: .back) else {
+      throw pigeonError(
+        "找不到可用的后置摄像头",
+        code: "camera_video_input_missing"
+      )
+    }
 
-      if let videoDevice = Self.defaultVideoDevice(position: .back) {
-        do {
-          let input = try AVCaptureDeviceInput(device: videoDevice)
-          if self.session.canAddInput(input) {
-            self.session.addInput(input)
-            self.videoDeviceInput = input
-            self.configureVideoDevice(videoDevice)
-          }
-        } catch {
-          self.eventApi.nativeError(
-            message: "打开摄像头失败：\(error.localizedDescription)",
-            completion: { _ in }
-          )
-        }
+    let videoInput = try AVCaptureDeviceInput(device: videoDevice)
+    let audioInput: AVCaptureDeviceInput?
+    if recordAudio {
+      guard let audioDevice = AVCaptureDevice.default(for: .audio) else {
+        throw pigeonError("未找到麦克风输入", code: "audio_input_missing")
       }
+      audioInput = try AVCaptureDeviceInput(device: audioDevice)
+    } else {
+      audioInput = nil
+    }
+
+    let videoOutput = AVCaptureVideoDataOutput()
+    // 保持系统缺省的丢弃迟到帧语义，避免视频帧在串行 sessionQueue 上堆积，
+    // 进而把 metadata 回调（扫码）长时间排挤掉，导致「偶尔能扫上、大部分扫不上」。
+    videoOutput.alwaysDiscardsLateVideoFrames = true
+    videoOutput.videoSettings = [
+      kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+    ]
+    let audioOutput = AVCaptureAudioDataOutput()
+    let metadataOutput = AVCaptureMetadataOutput()
+
+    session.beginConfiguration()
+    var addedInputs: [AVCaptureInput] = []
+    var addedOutputs: [AVCaptureOutput] = []
+    func attachInput(_ input: AVCaptureInput) throws {
+      guard session.canAddInput(input) else {
+        throw pigeonError(
+          "无法添加摄像头输入",
+          code: "camera_input_unavailable"
+        )
+      }
+      session.addInput(input)
+      addedInputs.append(input)
+    }
+    func attachOutput(_ output: AVCaptureOutput) throws {
+      guard session.canAddOutput(output) else {
+        throw pigeonError(
+          "摄像头输出不可用",
+          code: "camera_output_unavailable"
+        )
+      }
+      session.addOutput(output)
+      addedOutputs.append(output)
+    }
+
+    do {
+      try attachInput(videoInput)
+      if let audioInput {
+        try attachInput(audioInput)
+      }
+      self.videoDeviceInput = videoInput
+      configureVideoDevice(videoDevice)
 
       // 输入已经挂载后再协商 preset，避免 canSetSessionPreset 在旧设备上
       // 因为空 session 的能力判断过早而误选默认规格。
-      self.applyCapturePresetWithinConfiguration(
-        requestedSpec: self.requestedRecordingSpecName
+      applyCapturePresetWithinConfiguration(
+        requestedSpec: requestedRecordingSpecName
       )
+      try attachOutput(videoOutput)
+      try attachOutput(audioOutput)
+      try attachOutput(metadataOutput)
 
-      let videoOutput = AVCaptureVideoDataOutput()
-      // 保持系统缺省的丢弃迟到帧语义，避免视频帧在串行 sessionQueue 上堆积，
-      // 进而把 metadata 回调（扫码）长时间排挤掉，导致「偶尔能扫上、大部分扫不上」。
-      videoOutput.alwaysDiscardsLateVideoFrames = true
-      videoOutput.videoSettings = [
-        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-      ]
-      if self.session.canAddOutput(videoOutput) {
-        self.session.addOutput(videoOutput)
-        if let connection = videoOutput.connection(with: .video) {
-          // Flutter 纹理和写入器共同使用协商后的缓冲尺寸；最终方向只写入
-          // AVAssetWriterInput.transform，避免横屏设置物理旋转采集帧。
-          connection.videoOrientation = .portrait
-          connection.automaticallyAdjustsVideoMirroring = false
-          connection.isVideoMirrored = iosRecordingCaptureShouldMirror(
-            frontCamera: self.videoDeviceInput?.device.position == .front
-          )
-        }
-        self.videoOutput = videoOutput
+      if let connection = videoOutput.connection(with: .video) {
+        // Flutter 纹理和写入器共同使用协商后的缓冲尺寸；最终方向只写入
+        // AVAssetWriterInput.transform，避免横屏设置物理旋转采集帧。
+        connection.videoOrientation = .portrait
+        connection.automaticallyAdjustsVideoMirroring = false
+        connection.isVideoMirrored = iosRecordingCaptureShouldMirror(
+          frontCamera: videoDevice.position == .front
+        )
       }
-
-      let audioOutput = AVCaptureAudioDataOutput()
-      if self.session.canAddOutput(audioOutput) {
-        self.session.addOutput(audioOutput)
-        self.audioOutput = audioOutput
+      let availableTypes = metadataOutput.availableMetadataObjectTypes
+      metadataOutput.metadataObjectTypes = Self.supportedMetadataTypes.filter {
+        availableTypes.contains($0)
       }
-
-      let metadataOutput = AVCaptureMetadataOutput()
-      if self.session.canAddOutput(metadataOutput) {
-        self.session.addOutput(metadataOutput)
-        let availableTypes = metadataOutput.availableMetadataObjectTypes
-        metadataOutput.metadataObjectTypes = Self.supportedMetadataTypes.filter {
-          availableTypes.contains($0)
-        }
-        self.metadataOutput = metadataOutput
+      session.commitConfiguration()
+    } catch {
+      for output in addedOutputs {
+        session.removeOutput(output)
       }
-
-      self.session.commitConfiguration()
-      self.refreshRecordingFpsFromActiveFormat()
-      self.configureOutputDelegates()
+      for input in addedInputs {
+        session.removeInput(input)
+      }
+      self.videoDeviceInput = nil
+      session.commitConfiguration()
+      throw error
     }
+
+    videoDeviceInput = videoInput
+    audioDeviceInput = audioInput
+    self.videoOutput = videoOutput
+    self.audioOutput = audioOutput
+    self.metadataOutput = metadataOutput
+    sessionConfigured = true
+    refreshRecordingFpsFromActiveFormat()
+    configureOutputDelegates()
   }
 
   /// 旧设备默认对焦/曝光模式可能停留在锁定状态，导致面单距离变化时
@@ -2691,20 +2756,37 @@ final class IosCameraHostApi:
       session.stopRunning()
     }
     guard let audioDevice = AVCaptureDevice.default(for: .audio) else {
+      if wasRunning {
+        session.startRunning()
+      }
       throw pigeonError("未找到麦克风输入", code: "audio_input_missing")
     }
+    let input: AVCaptureDeviceInput
     do {
-      let input = try AVCaptureDeviceInput(device: audioDevice)
-      guard session.canAddInput(input) else {
-        throw pigeonError("无法添加麦克风输入", code: "audio_input_missing")
-      }
-      session.addInput(input)
-      audioDeviceInput = input
+      input = try AVCaptureDeviceInput(device: audioDevice)
     } catch {
       if wasRunning {
         session.startRunning()
       }
       throw error
+    }
+    session.beginConfiguration()
+    do {
+      guard session.canAddInput(input) else {
+        throw pigeonError("无法添加麦克风输入", code: "audio_input_missing")
+      }
+      session.addInput(input)
+      audioDeviceInput = input
+      session.commitConfiguration()
+    } catch {
+      session.commitConfiguration()
+      if wasRunning {
+        session.startRunning()
+      }
+      throw error
+    }
+    if wasRunning {
+      session.startRunning()
     }
   }
 
