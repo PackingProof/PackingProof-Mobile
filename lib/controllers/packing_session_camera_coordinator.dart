@@ -438,7 +438,7 @@ mixin _PackingSessionCameraCoordinator on _PackingSessionSettingsCoordinator {
 
   @override
   Future<void> _syncCameraPreferenceForOperationMode() async {
-    if (_disposed || isWorking || isBusy || _capabilityProbeRunning) return;
+    if (_disposed || isRecording || isBusy || _capabilityProbeRunning) return;
     _capabilityPreference = _cameraCapabilityPreferenceFor(_operationMode);
     _capabilityMode = _capabilityPreference.lockedMode;
     notifyListeners();

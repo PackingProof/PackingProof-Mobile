@@ -15,8 +15,7 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   OrderInfoReceiverSink get _orderInfoReceiver;
   set _errorMessage(String? value);
   WorkMode get _workMode;
-  RecordingOperationMode get _operationMode;
-  set _operationMode(RecordingOperationMode value);
+  Future<void> setOperationMode(RecordingOperationMode mode);
   int get _minimumBarcodeLength;
   bool get _scanBeepEnabled;
   bool get _scanQrCodes;
@@ -24,8 +23,6 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
   bool get _pairingScanActive;
   bool get _pairingBusy;
   bool get torchEnabled;
-  Future<void> _syncCameraPreferenceForOperationMode();
-
   Future<void> _tryPairComputer(String value);
   void _showRejectedBarcodeNotice(
     RejectedBarcodeDecision decision,
@@ -240,7 +237,10 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         _lastTriggeredCommandCode = commandCode;
         _handlingBarcode = true;
         _runInBackground(
-          _handleMobileBarcodeCommand(command).whenComplete(() {
+          _handleMobileBarcodeCommand(
+            command,
+            waitForOperationMode: false,
+          ).whenComplete(() {
             _handlingBarcode = false;
           }),
         );
@@ -898,7 +898,10 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
       _timeline.currentCode.trim().toUpperCase() == code.trim().toUpperCase();
 
   /// 手机版指令码执行：清除输入、切发货/切退货、开始/停止工作。
-  Future<void> _handleMobileBarcodeCommand(MobileBarcodeCommand command) async {
+  Future<void> _handleMobileBarcodeCommand(
+    MobileBarcodeCommand command, {
+    bool waitForOperationMode = true,
+  }) async {
     switch (command) {
       case MobileBarcodeCommand.clearInput:
         _candidateCode = '';
@@ -908,25 +911,23 @@ mixin _PackingSessionBarcodeCoordinator on _PackingSessionWatermarkCoordinator {
         await toggleTorch();
         break;
       case MobileBarcodeCommand.switchShipping:
-        if (_operationMode != RecordingOperationMode.shipping) {
-          _operationMode = RecordingOperationMode.shipping;
-          if (!_disposed) {
-            notifyListeners();
-          }
-          _speechService.enqueue(SpeechPrompt.shippingMode);
-          _runInBackground(_repository.saveOperationMode(_operationMode));
-          await _syncCameraPreferenceForOperationMode();
+        final Future<void> operationModeUpdate = setOperationMode(
+          RecordingOperationMode.shipping,
+        );
+        if (waitForOperationMode) {
+          await operationModeUpdate;
+        } else {
+          _runInBackground(operationModeUpdate);
         }
         break;
       case MobileBarcodeCommand.switchReturn:
-        if (_operationMode != RecordingOperationMode.returnGoods) {
-          _operationMode = RecordingOperationMode.returnGoods;
-          if (!_disposed) {
-            notifyListeners();
-          }
-          _speechService.enqueue(SpeechPrompt.returnMode);
-          _runInBackground(_repository.saveOperationMode(_operationMode));
-          await _syncCameraPreferenceForOperationMode();
+        final Future<void> operationModeUpdate = setOperationMode(
+          RecordingOperationMode.returnGoods,
+        );
+        if (waitForOperationMode) {
+          await operationModeUpdate;
+        } else {
+          _runInBackground(operationModeUpdate);
         }
         break;
       case MobileBarcodeCommand.startRecording:

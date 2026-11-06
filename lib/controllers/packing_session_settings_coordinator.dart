@@ -7,12 +7,10 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
   Future<void> retryInitialize();
   Future<void> _beginMaxVolumeIfNeeded();
   Future<void> _disableMaxVolume();
-  @override
   Future<void> _syncCameraPreferenceForOperationMode();
 
   @override
   WorkMode _workMode = WorkMode.continuousScan;
-  @override
   RecordingOperationMode _operationMode = RecordingOperationMode.shipping;
   @override
   bool _speechEnabled = true;
@@ -76,8 +74,13 @@ mixin _PackingSessionSettingsCoordinator on _PackingSessionPairingCoordinator {
     await _repository.saveWorkMode(mode);
   }
 
+  @override
   Future<void> setOperationMode(RecordingOperationMode mode) async {
-    if (_operationMode == mode || isWorking || isBusy) {
+    // 操作模式选择不依赖相机就绪；初始化期间先更新并保存选择，相机同步仍由
+    // _syncCameraPreferenceForOperationMode 根据 isBusy 自行跳过。
+    if (_operationMode == mode ||
+        isRecording ||
+        (isBusy && _phase != PackingSessionPhase.initializing)) {
       return;
     }
     _operationMode = mode;

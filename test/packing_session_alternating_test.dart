@@ -643,6 +643,41 @@ void main() {
     );
   });
 
+  test('指令码切换发货退货时应用各自工作模式', () async {
+    await controller.initialize();
+    await controller.setCameraCapabilityPreferenceFor(
+      RecordingOperationMode.returnGoods,
+      CameraCapabilityPreference.alternating,
+    );
+    await controller.setCameraCapabilityPreferenceFor(
+      RecordingOperationMode.shipping,
+      CameraCapabilityPreference.full,
+    );
+    await controller.startWork();
+
+    expect(controller.isWorking, isTrue);
+    expect(controller.isRecording, isFalse);
+    await controller.submitExternalTrackingNumber('BACK', validate: false);
+
+    expect(controller.operationMode, RecordingOperationMode.returnGoods);
+    expect(
+      controller.cameraCapabilityPreference,
+      CameraCapabilityPreference.alternating,
+    );
+    expect(controller.capabilityMode, CameraCapabilityMode.alternating);
+    expect(camera.lastMode, 'alternating');
+
+    await controller.submitExternalTrackingNumber('SHIP', validate: false);
+
+    expect(controller.operationMode, RecordingOperationMode.shipping);
+    expect(
+      controller.cameraCapabilityPreference,
+      CameraCapabilityPreference.full,
+    );
+    expect(controller.capabilityMode, CameraCapabilityMode.full);
+    expect(camera.lastMode, 'full');
+  });
+
   test('录像期间忽略工作模式切换，避免中断当前录制', () async {
     await controller.initialize();
     await controller.setCameraCapabilityPreference(
