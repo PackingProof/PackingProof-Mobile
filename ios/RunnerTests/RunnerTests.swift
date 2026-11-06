@@ -2496,7 +2496,7 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(countQueue.sync { summaryCount }, countAfterCleanup)
   }
 
-  func testRetentionCleanupKeepsVerifiedFileWhenRemoteIsUnreachable()
+  func testRetentionCleanupUsesPersistedUploadReceiptWithoutNetwork()
     async throws
   {
     let fixture = try makeRetentionCleanupFixture(id: "remote-unreachable")
@@ -2509,21 +2509,15 @@ class RunnerTests: XCTestCase {
 
     try await fixture.api.performCleanup()
 
-    XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.file.path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.file.path))
     let updated = try XCTUnwrap(fixture.store.readJob(id: "remote-unreachable"))
-    XCTAssertEqual(updated["waitingCleanup"] as? Bool, true)
-    XCTAssertNil(updated["localDeletedAt"])
-    XCTAssertEqual(
-      updated["errorMessage"] as? String,
-      "暂时无法向电脑确认备份，已保留本地录像"
-    )
+    XCTAssertNotNil(updated["localDeletedAt"])
   }
 
   func testStorageReclaimKeepsLegacyJobWithoutContentSha256() async throws {
     let fixture = try makeRetentionCleanupFixture(
       id: "storage-reclaim-missing-sha",
-      availableStorageBytesOverride: { 0 },
-      storageAttestationOverride: { _, _, _ in "unexpected-receipt" }
+      availableStorageBytesOverride: { 0 }
     )
     defer { removeRetentionCleanupFixture(fixture) }
     var job = makeVerifiedStorageReclaimJob(fixture.job)
@@ -2574,7 +2568,6 @@ class RunnerTests: XCTestCase {
     let fixture = try makeRetentionCleanupFixture(
       id: "storage-reclaim-error-change",
       availableStorageBytesOverride: { 0 },
-      storageAttestationOverride: { _, _, _ in "unexpected-receipt" },
       onSnapshot: { _ in emitted.fulfill() }
     )
     defer { removeRetentionCleanupFixture(fixture) }
@@ -2590,8 +2583,7 @@ class RunnerTests: XCTestCase {
   func testStorageReclaimKeepsFileWhenContentSha256Mismatches() async throws {
     let fixture = try makeRetentionCleanupFixture(
       id: "storage-reclaim-sha-mismatch",
-      availableStorageBytesOverride: { 0 },
-      storageAttestationOverride: { _, _, _ in "unexpected-receipt" }
+      availableStorageBytesOverride: { 0 }
     )
     defer { removeRetentionCleanupFixture(fixture) }
     var job = makeVerifiedStorageReclaimJob(fixture.job)
@@ -2613,8 +2605,7 @@ class RunnerTests: XCTestCase {
   func testStorageReclaimKeepsMixedSessionJob() async throws {
     let fixture = try makeRetentionCleanupFixture(
       id: "storage-reclaim-mixed-sessions",
-      availableStorageBytesOverride: { 0 },
-      storageAttestationOverride: { _, _, _ in "unexpected-receipt" }
+      availableStorageBytesOverride: { 0 }
     )
     defer { removeRetentionCleanupFixture(fixture) }
     var job = makeVerifiedStorageReclaimJob(fixture.job)
@@ -2630,34 +2621,10 @@ class RunnerTests: XCTestCase {
     )
   }
 
-  func testStorageReclaimKeepsFileWhenRemoteEvidenceIsInvalid() async throws {
-    let fixture = try makeRetentionCleanupFixture(
-      id: "storage-reclaim-invalid-evidence",
-      availableStorageBytesOverride: { 0 },
-      storageAttestationOverride: { _, _, _ in nil }
-    )
-    defer { removeRetentionCleanupFixture(fixture) }
-    var job = makeVerifiedStorageReclaimJob(fixture.job)
-    job["verificationReceipt"] = "forged-receipt"
-    try fixture.store.upsert(job)
-
-    let result = try await awaitStorageReclaim(fixture.api)
-
-    XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.file.path))
-    XCTAssertEqual(result["deletedCount"] as? Int, 0)
-    let updated = try XCTUnwrap(fixture.store.readJob(id: "storage-reclaim-invalid-evidence"))
-    XCTAssertNil(updated["localDeletedAt"])
-    XCTAssertEqual(
-      updated["errorMessage"] as? String,
-      "暂时无法向电脑确认备份，已保留本地录像"
-    )
-  }
-
-  func testStorageReclaimDeletesOnlyAfterFreshRemoteAttestation() async throws {
+  func testStorageReclaimUsesPersistedUploadReceipt() async throws {
     let fixture = try makeRetentionCleanupFixture(
       id: "storage-reclaim-confirmed",
-      availableStorageBytesOverride: { 0 },
-      storageAttestationOverride: { _, _, _ in "fresh-signed-receipt" }
+      availableStorageBytesOverride: { 0 }
     )
     defer { removeRetentionCleanupFixture(fixture) }
     try fixture.store.upsert(makeVerifiedStorageReclaimJob(fixture.job))
@@ -2668,14 +2635,13 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(result["deletedCount"] as? Int, 1)
     let updated = try XCTUnwrap(fixture.store.readJob(id: "storage-reclaim-confirmed"))
     XCTAssertNotNil(updated["localDeletedAt"])
-    XCTAssertEqual(updated["verificationReceipt"] as? String, "fresh-signed-receipt")
+    XCTAssertEqual(updated["verificationReceipt"] as? String, "stored-signed-receipt")
   }
 
-  func testStorageReclaimRenewsExpiredComputerConfirmation() async throws {
+  func testStorageReclaimKeepsUsingOldUploadReceipt() async throws {
     let fixture = try makeRetentionCleanupFixture(
       id: "storage-reclaim-expired-confirmation",
-      availableStorageBytesOverride: { 0 },
-      storageAttestationOverride: { _, _, _ in "renewed-signed-receipt" }
+      availableStorageBytesOverride: { 0 }
     )
     defer { removeRetentionCleanupFixture(fixture) }
     let expiredAttestedAt = ISO8601DateFormatter().string(
@@ -2693,15 +2659,14 @@ class RunnerTests: XCTestCase {
       fixture.store.readJob(id: "storage-reclaim-expired-confirmation")
     )
     XCTAssertNotNil(updated["localDeletedAt"])
-    XCTAssertEqual(updated["verificationReceipt"] as? String, "renewed-signed-receipt")
-    XCTAssertNotEqual(updated["lastAttestedAt"] as? String, expiredAttestedAt)
+    XCTAssertNotEqual(updated["verificationReceipt"] as? String, "")
+    XCTAssertEqual(updated["lastAttestedAt"] as? String, expiredAttestedAt)
   }
 
-  func testStorageReclaimStopsConfirmingAfterComputerIsUnreachable() async throws {
+  func testStorageReclaimDoesNotNeedComputerForOldUploadMarkers() async throws {
     let fixture = try makeRetentionCleanupFixture(
       id: "storage-reclaim-unreachable",
-      availableStorageBytesOverride: { 0 },
-      storageAttestationOverride: { _, _, _ in nil }
+      availableStorageBytesOverride: { 0 }
     )
     defer { removeRetentionCleanupFixture(fixture) }
     let expiredAttestedAt = ISO8601DateFormatter().string(
@@ -2718,43 +2683,9 @@ class RunnerTests: XCTestCase {
 
     let result = try await awaitStorageReclaim(fixture.api)
 
-    XCTAssertEqual(result["deletedCount"] as? Int, 0)
-    XCTAssertTrue(FileManager.default.fileExists(atPath: fixture.file.path))
-    XCTAssertTrue(FileManager.default.fileExists(atPath: secondFile.path))
-    let messages = [
-      try XCTUnwrap(fixture.store.readJob(id: "storage-reclaim-unreachable")),
-      try XCTUnwrap(fixture.store.readJob(id: "storage-reclaim-unreachable-2")),
-    ].compactMap { $0["errorMessage"] as? String }
-    XCTAssertEqual(messages, ["暂时无法向电脑确认备份，已保留本地录像"])
-  }
-
-  func testStorageReclaimConfirmationAttemptsAreBoundedPerRun() async throws {
-    let fixture = try makeRetentionCleanupFixture(
-      id: "storage-reclaim-bounded",
-      availableStorageBytesOverride: { 0 },
-      storageAttestationOverride: { _, _, _ in "renewed-signed-receipt" },
-      storageReclaimConfirmationLimitOverride: 1
-    )
-    defer { removeRetentionCleanupFixture(fixture) }
-    let expiredAttestedAt = ISO8601DateFormatter().string(
-      from: Date().addingTimeInterval(-3_600)
-    )
-    var job = makeVerifiedStorageReclaimJob(fixture.job)
-    job["lastAttestedAt"] = expiredAttestedAt
-    try fixture.store.upsert(job)
-    let secondFile = try addVerifiedStorageReclaimJob(
-      fixture,
-      id: "storage-reclaim-bounded-2",
-      lastAttestedAt: expiredAttestedAt
-    )
-
-    let result = try await awaitStorageReclaim(fixture.api)
-
-    XCTAssertEqual(result["deletedCount"] as? Int, 1)
-    let remaining = [fixture.file, secondFile].filter {
-      FileManager.default.fileExists(atPath: $0.path)
-    }
-    XCTAssertEqual(remaining.count, 1)
+    XCTAssertEqual(result["deletedCount"] as? Int, 2)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.file.path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: secondFile.path))
   }
 
   func testStorageReclaimKeepsUnbackedRecordingWhenPriorityPolicyDisabled()
@@ -3169,7 +3100,6 @@ class RunnerTests: XCTestCase {
     fixture = try makeRetentionCleanupFixture(
       id: "storage-retry-before-claim",
       availableStorageBytesOverride: { 0 },
-      storageAttestationOverride: { _, _, _ in "fresh-signed-receipt" },
       beforeCleanupIntentClaimForTesting: { job in
         _ = try? fixture.store.updateJob(id: job["id"] as? String ?? "") { current in
           current["generation"] = "storage-retry-generation"
@@ -3244,6 +3174,46 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(counts.started, 1_000)
     XCTAssertEqual(counts.active, 0)
     XCTAssertEqual(counts.maximumActive, 1)
+  }
+
+  func testStorageReclaimBypassesRunningMaintenanceWhenCapacityIsSufficient()
+    async throws
+  {
+    let fixture = try makeBackupStoreFixture()
+    defer { removeBackupStoreFixture(fixture) }
+    let store = try IosBackupJobStore(
+      databaseURL: fixture.databaseURL,
+      defaults: fixture.defaults
+    )
+    let hold = AsyncTestGate()
+    let cleanupStarted = expectation(description: "清理维护已占住协调器")
+    let reclaimCompleted = expectation(description: "空间充足时立即返回")
+    let api = makeBackupApi(
+      defaults: fixture.defaults,
+      store: store,
+      availableStorageBytesOverride: {
+        BackupStoragePolicy.fallback.minimumBytes
+      },
+      cleanupOperationOverride: {
+        cleanupStarted.fulfill()
+        await hold.wait()
+      }
+    )
+
+    api.triggerCleanupForTesting()
+    await fulfillment(of: [cleanupStarted], timeout: 2)
+    api.reclaimStorageIfNeeded { result in
+      switch result {
+      case .success(let values):
+        XCTAssertEqual(values["insufficient"] as? Bool, false)
+        XCTAssertEqual(values["deletedCount"] as? Int, 0)
+      case .failure(let error):
+        XCTFail(error.localizedDescription)
+      }
+      reclaimCompleted.fulfill()
+    }
+    await fulfillment(of: [reclaimCompleted], timeout: 0.5)
+    await hold.open()
   }
 
   func testCleanupTriggerWhileRunningSchedulesASecondInvocation() async throws {
@@ -5250,6 +5220,7 @@ class RunnerTests: XCTestCase {
   private func makeBackupApi(
     defaults: UserDefaults,
     store: IosBackupJobStore,
+    availableStorageBytesOverride: (() -> Int64)? = nil,
     uploadFailureUpdateOverride: ((String, String) throws -> Bool)? = nil,
     uploadPersistenceFailureReporter:
       ((String, String, Error) -> Void)? = nil,
@@ -5284,6 +5255,7 @@ class RunnerTests: XCTestCase {
       ),
       jobStore: .success(store),
       recordingsRoot: recordingsRoot ?? FileManager.default.temporaryDirectory,
+      availableStorageBytesOverride: availableStorageBytesOverride,
       uploadFailureUpdateOverride: uploadFailureUpdateOverride,
       uploadPersistenceFailureReporter: uploadPersistenceFailureReporter,
       uploadOperationOverride: uploadOperationOverride,
@@ -5318,9 +5290,6 @@ class RunnerTests: XCTestCase {
     autoEnabled: Bool = false,
     cleanupConfigured: Bool = true,
     availableStorageBytesOverride: (() -> Int64)? = nil,
-    storageAttestationOverride:
-      (([String: Any], String, Int64) async -> String?)? = nil,
-    storageReclaimConfirmationLimitOverride: Int? = nil,
     onSnapshot: ((BackupSummaryDto) -> Void)? = nil,
     beforeCleanupFileProofForTesting: (([String: Any]) -> Void)? = nil,
     beforeCleanupIntentClaimForTesting: (([String: Any]) -> Void)? = nil,
@@ -5365,8 +5334,6 @@ class RunnerTests: XCTestCase {
       jobStore: .success(store),
       recordingsRoot: recordings,
       availableStorageBytesOverride: availableStorageBytesOverride,
-      storageAttestationOverride: storageAttestationOverride,
-      storageReclaimConfirmationLimitOverride: storageReclaimConfirmationLimitOverride,
       cleanupConfigurationOverride: { cleanupConfigured },
       beforeCleanupFileProofForTesting: beforeCleanupFileProofForTesting,
       beforeCleanupIntentClaimForTesting: beforeCleanupIntentClaimForTesting,

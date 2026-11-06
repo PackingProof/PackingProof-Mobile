@@ -1126,27 +1126,6 @@ void main() {
     expect(
       platform.lastInitializeRequest,
       containsPair(
-        'storageAttestationFreshnessMs',
-        BackupStoragePolicy.attestationFreshness.inMilliseconds,
-      ),
-    );
-    expect(
-      platform.lastInitializeRequest,
-      containsPair(
-        'storageConfirmationLimit',
-        BackupStoragePolicy.confirmationLimit,
-      ),
-    );
-    expect(
-      platform.lastInitializeRequest,
-      containsPair(
-        'storageConfirmationGraceMs',
-        BackupStoragePolicy.confirmationGrace.inMilliseconds,
-      ),
-    );
-    expect(
-      platform.lastInitializeRequest,
-      containsPair(
         'storageDeleteUnbackedOnPressure',
         BackupStoragePolicy.toNativeRequest()['storageDeleteUnbackedOnPressure'],
       ),

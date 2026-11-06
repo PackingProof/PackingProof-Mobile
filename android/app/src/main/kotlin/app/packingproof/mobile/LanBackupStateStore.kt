@@ -1047,7 +1047,6 @@ internal class LanBackupStateStore(
         if (actual != expected ||
             !RecordingStoragePolicy.isVerifiedCandidate(
                 actual,
-                BackupStoragePolicyStore.current(context),
             )
         ) {
             return@withJobLock rejectedStorageReclaim()

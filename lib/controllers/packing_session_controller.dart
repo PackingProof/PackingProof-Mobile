@@ -44,6 +44,7 @@ import '../services/microphone_busy_policy.dart';
 import '../services/order_info_receiver_service.dart';
 import '../services/rejected_barcode_policy.dart';
 import '../services/remote_video_clip_service.dart';
+import '../services/repeat_log_gate.dart';
 import '../services/nv21_center_crop.dart';
 import '../services/recording_timeline.dart';
 import '../services/recording_database.dart';

@@ -2,7 +2,6 @@ package app.packingproof.mobile
 
 import android.content.Context
 import android.os.StatFs
-import android.util.Log
 import org.json.JSONObject
 import java.time.Instant
 
@@ -16,11 +15,6 @@ internal object RecordingStoragePolicy {
 
     fun needsReclaim(availableBytes: Long, policy: BackupStoragePolicy): Boolean =
         availableBytes < policy.minimumBytes
-
-    fun isFreshAttestation(value: String, policy: BackupStoragePolicy): Boolean = runCatching {
-        val age = java.time.Duration.between(Instant.parse(value), Instant.now()).abs()
-        age <= policy.attestationFreshness
-    }.getOrDefault(false)
 
     /**
      * 证明字段齐备，只差“刚向电脑确认过”这一步。空间回收用它挑出值得重新向电脑
@@ -54,10 +48,9 @@ internal object RecordingStoragePolicy {
 
     fun isVerifiedCandidate(
         candidate: RecordingStorageCandidate,
-        policy: BackupStoragePolicy,
     ): Boolean =
         hasCompleteProof(candidate) &&
-            candidate.lastAttestedAt?.let { isFreshAttestation(it, policy) } == true
+            candidate.lastAttestedAt != null
 
     /**
      * 「优先继续录制」兜底删除的准入条件：允许没有电脑回执，但只碰已经落盘、不在上传
@@ -78,9 +71,8 @@ internal object RecordingStoragePolicy {
 
     fun verifiedCandidates(
         candidates: List<RecordingStorageCandidate>,
-        policy: BackupStoragePolicy,
     ): List<RecordingStorageCandidate> = candidates
-        .filter { isVerifiedCandidate(it, policy) }
+        .filter { isVerifiedCandidate(it) }
         .sortedBy { runCatching { Instant.parse(it.fileCreatedAt) }.getOrDefault(Instant.MAX) }
 }
 
@@ -183,9 +175,28 @@ internal class RecordingStorageManager(
         StatFs(context.filesDir.path).availableBytes
     },
     private val beforeGuardedDeleteForTesting: ((JSONObject) -> Unit)? = null,
-    private val confirmRemoteRecording: ((RecordingStorageCandidate) -> RemoteRecordAttestation)? = null,
-    private val maxRemoteConfirmationsPerRun: Int? = null,
 ) {
+    /**
+     * 空间充足时只读取磁盘，不触碰备份数据库，也不进入备份串行执行器。
+     * 手机启动录像不应被历史录像的电脑确认或保留期清理排队阻塞。
+     */
+    fun checkWithoutReclaimIfSufficient(): RecordingStorageCheckResult? {
+        val policy = BackupStoragePolicyStore.current(context)
+        val available = availableBytes()
+        if (RecordingStoragePolicy.needsReclaim(available, policy)) return null
+        return RecordingStorageCheckResult(
+            values = mapOf(
+                "availableBytes" to available,
+                "availableBytesBefore" to available,
+                "freedBytes" to 0L,
+                "deletedCount" to 0,
+                "warning" to RecordingStoragePolicy.needsWarning(available, policy),
+                "insufficient" to false,
+            ),
+            jobsChanged = false,
+        )
+    }
+
     fun checkAndReclaim(): RecordingStorageCheckResult {
         val policy = BackupStoragePolicyStore.current(context)
         val before = availableBytes()
@@ -193,9 +204,6 @@ internal class RecordingStorageManager(
         var deletedCount = 0
         var freedBytes = 0L
         var jobsChanged = false
-        var remoteConfirmations = 0
-        var remoteUnreachable = false
-        val confirmationLimit = maxRemoteConfirmationsPerRun ?: policy.confirmationLimit
         if (RecordingStoragePolicy.needsReclaim(current, policy)) {
             var afterCreatedAtKey: String? = null
             var afterId: String? = null
@@ -204,30 +212,8 @@ internal class RecordingStorageManager(
                 page = store.storageRecoveryJobsPage(afterCreatedAtKey, afterId)
                 for (job in page.jobs) {
                     if (current >= policy.targetBytes) break
-                    var expected = recordingStorageCandidate(job)
-                    if (!RecordingStoragePolicy.isVerifiedCandidate(expected, policy)) {
-                        // 电脑确认会过期。过期后先补一次确认，否则空间不足时永远没有可
-                        // 回收的录像，只能停止录像或拒绝开始录像。
-                        if (remoteUnreachable ||
-                            remoteConfirmations >= confirmationLimit ||
-                            !RecordingStoragePolicy.hasCompleteProof(expected)
-                        ) {
-                            continue
-                        }
-                        remoteConfirmations++
-                        when (confirmWithComputer(expected)) {
-                            RemoteRecordAttestation.Confirmed -> Unit
-                            RemoteRecordAttestation.Unreachable -> {
-                                remoteUnreachable = true
-                                continue
-                            }
-                            RemoteRecordAttestation.Missing,
-                            RemoteRecordAttestation.Unauthorized,
-                            RemoteRecordAttestation.NotReady,
-                            -> continue
-                        }
-                        expected = markAttestedNow(expected) ?: continue
-                    }
+                    val expected = recordingStorageCandidate(job)
+                    if (!RecordingStoragePolicy.isVerifiedCandidate(expected)) continue
                     beforeGuardedDeleteForTesting?.invoke(JSONObject(job.toString()))
                     val outcome = store.reclaimVerifiedRecording(expected)
                     when (outcome.result) {
@@ -306,51 +292,4 @@ internal class RecordingStorageManager(
         )
     }
 
-    /**
-     * 向电脑确认这条录像仍然存在且校验通过，确认成功后写回确认时间，使候选重新满
-     * 足删除所需的“新鲜确认”条件。
-     */
-    private fun confirmWithComputer(
-        candidate: RecordingStorageCandidate,
-    ): RemoteRecordAttestation {
-        val injected = confirmRemoteRecording
-        if (injected != null) return injected(candidate)
-        val connection = store.connection()
-            ?: return RemoteRecordAttestation.Unreachable
-        val credential = LanBackupCredentialStore(context).load()
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: return RemoteRecordAttestation.Unauthorized
-        val sessionId = candidate.sessionIds.singleOrNull()
-            ?: return RemoteRecordAttestation.NotReady
-        val fileSha256 = candidate.contentSha256
-            ?: return RemoteRecordAttestation.NotReady
-        val attestation = BackupRequestAuthentication.verifyRemoteRecord(
-            connection,
-            credential,
-            store.deviceId(),
-            candidate.remoteRecordId,
-            sessionId,
-            fileSha256,
-            candidate.totalBytes,
-        )
-        if (attestation != RemoteRecordAttestation.Confirmed) {
-            Log.w(
-                STORAGE_LOG_TAG,
-                "Storage reclaim preserved recording: attestation=$attestation",
-            )
-        }
-        return attestation
-    }
-
-    private fun markAttestedNow(
-        candidate: RecordingStorageCandidate,
-    ): RecordingStorageCandidate? {
-        val attestedAt = Instant.now().toString()
-        store.updateJob(candidate.id, candidate.generation) { job ->
-            job.put("lastAttestedAt", attestedAt)
-            true
-        } ?: return null
-        return candidate.copy(lastAttestedAt = attestedAt)
-    }
 }

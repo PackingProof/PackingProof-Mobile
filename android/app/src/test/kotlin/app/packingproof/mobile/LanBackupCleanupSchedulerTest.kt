@@ -72,16 +72,6 @@ class LanBackupCleanupSchedulerTest {
     }
 
     @Test
-    fun unreachableRemoteAttestationNeverAuthorizesLocalDeletion() {
-        assertFalse(
-            remoteAttestationAllowsLocalDeletion(RemoteRecordAttestation.Unreachable),
-        )
-        assertTrue(
-            remoteAttestationAllowsLocalDeletion(RemoteRecordAttestation.Confirmed),
-        )
-    }
-
-    @Test
     fun rescheduleIsSkippedWhenDueAtAlreadyScheduled() {
         val dueAt = Instant.parse("2026-08-20T03:00:00Z")
         val job = JSONObject().put("scheduledCleanupAt", dueAt.toString())

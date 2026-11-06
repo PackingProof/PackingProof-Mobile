@@ -10,10 +10,6 @@ void main() {
     'minimumBytes': BackupStoragePolicy.minimumBytes,
     'warningBytes': BackupStoragePolicy.warningBytes,
     'targetBytes': BackupStoragePolicy.targetBytes,
-    'attestationFreshnessMs':
-        BackupStoragePolicy.attestationFreshness.inMilliseconds,
-    'confirmationLimit': BackupStoragePolicy.confirmationLimit,
-    'confirmationGraceMs': BackupStoragePolicy.confirmationGrace.inMilliseconds,
   };
 
   test('下发键值与策略一致', () {
@@ -21,12 +17,13 @@ void main() {
       'storageMinimumBytes': expected['minimumBytes'],
       'storageWarningBytes': expected['warningBytes'],
       'storageTargetBytes': expected['targetBytes'],
-      'storageAttestationFreshnessMs': expected['attestationFreshnessMs'],
-      'storageConfirmationLimit': expected['confirmationLimit'],
-      'storageConfirmationGraceMs': expected['confirmationGraceMs'],
       'storageDeleteUnbackedOnPressure': true,
     });
     expect(BackupStoragePolicy.targetBytes, BackupStoragePolicy.warningBytes);
+    expect(
+      BackupStoragePolicy.targetBytes - BackupStoragePolicy.minimumBytes,
+      greaterThanOrEqualTo(3 * 1024 * 1024 * 1024),
+    );
     // 只有“优先继续录制”才允许删除未备份录像。
     expect(
       BackupStoragePolicy.toNativeRequest(

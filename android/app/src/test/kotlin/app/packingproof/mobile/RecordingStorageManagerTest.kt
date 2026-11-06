@@ -6,7 +6,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -68,6 +67,25 @@ class RecordingStorageManagerTest {
 
         assertFalse(result.jobsChanged)
         assertEquals(0, result.values["deletedCount"])
+    }
+
+    @Test
+    fun sufficientStorageFastCheckSkipsReclaimPath() {
+        val sufficient = RecordingStorageManager(
+            context,
+            store,
+            availableBytes = { BackupStoragePolicy.FALLBACK.warningBytes },
+        ).checkWithoutReclaimIfSufficient()
+        val low = RecordingStorageManager(
+            context,
+            store,
+            availableBytes = { 0 },
+        ).checkWithoutReclaimIfSufficient()
+
+        assertNotNull(sufficient)
+        assertEquals(false, sufficient!!.values["insufficient"])
+        assertEquals(0, sufficient.values["deletedCount"])
+        assertNull(low)
     }
 
     @Test
@@ -222,37 +240,22 @@ class RecordingStorageManagerTest {
     }
 
     @Test
-    fun freshConfirmationReclaimsWithoutAskingTheComputerAgain() {
+    fun verifiedUploadMarkerReclaimsWithoutCallingTheComputer() {
         verifiedJob()
-        var confirmations = 0
-        val manager = RecordingStorageManager(
-            context,
-            store,
-            availableBytes = { 0 },
-            confirmRemoteRecording = {
-                confirmations++
-                RemoteRecordAttestation.Unreachable
-            },
-        )
+        val manager = RecordingStorageManager(context, store, availableBytes = { 0 })
 
         val result = manager.checkAndReclaim()
 
-        assertEquals(0, confirmations)
         assertEquals(1, result.values["deletedCount"])
         assertFalse(source.exists())
     }
 
     @Test
-    fun expiredConfirmationIsRenewedWithTheComputerBeforeReclaim() {
-        val staleAttestedAt = Instant.now().minusSeconds(3_600).toString()
+    fun oldUploadMarkerStillReclaimsWithoutRenewal() {
+        val staleAttestedAt = Instant.now().minusSeconds(30L * 24 * 60 * 60).toString()
         val expectedBytes = source.length()
         val job = verifiedJob(lastAttestedAt = staleAttestedAt)
-        val manager = RecordingStorageManager(
-            context,
-            store,
-            availableBytes = { 0 },
-            confirmRemoteRecording = { RemoteRecordAttestation.Confirmed },
-        )
+        val manager = RecordingStorageManager(context, store, availableBytes = { 0 })
 
         val result = manager.checkAndReclaim()
         val deleted = store.readJob(job.getString("id"))!!
@@ -263,62 +266,26 @@ class RecordingStorageManagerTest {
         assertNotNull(LanBackupCleanupScheduler.nullableText(deleted, "localDeletedAt"))
         val renewedAttestedAt =
             LanBackupCleanupScheduler.nullableText(deleted, "lastAttestedAt")!!
-        assertNotEquals(staleAttestedAt, renewedAttestedAt)
-        assertTrue(
-            RecordingStoragePolicy.isFreshAttestation(
-                renewedAttestedAt,
-                BackupStoragePolicy.FALLBACK,
-            ),
+        assertEquals(staleAttestedAt, renewedAttestedAt)
+        assertNotNull(
+            LanBackupCleanupScheduler.nullableText(deleted, "verificationReceipt"),
         )
     }
 
     @Test
-    fun expiredConfirmationWithoutComputerAnswerPreservesSource() {
-        val staleAttestedAt = Instant.now().minusSeconds(3_600).toString()
-        val job = verifiedJob(lastAttestedAt = staleAttestedAt)
-        val manager = RecordingStorageManager(
-            context,
-            store,
-            availableBytes = { 0 },
-            confirmRemoteRecording = { RemoteRecordAttestation.Unreachable },
-        )
-
-        val result = manager.checkAndReclaim()
-
-        assertPreserved(job, result)
-        assertEquals(
-            staleAttestedAt,
-            LanBackupCleanupScheduler.nullableText(
-                store.readJob(job.getString("id"))!!,
-                "lastAttestedAt",
-            ),
-        )
-    }
-
-    @Test
-    fun incompleteProofIsNeverSentForRemoteConfirmation() {
+    fun incompleteProofPreservesSource() {
         val staleAttestedAt = Instant.now().minusSeconds(3_600).toString()
         verifiedJob(receipt = { JSONObject.NULL }, lastAttestedAt = staleAttestedAt)
-        var confirmations = 0
-        val manager = RecordingStorageManager(
-            context,
-            store,
-            availableBytes = { 0 },
-            confirmRemoteRecording = {
-                confirmations++
-                RemoteRecordAttestation.Confirmed
-            },
-        )
+        val manager = RecordingStorageManager(context, store, availableBytes = { 0 })
 
         val result = manager.checkAndReclaim()
 
-        assertEquals(0, confirmations)
         assertEquals(0, result.values["deletedCount"])
         assertTrue(source.exists())
     }
 
     @Test
-    fun unreachableComputerStopsFurtherConfirmationAttempts() {
+    fun multipleUploadMarkersReclaimWithoutComputer() {
         val secondSource = File(context.cacheDir, "storage-manager-test-second.mp4").apply {
             writeText("second-test-video", Charsets.UTF_8)
         }
@@ -330,57 +297,13 @@ class RecordingStorageManagerTest {
                 sessionId = "storage-manager-second-session",
                 lastAttestedAt = staleAttestedAt,
             )
-            var confirmations = 0
-            val manager = RecordingStorageManager(
-                context,
-                store,
-                availableBytes = { 0 },
-                confirmRemoteRecording = {
-                    confirmations++
-                    RemoteRecordAttestation.Unreachable
-                },
-            )
+            val manager = RecordingStorageManager(context, store, availableBytes = { 0 })
 
             val result = manager.checkAndReclaim()
 
-            assertEquals(1, confirmations)
-            assertEquals(0, result.values["deletedCount"])
-            assertTrue(source.exists())
-            assertTrue(secondSource.exists())
-        } finally {
-            secondSource.delete()
-        }
-    }
-
-    @Test
-    fun remoteConfirmationAttemptsAreBoundedPerRun() {
-        val secondSource = File(context.cacheDir, "storage-manager-test-bounded.mp4").apply {
-            writeText("bounded-test-video", Charsets.UTF_8)
-        }
-        try {
-            val staleAttestedAt = Instant.now().minusSeconds(3_600).toString()
-            verifiedJob(lastAttestedAt = staleAttestedAt)
-            verifiedJob(
-                file = secondSource,
-                sessionId = "storage-manager-bounded-session",
-                lastAttestedAt = staleAttestedAt,
-            )
-            var confirmations = 0
-            val manager = RecordingStorageManager(
-                context,
-                store,
-                availableBytes = { 0 },
-                confirmRemoteRecording = {
-                    confirmations++
-                    RemoteRecordAttestation.Confirmed
-                },
-                maxRemoteConfirmationsPerRun = 1,
-            )
-
-            val result = manager.checkAndReclaim()
-
-            assertEquals(1, confirmations)
-            assertEquals(1, result.values["deletedCount"])
+            assertEquals(2, result.values["deletedCount"])
+            assertFalse(source.exists())
+            assertFalse(secondSource.exists())
         } finally {
             secondSource.delete()
         }

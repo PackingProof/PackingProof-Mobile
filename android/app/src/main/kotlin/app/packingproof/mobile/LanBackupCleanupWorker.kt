@@ -191,16 +191,6 @@ internal object LanBackupCleanupScheduler {
     internal fun shouldDeferForBackupState(state: String): Boolean =
         state == "uploading"
 
-    internal fun isConfirmationFresh(
-        lastAttestedAt: String?,
-        grace: Duration,
-        now: Instant = Instant.now(),
-    ): Boolean {
-        val attested = lastAttestedAt ?: return false
-        return runCatching {
-            !now.isAfter(Instant.parse(attested).plus(grace))
-        }.getOrDefault(false)
-    }
 }
 
 internal class LanBackupCleanupScheduleWorker(
@@ -232,10 +222,6 @@ internal class LanBackupCleanupScheduleWorker(
 }
 
 internal enum class LanBackupFileCleanupResult { deleted, missing, stale, failed }
-
-internal fun remoteAttestationAllowsLocalDeletion(
-    attestation: RemoteRecordAttestation,
-): Boolean = attestation == RemoteRecordAttestation.Confirmed
 
 internal object LanBackupFileCleanup {
     fun deleteExpected(
@@ -373,49 +359,6 @@ internal class LanBackupCleanupWorker(
             }
         }
 
-        // 预计算远端确认结果（网络调用不持有 job 锁，避免阻塞 snapshot/enqueue）。
-        val snapshot = store.readJob(id) ?: return Result.success()
-        val snapshotCompletedAt =
-            LanBackupCleanupScheduler.nullableText(snapshot, "backupCompletedAt")
-        val precomputedAttestation: RemoteRecordAttestation? =
-            if (snapshotCompletedAt != null) {
-                if (
-                    LanBackupCleanupScheduler.isConfirmationFresh(
-                        LanBackupCleanupScheduler.nullableText(snapshot, "lastAttestedAt"),
-                        BackupStoragePolicyStore.current(applicationContext).confirmationGrace,
-                    )
-                ) {
-                    RemoteRecordAttestation.Confirmed
-                } else {
-                    val connection = store.connection()
-                    val credential = credentials.load()
-                    val recordId = snapshot.optLong("remoteRecordId").takeIf { it > 0 }
-                    val sessions = snapshot.optJSONArray("sessions")
-                    val sha256 =
-                        LanBackupCleanupScheduler.nullableText(snapshot, "contentSha256")
-                    if (
-                        connection == null || credential.isNullOrBlank() ||
-                        recordId == null ||
-                        sessions == null || sessions.length() != 1 ||
-                        sha256 == null
-                    ) {
-                        null
-                    } else {
-                        BackupRequestAuthentication.verifyRemoteRecord(
-                            connection,
-                            credential,
-                            store.deviceId(),
-                            recordId,
-                            sessions.getJSONObject(0).getString("id"),
-                            sha256,
-                            snapshot.optLong("totalBytes", -1L),
-                        )
-                    }
-                }
-            } else {
-                null
-            }
-
         return LanBackupStateStore.withJobLock {
             val job = store.readJob(id) ?: return@withJobLock Result.success()
             if (LanBackupCleanupScheduler.nullableText(job, "generation") != generation) {
@@ -463,12 +406,38 @@ internal class LanBackupCleanupWorker(
             if (completedAt != null) {
                 val recordId = job.optLong("remoteRecordId").takeIf { it > 0 }
                 val sessions = job.optJSONArray("sessions")
+                val receipt = job.optJSONObject("verificationReceipt")
+                val sessionId = sessions?.takeIf { it.length() == 1 }
+                    ?.getJSONObject(0)
+                    ?.optString("id")
+                    ?.takeIf { it.isNotBlank() }
+                val storedCredential = credentials.load()
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                val signedEvidence = runCatching {
+                    receipt != null &&
+                        contentSha256 != null &&
+                        recordId != null &&
+                        sessionId != null &&
+                        storedCredential != null &&
+                        BackupRequestAuthentication.verifyPersistedReceipt(
+                            response = receipt,
+                            credential = BackupRequestAuthentication.parse(storedCredential),
+                            hostNodeId = job.optString("destinationComputerId"),
+                            sourceDeviceId = store.deviceId(),
+                            sourceSessionId = sessionId,
+                            fileSha256 = contentSha256,
+                            fileSizeBytes = job.optLong("totalBytes", -1L),
+                            recordId = recordId,
+                        )
+                }.getOrDefault(false)
                 val hasTrustedEvidence =
                     job.optInt("verificationVersion") >= BackupRequestAuthentication.VERSION &&
                         contentSha256 != null && contentSha256.length == 64 &&
                         job.optLong("totalBytes", -1L) > 0 &&
                         recordId != null &&
-                        sessions != null && sessions.length() == 1
+                        sessionId != null &&
+                        signedEvidence
                 if (!hasTrustedEvidence) {
                     Log.w(
                         CLEANUP_TAG,
@@ -480,51 +449,6 @@ internal class LanBackupCleanupWorker(
                     return@withJobLock Result.success()
                 }
 
-                val attestation =
-                    if (
-                        LanBackupCleanupScheduler.isConfirmationFresh(
-                            LanBackupCleanupScheduler.nullableText(job, "lastAttestedAt"),
-                            BackupStoragePolicyStore.current(applicationContext).confirmationGrace,
-                        )
-                    ) {
-                        RemoteRecordAttestation.Confirmed
-                    } else {
-                        precomputedAttestation ?: RemoteRecordAttestation.Unreachable
-                    }
-                if (!remoteAttestationAllowsLocalDeletion(attestation)) {
-                    when (attestation) {
-                        RemoteRecordAttestation.Confirmed -> error("已确认的远端记录不应阻止清理")
-                        RemoteRecordAttestation.Missing -> {
-                            Log.w(CLEANUP_TAG, "Cleanup preserved missing remote record path=${file.absolutePath}")
-                            job.put("waitingCleanup", false)
-                                .put("errorMessage", "远端缺失，待重新备份")
-                            store.writeJob(job)
-                            return@withJobLock Result.success()
-                        }
-                        RemoteRecordAttestation.Unauthorized -> {
-                            Log.w(CLEANUP_TAG, "Cleanup preserved unauthorized attestation path=${file.absolutePath}")
-                            job.put("waitingCleanup", false)
-                                .put("errorMessage", "需要重新扫码授权")
-                            store.writeJob(job)
-                            return@withJobLock Result.success()
-                        }
-                        RemoteRecordAttestation.NotReady -> {
-                            Log.w(CLEANUP_TAG, "Cleanup preserved not-ready remote record path=${file.absolutePath}")
-                            job.put("waitingCleanup", true)
-                                .put("errorMessage", "电脑端尚未完成校验")
-                            store.writeJob(job)
-                            return@withJobLock retry()
-                        }
-                        RemoteRecordAttestation.Unreachable -> {
-                            Log.w(CLEANUP_TAG, "Cleanup preserved unreachable backup path=${file.absolutePath}")
-                            job.put("waitingCleanup", true)
-                                .put("errorMessage", "暂时无法向电脑确认备份，已保留本地录像")
-                            store.writeJob(job)
-                            return@withJobLock retry()
-                        }
-                    }
-                }
-                job.put("lastAttestedAt", Instant.now().toString())
             }
 
             when (

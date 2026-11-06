@@ -1,7 +1,6 @@
 package app.packingproof.mobile
 
 import android.content.Context
-import java.time.Duration
 
 /**
  * 录像存储与电脑确认策略。
@@ -14,23 +13,14 @@ internal data class BackupStoragePolicy(
     val minimumBytes: Long,
     val warningBytes: Long,
     val targetBytes: Long,
-    val attestationFreshnessMs: Long,
-    val confirmationLimit: Int,
-    val confirmationGraceMs: Long,
     val deleteUnbackedOnPressure: Boolean,
 ) {
-    val attestationFreshness: Duration get() = Duration.ofMillis(attestationFreshnessMs)
-    val confirmationGrace: Duration get() = Duration.ofMillis(confirmationGraceMs)
-
     companion object {
         // 仅用于下发前，必须与 Dart 端 BackupStoragePolicy 的数值一致。
         val FALLBACK = BackupStoragePolicy(
             minimumBytes = 1L * 1024 * 1024 * 1024,
-            warningBytes = 2L * 1024 * 1024 * 1024,
-            targetBytes = 2L * 1024 * 1024 * 1024,
-            attestationFreshnessMs = 5L * 60 * 1000,
-            confirmationLimit = 64,
-            confirmationGraceMs = 24L * 60 * 60 * 1000,
+            warningBytes = 4L * 1024 * 1024 * 1024,
+            targetBytes = 4L * 1024 * 1024 * 1024,
             deleteUnbackedOnPressure = true,
         )
     }
@@ -48,12 +38,6 @@ internal object BackupStoragePolicyStore {
                 ?: current.warningBytes,
             targetBytes = (request["storageTargetBytes"] as? Number)?.toLong()
                 ?: current.targetBytes,
-            attestationFreshnessMs = (request["storageAttestationFreshnessMs"] as? Number)?.toLong()
-                ?: current.attestationFreshnessMs,
-            confirmationLimit = (request["storageConfirmationLimit"] as? Number)?.toInt()
-                ?: current.confirmationLimit,
-            confirmationGraceMs = (request["storageConfirmationGraceMs"] as? Number)?.toLong()
-                ?: current.confirmationGraceMs,
             deleteUnbackedOnPressure = (request["storageDeleteUnbackedOnPressure"] as? Boolean)
                 ?: current.deleteUnbackedOnPressure,
         )
@@ -63,9 +47,6 @@ internal object BackupStoragePolicyStore {
             .putLong("minimumBytes", next.minimumBytes)
             .putLong("warningBytes", next.warningBytes)
             .putLong("targetBytes", next.targetBytes)
-            .putLong("attestationFreshnessMs", next.attestationFreshnessMs)
-            .putInt("confirmationLimit", next.confirmationLimit)
-            .putLong("confirmationGraceMs", next.confirmationGraceMs)
             .putBoolean("deleteUnbackedOnPressure", next.deleteUnbackedOnPressure)
             .apply()
     }
@@ -77,15 +58,6 @@ internal object BackupStoragePolicyStore {
             minimumBytes = prefs.getLong("minimumBytes", fallback.minimumBytes),
             warningBytes = prefs.getLong("warningBytes", fallback.warningBytes),
             targetBytes = prefs.getLong("targetBytes", fallback.targetBytes),
-            attestationFreshnessMs = prefs.getLong(
-                "attestationFreshnessMs",
-                fallback.attestationFreshnessMs,
-            ),
-            confirmationLimit = prefs.getInt("confirmationLimit", fallback.confirmationLimit),
-            confirmationGraceMs = prefs.getLong(
-                "confirmationGraceMs",
-                fallback.confirmationGraceMs,
-            ),
             deleteUnbackedOnPressure = prefs.getBoolean(
                 "deleteUnbackedOnPressure",
                 fallback.deleteUnbackedOnPressure,

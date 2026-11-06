@@ -232,6 +232,19 @@ internal class LanBackupPlugin(
     fun reclaimStorageIfNeeded(): Map<String?, Any?> =
         storageManager.checkAndReclaim().values.mapKeys { it.key as String? }
 
+    fun reclaimStorageIfNeeded(
+        callback: (Result<Map<String?, Any?>>) -> Unit,
+    ) {
+        val sufficient = storageManager.checkWithoutReclaimIfSufficient()
+        if (sufficient != null) {
+            mainHandler.post {
+                callback(Result.success(sufficient.values.mapKeys { it.key as String? }))
+            }
+            return
+        }
+        submit(callback) { reclaimStorageIfNeeded() }
+    }
+
     fun availableRecordingStorageBytes(): Long? = availableRecordingStorageBytes(context)
 
     /**

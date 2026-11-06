@@ -496,24 +496,14 @@ struct BackupStoragePolicy: Equatable {
   let minimumBytes: Int64
   let warningBytes: Int64
   let targetBytes: Int64
-  /// 目前只有 Android 复用它（本地校验过签名后可跳过重复确认）；iOS 每次删除前
-  /// 都重新向电脑确认，这里保留数值只为了两端策略一致。
-  let attestationFreshnessMs: Int64
-  let confirmationLimit: Int
-  let confirmationGraceMs: Int64
   /// 「优先继续录制」时允许删除未备份录像；这也是默认策略。
   let deleteUnbackedOnPressure: Bool
-
-  var confirmationGrace: TimeInterval { TimeInterval(confirmationGraceMs) / 1000 }
 
   /// 仅用于下发前，必须与 Dart 端 BackupStoragePolicy 的数值一致。
   static let fallback = BackupStoragePolicy(
     minimumBytes: 1 * 1024 * 1024 * 1024,
-    warningBytes: 2 * 1024 * 1024 * 1024,
-    targetBytes: 2 * 1024 * 1024 * 1024,
-    attestationFreshnessMs: 5 * 60 * 1000,
-    confirmationLimit: 64,
-    confirmationGraceMs: 24 * 60 * 60 * 1000,
+    warningBytes: 4 * 1024 * 1024 * 1024,
+    targetBytes: 4 * 1024 * 1024 * 1024,
     deleteUnbackedOnPressure: true
   )
 }
@@ -530,9 +520,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private let eventApi: BackupNativeEventApiProtocol
   private let recordingsRoot: URL?
   private let availableStorageBytesOverride: (() -> Int64)?
-  private let storageAttestationOverride:
-    (([String: Any], String, Int64) async -> String?)?
-  private let storageReclaimConfirmationLimitOverride: Int?
   private let uploadFailureUpdateOverride: ((String, String) throws -> Bool)?
   private let uploadPersistenceFailureReporter: ((String, String, Error) -> Void)?
   private let uploadOperationOverride:
@@ -608,14 +595,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
   private static let summaryProgressThrottle: TimeInterval = 1
   private static let isoFormatter = ISO8601DateFormatter()
 
-  private enum AttestationResult {
-    case confirmed(receiptSignature: String)
-    case missing
-    case unauthorized
-    case notReady
-    case unreachable
-  }
-
   private enum AtomicCleanupResult {
     case deleted(bytes: Int64)
     case reconciledMissing
@@ -637,9 +616,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
     jobStore: Result<IosBackupJobStore, Error>? = nil,
     recordingsRoot: URL? = nil,
     availableStorageBytesOverride: (() -> Int64)? = nil,
-    storageAttestationOverride:
-      (([String: Any], String, Int64) async -> String?)? = nil,
-    storageReclaimConfirmationLimitOverride: Int? = nil,
     uploadFailureUpdateOverride: ((String, String) throws -> Bool)? = nil,
     uploadPersistenceFailureReporter:
       ((String, String, Error) -> Void)? = nil,
@@ -671,8 +647,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
     self.jobStore = jobStore ?? Result { try IosBackupJobStore() }
     self.recordingsRoot = recordingsRoot
     self.availableStorageBytesOverride = availableStorageBytesOverride
-    self.storageAttestationOverride = storageAttestationOverride
-    self.storageReclaimConfirmationLimitOverride = storageReclaimConfirmationLimitOverride
     self.uploadFailureUpdateOverride = uploadFailureUpdateOverride
     self.uploadPersistenceFailureReporter = uploadPersistenceFailureReporter
     self.uploadOperationOverride = uploadOperationOverride
@@ -1094,7 +1068,18 @@ final class IosBackupHostApi: BackupNativeHostApi {
   }
 
   private func performStorageReclaim() async throws -> [String?: Any?] {
-    try await withMaintenanceSlot {
+    // Startup only needs to know whether recording may begin. When capacity is
+    // already sufficient, do not wait behind a retention/backup maintenance
+    // slice: that slice may spend tens of seconds confirming old recordings
+    // with an unreachable computer even though no local space is needed.
+    if storageReclaimOperationOverride == nil {
+      let available = availableStorageBytes()
+      let policy = storagePolicy()
+      if available >= policy.minimumBytes {
+        return storageReclaimResult(available: available, policy: policy)
+      }
+    }
+    return try await withMaintenanceSlot {
       if let storageReclaimOperationOverride {
         return try await storageReclaimOperationOverride()
       }
@@ -1102,19 +1087,27 @@ final class IosBackupHostApi: BackupNativeHostApi {
     }
   }
 
+  private func storageReclaimResult(
+    available: Int64,
+    policy: BackupStoragePolicy
+  ) -> [String?: Any?] {
+    [
+      "availableBytes": available,
+      "availableBytesBefore": available,
+      "freedBytes": Int64(0),
+      "deletedCount": 0,
+      "warning": available < policy.warningBytes,
+      "insufficient": available < policy.minimumBytes,
+    ]
+  }
+
   private func performStorageReclaimUncoordinated() async throws -> [String?: Any?] {
     let policy = storagePolicy()
-    let confirmationLimit = storageReclaimConfirmationLimitOverride ?? policy.confirmationLimit
     let recovery = try recoverCleanupIntentsSlice()
     if recovery.processedAny {
       triggerCleanup()
       let available = availableStorageBytes()
-      return [
-        "availableBytes": available, "availableBytesBefore": available,
-        "freedBytes": Int64(0), "deletedCount": 0,
-        "warning": available < policy.warningBytes,
-        "insufficient": available < policy.minimumBytes,
-      ]
+      return storageReclaimResult(available: available, policy: policy)
     }
     let minimumBytes = policy.minimumBytes
     let targetBytes = policy.targetBytes
@@ -1123,8 +1116,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
     var deletedCount = 0
     var freedBytes: Int64 = 0
     var jobsChanged = false
-    var remoteConfirmations = 0
-    var remoteUnreachable = false
     if current < minimumBytes {
       let recordingsRoot = recordingsDirectory().path + "/"
       var afterCreatedAtKey: String?
@@ -1144,7 +1135,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
             minimumVersion: Self.verificationVersion
           ),
           let expectedSha256 = job["contentSha256"] as? String,
-          let totalBytes = job["totalBytes"] as? Int64,
           let path = job["filePath"] as? String,
           path.hasPrefix(recordingsRoot)
         else {
@@ -1166,32 +1156,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
           }
           continue
         }
-        // 电脑确认会过期。过期后必须补一次确认，否则空间不足时永远没有可回收的
-        // 录像，只能停止录像或拒绝开始录像。
-        if remoteUnreachable || remoteConfirmations >= confirmationLimit {
-          continue
-        }
-        remoteConfirmations += 1
-        let attestationResult = await storageReclaimAttestation(
-          job,
-          contentSha256: expectedSha256,
-          totalBytes: totalBytes
-        )
-        guard case .confirmed(let receiptSignature) = attestationResult else {
-          if case .unreachable = attestationResult { remoteUnreachable = true }
-          let message = storageReclaimFailureMessage(attestationResult)
-          if job["errorMessage"] as? String != message,
-             let id = job["id"] as? String,
-             let generation = job["generation"] as? String {
-            jobsChanged = try jobStore.get().updateJob(
-              id: id, expectedGeneration: generation
-            ) { $0["errorMessage"] = message } || jobsChanged
-          }
-          continue
-        }
-
         guard
-          var currentJob = try readJobById(job["id"] as? String ?? ""),
+          let currentJob = try readJobById(job["id"] as? String ?? ""),
           (currentJob["generation"] as? String) == (job["generation"] as? String),
           currentJob["state"] as? String == "completed",
           currentJob["localDeletedAt"] as? String == nil,
@@ -1202,17 +1168,7 @@ final class IosBackupHostApi: BackupNativeHostApi {
           currentJob["contentSha256"] as? String == expectedSha256
         else { continue }
 
-        guard let generation = currentJob["generation"] as? String,
-              try jobStore.get().updateJob(
-                id: currentJob["id"] as? String ?? "",
-                expectedGeneration: generation,
-                mutate: { stored in
-                stored["verificationReceipt"] = receiptSignature
-                stored["lastAttestedAt"] = Self.isoFormatter.string(from: Date())
-              }),
-              let refreshed = try readJobById(currentJob["id"] as? String ?? "")
-        else { continue }
-        currentJob = refreshed
+        guard let generation = currentJob["generation"] as? String else { continue }
         switch try performAtomicCleanup(
           job: currentJob, allowedStates: ["completed"],
           reason: "存储空间不足提前清理"
@@ -1323,26 +1279,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
     return (values?[.systemFreeSize] as? NSNumber)?.int64Value
   }
 
-  /// 空间回收专用的电脑确认：注入替身只表达“能确认/不能确认”，无法区分原因时按
-  /// 电脑不可达处理，避免对同一台电脑反复确认。
-  private func storageReclaimAttestation(
-    _ job: [String: Any],
-    contentSha256: String,
-    totalBytes: Int64
-  ) async -> AttestationResult {
-    if let storageAttestationOverride {
-      guard let receiptSignature = await storageAttestationOverride(
-        job, contentSha256, totalBytes
-      ) else { return .unreachable }
-      return .confirmed(receiptSignature: receiptSignature)
-    }
-    return await attestBackedJob(
-      job,
-      contentSha256: contentSha256,
-      totalBytes: totalBytes
-    )
-  }
-
   /// 「优先继续录制」兜底删除的准入条件：允许没有电脑回执，但只碰已经落盘、不在上传
   /// 或等待上传中的单会话录像，避免删掉正在写或正在传的文件。
   private func canReclaimWithoutProof(_ job: [String: Any]) -> Bool {
@@ -1356,22 +1292,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
           (optionalInt64(job["lastModified"]) ?? 0) > 0
     else { return false }
     return true
-  }
-
-  /// 与保留期清理保持一致的失败说明，现场可直接看出空间为什么没有回收。
-  private func storageReclaimFailureMessage(_ result: AttestationResult) -> String {
-    switch result {
-    case .confirmed:
-      return ""
-    case .missing:
-      return "远端缺失，待重新备份"
-    case .unauthorized:
-      return "需要重新扫码授权"
-    case .notReady:
-      return "电脑端尚未完成校验"
-    case .unreachable:
-      return "暂时无法向电脑确认备份，已保留本地录像"
-    }
   }
 
   /// Recovers at most one bounded page. New cleanup candidates must wait until
@@ -2836,14 +2756,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
     return mode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "return"
   }
 
-  private func isConfirmationFresh(_ lastAttestedAt: String?, now: Date) -> Bool {
-    guard let lastAttestedAt,
-          let attested = Self.isoFormatter.date(from: lastAttestedAt) else {
-      return false
-    }
-    return now.timeIntervalSince(attested) <= storagePolicy().confirmationGrace
-  }
-
   /// 存储策略由 Dart 端下发，字段缺失时保留既有值；从未下发过才使用兜底值。
   private func saveStoragePolicy(_ request: [String?: Any?]) {
     let current = storagePolicy()
@@ -2851,12 +2763,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
       minimumBytes: int64Number(request["storageMinimumBytes"]) ?? current.minimumBytes,
       warningBytes: int64Number(request["storageWarningBytes"]) ?? current.warningBytes,
       targetBytes: int64Number(request["storageTargetBytes"]) ?? current.targetBytes,
-      attestationFreshnessMs: int64Number(request["storageAttestationFreshnessMs"])
-        ?? current.attestationFreshnessMs,
-      confirmationLimit: intNumber(request["storageConfirmationLimit"])
-        ?? current.confirmationLimit,
-      confirmationGraceMs: int64Number(request["storageConfirmationGraceMs"])
-        ?? current.confirmationGraceMs,
       deleteUnbackedOnPressure: (request["storageDeleteUnbackedOnPressure"] as? Bool)
         ?? current.deleteUnbackedOnPressure
     )
@@ -2866,9 +2772,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
         "minimumBytes": next.minimumBytes,
         "warningBytes": next.warningBytes,
         "targetBytes": next.targetBytes,
-        "attestationFreshnessMs": next.attestationFreshnessMs,
-        "confirmationLimit": next.confirmationLimit,
-        "confirmationGraceMs": next.confirmationGraceMs,
         "deleteUnbackedOnPressure": next.deleteUnbackedOnPressure,
       ],
       forKey: keys.storagePolicy
@@ -2882,12 +2785,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
       minimumBytes: int64Number(values?["minimumBytes"]) ?? fallback.minimumBytes,
       warningBytes: int64Number(values?["warningBytes"]) ?? fallback.warningBytes,
       targetBytes: int64Number(values?["targetBytes"]) ?? fallback.targetBytes,
-      attestationFreshnessMs: int64Number(values?["attestationFreshnessMs"])
-        ?? fallback.attestationFreshnessMs,
-      confirmationLimit: intNumber(values?["confirmationLimit"])
-        ?? fallback.confirmationLimit,
-      confirmationGraceMs: int64Number(values?["confirmationGraceMs"])
-        ?? fallback.confirmationGraceMs,
       deleteUnbackedOnPressure: (values?["deleteUnbackedOnPressure"] as? Bool)
         ?? fallback.deleteUnbackedOnPressure
     )
@@ -3242,8 +3139,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
       var baseJob = job
 
       if completedAt != nil {
-        let contentSha256 = job["contentSha256"] as? String
-        let totalBytes = job["totalBytes"] as? Int64 ?? -1
         let hasEvidence = IosBackupCleanupGate.hasVerifiedRetentionEvidence(
           job,
           minimumVersion: Self.verificationVersion
@@ -3260,20 +3155,8 @@ final class IosBackupHostApi: BackupNativeHostApi {
           continue
         }
 
-        let attestation: AttestationResult
-        let storedReceipt = job["verificationReceipt"] as? String
-        if !(storedReceipt?.isEmpty ?? true),
-           isConfirmationFresh(job["lastAttestedAt"] as? String, now: now) {
-          attestation = .confirmed(receiptSignature: storedReceipt ?? "")
-        } else {
-          attestation = await attestBackedJob(
-            job,
-            contentSha256: contentSha256 ?? "",
-            totalBytes: totalBytes
-          )
-        }
-
-        // 远端确认期间任务可能被重新上传，重新读取并校验代次后再落地。
+        // 上传完成回执是绑定主机、录像、会话和文件哈希的持久标记。空间或
+        // 保留期清理只复用该标记，不再每次联网向电脑重复确认。
         guard
           let current = try readJobById(id),
           (current["generation"] as? String) == (job["generation"] as? String),
@@ -3281,44 +3164,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
           current["localDeletedAt"] as? String == nil
         else { continue }
         baseJob = current
-
-        switch attestation {
-        case .confirmed(let receiptSignature):
-          baseJob["lastAttestedAt"] = Self.isoFormatter.string(from: now)
-          baseJob["verificationReceipt"] = receiptSignature
-        case .missing:
-          baseJob["waitingCleanup"] = false
-          baseJob["errorMessage"] = "远端缺失，待重新备份"
-          changed = try persistCleanupStatus(
-            id: id, generation: job["generation"] as? String ?? "",
-            proposed: baseJob
-          ) || changed
-          continue
-        case .unauthorized:
-          baseJob["waitingCleanup"] = false
-          baseJob["errorMessage"] = "需要重新扫码授权"
-          changed = try persistCleanupStatus(
-            id: id, generation: job["generation"] as? String ?? "",
-            proposed: baseJob
-          ) || changed
-          continue
-        case .notReady:
-          baseJob["waitingCleanup"] = true
-          baseJob["errorMessage"] = "电脑端尚未完成校验"
-          changed = try persistCleanupStatus(
-            id: id, generation: job["generation"] as? String ?? "",
-            proposed: baseJob
-          ) || changed
-          continue
-        case .unreachable:
-          baseJob["waitingCleanup"] = true
-          baseJob["errorMessage"] = "暂时无法向电脑确认备份，已保留本地录像"
-          changed = try persistCleanupStatus(
-            id: id, generation: job["generation"] as? String ?? "",
-            proposed: baseJob
-          ) || changed
-          continue
-        }
       }
 
       guard let generation = baseJob["generation"] as? String,
@@ -3374,142 +3219,6 @@ final class IosBackupHostApi: BackupNativeHostApi {
       // snapshot so the UI eventually observes the completed sweep.
       emitSummary()
     }
-  }
-
-  private func attestBackedJob(
-    _ job: [String: Any],
-    contentSha256: String,
-    totalBytes: Int64
-  ) async -> AttestationResult {
-    guard
-      let connection = defaults.dictionary(forKey: keys.connection),
-      let baseUrl = connection["baseUrl"] as? String,
-      let recordId = job["remoteRecordId"] as? NSNumber,
-      let sessions = job["sessions"] as? [Any],
-      IosBackupCleanupGate.hasSingleSession(job),
-      let session = sessions.first as? [String: Any],
-      let sessionId = session["id"] as? String
-    else {
-      return .unreachable
-    }
-    let accessKey: String
-    do {
-      guard let stored = try credentialStore.load() else { return .unreachable }
-      accessKey = stored
-    } catch {
-      return .unreachable
-    }
-    return await attestRemoteRecord(
-      baseUrl: baseUrl,
-      recordId: recordId.int64Value,
-      accessKey: accessKey,
-      deviceId: deviceId(),
-      sessionId: sessionId,
-      fileSha256: contentSha256,
-      fileSizeBytes: totalBytes,
-      computerId: connection["computerId"] as? String ?? ""
-    )
-  }
-
-  private func attestRemoteRecord(
-    baseUrl: String,
-    recordId: Int64,
-    accessKey: String,
-    deviceId: String,
-    sessionId: String,
-    fileSha256: String,
-    fileSizeBytes: Int64,
-    computerId: String
-  ) async -> AttestationResult {
-    let path = "/api/mobile-backup/records/\(recordId)/attestation"
-    guard let url = URL(string: baseUrl + path) else { return .unreachable }
-    var request = URLRequest(url: url)
-    request.httpMethod = "GET"
-    applySignature(
-      to: &request,
-      method: "GET",
-      path: path,
-      body: Data(),
-      accessKey: accessKey,
-      deviceId: deviceId
-    )
-    do {
-      let (data, response) = try await URLSession.shared.data(for: request)
-      guard let http = response as? HTTPURLResponse else { return .unreachable }
-      switch http.statusCode {
-      case 200:
-        let json =
-          (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
-        guard json["status"] as? String == "verified" else { return .notReady }
-        let verified = verifyAttestationReceipt(
-          json,
-          accessKey: accessKey,
-          deviceId: deviceId,
-          computerId: computerId,
-          sessionId: sessionId,
-          fileSha256: fileSha256,
-          fileSizeBytes: fileSizeBytes,
-          recordId: recordId
-        )
-        guard verified,
-              let signature = json["receiptSignature"] as? String,
-              !signature.isEmpty
-        else { return .notReady }
-        return .confirmed(receiptSignature: signature)
-      case 404:
-        return .missing
-      case 403:
-        return .unauthorized
-      case 409:
-        return .notReady
-      default:
-        return .unreachable
-      }
-    } catch {
-      return .unreachable
-    }
-  }
-
-  private func verifyAttestationReceipt(
-    _ response: [String: Any],
-    accessKey: String,
-    deviceId: String,
-    computerId: String,
-    sessionId: String,
-    fileSha256: String,
-    fileSizeBytes: Int64,
-    recordId: Int64
-  ) -> Bool {
-    IosBackupReceiptVerifier.verify(
-      response,
-      accessKey: accessKey,
-      hostNodeId: computerId,
-      sourceDeviceId: deviceId,
-      sourceSessionId: sessionId,
-      fileSha256: fileSha256,
-      fileSizeBytes: fileSizeBytes,
-      recordId: recordId
-    )
-  }
-
-  private func hmacHex(key: Data, message: String) -> String {
-    let symmetricKey = SymmetricKey(data: key)
-    let code = HMAC<SHA256>.authenticationCode(
-      for: Data(message.utf8),
-      using: symmetricKey
-    )
-    return code.map { String(format: "%02x", $0) }.joined()
-  }
-
-  private func constantTimeEquals(_ left: String, _ right: String) -> Bool {
-    let a = Array(left.lowercased().utf8)
-    let b = Array(right.lowercased().utf8)
-    guard a.count == b.count else { return false }
-    var result: UInt8 = 0
-    for index in 0..<a.count {
-      result |= a[index] ^ b[index]
-    }
-    return result == 0
   }
 
 }

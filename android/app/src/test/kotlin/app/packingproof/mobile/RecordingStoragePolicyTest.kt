@@ -47,7 +47,6 @@ class RecordingStoragePolicyTest {
                 missingReceipt,
                 multipleSessions,
             ),
-            policy,
         )
 
         assertEquals(listOf("old", "recent"), candidates.map { it.id })
@@ -78,7 +77,7 @@ class RecordingStoragePolicyTest {
         sessionIds = listOf("session-$id"),
         totalBytes = 1024L,
         lastModified = 1L,
-        lastAttestedAt = java.time.Instant.now().toString(),
+        lastAttestedAt = "2020-01-01T00:00:00Z",
         localDeletedAt = null,
     )
 }

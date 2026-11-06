@@ -26,11 +26,23 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
   String? _storageWarningMessage;
   Future<StorageSpaceResult>? _storageCheckFuture;
   StorageSpaceResult? _lastStorageResult;
+  bool _storageReclaimInProgress = false;
+  Timer? _storageReclaimProgressTimer;
+  static const String _storageReclaimProgressMessage = '正在清理存储空间，请稍候';
+  static const Duration _storageReclaimProgressDelay = Duration(
+    milliseconds: 300,
+  );
   int _queuedStorageNoticePriority = -1;
   StorageNotice? _storageNoticeToShow;
   int _storageNoticeRevision = 0;
   bool _storageStopRequested = false;
   Future<void>? _storageStopFuture;
+
+  /// 回收检查每十秒一次，可用空间每秒都在变；内容不变时十分钟留一条采样。
+  static const Duration _storageReclaimLogInterval = Duration(minutes: 10);
+  final RepeatLogGate _storageReclaimLogGate = RepeatLogGate(
+    window: _storageReclaimLogInterval,
+  );
 
   bool get _cachedStorageInsufficient =>
       _lastStorageResult?.insufficient == true;
@@ -125,11 +137,27 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
     final Future<StorageSpaceResult>? running = _storageCheckFuture;
     if (running != null) return running;
 
+    _storageReclaimProgressTimer?.cancel();
+    _storageReclaimProgressTimer = Timer(_storageReclaimProgressDelay, () {
+      if (_disposed || _storageCheckFuture == null) return;
+      _storageReclaimInProgress = true;
+      _storageWarningMessage = _storageReclaimProgressMessage;
+      notifyListeners();
+    });
+
     late final Future<StorageSpaceResult> task;
     task = _performStorageReclaimOnce().whenComplete(() {
+      _storageReclaimProgressTimer?.cancel();
+      _storageReclaimProgressTimer = null;
       if (identical(_storageCheckFuture, task)) {
         _storageCheckFuture = null;
       }
+      final bool progressWasVisible = _storageReclaimInProgress;
+      _storageReclaimInProgress = false;
+      if (_storageWarningMessage == _storageReclaimProgressMessage) {
+        _storageWarningMessage = null;
+      }
+      if (!_disposed && progressWasVisible) notifyListeners();
     });
     _storageCheckFuture = task;
     return task;
@@ -141,22 +169,33 @@ mixin _PackingSessionStorageCoordinator on _PackingSessionBackupCoordinator {
           .checkAndReclaimStorage();
       _lastStorageResult = result;
       // 用户报「空间不足」时，必须能回答"到底清理没有、清了多少、为什么
-      // 腾不出来"。这里把回收结果和当时的清理策略一起落盘。
-      unawaited(
-        _runtimeLog.log(
-          kind: 'storage_reclaim',
-          extra: <String, Object?>{
-            'policy': _storagePressurePolicy.storageValue,
-            'availableBytes': result.availableBytes,
-            'availableBeforeBytes': result.availableBytesBefore,
-            'freedBytes': result.freedBytes,
-            'deletedCount': result.deletedCount,
-            'warning': result.warning,
-            'insufficient': result.insufficient,
-            'working': isWorking,
-          },
-        ),
-      );
+      // 腾不出来"。这里把回收结果和当时的清理策略一起落盘，但可用空间每十秒
+      // 变一次，只有清理、告警、策略或工作状态变化才值得单独一条。
+      final Map<String, Object?> storageLogFields = <String, Object?>{
+        'policy': _storagePressurePolicy.storageValue,
+        'availableBytes': result.availableBytes,
+        'availableBeforeBytes': result.availableBytesBefore,
+        'freedBytes': result.freedBytes,
+        'deletedCount': result.deletedCount,
+        'warning': result.warning,
+        'insufficient': result.insufficient,
+        'working': isWorking,
+      };
+      if (_storageReclaimLogGate.shouldEmit(
+        Map<String, Object?>.of(storageLogFields)
+          ..remove('availableBytes')
+          ..remove('availableBeforeBytes'),
+      )) {
+        unawaited(
+          _runtimeLog.log(
+            kind: 'storage_reclaim',
+            extra: <String, Object?>{
+              ...storageLogFields,
+              'suppressed': _storageReclaimLogGate.takeSuppressedCount(),
+            },
+          ),
+        );
+      }
       if (result.deletedCount > 0) {
         final String message =
             '存储空间不足，已提前清理 ${result.deletedCount} 个已备份录像，'

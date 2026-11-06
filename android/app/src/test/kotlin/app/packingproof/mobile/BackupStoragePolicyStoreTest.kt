@@ -34,11 +34,8 @@ class BackupStoragePolicyStoreTest {
             context,
             mapOf(
                 "storageMinimumBytes" to 1L * 1024 * 1024 * 1024,
-                "storageWarningBytes" to 2L * 1024 * 1024 * 1024,
-                "storageTargetBytes" to 2L * 1024 * 1024 * 1024,
-                "storageAttestationFreshnessMs" to 60L * 1000,
-                "storageConfirmationLimit" to 2,
-                "storageConfirmationGraceMs" to 60L * 60 * 1000,
+                "storageWarningBytes" to 4L * 1024 * 1024 * 1024,
+                "storageTargetBytes" to 4L * 1024 * 1024 * 1024,
                 "storageDeleteUnbackedOnPressure" to true,
             ),
         )
@@ -46,11 +43,8 @@ class BackupStoragePolicyStoreTest {
         val policy = BackupStoragePolicyStore.current(context)
 
         assertEquals(1L * 1024 * 1024 * 1024, policy.minimumBytes)
-        assertEquals(2L * 1024 * 1024 * 1024, policy.warningBytes)
-        assertEquals(2L * 1024 * 1024 * 1024, policy.targetBytes)
-        assertEquals(60L * 1000, policy.attestationFreshnessMs)
-        assertEquals(2, policy.confirmationLimit)
-        assertEquals(60L * 60 * 1000, policy.confirmationGraceMs)
+        assertEquals(4L * 1024 * 1024 * 1024, policy.warningBytes)
+        assertEquals(4L * 1024 * 1024 * 1024, policy.targetBytes)
         assertTrue(policy.deleteUnbackedOnPressure)
     }
 
@@ -79,12 +73,12 @@ class BackupStoragePolicyStoreTest {
     fun missingRequestKeysKeepPreviousValues() {
         BackupStoragePolicyStore.save(
             context,
-            mapOf("storageConfirmationLimit" to 3),
+            mapOf("storageTargetBytes" to 5L * 1024 * 1024 * 1024),
         )
 
         val policy = BackupStoragePolicyStore.current(context)
 
-        assertEquals(3, policy.confirmationLimit)
+        assertEquals(5L * 1024 * 1024 * 1024, policy.targetBytes)
         assertEquals(BackupStoragePolicy.FALLBACK.minimumBytes, policy.minimumBytes)
     }
 }
