@@ -2,6 +2,7 @@ package app.packingproof.mobile
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Intent
 import android.media.MediaExtractor
@@ -157,35 +158,7 @@ class SystemVideoPlayerPlugin(
         val resolver = activity.contentResolver
         val displayName = galleryDisplayName(source.name)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val values = ContentValues().apply {
-                put(MediaStore.Video.Media.DISPLAY_NAME, displayName)
-                put(MediaStore.Video.Media.MIME_TYPE, VIDEO_MIME)
-                put(
-                    MediaStore.Video.Media.RELATIVE_PATH,
-                    "${Environment.DIRECTORY_MOVIES}/PackingProof",
-                )
-                put(MediaStore.Video.Media.IS_PENDING, 1)
-            }
-            val uri = resolver.insert(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                values,
-            ) ?: throw IOException("无法创建相册记录")
-            try {
-                resolver.openOutputStream(uri)?.use { output ->
-                    source.inputStream().use { input -> input.copyTo(output) }
-                } ?: throw IOException("无法写入相册")
-                resolver.update(
-                    uri,
-                    ContentValues().apply {
-                        put(MediaStore.Video.Media.IS_PENDING, 0)
-                    },
-                    null,
-                    null,
-                )
-            } catch (error: Throwable) {
-                resolver.delete(uri, null, null)
-                throw error
-            }
+            saveVideoToGalleryOnQPlus(resolver, source)
         } else {
             // Android 9 及以下：应用专属外部 Movies 目录无需存储权限，写完交给
             // 媒体扫描器入库；卸载应用时该目录会随容器移除。
@@ -204,13 +177,84 @@ class SystemVideoPlayerPlugin(
         }
     }
 
-    private fun galleryDisplayName(name: String): String {
-        val trimmed = name.trim()
-        if (trimmed.isEmpty()) return "PackingProof.mp4"
-        return if (trimmed.contains('.')) trimmed else "$trimmed.mp4"
-    }
-
     fun dispose() {
         channel.setMethodCallHandler(null)
     }
+}
+
+internal fun saveVideoToGalleryOnQPlus(
+    resolver: ContentResolver,
+    source: File,
+): Uri {
+    val collection = MediaStore.Video.Media.getContentUri(
+        MediaStore.VOLUME_EXTERNAL_PRIMARY,
+    )
+    val values = ContentValues().apply {
+        put(MediaStore.Video.Media.DISPLAY_NAME, galleryDisplayName(source.name))
+        put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+        put(
+            MediaStore.Video.Media.RELATIVE_PATH,
+            "${Environment.DIRECTORY_MOVIES}/PackingProof",
+        )
+        put(MediaStore.Video.Media.IS_PENDING, 1)
+    }
+    val uri = resolver.insert(
+        collection,
+        values,
+    ) ?: throw IOException("无法创建相册记录")
+    try {
+        resolver.openOutputStream(uri)?.use { output ->
+            source.inputStream().use { input -> input.copyTo(output) }
+        } ?: throw IOException("无法写入相册")
+        val finalized = resolver.update(
+            uri,
+            ContentValues().apply {
+                put(MediaStore.Video.Media.IS_PENDING, 0)
+            },
+            null,
+            null,
+        )
+        if (finalized != 1) {
+            throw IOException("无法完成相册记录")
+        }
+        val storedSize = resolver.query(
+            uri,
+            arrayOf(
+                MediaStore.Video.Media.IS_PENDING,
+                MediaStore.Video.Media.SIZE,
+            ),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) {
+                -1L
+            } else {
+                val pendingIndex = cursor.getColumnIndexOrThrow(
+                    MediaStore.Video.Media.IS_PENDING,
+                )
+                val sizeIndex = cursor.getColumnIndexOrThrow(
+                    MediaStore.Video.Media.SIZE,
+                )
+                if (cursor.getInt(pendingIndex) == 0) {
+                    cursor.getLong(sizeIndex)
+                } else {
+                    -1L
+                }
+            }
+        } ?: -1L
+        if (storedSize != source.length()) {
+            throw IOException("相册文件校验失败")
+        }
+        return uri
+    } catch (error: Throwable) {
+        resolver.delete(uri, null, null)
+        throw error
+    }
+}
+
+internal fun galleryDisplayName(name: String): String {
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return "PackingProof.mp4"
+    return if (trimmed.contains('.')) trimmed else "$trimmed.mp4"
 }
